@@ -199,8 +199,9 @@ public final class SavedPlacesActivity extends Activity {
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton(old == null ? "Add" : "Save", null)
                 .create();
+        prepareDialog(dialog);
         dialog.setOnShowListener(d -> {
-            styleDialog(dialog);
+            styleShownDialog(dialog);
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
                 String placeName = SavedPlaceStore.sanitizeName(name.getText().toString());
                 Double latitude = parseDouble(lat.getText().toString());
@@ -223,10 +224,12 @@ public final class SavedPlacesActivity extends Activity {
                 dialog.dismiss();
                 refresh();
             });
+            if (fillCurrent) {
+                form.postDelayed(() -> fillCurrentLocation(lat, lon, useCurrent), 125L);
+            }
         });
         useCurrent.setOnClickListener(v -> fillCurrentLocation(lat, lon, useCurrent));
         dialog.show();
-        if (fillCurrent) fillCurrentLocation(lat, lon, useCurrent);
     }
 
     private void fillCurrentLocation(EditText lat, EditText lon, Button button) {
@@ -320,18 +323,24 @@ public final class SavedPlacesActivity extends Activity {
                     SavedPlaceStore.remove(this, place.id);
                     refresh();
                 }).create();
+        prepareDialog(dialog);
+        dialog.setOnShowListener(d -> styleShownDialog(dialog));
         dialog.show();
-        styleDialog(dialog);
     }
 
-    private void styleDialog(AlertDialog dialog) {
+    private void prepareDialog(AlertDialog dialog) {
         Window w = dialog.getWindow();
         if (w != null) {
+            w.setWindowAnimations(R.style.OrbitPopupAnimation);
             w.setBackgroundDrawable(UiKit.outlined(UiKit.SURFACE, UiKit.withAlpha(UiKit.accent(this), 55), 22, this));
             w.setDimAmount(.66f);
             w.getDecorView().setForceDarkAllowed(false);
-            tintDialogText(w.getDecorView());
         }
+    }
+
+    private void styleShownDialog(AlertDialog dialog) {
+        Window w = dialog.getWindow();
+        if (w != null) tintDialogText(w.getDecorView());
         if (dialog.getButton(AlertDialog.BUTTON_POSITIVE) != null)
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(UiKit.accent(this));
         if (dialog.getButton(AlertDialog.BUTTON_NEGATIVE) != null)
