@@ -1,0 +1,45 @@
+# Gradle and Android build output
+.gradle/
+build/
+app/build/
+**/build/
+.kotlin/
+.cxx/
+.externalNativeBuild/
+captures/
+
+# Local machine configuration
+local.properties
+
+# Android Studio / IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# Generated packages and build logs
+*.apk
+*.apk.sha256.txt
+*.aab
+*.apks
+*.log
+
+# Secrets and signing material
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+
+# OS/editor temporary files
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
