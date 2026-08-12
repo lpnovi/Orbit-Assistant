@@ -1,0 +1,207 @@
+name: Release Orbit APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: orbit-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  EXPECTED_PACKAGE_NAME: com.orbit.assistant
+  EXPECTED_VERSION_NAME: 0.6.4.8
+  EXPECTED_VERSION_CODE: '652'
+  EXPECTED_CERT_SHA256: 7D:AD:61:93:85:DF:F1:1E:C7:31:AA:55:5F:2B:44:8A:94:3C:73:91:81:3D:1A:94:DF:1C:B4:23:2E:CD:41:E3
+
+jobs:
+  release:
+    name: Build, verify, and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v7
+
+      - name: Validate tag and source version
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_tag="v${EXPECTED_VERSION_NAME}"
+          if [[ "${GITHUB_REF_NAME}" != "${expected_tag}" ]]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match expected release ${expected_tag}."
+            exit 1
+          fi
+
+          source_version_name="$(sed -nE 's/^[[:space:]]*versionName[[:space:]]+"([^"]+)".*/\1/p' app/build.gradle | head -n 1)"
+          source_version_code="$(sed -nE 's/^[[:space:]]*versionCode[[:space:]]+([0-9]+).*/\1/p' app/build.gradle | head -n 1)"
+          if [[ "${source_version_name}" != "${EXPECTED_VERSION_NAME}" || "${source_version_code}" != "${EXPECTED_VERSION_CODE}" ]]; then
+            echo "::error::Tagged source version does not match the expected release version."
+            exit 1
+          fi
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Prepare temporary release keystore
+        shell: bash
+        env:
+          ORBIT_RELEASE_KEYSTORE_B64: ${{ secrets.ORBIT_RELEASE_KEYSTORE_B64 }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${ORBIT_RELEASE_KEYSTORE_B64:-}" ]]; then
+            echo "::error::Release keystore secret is unavailable."
+            exit 1
+          fi
+          keystore_path="${RUNNER_TEMP}/orbit-release.jks"
+          printf '%s' "${ORBIT_RELEASE_KEYSTORE_B64}" | base64 --decode > "${keystore_path}"
+          chmod 600 "${keystore_path}"
+          if [[ ! -s "${keystore_path}" ]]; then
+            echo "::error::Decoded release keystore is empty."
+            exit 1
+          fi
+
+      - name: Build signed release APK
+        shell: bash
+        env:
+          ORBIT_RELEASE_STORE_FILE: ${{ runner.temp }}/orbit-release.jks
+          ORBIT_RELEASE_STORE_PASSWORD: ${{ secrets.ORBIT_RELEASE_STORE_PASSWORD }}
+          ORBIT_RELEASE_KEY_PASSWORD: ${{ secrets.ORBIT_RELEASE_KEY_PASSWORD }}
+          ORBIT_RELEASE_KEY_ALIAS: ${{ secrets.ORBIT_RELEASE_KEY_ALIAS }}
+        run: ./gradlew --no-daemon clean assembleRelease
+
+      - name: Verify and prepare release assets
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk_path="app/build/outputs/apk/release/app-release.apk"
+          if [[ ! -f "${apk_path}" ]]; then
+            echo "::error::Release APK was not produced."
+            exit 1
+          fi
+
+          build_tools_dir="$(find "${ANDROID_HOME}/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          aapt="${build_tools_dir}/aapt"
+          apksigner="${build_tools_dir}/apksigner"
+          if [[ ! -x "${aapt}" || ! -x "${apksigner}" ]]; then
+            echo "::error::Required Android APK verification tools are unavailable."
+            exit 1
+          fi
+
+          package_line="$("${aapt}" dump badging "${apk_path}" | grep -m 1 '^package:')"
+          actual_package="$(sed -n "s/.*name='\([^']*\)'.*/\1/p" <<< "${package_line}")"
+          actual_version_name="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<< "${package_line}")"
+          actual_version_code="$(sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" <<< "${package_line}")"
+
+          if [[ "${actual_package}" != "${EXPECTED_PACKAGE_NAME}" ]]; then
+            echo "::error::APK package name verification failed."
+            exit 1
+          fi
+          if [[ "${actual_version_name}" != "${EXPECTED_VERSION_NAME}" || "${actual_version_code}" != "${EXPECTED_VERSION_CODE}" ]]; then
+            echo "::error::APK version verification failed."
+            exit 1
+          fi
+
+          signature_report="${RUNNER_TEMP}/orbit-apksigner-report.txt"
+          "${apksigner}" verify --verbose --print-certs "${apk_path}" > "${signature_report}"
+          signer_count="$(sed -n 's/^Number of signers: //p' "${signature_report}" | head -n 1)"
+          actual_cert="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "${signature_report}" | head -n 1)"
+          normalized_actual_cert="$(tr -d ':' <<< "${actual_cert}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+          normalized_expected_cert="$(tr -d ':' <<< "${EXPECTED_CERT_SHA256}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+          if [[ "${signer_count}" != '1' || "${normalized_actual_cert}" != "${normalized_expected_cert}" ]]; then
+            echo "::error::APK signing certificate verification failed."
+            exit 1
+          fi
+
+          output_dir="${GITHUB_WORKSPACE}/release-assets"
+          output_apk="${output_dir}/Orbit-Assistant-v${EXPECTED_VERSION_NAME}.apk"
+          output_checksum="${output_apk}.sha256"
+          mkdir -p "${output_dir}"
+          cp "${apk_path}" "${output_apk}"
+          (
+            cd "${output_dir}"
+            sha256sum "$(basename "${output_apk}")" > "$(basename "${output_checksum}")"
+          )
+
+          echo "Verified package: ${actual_package}"
+          echo "Verified version: ${actual_version_name} (${actual_version_code})"
+          echo "Verified certificate SHA-256: ${EXPECTED_CERT_SHA256}"
+          echo "apk_path=${output_apk}" >> "${GITHUB_OUTPUT}"
+          echo "checksum_path=${output_checksum}" >> "${GITHUB_OUTPUT}"
+
+      - name: Generate release notes from changelog
+        id: notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          version = os.environ['EXPECTED_VERSION_NAME']
+          marker = f'- **v{version}**:'
+          entry = next(
+              (line.strip() for line in Path('CHANGELOG.md').read_text(encoding='utf-8').splitlines()
+               if line.startswith(marker)),
+              None,
+          )
+          if entry is None:
+              raise SystemExit(f'No CHANGELOG.md entry found for v{version}')
+
+          summary = entry[len(marker):].strip()
+          notes = (
+              f'## Orbit Assistant v{version}\n\n'
+              f'{summary}\n\n'
+              'This APK is signed with Orbit Assistant\'s permanent release certificate. '
+              'The attached `.sha256` file can be used to verify the APK download.\n'
+          )
+          Path('release-assets/release-notes.md').write_text(notes, encoding='utf-8')
+          PY
+          echo "notes_path=${GITHUB_WORKSPACE}/release-assets/release-notes.md" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload verified release assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: Orbit-Assistant-v${{ env.EXPECTED_VERSION_NAME }}-release
+          path: |
+            ${{ steps.verify.outputs.apk_path }}
+            ${{ steps.verify.outputs.checksum_path }}
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            "${{ steps.verify.outputs.apk_path }}" \
+            "${{ steps.verify.outputs.checksum_path }}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --verify-tag \
+            --title "Orbit Assistant v${EXPECTED_VERSION_NAME}" \
+            --notes-file "${{ steps.notes.outputs.notes_path }}"
+
+      - name: Remove temporary release keystore
+        if: always()
+        shell: bash
+        run: rm -f "${RUNNER_TEMP}/orbit-release.jks"
