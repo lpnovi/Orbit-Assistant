@@ -2,6 +2,28 @@ plugins {
     id 'com.android.application'
 }
 
+def orbitSigningPropertiesFile = rootProject.file('orbit-signing.properties')
+def orbitSigningProperties = new Properties()
+if (orbitSigningPropertiesFile.exists()) {
+    orbitSigningPropertiesFile.withInputStream { orbitSigningProperties.load(it) }
+}
+
+def orbitSigningValue = { String name ->
+    def localValue = orbitSigningProperties.getProperty(name)
+    localValue != null && !localValue.isEmpty() ? localValue : System.getenv(name)
+}
+
+def orbitReleaseStoreFile = orbitSigningValue('ORBIT_RELEASE_STORE_FILE')?.trim()
+def orbitReleaseKeyAlias = orbitSigningValue('ORBIT_RELEASE_KEY_ALIAS')?.trim()
+def orbitReleaseStorePassword = orbitSigningValue('ORBIT_RELEASE_STORE_PASSWORD')
+def orbitReleaseKeyPassword = orbitSigningValue('ORBIT_RELEASE_KEY_PASSWORD')
+def orbitReleaseSigningReady = [
+        orbitReleaseStoreFile,
+        orbitReleaseKeyAlias,
+        orbitReleaseStorePassword,
+        orbitReleaseKeyPassword
+].every { it != null && !it.isEmpty() }
+
 android {
     namespace 'com.orbit.assistant'
     compileSdk 35
@@ -10,12 +32,26 @@ android {
         applicationId 'com.orbit.assistant'
         minSdk 29
         targetSdk 35
-        versionCode 651
-        versionName "0.6.4.7"
+        versionCode 652
+        versionName "0.6.4.8"
+    }
+
+    signingConfigs {
+        release {
+            if (orbitReleaseSigningReady) {
+                storeFile file(orbitReleaseStoreFile)
+                storePassword orbitReleaseStorePassword
+                keyAlias orbitReleaseKeyAlias
+                keyPassword orbitReleaseKeyPassword
+            }
+        }
     }
 
     buildTypes {
         release {
+            if (orbitReleaseSigningReady) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
@@ -28,6 +64,16 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+afterEvaluate {
+    tasks.named('preReleaseBuild').configure {
+        doFirst {
+            if (!orbitReleaseSigningReady) {
+                throw new GradleException('Release signing is not configured. Set all four ORBIT_RELEASE_* values in the ignored orbit-signing.properties file or environment variables.')
+            }
+        }
     }
 }
 

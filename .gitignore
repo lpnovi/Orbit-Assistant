@@ -29,6 +29,7 @@ out/
 .env
 .env.*
 !.env.example
+orbit-signing.properties
 *.jks
 *.keystore
 *.p12
