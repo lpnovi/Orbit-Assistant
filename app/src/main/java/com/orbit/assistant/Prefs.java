@@ -3,7 +3,12 @@ package com.orbit.assistant;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import org.json.JSONObject;
+
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.Set;
 
 public final class Prefs {
     private static final String FILE = "orbit_prefs";
@@ -51,8 +56,66 @@ public final class Prefs {
 
     private Prefs() {}
 
+    private static final Set<String> BACKUP_STRING_KEYS = new HashSet<>(Arrays.asList(
+            MODEL, REASONING, INTELLIGENCE_MODE, ACCENT, USER_BUBBLE_COLOR,
+            ASSISTANT_BUBBLE_COLOR, WEATHER_LOCATION, APP_FONT));
+    private static final Set<String> BACKUP_BOOLEAN_KEYS = new HashSet<>(Arrays.asList(
+            SCREEN_CONTEXT, SCREENSHOT, CONTEXT_CHIPS, ATTACH_SCREEN_BY_DEFAULT,
+            SPEAK, HAPTICS, AUTO_LISTEN, VOICE_PAUSE_FRIENDLY, NEW_CHAT_ON_OPEN,
+            HISTORY_ENABLED, SAVE_SCREEN_THUMBNAILS, KEYBOARD_AWARE_ASSISTANT,
+            LELO_MODE, BACKGROUND_NOTIFICATIONS, WEATHER_USE_DEVICE_LOCATION,
+            MEMORY_ENABLED, MEMORY_USAGE_INDICATOR, MEMORY_SUGGESTIONS,
+            NOTIFICATION_AI_ENABLED, AMOLED_MODE));
+    private static final Set<String> BACKUP_INTEGER_KEYS = new HashSet<>(
+            Arrays.asList(NOTIFICATION_RETENTION_DAYS));
+
     public static SharedPreferences get(Context context) {
         return context.getSharedPreferences(FILE, Context.MODE_PRIVATE);
+    }
+
+    /** Explicitly excludes provider connection details, tokens, and encrypted credentials. */
+    static JSONObject backupSnapshot(Context c) throws Exception {
+        JSONObject out = new JSONObject();
+        SharedPreferences p = get(c);
+        for (String key : BACKUP_STRING_KEYS) if (p.contains(key)) out.put(key, p.getString(key, ""));
+        for (String key : BACKUP_BOOLEAN_KEYS) if (p.contains(key)) out.put(key, p.getBoolean(key, false));
+        for (String key : BACKUP_INTEGER_KEYS) if (p.contains(key)) out.put(key, p.getInt(key, 0));
+        return out;
+    }
+
+    static boolean validBackupSnapshot(JSONObject values) {
+        if (values == null) return false;
+        java.util.Iterator<String> keys = values.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            Object value = values.opt(key);
+            if (BACKUP_STRING_KEYS.contains(key)) {
+                if (!(value instanceof String)) return false;
+            } else if (BACKUP_BOOLEAN_KEYS.contains(key)) {
+                if (!(value instanceof Boolean)) return false;
+            } else if (BACKUP_INTEGER_KEYS.contains(key)) {
+                if (!(value instanceof Number)) return false;
+            } else {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static boolean restoreBackupSnapshot(Context c, JSONObject values) {
+        if (!validBackupSnapshot(values)) return false;
+        SharedPreferences.Editor e = get(c).edit();
+        for (String key : BACKUP_STRING_KEYS) e.remove(key);
+        for (String key : BACKUP_BOOLEAN_KEYS) e.remove(key);
+        for (String key : BACKUP_INTEGER_KEYS) e.remove(key);
+        java.util.Iterator<String> keys = values.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            if (BACKUP_STRING_KEYS.contains(key)) e.putString(key, values.optString(key, ""));
+            else if (BACKUP_BOOLEAN_KEYS.contains(key)) e.putBoolean(key, values.optBoolean(key));
+            else if (BACKUP_INTEGER_KEYS.contains(key)) e.putInt(key, values.optInt(key));
+        }
+        return e.commit();
     }
 
     public static String model(Context c) { return get(c).getString(MODEL, "gpt-5.6-terra"); }

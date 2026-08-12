@@ -154,6 +154,14 @@ public final class RoutineStore {
         return out;
     }
 
+    static synchronized String backupJson(Context c) {
+        return prefs(c).getString(KEY, "[]");
+    }
+
+    static synchronized boolean restoreBackupJson(Context c, String raw) {
+        return prefs(c).edit().putString(KEY, raw == null ? "[]" : raw).commit();
+    }
+
     public static String sanitizeName(String name) {
         String value = name == null ? "" : name.trim().replaceAll("\\s+", " ");
         if (value.length() > MAX_NAME_LENGTH) value = value.substring(0, MAX_NAME_LENGTH).trim();

@@ -56,6 +56,11 @@ public final class ReminderScheduler {
         ReminderStore.remove(c, id);
     }
 
+    /** Cancels only the platform alarm; used while an atomic restore swaps stores. */
+    static synchronized void cancelScheduled(Context c, String id) {
+        cancelAlarm(c, id);
+    }
+
     private static void cancelAlarm(Context c, String id) {
         if (c == null || id == null || id.trim().isEmpty()) return;
         AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);

@@ -284,6 +284,14 @@ public final class RoutineTriggerStore {
         return upsert(c, trigger.withRunState(lastRunAt, nextRunAt, result, enabled));
     }
 
+    static synchronized String backupJson(Context c) {
+        return prefs(c).getString(KEY, "[]");
+    }
+
+    static synchronized boolean restoreBackupJson(Context c, String raw) {
+        return prefs(c).edit().putString(KEY, raw == null ? "[]" : raw).commit();
+    }
+
     private static boolean write(Context c, List<Trigger> triggers) {
         JSONArray arr = new JSONArray();
         for (Trigger trigger : triggers) {

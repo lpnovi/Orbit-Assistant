@@ -122,6 +122,12 @@
 - Replace generic Settings subtitles with short category-specific labels
 
 
+### 0.6.4.4
+- Add versioned local Backup & Restore under Personalization & data
+- Use Android's system file picker without broad storage permission
+- Restore important local state safely and reconcile reminders plus time/location Routine triggers
+- Exclude account credentials, Android permission state, and other security-sensitive/transient data
+
 ### 0.6.4.3
 - Add reusable named Saved places for Routine location automation
 - Manage Home/Work/Gym-style presets under Personalization & data

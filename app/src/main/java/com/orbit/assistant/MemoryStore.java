@@ -557,6 +557,15 @@ public final class MemoryStore {
         return false;
     }
 
+    static synchronized String backupJson(Context c) {
+        return c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(KEY, "[]");
+    }
+
+    static synchronized boolean restoreBackupJson(Context c, String raw) {
+        return c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+                .putString(KEY, raw == null ? "[]" : raw).commit();
+    }
+
     private static List<Memory> readAll(Context c) {
         ArrayList<Memory> result = new ArrayList<>();
         try {

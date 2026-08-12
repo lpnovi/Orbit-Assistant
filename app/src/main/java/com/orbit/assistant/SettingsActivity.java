@@ -39,6 +39,8 @@ public class SettingsActivity extends Activity {
     private static final int REQ_CONTACTS = 73;
     private static final int REQ_NOTIFICATIONS = 74;
     private static final int REQ_LOCATION = 75;
+    private static final int REQ_EXPORT_BACKUP = 76;
+    private static final int REQ_RESTORE_BACKUP = 77;
     private static final String TAG_CARD = "orbit_card";
     private static final String TAG_PRIMARY = "orbit_primary";
     private static final String TAG_SECONDARY = "orbit_secondary";
@@ -139,7 +141,7 @@ public class SettingsActivity extends Activity {
         page.addView(settingsCategoryCard(SECTION_VOICE, "Voice, context & permissions",
                 "Voice Beta, screen context, weather and capabilities"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_DATA, "Personalization & data",
-                "Reminders, saved places, Memory, app profiles and notification intelligence"), categoryLp());
+                "Backup, reminders, saved places, Memory, app profiles and notification intelligence"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_ROUTINES, "Routines",
                 "Create, edit and run saved Action Engine chains"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_CONVERSATIONS, "Conversations",
@@ -359,6 +361,33 @@ public class SettingsActivity extends Activity {
         manageNotificationsLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
         personalDataCard.addView(manageNotifications, manageNotificationsLp);
         page.addView(personalDataCard);
+
+        page.addView(sectionTitle("BACKUP & RESTORE", "data"));
+        LinearLayout backupCard = card();
+        tagSectionCard(backupCard, "data");
+        TextView backupHelp = UiKit.text(this,
+                "Orbit backups stay in the file you choose. They include local chats, Memory, Routines, reminders, saved places and personalization. Sensitive account credentials are not included. Android permissions and default-assistant status are not included and may need to be granted again after reinstalling Orbit.",
+                13, UiKit.MUTED, false);
+        backupHelp.setPadding(0, 0, 0, UiKit.dp(this, 12));
+        backupCard.addView(backupHelp);
+        TextView backupPrivacy = UiKit.text(this,
+                "Backup files contain personal data and are not encrypted, so keep them somewhere private.",
+                12, UiKit.MUTED, false);
+        backupPrivacy.setPadding(0, 0, 0, UiKit.dp(this, 12));
+        backupCard.addView(backupPrivacy);
+
+        Button exportBackup = secondaryButton("Export Orbit backup");
+        exportBackup.setOnClickListener(v -> chooseBackupDestination());
+        backupCard.addView(exportBackup, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48)));
+
+        Button restoreBackup = secondaryButton("Restore Orbit backup");
+        restoreBackup.setOnClickListener(v -> chooseBackupToRestore());
+        LinearLayout.LayoutParams restoreBackupLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
+        restoreBackupLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
+        backupCard.addView(restoreBackup, restoreBackupLp);
+        page.addView(backupCard);
 
         page.addView(sectionTitle("CHATGPT ACCOUNT", "account"));
         LinearLayout accountCard = card();
@@ -749,6 +778,89 @@ public class SettingsActivity extends Activity {
         }
         try { startActivity(new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)); }
         catch (Exception e) { startActivity(new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)); }
+    }
+
+    private void chooseBackupDestination() {
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/octet-stream");
+        intent.putExtra(Intent.EXTRA_TITLE, OrbitBackupManager.defaultFileName());
+        startActivityForResult(intent, REQ_EXPORT_BACKUP);
+    }
+
+    private void chooseBackupToRestore() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        startActivityForResult(intent, REQ_RESTORE_BACKUP);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        Uri uri = data.getData();
+        if (requestCode == REQ_EXPORT_BACKUP) {
+            new Thread(() -> {
+                try {
+                    OrbitBackupManager.exportTo(getApplicationContext(), uri);
+                    runOnUiThread(() -> Toast.makeText(this, "Orbit backup saved", Toast.LENGTH_LONG).show());
+                } catch (Exception e) {
+                    runOnUiThread(() -> showBackupError("Could not export backup", e));
+                }
+            }, "orbit-backup-export").start();
+        } else if (requestCode == REQ_RESTORE_BACKUP) {
+            new Thread(() -> {
+                try {
+                    OrbitBackupManager.PreparedRestore prepared =
+                            OrbitBackupManager.prepareRestore(getApplicationContext(), uri);
+                    runOnUiThread(() -> confirmRestore(prepared));
+                } catch (Exception e) {
+                    runOnUiThread(() -> showBackupError("Could not open backup", e));
+                }
+            }, "orbit-backup-validate").start();
+        }
+    }
+
+    private void confirmRestore(OrbitBackupManager.PreparedRestore prepared) {
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Restore Orbit backup?")
+                .setMessage(prepared.confirmationMessage())
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Restore", (d, which) -> runRestore(prepared))
+                .create();
+        styleOrbitDialog(dialog, true);
+        dialog.show();
+    }
+
+    private void runRestore(OrbitBackupManager.PreparedRestore prepared) {
+        Toast.makeText(this, "Restoring Orbit backup…", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            try {
+                OrbitBackupManager.restore(getApplicationContext(), prepared);
+                runOnUiThread(() -> {
+                    UiKit.syncTheme(this);
+                    Toast.makeText(this,
+                            "Orbit backup restored. Review Android permissions and default-assistant status.",
+                            Toast.LENGTH_LONG).show();
+                    recreate();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> showBackupError("Could not restore backup", e));
+            }
+        }, "orbit-backup-restore").start();
+    }
+
+    private void showBackupError(String title, Exception error) {
+        String message = error == null || error.getMessage() == null || error.getMessage().trim().isEmpty()
+                ? "Orbit could not complete this backup operation." : error.getMessage();
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setMessage(message)
+                .setPositiveButton("OK", null)
+                .create();
+        styleOrbitDialog(dialog, false);
+        dialog.show();
     }
 
     private void updateAssistantStatus() {

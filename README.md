@@ -1,8 +1,16 @@
-# Orbit Assistant v0.6.4.3
+# Orbit Assistant v0.6.4.4
 
 See **CHANGELOG.md** for the complete version-by-version development history.
 
 
+
+## 0.6.4.4: Local Backup & Restore
+
+- Added **Settings → Personalization & data → Backup & Restore** using Android's system file picker, with no broad storage permission.
+- Versioned `.orbitbackup` files preserve chats and their saved image attachments, visible action results, Orbit Memory, Routines and IF-condition chains, time/location triggers, reminders, Saved places, app profiles, notification-intelligence configuration, and personal settings.
+- Restore validates the complete file before confirmation, rolls back if any store cannot be replaced, and reconciles reminders plus automatic Routine triggers afterward.
+- API/relay credentials, ChatGPT sessions, signing material, Android permissions, default-assistant status, active background requests, temporary screen context, diagnostics, and notification message history are intentionally excluded.
+- Backup files are local, user-chosen, and unencrypted; they should be stored somewhere private.
 
 ## 0.6.4.3: Saved places for Routine automation
 
@@ -180,4 +188,4 @@ Foreground/UI-dependent actions and scheduled flashlight-on steps are intentiona
 - Custom monthly schedules preserve the anchor day where possible and use the month's final day when needed (for example, a schedule anchored to the 31st).
 
 ## Expected Windows APK
-`Orbit-Assistant-v0.6.4.3-debug.apk`
+`Orbit-Assistant-v0.6.4.4-debug.apk`

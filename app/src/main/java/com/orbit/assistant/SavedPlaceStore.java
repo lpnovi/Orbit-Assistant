@@ -117,6 +117,14 @@ public final class SavedPlaceStore {
                 !Double.isNaN(longitude) && !Double.isInfinite(longitude) && longitude >= -180d && longitude <= 180d;
     }
 
+    static synchronized String backupJson(Context c) {
+        return prefs(c).getString(KEY, "[]");
+    }
+
+    static synchronized boolean restoreBackupJson(Context c, String raw) {
+        return prefs(c).edit().putString(KEY, raw == null ? "[]" : raw).commit();
+    }
+
     private static boolean valid(Place p) {
         return p != null && !p.id.isEmpty() && !p.name.isEmpty() && validCoordinates(p.latitude, p.longitude);
     }

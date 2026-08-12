@@ -224,6 +224,15 @@ public final class ConversationStore {
         c.getSharedPreferences("orbit_action_results", Context.MODE_PRIVATE).edit().clear().apply();
     }
 
+    static synchronized String backupJson(Context c) {
+        return c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(KEY, "[]");
+    }
+
+    static synchronized boolean restoreBackupJson(Context c, String raw) {
+        return c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+                .putString(KEY, raw == null ? "[]" : raw).commit();
+    }
+
 
     private static boolean isExactPrefix(List<AssistantClient.History> shorter, List<AssistantClient.History> longer) {
         if (shorter == null || longer == null || shorter.size() > longer.size()) return false;

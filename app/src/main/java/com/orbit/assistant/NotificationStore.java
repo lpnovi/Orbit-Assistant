@@ -200,6 +200,30 @@ public final class NotificationStore {
         return all(c).size();
     }
 
+    static synchronized JSONObject backupConfiguration(Context c) throws Exception {
+        JSONObject out = new JSONObject();
+        JSONArray blocked = new JSONArray();
+        for (String pkg : prefs(c).getStringSet(KEY_BLOCKED, Collections.emptySet())) blocked.put(pkg);
+        out.put("blockedPackages", blocked);
+        out.put("knownApps", parseObject(prefs(c).getString(KEY_KNOWN_APPS, "{}")));
+        return out;
+    }
+
+    static synchronized boolean restoreBackupConfiguration(Context c, JSONObject values) {
+        if (values == null) return false;
+        JSONArray blocked = values.optJSONArray("blockedPackages");
+        JSONObject known = values.optJSONObject("knownApps");
+        if (blocked == null || known == null) return false;
+        Set<String> packages = new HashSet<>();
+        for (int i = 0; i < blocked.length(); i++) {
+            String pkg = blocked.optString(i, "").trim();
+            if (pkg.isEmpty()) return false;
+            packages.add(pkg);
+        }
+        return prefs(c).edit().putStringSet(KEY_BLOCKED, packages)
+                .putString(KEY_KNOWN_APPS, known.toString()).commit();
+    }
+
     private static SharedPreferences prefs(Context c) {
         return c.getSharedPreferences(FILE, Context.MODE_PRIVATE);
     }

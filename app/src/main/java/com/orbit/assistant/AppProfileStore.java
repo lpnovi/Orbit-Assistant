@@ -265,6 +265,15 @@ public final class AppProfileStore {
     }
     private static String safe(String s) { return s == null ? "" : s.trim(); }
 
+    static synchronized String backupJson(Context c) {
+        return toJsonArray(readAll(c)).toString();
+    }
+
+    static synchronized boolean restoreBackupJson(Context c, String raw) {
+        return c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+                .putString(KEY, raw == null ? "[]" : raw).commit();
+    }
+
     private static List<Profile> readAll(Context c) {
         ArrayList<Profile> out = new ArrayList<>();
         try {
@@ -287,6 +296,11 @@ public final class AppProfileStore {
     }
 
     private static void writeAll(Context c, List<Profile> all) {
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+                .putString(KEY, toJsonArray(all).toString()).apply();
+    }
+
+    private static JSONArray toJsonArray(List<Profile> all) {
         JSONArray arr = new JSONArray();
         try {
             for (Profile p : all) arr.put(new JSONObject().put("packageName", p.packageName)
@@ -296,6 +310,6 @@ public final class AppProfileStore {
                     .put("action1", p.action1).put("action2", p.action2).put("action3", p.action3)
                     .put("actionOverride", p.action3).put("updatedAt", p.updatedAt));
         } catch (Exception ignored) {}
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putString(KEY, arr.toString()).apply();
+        return arr;
     }
 }

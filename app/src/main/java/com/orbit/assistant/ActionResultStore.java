@@ -9,6 +9,7 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.Map;
 
 /** Persists visible action-result cards separately from chat text. */
 public final class ActionResultStore {
@@ -93,6 +94,32 @@ public final class ActionResultStore {
         List<Entry> entries = loadAll(c, conversationId);
         entries.removeIf(e -> e.assistantIndex == assistantIndex);
         saveAll(c, conversationId, entries);
+    }
+
+    static synchronized JSONObject backupSnapshot(Context c) throws Exception {
+        JSONObject out = new JSONObject();
+        for (Map.Entry<String, ?> entry : c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getAll().entrySet()) {
+            if (!(entry.getValue() instanceof String)) throw new IllegalStateException("Invalid action-result store");
+            out.put(entry.getKey(), new JSONArray((String) entry.getValue()));
+        }
+        return out;
+    }
+
+    static synchronized boolean restoreBackupSnapshot(Context c, JSONObject values) {
+        if (values == null) return false;
+        try {
+            SharedPreferences.Editor e = c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().clear();
+            java.util.Iterator<String> keys = values.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                JSONArray entries = values.optJSONArray(key);
+                if (key.trim().isEmpty() || entries == null) return false;
+                e.putString(key, entries.toString());
+            }
+            return e.commit();
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private static List<Entry> loadAll(Context c, String conversationId) {

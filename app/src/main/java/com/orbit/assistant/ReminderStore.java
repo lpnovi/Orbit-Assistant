@@ -71,6 +71,14 @@ public final class ReminderStore {
         return out;
     }
 
+    static synchronized String backupJson(Context c) {
+        return prefs(c).getString(KEY, "[]");
+    }
+
+    static synchronized boolean restoreBackupJson(Context c, String raw) {
+        return prefs(c).edit().putString(KEY, raw == null ? "[]" : raw).commit();
+    }
+
     public static synchronized Item get(Context c, String id) {
         if (id == null || id.trim().isEmpty()) return null;
         for (Item item : list(c)) if (id.equals(item.id)) return item;
