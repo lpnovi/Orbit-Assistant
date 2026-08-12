@@ -21,8 +21,6 @@ concurrency:
 env:
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
   EXPECTED_PACKAGE_NAME: com.orbit.assistant
-  EXPECTED_VERSION_NAME: 0.6.4.8
-  EXPECTED_VERSION_CODE: '652'
   EXPECTED_CERT_SHA256: 7D:AD:61:93:85:DF:F1:1E:C7:31:AA:55:5F:2B:44:8A:94:3C:73:91:81:3D:1A:94:DF:1C:B4:23:2E:CD:41:E3
 
 jobs:
@@ -38,12 +36,12 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
 
       - name: Validate tag and source version
+        id: source
         shell: bash
         run: |
           set -euo pipefail
-          expected_tag="v${EXPECTED_VERSION_NAME}"
-          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+(\.[0-9]+)+$ || "${RELEASE_TAG}" != "${expected_tag}" ]]; then
-            echo "::error::Requested tag does not match expected release ${expected_tag}."
+          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+(\.[0-9]+)+$ ]]; then
+            echo "::error::Requested release tag is malformed."
             exit 1
           fi
           if ! git tag --points-at HEAD | grep -Fxq "${RELEASE_TAG}"; then
@@ -53,10 +51,13 @@ jobs:
 
           source_version_name="$(sed -nE 's/^[[:space:]]*versionName[[:space:]]+"([^"]+)".*/\1/p' app/build.gradle | head -n 1)"
           source_version_code="$(sed -nE 's/^[[:space:]]*versionCode[[:space:]]+([0-9]+).*/\1/p' app/build.gradle | head -n 1)"
-          if [[ "${source_version_name}" != "${EXPECTED_VERSION_NAME}" || "${source_version_code}" != "${EXPECTED_VERSION_CODE}" ]]; then
-            echo "::error::Tagged source version does not match the expected release version."
+          if [[ -z "${source_version_name}" || ! "${source_version_code}" =~ ^[0-9]+$ ||
+                "${RELEASE_TAG}" != "v${source_version_name}" ]]; then
+            echo "::error::Release tag does not match the tagged source version."
             exit 1
           fi
+          echo "version_name=${source_version_name}" >> "${GITHUB_OUTPUT}"
+          echo "version_code=${source_version_code}" >> "${GITHUB_OUTPUT}"
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
@@ -104,6 +105,9 @@ jobs:
       - name: Verify and prepare release assets
         id: verify
         shell: bash
+        env:
+          EXPECTED_VERSION_NAME: ${{ steps.source.outputs.version_name }}
+          EXPECTED_VERSION_CODE: ${{ steps.source.outputs.version_code }}
         run: |
           set -euo pipefail
           apk_path="app/build/outputs/apk/release/app-release.apk"
@@ -156,6 +160,7 @@ jobs:
           output_dir="${GITHUB_WORKSPACE}/release-assets"
           output_apk="${output_dir}/Orbit-Assistant-v${EXPECTED_VERSION_NAME}.apk"
           output_checksum="${output_apk}.sha256"
+          output_manifest="${output_dir}/orbit-update.json"
           mkdir -p "${output_dir}"
           cp "${apk_path}" "${output_apk}"
           (
@@ -163,15 +168,45 @@ jobs:
             sha256sum "$(basename "${output_apk}")" > "$(basename "${output_checksum}")"
           )
 
+          apk_sha256="$(sha256sum "${output_apk}" | awk '{print $1}')"
+          export ACTUAL_PACKAGE="${actual_package}"
+          export ACTUAL_VERSION_NAME="${actual_version_name}"
+          export ACTUAL_VERSION_CODE="${actual_version_code}"
+          export APK_ASSET_NAME="$(basename "${output_apk}")"
+          export APK_SHA256="${apk_sha256}"
+          export CERTIFICATE_SHA256="${EXPECTED_CERT_SHA256}"
+          export OUTPUT_MANIFEST="${output_manifest}"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          manifest = {
+              "schema": 1,
+              "packageName": os.environ["ACTUAL_PACKAGE"],
+              "versionName": os.environ["ACTUAL_VERSION_NAME"],
+              "versionCode": int(os.environ["ACTUAL_VERSION_CODE"]),
+              "apkAssetName": os.environ["APK_ASSET_NAME"],
+              "apkSha256": os.environ["APK_SHA256"],
+              "certificateSha256": os.environ["CERTIFICATE_SHA256"],
+          }
+          Path(os.environ["OUTPUT_MANIFEST"]).write_text(
+              json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+
           echo "Verified package: ${actual_package}"
           echo "Verified version: ${actual_version_name} (${actual_version_code})"
           echo "Verified certificate SHA-256: ${EXPECTED_CERT_SHA256}"
           echo "apk_path=${output_apk}" >> "${GITHUB_OUTPUT}"
           echo "checksum_path=${output_checksum}" >> "${GITHUB_OUTPUT}"
+          echo "manifest_path=${output_manifest}" >> "${GITHUB_OUTPUT}"
 
       - name: Generate release notes from changelog
         id: notes
         shell: bash
+        env:
+          EXPECTED_VERSION_NAME: ${{ steps.source.outputs.version_name }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -202,21 +237,24 @@ jobs:
       - name: Upload verified release assets
         uses: actions/upload-artifact@v7
         with:
-          name: Orbit-Assistant-v${{ env.EXPECTED_VERSION_NAME }}-release
+          name: Orbit-Assistant-v${{ steps.source.outputs.version_name }}-release
           path: |
             ${{ steps.verify.outputs.apk_path }}
             ${{ steps.verify.outputs.checksum_path }}
+            ${{ steps.verify.outputs.manifest_path }}
           if-no-files-found: error
 
       - name: Publish GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          EXPECTED_VERSION_NAME: ${{ steps.source.outputs.version_name }}
         run: |
           set -euo pipefail
           gh release create "${RELEASE_TAG}" \
             "${{ steps.verify.outputs.apk_path }}" \
             "${{ steps.verify.outputs.checksum_path }}" \
+            "${{ steps.verify.outputs.manifest_path }}" \
             --repo "${GITHUB_REPOSITORY}" \
             --verify-tag \
             --title "Orbit Assistant v${EXPECTED_VERSION_NAME}" \

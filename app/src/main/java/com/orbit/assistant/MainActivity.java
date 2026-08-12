@@ -44,6 +44,7 @@ public class MainActivity extends Activity {
         // recovery path in addition to the manifest reschedule receiver.
         RoutineTriggerScheduler.rescheduleAll(this);
         ReminderScheduler.rescheduleAll(this);
+        OrbitUpdateWorker.schedule(this);
         Window w = getWindow();
         w.setStatusBarColor(UiKit.BG);
         w.setNavigationBarColor(UiKit.BG);

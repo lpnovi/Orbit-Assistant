@@ -1,6 +1,13 @@
-# Orbit Assistant v0.6.4.4
+# Orbit Assistant v0.6.4.10
 
 See **CHANGELOG.md** for the complete version-by-version development history.
+
+## 0.6.4.10: Verified in-app updates
+
+- Added **Settings → About & updates** for checking public stable Orbit releases, reviewing release notes, and explicitly approving a download.
+- Orbit verifies the update manifest, APK SHA-256, package name, newer version, and permanent signing certificate before opening Android's normal package installer. Silent installation is never attempted.
+- A lightweight network-constrained check runs about once per day and notifies only once for each available version. APKs are never downloaded in the background.
+- Official release builds now publish `orbit-update.json` beside the signed APK and checksum after the workflow's fail-closed verification gates succeed.
 
 
 

@@ -57,6 +57,7 @@ public class SettingsActivity extends Activity {
     private static final String SECTION_CONVERSATIONS = "conversations";
     private static final String SECTION_ROUTINES = "routines";
     private static final String SECTION_APPEARANCE = "appearance";
+    private static final String SECTION_UPDATES = "updates";
     private static final String SECTION_ADVANCED = "advanced";
     private TextView assistantStatus;
     private TextView chatGptStatus;
@@ -172,6 +173,8 @@ public class SettingsActivity extends Activity {
                 "History, chat behavior and background notifications"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_APPEARANCE, "Look & Feel",
                 "Accent, font, AMOLED, conversation colors and haptics"), categoryLp());
+        page.addView(settingsCategoryCard(SECTION_UPDATES, "About & updates",
+                "Current version and verified official Orbit releases"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_ADVANCED, "Advanced",
                 "API relay fallback and diagnostics"), categoryLp());
 
@@ -227,6 +230,10 @@ public class SettingsActivity extends Activity {
     private void openSettingsSection(String section) {
         if (SECTION_ROUTINES.equals(section)) {
             startActivity(new Intent(this, RoutinesActivity.class));
+            return;
+        }
+        if (SECTION_UPDATES.equals(section)) {
+            startActivity(new Intent(this, UpdateActivity.class));
             return;
         }
         Intent intent = new Intent(this, SettingsActivity.class);
