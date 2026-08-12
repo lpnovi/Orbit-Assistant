@@ -4,15 +4,22 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing v* tag to build and publish
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: orbit-release-${{ github.ref }}
+  group: orbit-release-${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
   cancel-in-progress: false
 
 env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
   EXPECTED_PACKAGE_NAME: com.orbit.assistant
   EXPECTED_VERSION_NAME: 0.6.4.8
   EXPECTED_VERSION_CODE: '652'
@@ -27,14 +34,20 @@ jobs:
     steps:
       - name: Check out tagged source
         uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Validate tag and source version
         shell: bash
         run: |
           set -euo pipefail
           expected_tag="v${EXPECTED_VERSION_NAME}"
-          if [[ "${GITHUB_REF_NAME}" != "${expected_tag}" ]]; then
-            echo "::error::Tag ${GITHUB_REF_NAME} does not match expected release ${expected_tag}."
+          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+(\.[0-9]+)+$ || "${RELEASE_TAG}" != "${expected_tag}" ]]; then
+            echo "::error::Requested tag does not match expected release ${expected_tag}."
+            exit 1
+          fi
+          if ! git tag --points-at HEAD | grep -Fxq "${RELEASE_TAG}"; then
+            echo "::error::Checked-out source is not the requested release tag."
             exit 1
           fi
 
@@ -108,9 +121,9 @@ jobs:
           fi
 
           package_line="$("${aapt}" dump badging "${apk_path}" | grep -m 1 '^package:')"
-          actual_package="$(sed -n "s/.*name='\([^']*\)'.*/\1/p" <<< "${package_line}")"
-          actual_version_name="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<< "${package_line}")"
-          actual_version_code="$(sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" <<< "${package_line}")"
+          actual_package="$(awk -F"'" '{print $2}' <<< "${package_line}")"
+          actual_version_code="$(awk -F"'" '{print $4}' <<< "${package_line}")"
+          actual_version_name="$(awk -F"'" '{print $6}' <<< "${package_line}")"
 
           if [[ "${actual_package}" != "${EXPECTED_PACKAGE_NAME}" ]]; then
             echo "::error::APK package name verification failed."
@@ -193,7 +206,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release create "${GITHUB_REF_NAME}" \
+          gh release create "${RELEASE_TAG}" \
             "${{ steps.verify.outputs.apk_path }}" \
             "${{ steps.verify.outputs.checksum_path }}" \
             --repo "${GITHUB_REPOSITORY}" \
