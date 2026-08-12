@@ -158,7 +158,7 @@ public final class CapabilitiesActivity extends Activity {
         future.addView(planned("Routine time triggers", "Live in 0.6.3"));
         future.addView(planned("Routine location triggers", "Live in 0.6.4"));
         future.addView(planned("Chained actions", "Live in 0.6"));
-        future.addView(planned("Quick Settings tiles", "Planned for 0.6"));
+        future.addView(planned("Quick Settings tiles", "Live in 0.6.5"));
         future.addView(planned("Home-screen widgets", "Planned for 0.6"));
         future.addView(planned("Screen-region selection", "Planned for 0.6"));
         TextView note = UiKit.text(this,

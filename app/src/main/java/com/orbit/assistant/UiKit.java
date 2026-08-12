@@ -15,6 +15,8 @@ import android.graphics.fonts.FontFamily;
 import android.graphics.fonts.SystemFonts;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.ClipDrawable;
+import android.graphics.drawable.LayerDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.os.Build;
 import android.util.TypedValue;
@@ -28,9 +30,11 @@ import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.animation.OvershootInterpolator;
 import android.widget.TextView;
+import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.FrameLayout;
 import android.widget.PopupWindow;
+import android.widget.ProgressBar;
 import java.io.File;
 import java.util.Locale;
 import java.util.Map;
@@ -301,6 +305,46 @@ public final class UiKit {
         if (dialog == null || dialog.getWindow() == null) return;
         watchTypography(dialog.getWindow().getDecorView());
         applyTypography(dialog.getWindow().getDecorView());
+    }
+
+    /** Applies Orbit's readable dialog foregrounds without flattening custom-view hierarchy. */
+    public static void applyOrbitDialogColors(AlertDialog dialog, Context c) {
+        if (dialog == null) return;
+        TextView message = dialog.findViewById(android.R.id.message);
+        if (message != null) message.setTextColor(TEXT);
+        if (c != null) {
+            int titleId = c.getResources().getIdentifier("alertTitle", "id", "android");
+            if (titleId != 0) {
+                TextView title = dialog.findViewById(titleId);
+                if (title != null) title.setTextColor(TEXT);
+            }
+        }
+        int actionColor = accent(c);
+        Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+        Button negative = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+        Button neutral = dialog.getButton(AlertDialog.BUTTON_NEUTRAL);
+        if (positive != null) positive.setTextColor(actionColor);
+        if (negative != null) negative.setTextColor(actionColor);
+        if (neutral != null) neutral.setTextColor(actionColor);
+    }
+
+    /** Orbit-styled determinate progress for measurable foreground work. */
+    public static ProgressBar horizontalProgress(Context c) {
+        ProgressBar bar = new ProgressBar(c, null, android.R.attr.progressBarStyleHorizontal);
+        GradientDrawable track = rounded(SURFACE_3, 99, c);
+        GradientDrawable fill = rounded(accent(c), 99, c);
+        ClipDrawable clippedFill = new ClipDrawable(
+                fill, android.view.Gravity.START, ClipDrawable.HORIZONTAL);
+        LayerDrawable layers = new LayerDrawable(new Drawable[]{track, clippedFill});
+        layers.setId(0, android.R.id.background);
+        layers.setId(1, android.R.id.progress);
+        bar.setProgressDrawable(layers);
+        bar.setIndeterminate(false);
+        bar.setMax(100);
+        bar.setProgress(0);
+        bar.setMinimumHeight(0);
+        bar.setMinimumWidth(0);
+        return bar;
     }
 
     private static final class FontPreview {

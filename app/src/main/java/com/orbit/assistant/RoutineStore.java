@@ -126,7 +126,12 @@ public final class RoutineStore {
         if (!removed) return false;
         RoutineTriggerScheduler.cancelForRoutine(c, id);
         RoutineTriggerStore.deleteForRoutine(c, id);
-        return write(c, routines);
+        boolean written = write(c, routines);
+        if (written && id.equals(Prefs.quickSettingsRoutineId(c))) {
+            Prefs.setQuickSettingsRoutineId(c, "");
+            QuickSettingsTiles.refreshRoutineTile(c);
+        }
+        return written;
     }
 
     public static synchronized void markRun(Context c, String id) {

@@ -11,6 +11,7 @@ import android.view.Window;
 import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -22,6 +23,9 @@ import java.util.Locale;
 public final class UpdateActivity extends Activity {
     private TextView status;
     private Button action;
+    private LinearLayout downloadProgress;
+    private ProgressBar downloadProgressBar;
+    private TextView downloadPercent;
     private OrbitUpdater.Release availableRelease;
     private OrbitUpdater.Release readyRelease;
     private File readyApk;
@@ -69,6 +73,7 @@ public final class UpdateActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.setBackgroundColor(UiKit.BG);
+        scroll.setForceDarkAllowed(false);
 
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
@@ -123,6 +128,21 @@ public final class UpdateActivity extends Activity {
         status.setPadding(0, 0, 0, UiKit.dp(this, 14));
         card.addView(status);
 
+        downloadProgress = new LinearLayout(this);
+        downloadProgress.setOrientation(LinearLayout.VERTICAL);
+        downloadProgress.setVisibility(View.GONE);
+        downloadProgressBar = UiKit.horizontalProgress(this);
+        downloadProgress.addView(downloadProgressBar, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 8)));
+        downloadPercent = UiKit.text(this, "0%", 11, UiKit.MUTED, false);
+        downloadPercent.setGravity(Gravity.END);
+        downloadPercent.setPadding(0, UiKit.dp(this, 5), UiKit.dp(this, 1), 0);
+        downloadProgress.addView(downloadPercent);
+        LinearLayout.LayoutParams progressLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        progressLp.setMargins(0, 0, 0, UiKit.dp(this, 14));
+        card.addView(downloadProgress, progressLp);
+
         action = primaryButton("Check for updates");
         card.addView(action, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48)));
@@ -141,12 +161,14 @@ public final class UpdateActivity extends Activity {
     }
 
     private void showIdleState() {
+        hideDownloadProgress();
         status.setText("Ready to check for a stable Orbit release.");
         status.setTextColor(UiKit.TEXT);
         setAction("Check for updates", this::checkForUpdates, true);
     }
 
     private void checkForUpdates() {
+        hideDownloadProgress();
         status.setText("Checking…");
         status.setTextColor(UiKit.TEXT);
         setAction("Checking…", null, false);
@@ -178,6 +200,7 @@ public final class UpdateActivity extends Activity {
     }
 
     private void showAvailableState(OrbitUpdater.Release release, boolean showDialog) {
+        hideDownloadProgress();
         status.setText("Update available: Orbit Assistant v" + release.versionName);
         status.setTextColor(UiKit.accent(this));
         setAction("View update", () -> showUpdateDialog(release), true);
@@ -188,10 +211,32 @@ public final class UpdateActivity extends Activity {
         String notes = release.releaseNotes.isEmpty()
                 ? "See the official GitHub Release for details."
                 : release.releaseNotes;
-        String message = notes + "\n\nDownload size: " + formatSize(release.apkSize);
+
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(UiKit.dp(this, 24), UiKit.dp(this, 20),
+                UiKit.dp(this, 24), UiKit.dp(this, 6));
+        TextView title = UiKit.text(this,
+                "Orbit Assistant v" + release.versionName, 20, UiKit.TEXT, true);
+        title.setAccessibilityHeading(true);
+        content.addView(title);
+        TextView body = UiKit.text(this, notes, 14, UiKit.TEXT, false);
+        body.setLineSpacing(0, 1.12f);
+        body.setPadding(0, UiKit.dp(this, 12), 0, 0);
+        content.addView(body);
+        TextView size = UiKit.text(this,
+                "Download size: " + formatSize(release.apkSize), 12, UiKit.MUTED, false);
+        size.setPadding(0, UiKit.dp(this, 13), 0, 0);
+        content.addView(size);
+        UiKit.applyTypography(content);
+        ScrollView dialogScroll = new ScrollView(this);
+        dialogScroll.setFillViewport(true);
+        dialogScroll.setForceDarkAllowed(false);
+        dialogScroll.addView(content, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("Orbit Assistant v" + release.versionName)
-                .setMessage(message)
+                .setView(dialogScroll)
                 .setNegativeButton("Later", null)
                 .setPositiveButton("Download & install", (d, which) -> startDownload(release))
                 .create();
@@ -201,8 +246,9 @@ public final class UpdateActivity extends Activity {
 
     private void startDownload(OrbitUpdater.Release release) {
         availableRelease = release;
-        status.setText("Downloading…");
+        status.setText("Downloading update");
         status.setTextColor(UiKit.TEXT);
+        showDownloadProgress(-1);
         setAction("Cancel download", () -> {
             if (download != null) download.cancel();
         }, true);
@@ -210,13 +256,14 @@ public final class UpdateActivity extends Activity {
             @Override public void onProgress(int percent) {
                 runOnUiThread(() -> {
                     if (!alive()) return;
-                    status.setText(percent >= 0 ? "Downloading… " + percent + "%" : "Downloading…");
+                    showDownloadProgress(percent);
                 });
             }
 
             @Override public void onVerifying() {
                 runOnUiThread(() -> {
                     if (!alive()) return;
+                    hideDownloadProgress();
                     status.setText("Verifying…");
                     setAction("Verifying…", null, false);
                 });
@@ -225,6 +272,7 @@ public final class UpdateActivity extends Activity {
             @Override public void onReady(File apk) {
                 runOnUiThread(() -> {
                     if (!alive()) return;
+                    hideDownloadProgress();
                     download = null;
                     readyApk = apk;
                     readyRelease = release;
@@ -238,6 +286,7 @@ public final class UpdateActivity extends Activity {
             @Override public void onError(String message, boolean verificationFailure) {
                 runOnUiThread(() -> {
                     if (!alive()) return;
+                    hideDownloadProgress();
                     download = null;
                     status.setText((verificationFailure ? "Verification failed\n" :
                             "Network/update service error\n") + message);
@@ -249,6 +298,7 @@ public final class UpdateActivity extends Activity {
             @Override public void onCancelled() {
                 runOnUiThread(() -> {
                     if (!alive()) return;
+                    hideDownloadProgress();
                     download = null;
                     status.setText("Download cancelled.");
                     status.setTextColor(UiKit.TEXT);
@@ -259,6 +309,7 @@ public final class UpdateActivity extends Activity {
     }
 
     private void attemptInstall() {
+        hideDownloadProgress();
         if (readyApk == null || readyRelease == null) return;
         if (!OrbitUpdater.canRequestPackageInstalls(this)) {
             waitingForInstallPermission = true;
@@ -273,6 +324,7 @@ public final class UpdateActivity extends Activity {
 
     private void verifyAndInstall() {
         if (readyApk == null || readyRelease == null) return;
+        hideDownloadProgress();
         status.setText("Verifying…");
         setAction("Verifying…", null, false);
         File apk = readyApk;
@@ -332,11 +384,25 @@ public final class UpdateActivity extends Activity {
         UiKit.prepareOrbitDialog(dialog, UiKit.rounded(UiKit.SURFACE, 22, this));
         dialog.setOnShowListener(ignore -> {
             UiKit.applyDialogTypography(dialog);
-            Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-            Button negative = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
-            if (positive != null) positive.setTextColor(UiKit.accent(this));
-            if (negative != null) negative.setTextColor(UiKit.accent(this));
+            UiKit.applyOrbitDialogColors(dialog, this);
         });
+    }
+
+    private void showDownloadProgress(int percent) {
+        if (downloadProgress == null || downloadProgressBar == null || downloadPercent == null) return;
+        downloadProgress.setVisibility(View.VISIBLE);
+        if (percent >= 0) {
+            int safePercent = Math.max(0, Math.min(100, percent));
+            downloadProgressBar.setProgress(safePercent, true);
+            downloadPercent.setText(safePercent + "%");
+        } else {
+            downloadProgressBar.setProgress(0, false);
+            downloadPercent.setText("Preparing download…");
+        }
+    }
+
+    private void hideDownloadProgress() {
+        if (downloadProgress != null) downloadProgress.setVisibility(View.GONE);
     }
 
     private boolean alive() {

@@ -44,6 +44,7 @@ public final class Prefs {
     public static final String NOTIFICATION_RETENTION_DAYS = "notification_retention_days";
     public static final String AMOLED_MODE = "amoled_mode";
     public static final String APP_FONT = "app_font";
+    public static final String QUICK_SETTINGS_ROUTINE_ID = "quick_settings_routine_id";
 
     public static final String PROVIDER_CHATGPT = "chatgpt";
     public static final String PROVIDER_RELAY = "relay";
@@ -58,7 +59,7 @@ public final class Prefs {
 
     private static final Set<String> BACKUP_STRING_KEYS = new HashSet<>(Arrays.asList(
             MODEL, REASONING, INTELLIGENCE_MODE, ACCENT, USER_BUBBLE_COLOR,
-            ASSISTANT_BUBBLE_COLOR, WEATHER_LOCATION, APP_FONT));
+            ASSISTANT_BUBBLE_COLOR, WEATHER_LOCATION, APP_FONT, QUICK_SETTINGS_ROUTINE_ID));
     private static final Set<String> BACKUP_BOOLEAN_KEYS = new HashSet<>(Arrays.asList(
             SCREEN_CONTEXT, SCREENSHOT, CONTEXT_CHIPS, ATTACH_SCREEN_BY_DEFAULT,
             SPEAK, HAPTICS, AUTO_LISTEN, VOICE_PAUSE_FRIENDLY, NEW_CHAT_ON_OPEN,
@@ -149,6 +150,16 @@ public final class Prefs {
     public static int notificationRetentionDays(Context c) { return Math.max(1, Math.min(30, get(c).getInt(NOTIFICATION_RETENTION_DAYS, 7))); }
     public static boolean amoledMode(Context c) { return get(c).getBoolean(AMOLED_MODE, false); }
     public static String appFont(Context c) { return get(c).getString(APP_FONT, "orbit_default"); }
+    public static String quickSettingsRoutineId(Context c) {
+        return get(c).getString(QUICK_SETTINGS_ROUTINE_ID, "").trim();
+    }
+    public static boolean setQuickSettingsRoutineId(Context c, String routineId) {
+        SharedPreferences.Editor editor = get(c).edit();
+        String clean = routineId == null ? "" : routineId.trim();
+        if (clean.isEmpty()) editor.remove(QUICK_SETTINGS_ROUTINE_ID);
+        else editor.putString(QUICK_SETTINGS_ROUTINE_ID, clean);
+        return editor.commit();
+    }
 
     public static String effectiveModel(Context c, String prompt) {
         return effectiveModelForMode(c, intelligenceMode(c), prompt);

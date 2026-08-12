@@ -144,11 +144,21 @@
 - Gate the next 1–5 steps and continue the Routine when a condition is false
 - Keep conditional execution on the shared OrbitActionEngine path
 
+## 0.6.5 Quick Access & Custom Commands
+
+### 0.6.5.0
+- Polish updater dialog readability using Orbit's shared dark-surface colors and selected typography
+- Add determinate accent-colored APK download progress
+- Add the Ask Orbit Quick Settings tile using the existing assistant-session entry path
+- Add a configurable Routine Quick Settings tile using the existing Routine runner and Action Engine
+
+### Future 0.6.5.x
+- Custom Commands
+- Continue focused Quick Access refinements based on device testing
+
 ### Planned 0.6.x
-- Quick Settings tiles
 - Home-screen widgets
 - Screen-region selection
-- Custom commands
 - Deeper Android automation
 - Richer chained plans with saved presets and more advanced branching
 

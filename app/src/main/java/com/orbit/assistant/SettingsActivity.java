@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.role.RoleManager;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
@@ -59,6 +60,10 @@ public class SettingsActivity extends Activity {
     private static final String SECTION_APPEARANCE = "appearance";
     private static final String SECTION_UPDATES = "updates";
     private static final String SECTION_ADVANCED = "advanced";
+
+    public static Intent assistantSetupIntent(Context context) {
+        return new Intent(context, SettingsActivity.class).putExtra(EXTRA_SECTION, SECTION_ASSISTANT);
+    }
     private TextView assistantStatus;
     private TextView chatGptStatus;
     private int leloTapCount = 0;
