@@ -158,6 +158,11 @@
 - Propagate Accent, app font, and AMOLED changes across active Settings surfaces
 - Add an Update notifications preference and successful-install APK cache cleanup
 
+### 0.6.5.2
+- Simplify default-assistant setup to one reliable Android Settings control
+- Move Quick Settings tile configuration from Routines into Assistant setup
+- Restore the Routines page focus and spacing around saved automation
+
 ### Future 0.6.5.x
 - Custom Commands
 - Continue focused Quick Access refinements based on device testing

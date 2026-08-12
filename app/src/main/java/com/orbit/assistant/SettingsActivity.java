@@ -3,7 +3,6 @@ package com.orbit.assistant;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.app.role.RoleManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.ClipData;
@@ -32,9 +31,10 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.List;
+
 
 public class SettingsActivity extends Activity implements UiKit.AppearanceListener {
-    private static final int REQ_ASSISTANT = 70;
     private static final int REQ_AUDIO = 71;
     private static final int REQ_CAMERA = 72;
     private static final int REQ_CONTACTS = 73;
@@ -61,6 +61,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     }
     private TextView assistantStatus;
     private Button assistantAction;
+    private TextView quickRoutineSelection;
     private TextView chatGptStatus;
     private ScrollView settingsScroll;
     private String appliedAppearance = "";
@@ -119,6 +120,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         UiPresence.enter(this);
         if (!refreshAppearanceIfNeeded()) applyFontInPlace();
         updateAssistantStatus();
+        refreshQuickRoutineSelection();
         updateChatGptStatus();
         if (!ChatGptAuth.isSignedIn(this)
                 && ChatGptAuth.resumePendingDeviceCode(this, chatGptLoginCallback)
@@ -175,7 +177,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         page.addView(intro, introLp);
 
         page.addView(settingsCategoryCard(SECTION_ASSISTANT, "Assistant setup",
-                "Default assistant, Side button and core device access"), categoryLp());
+                "Default assistant, Side button and Quick Settings access"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_AI, "AI & account",
                 "ChatGPT sign-in, provider and intelligence modes"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_VOICE, "Voice, context & permissions",
@@ -275,7 +277,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     }
 
     private String sectionDescription(String section) {
-        if (SECTION_ASSISTANT.equals(section)) return "Set Orbit as your assistant and configure Samsung's Side button behavior.";
+        if (SECTION_ASSISTANT.equals(section)) return "Set Orbit as your assistant and configure Side button and Quick Settings access.";
         if (SECTION_AI.equals(section)) return "Manage your ChatGPT connection and how much intelligence Orbit uses by default.";
         if (SECTION_VOICE.equals(section)) return "Control Voice Beta, screen awareness and device permissions.";
         if (SECTION_DATA.equals(section)) return "Manage weather preferences and the local information Orbit uses to personalize and organize your assistant experience.";
@@ -346,14 +348,50 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         desc.setPadding(0, UiKit.dp(this, 7), 0, UiKit.dp(this, 14));
         setupCard.addView(desc);
         assistantAction = primaryButton("Make Orbit default assistant");
-        assistantAction.setOnClickListener(v -> requestAssistantRole());
+        assistantAction.setOnClickListener(v -> openAssistantSettings(true));
         setupCard.addView(assistantAction);
-        Button samsungSettings = secondaryButton("Open default-app settings");
-        LinearLayout.LayoutParams secondLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
-        secondLp.setMargins(0, UiKit.dp(this, 10), 0, 0);
-        setupCard.addView(samsungSettings, secondLp);
-        samsungSettings.setOnClickListener(v -> openAssistantSettings(true));
         page.addView(setupCard);
+
+        page.addView(sectionTitle("QUICK ACCESS", "setup"));
+        LinearLayout quickCard = card();
+        tagSectionCard(quickCard, "setup");
+        quickCard.addView(UiKit.text(this, "Quick Settings tiles", 16, UiKit.TEXT, true));
+        TextView quickNote = UiKit.text(this,
+                "Open Orbit instantly, or assign one saved Routine to a Quick Settings tile.",
+                12, UiKit.MUTED, false);
+        quickNote.setLineSpacing(0, 1.12f);
+        quickNote.setPadding(0, UiKit.dp(this, 6), 0, UiKit.dp(this, 12));
+        quickCard.addView(quickNote);
+
+        LinearLayout tileButtons = new LinearLayout(this);
+        tileButtons.setGravity(Gravity.CENTER_VERTICAL);
+        Button addOrbit = secondaryButton("Add Orbit tile");
+        addOrbit.setOnClickListener(v -> QuickSettingsTiles.requestAddAskTile(this));
+        tileButtons.addView(addOrbit, new LinearLayout.LayoutParams(0, UiKit.dp(this, 44), 1));
+        Button addRoutine = secondaryButton("Add Routine tile");
+        addRoutine.setOnClickListener(v -> QuickSettingsTiles.requestAddRoutineTile(this));
+        LinearLayout.LayoutParams addRoutineLp = new LinearLayout.LayoutParams(0, UiKit.dp(this, 44), 1);
+        addRoutineLp.leftMargin = UiKit.dp(this, 9);
+        tileButtons.addView(addRoutine, addRoutineLp);
+        quickCard.addView(tileButtons);
+
+        TextView addHint = UiKit.text(this,
+                Build.VERSION.SDK_INT >= 33
+                        ? "Android will ask before adding either tile."
+                        : "Add the Orbit tiles manually from Android's Quick Settings editor.",
+                11, UiKit.MUTED, false);
+        addHint.setPadding(0, UiKit.dp(this, 9), 0, UiKit.dp(this, 12));
+        quickCard.addView(addHint);
+
+        quickRoutineSelection = UiKit.text(this, "Quick Settings Routine: None", 13, UiKit.TEXT, true);
+        quickRoutineSelection.setPadding(0, 0, 0, UiKit.dp(this, 8));
+        quickCard.addView(quickRoutineSelection);
+        Button chooseRoutine = secondaryButton("Choose Quick Settings Routine");
+        chooseRoutine.setOnClickListener(v -> showQuickRoutineChooser());
+        quickCard.addView(chooseRoutine, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44)));
+        refreshQuickRoutineSelection();
+        page.addView(quickCard);
 
         page.addView(sectionTitle("REMINDERS", "data"));
         LinearLayout remindersCard = card();
@@ -801,33 +839,6 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         chatGptStatus.setTextColor(UiKit.SUCCESS);
     }
 
-    private void requestAssistantRole() {
-        if (isOrbitAssistantActive()) {
-            updateAssistantStatus();
-            Toast.makeText(this, "Orbit is already your assistant", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        if (android.os.Build.VERSION.SDK_INT >= 29) {
-            RoleManager rm = getSystemService(RoleManager.class);
-            if (rm != null && rm.isRoleAvailable(RoleManager.ROLE_ASSISTANT)) {
-                if (rm.isRoleHeld(RoleManager.ROLE_ASSISTANT)) {
-                    updateAssistantStatus();
-                } else {
-                    try {
-                        Intent request = rm.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT);
-                        if (request.resolveActivity(getPackageManager()) != null) {
-                            startActivityForResult(request, REQ_ASSISTANT);
-                            return;
-                        }
-                    } catch (Exception ignored) {
-                        // Some OEMs advertise the assistant role without a usable request UI.
-                    }
-                }
-            }
-        }
-        openAssistantSettings(true);
-    }
-
     private void openAssistantSettings(boolean explain) {
         Intent[] candidates = new Intent[]{
                 new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS),
@@ -845,6 +856,64 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         }
         showOrbitMessageDialog("Assistant settings unavailable",
                 "Android could not open a supported default-assistant settings screen on this device.");
+    }
+
+    private void refreshQuickRoutineSelection() {
+        if (quickRoutineSelection == null) return;
+        RoutineStore.Routine assigned = QuickSettingsTiles.assignedRoutine(this);
+        quickRoutineSelection.setText("Quick Settings Routine: " +
+                (assigned == null ? "None" : assigned.name));
+    }
+
+    private void showQuickRoutineChooser() {
+        List<RoutineStore.Routine> routines = RoutineStore.list(this);
+        LinearLayout choices = new LinearLayout(this);
+        choices.setOrientation(LinearLayout.VERTICAL);
+        addQuickRoutineChoice(choices, "None", "");
+        for (RoutineStore.Routine routine : routines) {
+            addQuickRoutineChoice(choices, routine.name, routine.id);
+        }
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setPadding(UiKit.dp(this, 12), UiKit.dp(this, 8),
+                UiKit.dp(this, 12), UiKit.dp(this, 8));
+        scroll.addView(choices, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Quick Settings Routine")
+                .setView(scroll)
+                .setNegativeButton("Cancel", null)
+                .create();
+        for (int i = 0; i < choices.getChildCount(); i++) {
+            choices.getChildAt(i).setTag(dialog);
+        }
+        styleOrbitDialog(dialog, false);
+        dialog.show();
+    }
+
+    private void addQuickRoutineChoice(LinearLayout choices, String label, String routineId) {
+        String selectedId = Prefs.quickSettingsRoutineId(this);
+        boolean selected = selectedId.equals(routineId);
+        TextView row = UiKit.text(this, (selected ? "●  " : "○  ") + label,
+                14, selected ? UiKit.accent(this) : UiKit.TEXT, selected);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(UiKit.dp(this, 13), 0, UiKit.dp(this, 13), 0);
+        row.setBackground(UiKit.ripple(
+                selected ? UiKit.blend(UiKit.accent(this), UiKit.SURFACE_2, 0.16f) : UiKit.SURFACE_2,
+                UiKit.accent(this), 13, this));
+        row.setOnClickListener(v -> {
+            if (Prefs.setQuickSettingsRoutineId(this, routineId)) {
+                QuickSettingsTiles.refreshRoutineTile(this);
+                refreshQuickRoutineSelection();
+                Object tag = v.getTag();
+                if (tag instanceof AlertDialog) ((AlertDialog) tag).dismiss();
+            }
+        });
+        UiKit.pressScale(row);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 46));
+        if (choices.getChildCount() > 0) lp.topMargin = UiKit.dp(this, 3);
+        choices.addView(row, lp);
     }
 
     private void chooseBackupDestination() {
@@ -865,15 +934,8 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQ_ASSISTANT || requestCode == REQ_ASSISTANT_SETTINGS) {
-            getWindow().getDecorView().postDelayed(() -> {
-                updateAssistantStatus();
-                if (requestCode == REQ_ASSISTANT && !isOrbitAssistantActive()) {
-                    Toast.makeText(this,
-                            "Orbit is still not selected. Open default-app settings if your device did not show a chooser.",
-                            Toast.LENGTH_LONG).show();
-                }
-            }, 200L);
+        if (requestCode == REQ_ASSISTANT_SETTINGS) {
+            getWindow().getDecorView().postDelayed(this::updateAssistantStatus, 200L);
             return;
         }
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
@@ -944,12 +1006,12 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     private void updateAssistantStatus() {
         if (assistantStatus == null) return;
         boolean active = isOrbitAssistantActive();
-        assistantStatus.setText(active ? "✓ Orbit is your active assistant" : "○ Orbit is not the active assistant yet");
+        assistantStatus.setText(active ? "✓ Orbit is your default assistant" : "○ Orbit is not the active assistant yet");
         assistantStatus.setTextColor(active ? UiKit.SUCCESS : UiKit.TEXT);
         if (assistantAction != null) {
-            assistantAction.setText(active ? "Orbit is your default assistant" : "Make Orbit default assistant");
-            assistantAction.setEnabled(!active);
-            assistantAction.setAlpha(active ? 0.72f : 1f);
+            assistantAction.setText(active ? "Manage default assistant" : "Make Orbit default assistant");
+            assistantAction.setEnabled(true);
+            assistantAction.setAlpha(1f);
         }
     }
 

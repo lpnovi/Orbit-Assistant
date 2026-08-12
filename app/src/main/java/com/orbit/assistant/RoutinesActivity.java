@@ -32,7 +32,6 @@ public class RoutinesActivity extends Activity {
     private LinearLayout runPanel;
     private TextView runTitle;
     private TextView runSubtitle;
-    private TextView quickRoutineSelection;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -112,53 +111,6 @@ public class RoutinesActivity extends Activity {
         page.addView(create, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 50)));
 
-        TextView quickAccess = sectionTitle("QUICK ACCESS");
-        LinearLayout.LayoutParams quickTitleLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        quickTitleLp.setMargins(0, UiKit.dp(this, 10), 0, 0);
-        page.addView(quickAccess, quickTitleLp);
-
-        LinearLayout quickCard = card();
-        quickCard.addView(UiKit.text(this, "Quick Settings tiles", 16, UiKit.TEXT, true));
-        TextView quickNote = UiKit.text(this,
-                "Open Orbit instantly, or assign one saved Routine to run through Orbit's normal Action Engine and permission checks.",
-                12, UiKit.MUTED, false);
-        quickNote.setLineSpacing(0, 1.12f);
-        quickNote.setPadding(0, UiKit.dp(this, 6), 0, UiKit.dp(this, 12));
-        quickCard.addView(quickNote);
-
-        quickRoutineSelection = UiKit.text(this, "Quick Settings Routine: None", 13, UiKit.TEXT, true);
-        quickRoutineSelection.setPadding(0, 0, 0, UiKit.dp(this, 8));
-        quickCard.addView(quickRoutineSelection);
-        Button chooseRoutine = secondaryButton("Choose Quick Settings Routine");
-        chooseRoutine.setOnClickListener(v -> showQuickRoutineChooser());
-        quickCard.addView(chooseRoutine, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44)));
-
-        LinearLayout tileButtons = new LinearLayout(this);
-        tileButtons.setGravity(Gravity.CENTER_VERTICAL);
-        Button addOrbit = secondaryButton("Add Orbit tile");
-        addOrbit.setOnClickListener(v -> QuickSettingsTiles.requestAddAskTile(this));
-        tileButtons.addView(addOrbit, new LinearLayout.LayoutParams(0, UiKit.dp(this, 44), 1));
-        Button addRoutine = secondaryButton("Add Routine tile");
-        addRoutine.setOnClickListener(v -> QuickSettingsTiles.requestAddRoutineTile(this));
-        LinearLayout.LayoutParams addRoutineLp = new LinearLayout.LayoutParams(0, UiKit.dp(this, 44), 1);
-        addRoutineLp.leftMargin = UiKit.dp(this, 9);
-        tileButtons.addView(addRoutine, addRoutineLp);
-        LinearLayout.LayoutParams tileButtonsLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        tileButtonsLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
-        quickCard.addView(tileButtons, tileButtonsLp);
-
-        TextView addHint = UiKit.text(this,
-                android.os.Build.VERSION.SDK_INT >= 33
-                        ? "Android will ask before adding either tile."
-                        : "Add the Orbit tiles manually from Android's Quick Settings editor.",
-                11, UiKit.MUTED, false);
-        addHint.setPadding(0, UiKit.dp(this, 9), 0, 0);
-        quickCard.addView(addHint);
-        page.addView(quickCard, cardLp());
-
         runPanel = card();
         runPanel.setVisibility(View.GONE);
         runTitle = UiKit.text(this, "Running routine", 15, UiKit.TEXT, true);
@@ -194,7 +146,6 @@ public class RoutinesActivity extends Activity {
         if (routinesList == null) return;
         routinesList.removeAllViews();
         List<RoutineStore.Routine> routines = RoutineStore.list(this);
-        refreshQuickRoutineSelection();
         if (routines.isEmpty()) {
             LinearLayout empty = card();
             empty.addView(UiKit.text(this, "No routines yet", 16, UiKit.TEXT, true));
@@ -531,65 +482,6 @@ public class RoutinesActivity extends Activity {
         getIntent().removeExtra(EXTRA_AUTORUN_START_INDEX);
         getIntent().removeExtra(EXTRA_AUTORUN_TRIGGER_ID);
         getIntent().removeExtra(EXTRA_AUTORUN_SCHEDULED);
-    }
-
-    private void refreshQuickRoutineSelection() {
-        if (quickRoutineSelection == null) return;
-        RoutineStore.Routine assigned = QuickSettingsTiles.assignedRoutine(this);
-        quickRoutineSelection.setText("Quick Settings Routine: " +
-                (assigned == null ? "None" : assigned.name));
-    }
-
-    private void showQuickRoutineChooser() {
-        List<RoutineStore.Routine> routines = RoutineStore.list(this);
-        LinearLayout choices = new LinearLayout(this);
-        choices.setOrientation(LinearLayout.VERTICAL);
-        addQuickRoutineChoice(choices, "None", "");
-        for (RoutineStore.Routine routine : routines) {
-            addQuickRoutineChoice(choices, routine.name, routine.id);
-        }
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        scroll.setPadding(UiKit.dp(this, 12), UiKit.dp(this, 8),
-                UiKit.dp(this, 12), UiKit.dp(this, 8));
-        scroll.addView(choices, new ScrollView.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("Quick Settings Routine")
-                .setView(scroll)
-                .setNegativeButton("Cancel", null)
-                .create();
-        for (int i = 0; i < choices.getChildCount(); i++) {
-            View row = choices.getChildAt(i);
-            row.setTag(dialog);
-        }
-        styleOrbitDialog(dialog, false);
-        dialog.show();
-    }
-
-    private void addQuickRoutineChoice(LinearLayout choices, String label, String routineId) {
-        String selectedId = Prefs.quickSettingsRoutineId(this);
-        boolean selected = selectedId.equals(routineId);
-        TextView row = UiKit.text(this, (selected ? "●  " : "○  ") + label,
-                14, selected ? UiKit.accent(this) : UiKit.TEXT, selected);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(UiKit.dp(this, 13), 0, UiKit.dp(this, 13), 0);
-        row.setBackground(UiKit.ripple(
-                selected ? UiKit.blend(UiKit.accent(this), UiKit.SURFACE_2, 0.16f) : UiKit.SURFACE_2,
-                UiKit.accent(this), 13, this));
-        row.setOnClickListener(v -> {
-            if (Prefs.setQuickSettingsRoutineId(this, routineId)) {
-                QuickSettingsTiles.refreshRoutineTile(this);
-                refreshQuickRoutineSelection();
-                Object tag = v.getTag();
-                if (tag instanceof AlertDialog) ((AlertDialog) tag).dismiss();
-            }
-        });
-        UiKit.pressScale(row);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 46));
-        if (choices.getChildCount() > 0) lp.topMargin = UiKit.dp(this, 3);
-        choices.addView(row, lp);
     }
 
     private void updateScheduledContinuationStatus(boolean scheduledContinuation, String triggerId, String result) {
