@@ -68,6 +68,7 @@ public final class SavedPlacesActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.setBackgroundColor(UiKit.BG);
+        scroll.setForceDarkAllowed(false);
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         int p = UiKit.dp(this, 20);
@@ -328,11 +329,24 @@ public final class SavedPlacesActivity extends Activity {
         if (w != null) {
             w.setBackgroundDrawable(UiKit.outlined(UiKit.SURFACE, UiKit.withAlpha(UiKit.accent(this), 55), 22, this));
             w.setDimAmount(.66f);
+            w.getDecorView().setForceDarkAllowed(false);
+            tintDialogText(w.getDecorView());
         }
         if (dialog.getButton(AlertDialog.BUTTON_POSITIVE) != null)
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(UiKit.accent(this));
         if (dialog.getButton(AlertDialog.BUTTON_NEGATIVE) != null)
             dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(UiKit.accent(this));
+    }
+
+    private void tintDialogText(View view) {
+        if (view == null) return;
+        if (view instanceof TextView && !(view instanceof Button) && !(view instanceof EditText)) {
+            ((TextView) view).setTextColor(UiKit.TEXT);
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) tintDialogText(group.getChildAt(i));
+        }
     }
 
     private EditText field(String hint, String value, boolean numeric) {
@@ -395,7 +409,7 @@ public final class SavedPlacesActivity extends Activity {
         b.setText(text);
         b.setAllCaps(false);
         b.setTextSize(13);
-        b.setTextColor(UiKit.accent(this));
+        b.setTextColor(UiKit.TEXT);
         b.setMinHeight(0); b.setMinimumHeight(0); b.setStateListAnimator(null);
         b.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2, UiKit.withAlpha(UiKit.accent(this), 72), UiKit.accent(this), 14, this));
         UiKit.pressScale(b);
