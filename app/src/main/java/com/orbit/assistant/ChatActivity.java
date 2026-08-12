@@ -613,12 +613,16 @@ public class ChatActivity extends Activity {
         }
         final int assistantIndex = Math.max(0, history.size() - 1);
         OrbitActionEngine.execute(this, actions,
-                (action, onAllow, onCancel) -> new AlertDialog.Builder(this)
-                        .setTitle("Let Orbit do this?")
-                        .setMessage(action == null ? "Device action" : action.type.replace('_', ' '))
-                        .setNegativeButton("Cancel", (d, w) -> onCancel.run())
-                        .setPositiveButton("Continue", (d, w) -> onAllow.run())
-                        .show(),
+                (action, onAllow, onCancel) -> {
+                    AlertDialog dialog = new AlertDialog.Builder(this)
+                            .setTitle("Let Orbit do this?")
+                            .setMessage(action == null ? "Device action" : action.type.replace('_', ' '))
+                            .setNegativeButton("Cancel", (d, w) -> onCancel.run())
+                            .setPositiveButton("Continue", (d, w) -> onAllow.run())
+                            .create();
+                    styleOrbitDialog(dialog);
+                    dialog.show();
+                },
                 new OrbitActionEngine.Listener() {
                     @Override public void onStep(AssistantReply.Action action, DeviceActionExecutor.Result result, int index, int total) {
                         ActionResultStore.record(ChatActivity.this, conversationId, assistantIndex,
@@ -1140,10 +1144,10 @@ public class ChatActivity extends Activity {
     }
 
     private void styleOrbitDialog(AlertDialog dialog) {
+        UiKit.prepareOrbitDialog(dialog, UiKit.rounded(UiKit.SURFACE, 22, this));
         dialog.setOnShowListener(ignore -> {
+            UiKit.applyDialogTypography(dialog);
             if (dialog.getWindow() != null) {
-                dialog.getWindow().setBackgroundDrawable(
-                        UiKit.rounded(UiKit.SURFACE, 22, ChatActivity.this));
                 tintDialogText(dialog.getWindow().getDecorView());
             }
             Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);

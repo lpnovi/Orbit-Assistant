@@ -352,15 +352,11 @@ public class NotificationsActivity extends Activity {
     }
 
     private void styleOrbitDialog(AlertDialog dialog) {
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setWindowAnimations(R.style.OrbitPopupAnimation);
-            dialog.getWindow().setBackgroundDrawable(
-                    UiKit.rounded(UiKit.SURFACE, 22, NotificationsActivity.this));
-        }
+        UiKit.prepareOrbitDialog(dialog,
+                UiKit.rounded(UiKit.SURFACE, 22, NotificationsActivity.this));
         dialog.setOnShowListener(ignore -> {
+            UiKit.applyDialogTypography(dialog);
             if (dialog.getWindow() != null) {
-                dialog.getWindow().setBackgroundDrawable(
-                        UiKit.rounded(UiKit.SURFACE, 22, NotificationsActivity.this));
                 tintDialogText(dialog.getWindow().getDecorView());
             }
 

@@ -261,14 +261,12 @@ public final class SavedPlacesActivity extends Activity {
             return;
         }
         button.setEnabled(false);
-        button.setText("Finding location…");
         final Location fallback = cached;
         final String chosen = provider;
         try {
             if (Build.VERSION.SDK_INT >= 30) {
                 lm.getCurrentLocation(chosen, null, getMainExecutor(), location -> runOnUiThread(() -> {
                     button.setEnabled(true);
-                    button.setText("Use my current location");
                     Location result = location != null ? location : fallback;
                     if (result == null) Toast.makeText(this, "Could not get a current location fix.", Toast.LENGTH_SHORT).show();
                     else {
@@ -281,7 +279,6 @@ public final class SavedPlacesActivity extends Activity {
                     @Override public void onLocationChanged(Location location) {
                         runOnUiThread(() -> {
                             button.setEnabled(true);
-                            button.setText("Use my current location");
                             Location result = location != null ? location : fallback;
                             if (result == null) Toast.makeText(SavedPlacesActivity.this, "Could not get a current location fix.", Toast.LENGTH_SHORT).show();
                             else {
@@ -293,7 +290,6 @@ public final class SavedPlacesActivity extends Activity {
                     @Override public void onProviderDisabled(String provider) {
                         runOnUiThread(() -> {
                             button.setEnabled(true);
-                            button.setText("Use my current location");
                             if (fallback != null) {
                                 lat.setText(coordinate(fallback.getLatitude()));
                                 lon.setText(coordinate(fallback.getLongitude()));
@@ -306,7 +302,6 @@ public final class SavedPlacesActivity extends Activity {
             }
         } catch (Exception ignored) {
             button.setEnabled(true);
-            button.setText("Use my current location");
             if (fallback != null) {
                 lat.setText(coordinate(fallback.getLatitude()));
                 lon.setText(coordinate(fallback.getLongitude()));
@@ -329,16 +324,16 @@ public final class SavedPlacesActivity extends Activity {
     }
 
     private void prepareDialog(AlertDialog dialog) {
+        UiKit.prepareOrbitDialog(dialog,
+                UiKit.outlined(UiKit.SURFACE, UiKit.withAlpha(UiKit.accent(this), 55), 22, this));
         Window w = dialog.getWindow();
         if (w != null) {
-            w.setWindowAnimations(R.style.OrbitPopupAnimation);
-            w.setBackgroundDrawable(UiKit.outlined(UiKit.SURFACE, UiKit.withAlpha(UiKit.accent(this), 55), 22, this));
             w.setDimAmount(.66f);
-            w.getDecorView().setForceDarkAllowed(false);
         }
     }
 
     private void styleShownDialog(AlertDialog dialog) {
+        UiKit.applyDialogTypography(dialog);
         Window w = dialog.getWindow();
         if (w != null) tintDialogText(w.getDecorView());
         if (dialog.getButton(AlertDialog.BUTTON_POSITIVE) != null)

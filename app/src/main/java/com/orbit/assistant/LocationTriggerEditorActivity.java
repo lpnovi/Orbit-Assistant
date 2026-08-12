@@ -628,15 +628,12 @@ public final class LocationTriggerEditorActivity extends Activity {
     }
 
     private void styleDialog(AlertDialog d, boolean destructive) {
-        if (d.getWindow() != null) {
-            d.getWindow().setWindowAnimations(R.style.OrbitPopupAnimation);
-            d.getWindow().setBackgroundDrawable(UiKit.rounded(UiKit.SURFACE, 22, this));
-        }
+        UiKit.prepareOrbitDialog(d, UiKit.rounded(UiKit.SURFACE, 22, this));
         d.setOnShowListener(x -> styleShown(d, destructive));
     }
 
     private void styleShown(AlertDialog d, boolean destructive) {
-        if (d.getWindow() != null) d.getWindow().setBackgroundDrawable(UiKit.rounded(UiKit.SURFACE, 22, this));
+        UiKit.applyDialogTypography(d);
         tint(d.getWindow() == null ? null : d.getWindow().getDecorView());
         Button p = d.getButton(AlertDialog.BUTTON_POSITIVE), n = d.getButton(AlertDialog.BUTTON_NEGATIVE);
         if (p != null) p.setTextColor(destructive ? Color.rgb(239,105,105) : UiKit.accent(this));

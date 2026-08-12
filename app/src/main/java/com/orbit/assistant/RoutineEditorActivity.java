@@ -978,14 +978,9 @@ public class RoutineEditorActivity extends Activity {
     }
 
     private void styleOrbitDialog(AlertDialog dialog, boolean destructive, Runnable afterShown) {
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setWindowAnimations(R.style.OrbitPopupAnimation);
-            dialog.getWindow().setBackgroundDrawable(UiKit.rounded(UiKit.SURFACE, 22, this));
-        }
+        UiKit.prepareOrbitDialog(dialog, UiKit.rounded(UiKit.SURFACE, 22, this));
         dialog.setOnShowListener(ignore -> {
-            if (dialog.getWindow() != null) {
-                dialog.getWindow().setBackgroundDrawable(UiKit.rounded(UiKit.SURFACE, 22, this));
-            }
+            UiKit.applyDialogTypography(dialog);
             tintDialogText(dialog.getWindow() == null ? null : dialog.getWindow().getDecorView());
             Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
             Button negative = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);

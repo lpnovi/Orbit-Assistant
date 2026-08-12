@@ -1,6 +1,7 @@
 package com.orbit.assistant;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
@@ -24,6 +25,7 @@ import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.animation.OvershootInterpolator;
 import android.widget.TextView;
 import android.widget.LinearLayout;
@@ -31,7 +33,9 @@ import android.widget.FrameLayout;
 import android.widget.PopupWindow;
 import java.io.File;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.WeakHashMap;
 import android.graphics.drawable.ColorDrawable;
 
 public final class UiKit {
@@ -47,6 +51,10 @@ public final class UiKit {
     public static final int PASTEL_PINK = Color.rgb(255, 209, 220); // #FFD1DC
     public static final int PASTEL_BLUE = Color.rgb(203, 229, 242); // #CBE5F2
     public static final int SUCCESS = Color.rgb(87, 214, 146);
+
+    private static final Map<TextView, FontPreview> FONT_PREVIEWS = new WeakHashMap<>();
+    private static final Map<TextView, Boolean> TYPOGRAPHY_APPLIED = new WeakHashMap<>();
+    private static final Map<View, Boolean> TYPOGRAPHY_WATCHED = new WeakHashMap<>();
 
     private UiKit() {}
 
@@ -204,9 +212,24 @@ public final class UiKit {
 
     private static void applyTypography(TextView text, int style) {
         if (text == null) return;
-        text.setTypeface(appTypeface(text.getContext(), style));
-        text.setTextScaleX(appTextScaleX(text.getContext()));
-        text.setLetterSpacing(appLetterSpacing(text.getContext()));
+        FontPreview preview = FONT_PREVIEWS.get(text);
+        if (preview != null) {
+            text.setTypeface(typefaceForFontChoice(preview.choice, preview.style));
+            text.setTextScaleX(textScaleXForFontChoice(preview.choice));
+            text.setLetterSpacing(letterSpacingForFontChoice(preview.choice));
+        } else {
+            text.setTypeface(appTypeface(text.getContext(), style));
+            text.setTextScaleX(appTextScaleX(text.getContext()));
+            text.setLetterSpacing(appLetterSpacing(text.getContext()));
+        }
+        TYPOGRAPHY_APPLIED.put(text, true);
+    }
+
+    /** Marks a Look & Feel sample as an intentional font preview. */
+    public static void applyFontPreview(TextView text, String choice, int style) {
+        if (text == null) return;
+        FONT_PREVIEWS.put(text, new FontPreview(choice, style));
+        applyTypography(text, style);
     }
 
     /** Apply the saved Orbit font to every text-bearing child in a rendered surface. */
@@ -221,6 +244,72 @@ public final class UiKit {
         if (root instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) root;
             for (int i = 0; i < group.getChildCount(); i++) applyTypography(group.getChildAt(i));
+        }
+    }
+
+    /**
+     * Keeps programmatically added Orbit controls on the selected app font. The
+     * watcher is installed only on Orbit-owned Activity/dialog roots, never on
+     * system pickers, permission panels, or other Android-owned windows.
+     */
+    public static void watchTypography(View root) {
+        if (root == null) return;
+        applyTypography(root);
+        if (TYPOGRAPHY_WATCHED.put(root, true) != null) return;
+
+        ViewTreeObserver.OnGlobalLayoutListener listener = () -> applyTypographyToNewViews(root);
+        root.getViewTreeObserver().addOnGlobalLayoutListener(listener);
+        root.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+            @Override public void onViewAttachedToWindow(View v) {}
+
+            @Override public void onViewDetachedFromWindow(View v) {
+                ViewTreeObserver observer = v.getViewTreeObserver();
+                if (observer.isAlive()) observer.removeOnGlobalLayoutListener(listener);
+                TYPOGRAPHY_WATCHED.remove(v);
+                v.removeOnAttachStateChangeListener(this);
+            }
+        });
+    }
+
+    private static void applyTypographyToNewViews(View root) {
+        if (root == null) return;
+        if (root instanceof TextView && !TYPOGRAPHY_APPLIED.containsKey(root)) {
+            TextView text = (TextView) root;
+            Typeface current = text.getTypeface();
+            applyTypography(text, current == null ? Typeface.NORMAL : current.getStyle());
+        }
+        if (root instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) root;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                applyTypographyToNewViews(group.getChildAt(i));
+            }
+        }
+    }
+
+    /** Applies Orbit's established window motion before an app-owned dialog is shown. */
+    public static void prepareOrbitDialog(AlertDialog dialog, Drawable background) {
+        if (dialog == null || dialog.getWindow() == null) return;
+        Window window = dialog.getWindow();
+        window.setWindowAnimations(R.style.OrbitPopupAnimation);
+        if (background != null) window.setBackgroundDrawable(background);
+        window.getDecorView().setForceDarkAllowed(false);
+        watchTypography(window.getDecorView());
+    }
+
+    /** Immediately applies the selected font after Android inflates dialog actions/title views. */
+    public static void applyDialogTypography(AlertDialog dialog) {
+        if (dialog == null || dialog.getWindow() == null) return;
+        watchTypography(dialog.getWindow().getDecorView());
+        applyTypography(dialog.getWindow().getDecorView());
+    }
+
+    private static final class FontPreview {
+        final String choice;
+        final int style;
+
+        FontPreview(String choice, int style) {
+            this.choice = choice == null ? "orbit_default" : choice;
+            this.style = style;
         }
     }
 
@@ -302,7 +391,7 @@ public final class UiKit {
     public static void applyActivityInsets(Activity activity, View root, boolean imeAware) {
         if (activity == null || root == null) return;
         syncTheme(activity);
-        applyTypography(root);
+        watchTypography(root);
         Window window = activity.getWindow();
         window.setStatusBarColor(BG);
         window.setNavigationBarColor(BG);
@@ -522,9 +611,7 @@ public final class UiKit {
                 // Font-choice rows are previews first; keep every label at its
                 // normal face so the selected row does not disguise Light or
                 // otherwise change the font the user is trying to compare.
-                label.setTypeface(typefaceForFontChoice(previewKey, Typeface.NORMAL));
-                label.setTextScaleX(textScaleXForFontChoice(previewKey));
-                label.setLetterSpacing(letterSpacingForFontChoice(previewKey));
+                applyFontPreview(label, previewKey, Typeface.NORMAL);
             }
             row.addView(label, new LinearLayout.LayoutParams(
                     0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1));

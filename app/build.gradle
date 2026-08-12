@@ -10,8 +10,8 @@ android {
         applicationId 'com.orbit.assistant'
         minSdk 29
         targetSdk 35
-        versionCode 650
-        versionName "0.6.4.6"
+        versionCode 651
+        versionName "0.6.4.7"
     }
 
     buildTypes {

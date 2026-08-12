@@ -316,6 +316,7 @@ public class MemoryActivity extends Activity {
 
         b.setPositiveButton("Save", null);
         AlertDialog dialog = b.create();
+        prepareDialog(dialog);
         dialog.setOnShowListener(ignore -> {
             styleDialog(dialog);
 
@@ -409,6 +410,7 @@ public class MemoryActivity extends Activity {
                     MemoryStore.delete(this, m.id);
                     refresh();
                 }).create();
+        prepareDialog(dialog);
         dialog.setOnShowListener(ignore -> {
             styleDialog(dialog);
             Button cancel = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
@@ -428,6 +430,7 @@ public class MemoryActivity extends Activity {
                     MemoryStore.clear(this);
                     refresh();
                 }).create();
+        prepareDialog(dialog);
         dialog.setOnShowListener(ignore -> {
             styleDialog(dialog);
             Button cancel = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
@@ -438,10 +441,13 @@ public class MemoryActivity extends Activity {
         dialog.show();
     }
 
+    private void prepareDialog(AlertDialog dialog) {
+        UiKit.prepareOrbitDialog(dialog, UiKit.rounded(UiKit.SURFACE, 22, this));
+    }
+
     private void styleDialog(AlertDialog dialog) {
+        UiKit.applyDialogTypography(dialog);
         if (dialog.getWindow() != null) {
-            dialog.getWindow().setBackgroundDrawable(
-                    UiKit.rounded(UiKit.SURFACE, 22, this));
             tintDialogText(dialog.getWindow().getDecorView());
         }
     }

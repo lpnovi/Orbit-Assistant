@@ -670,11 +670,7 @@ public class SettingsActivity extends Activity {
                     @Override public void onError(String message) {
                         runOnUiThread(() -> {
                             updateChatGptStatus();
-                            new AlertDialog.Builder(SettingsActivity.this)
-                                    .setTitle("ChatGPT sign-in did not finish")
-                                    .setMessage(message)
-                                    .setPositiveButton("OK", null)
-                                    .show();
+                            showOrbitMessageDialog("ChatGPT sign-in did not finish", message);
                         });
                     }
                 });
@@ -682,11 +678,7 @@ public class SettingsActivity extends Activity {
             @Override public void onError(String message) {
                 runOnUiThread(() -> {
                     updateChatGptStatus();
-                    new AlertDialog.Builder(SettingsActivity.this)
-                            .setTitle("Could not start ChatGPT sign-in")
-                            .setMessage(message)
-                            .setPositiveButton("OK", null)
-                            .show();
+                    showOrbitMessageDialog("Could not start ChatGPT sign-in", message);
                 });
             }
         });
@@ -711,19 +703,26 @@ public class SettingsActivity extends Activity {
                 })
                 .setNegativeButton("Close", null)
                 .create();
+        styleOrbitDialog(dialog, false);
+        dialog.show();
+    }
+
+    private void showOrbitMessageDialog(String title, String message) {
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setMessage(message)
+                .setPositiveButton("OK", null)
+                .create();
+        styleOrbitDialog(dialog, false);
         dialog.show();
     }
 
     private void styleOrbitDialog(AlertDialog dialog, boolean destructivePositive) {
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setWindowAnimations(R.style.OrbitPopupAnimation);
-            dialog.getWindow().setBackgroundDrawable(
-                    UiKit.rounded(UiKit.SURFACE, 22, SettingsActivity.this));
-        }
+        UiKit.prepareOrbitDialog(dialog,
+                UiKit.rounded(UiKit.SURFACE, 22, SettingsActivity.this));
         dialog.setOnShowListener(ignore -> {
+            UiKit.applyDialogTypography(dialog);
             if (dialog.getWindow() != null) {
-                dialog.getWindow().setBackgroundDrawable(
-                        UiKit.rounded(UiKit.SURFACE, 22, SettingsActivity.this));
                 tintDialogText(dialog.getWindow().getDecorView());
             }
             Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
@@ -1287,9 +1286,7 @@ public class SettingsActivity extends Activity {
 
         TextView value = UiKit.text(this, labels[safeIndex], 15, UiKit.TEXT, false);
         value.setMaxLines(2);
-        value.setTypeface(UiKit.typefaceForFontChoice(keys[safeIndex], Typeface.NORMAL));
-        value.setTextScaleX(UiKit.textScaleXForFontChoice(keys[safeIndex]));
-        value.setLetterSpacing(UiKit.letterSpacingForFontChoice(keys[safeIndex]));
+        UiKit.applyFontPreview(value, keys[safeIndex], Typeface.NORMAL);
         field.addView(value, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
@@ -1301,9 +1298,7 @@ public class SettingsActivity extends Activity {
                 current[0], (index, label) -> {
                     current[0] = index;
                     value.setText(label);
-                    value.setTypeface(UiKit.typefaceForFontChoice(keys[index], Typeface.NORMAL));
-                    value.setTextScaleX(UiKit.textScaleXForFontChoice(keys[index]));
-                    value.setLetterSpacing(UiKit.letterSpacingForFontChoice(keys[index]));
+                    UiKit.applyFontPreview(value, keys[index], Typeface.NORMAL);
                     if (callback != null) callback.selected(index, label);
                 }));
         UiKit.pressScale(field);
