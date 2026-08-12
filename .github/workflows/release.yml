@@ -135,7 +135,7 @@ jobs:
           fi
 
           signature_report="${RUNNER_TEMP}/orbit-apksigner-report.txt"
-          "${apksigner}" verify --verbose --print-certs "${apk_path}" > "${signature_report}"
+          "${apksigner}" verify --verbose --print-certs "${apk_path}" > "${signature_report}" 2>&1
           signer_count="$(grep -cE '^Signer #[0-9]+ certificate SHA-256 digest:' "${signature_report}" || true)"
           actual_cert="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "${signature_report}" | head -n 1)"
           normalized_actual_cert="$(tr -d ':' <<< "${actual_cert}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
