@@ -63,6 +63,24 @@ public class SettingsActivity extends Activity {
     private int leloTapCount = 0;
     private long lastLeloTapMs = 0L;
     private String settingsSection = "";
+    private final ChatGptAuth.LoginCallback chatGptLoginCallback = new ChatGptAuth.LoginCallback() {
+        @Override public void onSuccess(ChatGptAuth.AccountInfo account) {
+            runOnUiThread(() -> {
+                if (!canShowAuthResult()) return;
+                updateChatGptStatus();
+                Toast.makeText(SettingsActivity.this,
+                        "ChatGPT connected to Orbit", Toast.LENGTH_LONG).show();
+            });
+        }
+
+        @Override public void onError(String message) {
+            runOnUiThread(() -> {
+                if (!canShowAuthResult()) return;
+                updateChatGptStatus();
+                showOrbitMessageDialog("ChatGPT sign-in could not complete", message);
+            });
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -87,6 +105,12 @@ public class SettingsActivity extends Activity {
         applyFontInPlace();
         updateAssistantStatus();
         updateChatGptStatus();
+        if (!ChatGptAuth.isSignedIn(this)
+                && ChatGptAuth.resumePendingDeviceCode(this, chatGptLoginCallback)
+                && chatGptStatus != null) {
+            chatGptStatus.setText("Finishing secure ChatGPT sign-in…");
+            chatGptStatus.setTextColor(UiKit.TEXT);
+        }
     }
 
     @Override
@@ -657,31 +681,26 @@ public class SettingsActivity extends Activity {
             chatGptStatus.setText("Starting secure ChatGPT sign-in…");
             chatGptStatus.setTextColor(UiKit.TEXT);
         }
-        ChatGptAuth.requestDeviceCode(new ChatGptAuth.StartCallback() {
+        ChatGptAuth.requestDeviceCode(this, new ChatGptAuth.StartCallback() {
             @Override public void onSuccess(ChatGptAuth.DeviceCode code) {
-                runOnUiThread(() -> showDeviceCode(code));
-                ChatGptAuth.completeDeviceCode(SettingsActivity.this, code, new ChatGptAuth.LoginCallback() {
-                    @Override public void onSuccess(ChatGptAuth.AccountInfo account) {
-                        runOnUiThread(() -> {
-                            updateChatGptStatus();
-                            Toast.makeText(SettingsActivity.this, "ChatGPT connected to Orbit", Toast.LENGTH_LONG).show();
-                        });
-                    }
-                    @Override public void onError(String message) {
-                        runOnUiThread(() -> {
-                            updateChatGptStatus();
-                            showOrbitMessageDialog("ChatGPT sign-in did not finish", message);
-                        });
-                    }
+                runOnUiThread(() -> {
+                    if (canShowAuthResult()) showDeviceCode(code);
                 });
+                ChatGptAuth.completeDeviceCode(
+                        SettingsActivity.this, code, chatGptLoginCallback);
             }
             @Override public void onError(String message) {
                 runOnUiThread(() -> {
+                    if (!canShowAuthResult()) return;
                     updateChatGptStatus();
                     showOrbitMessageDialog("Could not start ChatGPT sign-in", message);
                 });
             }
         });
+    }
+
+    private boolean canShowAuthResult() {
+        return !isFinishing() && !isDestroyed();
     }
 
     private void showDeviceCode(ChatGptAuth.DeviceCode code) {

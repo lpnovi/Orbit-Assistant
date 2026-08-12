@@ -23,6 +23,8 @@ public final class SecureStore {
     private static final String CHATGPT_ALIAS = "orbit_chatgpt_oauth_v1";
     private static final String CHATGPT_ENC = "chatgpt_oauth_enc";
     private static final String CHATGPT_IV = "chatgpt_oauth_iv";
+    private static final String CHATGPT_PENDING_ENC = "chatgpt_pending_auth_enc";
+    private static final String CHATGPT_PENDING_IV = "chatgpt_pending_auth_iv";
 
     private SecureStore() {}
 
@@ -32,7 +34,9 @@ public final class SecureStore {
                 Prefs.get(c).edit().remove(RELAY_ENC).remove(RELAY_IV).remove(Prefs.BACKEND_TOKEN).apply();
                 return;
             }
-            encrypt(c, RELAY_ALIAS, RELAY_ENC, RELAY_IV, value);
+            if (!encrypt(c, RELAY_ALIAS, RELAY_ENC, RELAY_IV, value)) {
+                throw new IllegalStateException("Could not persist encrypted relay credentials");
+            }
             Prefs.get(c).edit().remove(Prefs.BACKEND_TOKEN).apply();
         } catch (Exception e) {
             // Compatibility fallback only for the optional relay token. The OpenAI API key is never stored here.
@@ -56,8 +60,7 @@ public final class SecureStore {
             o.put("access_token", accessToken == null ? "" : accessToken);
             o.put("refresh_token", refreshToken == null ? "" : refreshToken);
             o.put("account_id", accountId == null ? "" : accountId);
-            encrypt(c, CHATGPT_ALIAS, CHATGPT_ENC, CHATGPT_IV, o.toString());
-            return true;
+            return encrypt(c, CHATGPT_ALIAS, CHATGPT_ENC, CHATGPT_IV, o.toString());
         } catch (Exception e) {
             clearChatGpt(c);
             return false;
@@ -80,18 +83,64 @@ public final class SecureStore {
     }
 
     public static void clearChatGpt(Context c) {
-        Prefs.get(c).edit().remove(CHATGPT_ENC).remove(CHATGPT_IV).apply();
+        Prefs.get(c).edit().remove(CHATGPT_ENC).remove(CHATGPT_IV).commit();
     }
 
-    private static void encrypt(Context c, String alias, String encKey, String ivKey, String value) throws Exception {
+    public static boolean savePendingChatGptLogin(Context c, String deviceAuthId, String userCode,
+                                                   long intervalSeconds, long expiresAtMs) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("device_auth_id", deviceAuthId == null ? "" : deviceAuthId);
+            o.put("user_code", userCode == null ? "" : userCode);
+            o.put("interval_seconds", Math.max(1L, intervalSeconds));
+            o.put("expires_at_ms", expiresAtMs);
+            if (deviceAuthId == null || deviceAuthId.isEmpty() || userCode == null || userCode.isEmpty()) {
+                return false;
+            }
+            boolean saved = encrypt(
+                    c, CHATGPT_ALIAS, CHATGPT_PENDING_ENC, CHATGPT_PENDING_IV, o.toString());
+            if (!saved) clearPendingChatGptLogin(c);
+            return saved;
+        } catch (Exception e) {
+            clearPendingChatGptLogin(c);
+            return false;
+        }
+    }
+
+    public static PendingChatGptLogin loadPendingChatGptLogin(Context c) {
+        try {
+            String raw = decrypt(c, CHATGPT_ALIAS, CHATGPT_PENDING_ENC, CHATGPT_PENDING_IV);
+            if (raw.isEmpty()) return null;
+            JSONObject o = new JSONObject(raw);
+            String deviceAuthId = o.optString("device_auth_id", "");
+            String userCode = o.optString("user_code", "");
+            long intervalSeconds = Math.max(1L, o.optLong("interval_seconds", 5L));
+            long expiresAtMs = o.optLong("expires_at_ms", 0L);
+            if (deviceAuthId.isEmpty() || userCode.isEmpty() || expiresAtMs <= System.currentTimeMillis()) {
+                clearPendingChatGptLogin(c);
+                return null;
+            }
+            return new PendingChatGptLogin(deviceAuthId, userCode, intervalSeconds, expiresAtMs);
+        } catch (Exception e) {
+            clearPendingChatGptLogin(c);
+            return null;
+        }
+    }
+
+    public static void clearPendingChatGptLogin(Context c) {
+        Prefs.get(c).edit().remove(CHATGPT_PENDING_ENC).remove(CHATGPT_PENDING_IV).commit();
+    }
+
+    private static boolean encrypt(Context c, String alias, String encKey, String ivKey,
+                                   String value) throws Exception {
         SecretKey key = getOrCreateKey(alias);
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.ENCRYPT_MODE, key);
         byte[] encrypted = cipher.doFinal(value.getBytes(StandardCharsets.UTF_8));
-        Prefs.get(c).edit()
+        return Prefs.get(c).edit()
                 .putString(encKey, Base64.encodeToString(encrypted, Base64.NO_WRAP))
                 .putString(ivKey, Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP))
-                .apply();
+                .commit();
     }
 
     private static String decrypt(Context c, String alias, String encKey, String ivKey) throws Exception {
@@ -107,7 +156,7 @@ public final class SecureStore {
         return new String(cipher.doFinal(Base64.decode(enc, Base64.NO_WRAP)), StandardCharsets.UTF_8);
     }
 
-    private static SecretKey getOrCreateKey(String alias) throws Exception {
+    private static synchronized SecretKey getOrCreateKey(String alias) throws Exception {
         KeyStore ks = KeyStore.getInstance(STORE);
         ks.load(null);
         if (ks.containsAlias(alias)) return (SecretKey) ks.getKey(alias, null);
@@ -128,6 +177,21 @@ public final class SecureStore {
         public final String accountId;
         ChatGptTokens(String id, String access, String refresh, String account) {
             idToken = id; accessToken = access; refreshToken = refresh; accountId = account;
+        }
+    }
+
+    public static final class PendingChatGptLogin {
+        public final String deviceAuthId;
+        public final String userCode;
+        public final long intervalSeconds;
+        public final long expiresAtMs;
+
+        PendingChatGptLogin(String deviceAuthId, String userCode, long intervalSeconds,
+                            long expiresAtMs) {
+            this.deviceAuthId = deviceAuthId;
+            this.userCode = userCode;
+            this.intervalSeconds = intervalSeconds;
+            this.expiresAtMs = expiresAtMs;
         }
     }
 }

@@ -2,6 +2,7 @@ package com.orbit.assistant;
 
 import android.content.Context;
 import android.util.Base64;
+import android.util.Log;
 
 import org.json.JSONObject;
 
@@ -13,6 +14,9 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.lang.ref.WeakReference;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -30,7 +34,12 @@ public final class ChatGptAuth {
     private static final String DEVICE_TOKEN_URL = ISSUER + "/api/accounts/deviceauth/token";
     private static final String OAUTH_TOKEN_URL = ISSUER + "/oauth/token";
     private static final String REDIRECT_URI = ISSUER + "/deviceauth/callback";
+    private static final String LOG_TAG = "OrbitChatGptAuth";
+    private static final long LOGIN_TIMEOUT_MS = 15L * 60L * 1000L;
     private static final ExecutorService EXEC = Executors.newCachedThreadPool();
+    private static final Object LOGIN_LOCK = new Object();
+    private static final List<WeakReference<LoginCallback>> LOGIN_CALLBACKS = new ArrayList<>();
+    private static String activeDeviceAuthId = "";
 
     private ChatGptAuth() {}
 
@@ -54,12 +63,15 @@ public final class ChatGptAuth {
         public final String userCode;
         final String deviceAuthId;
         final long intervalSeconds;
+        final long expiresAtMs;
 
-        DeviceCode(String verificationUrl, String userCode, String deviceAuthId, long intervalSeconds) {
+        DeviceCode(String verificationUrl, String userCode, String deviceAuthId, long intervalSeconds,
+                   long expiresAtMs) {
             this.verificationUrl = verificationUrl;
             this.userCode = userCode;
             this.deviceAuthId = deviceAuthId;
             this.intervalSeconds = Math.max(1L, intervalSeconds);
+            this.expiresAtMs = expiresAtMs;
         }
     }
 
@@ -75,16 +87,19 @@ public final class ChatGptAuth {
         }
     }
 
-    public static void requestDeviceCode(StartCallback cb) {
+    public static void requestDeviceCode(Context context, StartCallback cb) {
+        Context app = context.getApplicationContext();
         EXEC.execute(() -> {
             HttpURLConnection conn = null;
             try {
+                logStage("device_code_request_started");
                 conn = jsonConnection(DEVICE_USER_CODE_URL, "POST", 15000, 20000);
                 JSONObject req = new JSONObject().put("client_id", CLIENT_ID);
                 write(conn, req.toString(), "application/json");
                 int code = conn.getResponseCode();
                 String body = readAll(code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream());
                 if (code < 200 || code >= 300) {
+                    logFailure("device_code_request_failed", "http_" + code);
                     cb.onError(deviceAuthError("Could not start ChatGPT sign-in", code, body));
                     return;
                 }
@@ -93,11 +108,22 @@ public final class ChatGptAuth {
                 String userCode = o.optString("user_code", o.optString("usercode", ""));
                 long interval = parseLong(o.opt("interval"), 5L);
                 if (deviceAuthId.isEmpty() || userCode.isEmpty()) {
+                    logFailure("device_code_request_failed", "incomplete_response");
                     cb.onError("OpenAI returned an incomplete device sign-in response.");
                     return;
                 }
-                cb.onSuccess(new DeviceCode(VERIFICATION_URL, userCode, deviceAuthId, interval));
+                long expiresAtMs = System.currentTimeMillis() + LOGIN_TIMEOUT_MS;
+                if (!persistPendingAttempt(
+                        app, deviceAuthId, userCode, interval, expiresAtMs)) {
+                    logFailure("device_code_request_failed", "pending_state_persistence");
+                    cb.onError("Orbit could not securely save the pending ChatGPT sign-in. Try again.");
+                    return;
+                }
+                logStage("device_code_received_and_persisted");
+                cb.onSuccess(new DeviceCode(
+                        VERIFICATION_URL, userCode, deviceAuthId, interval, expiresAtMs));
             } catch (Exception e) {
+                logFailure("device_code_request_failed", exceptionKind(e));
                 cb.onError("Could not start ChatGPT sign-in: " + cleanMessage(e));
             } finally {
                 if (conn != null) conn.disconnect();
@@ -107,9 +133,13 @@ public final class ChatGptAuth {
 
     /** Polls for up to 15 minutes, then exchanges the one-time authorization code for OAuth tokens. */
     public static void completeDeviceCode(Context context, DeviceCode dc, LoginCallback cb) {
+        Context app = context.getApplicationContext();
+        if (!registerAttempt(dc, cb)) return;
         EXEC.execute(() -> {
-            long deadline = System.currentTimeMillis() + 15L * 60L * 1000L;
+            logStage("poll_started_or_resumed");
+            long deadline = dc.expiresAtMs;
             while (System.currentTimeMillis() < deadline) {
+                if (!isActiveAttempt(dc.deviceAuthId)) return;
                 HttpURLConnection conn = null;
                 try {
                     conn = jsonConnection(DEVICE_TOKEN_URL, "POST", 15000, 20000);
@@ -124,38 +154,69 @@ public final class ChatGptAuth {
                         String authCode = result.optString("authorization_code", "");
                         String verifier = result.optString("code_verifier", "");
                         if (authCode.isEmpty() || verifier.isEmpty()) {
-                            cb.onError("OpenAI approved the sign-in but did not return the token exchange fields Orbit needs.");
+                            finishError(app, dc.deviceAuthId, "poll_response_incomplete",
+                                    "OpenAI approved the sign-in but did not return the token exchange fields Orbit needs.");
                             return;
                         }
-                        exchangeAuthorizationCode(context, authCode, verifier, cb);
-                        return;
+                        logStage("browser_authorization_confirmed");
+                        while (System.currentTimeMillis() < deadline && isActiveAttempt(dc.deviceAuthId)) {
+                            ExchangeResult exchangeResult = exchangeAuthorizationCode(
+                                    app, dc.deviceAuthId, authCode, verifier);
+                            if (exchangeResult.account != null) {
+                                finishSuccess(app, dc.deviceAuthId, exchangeResult.account);
+                                return;
+                            }
+                            if (!exchangeResult.retryable) {
+                                finishError(app, dc.deviceAuthId, "token_exchange_failed",
+                                        exchangeResult.message);
+                                return;
+                            }
+                            logFailure("token_exchange_retry", exchangeResult.diagnostic);
+                            if (!sleepFor(dc.intervalSeconds, deadline)) break;
+                        }
+                        break;
                     }
                     // This matches Codex's public device-code implementation: 403/404 mean keep polling.
-                    if (code != 403 && code != 404) {
-                        cb.onError(deviceAuthError("ChatGPT sign-in failed", code, body));
+                    if (code != 403 && code != 404 && code != 429 && (code < 500 || code >= 600)) {
+                        finishError(app, dc.deviceAuthId, "poll_rejected_http_" + code,
+                                deviceAuthError("ChatGPT sign-in failed", code, body));
                         return;
                     }
+                    if (code == 429 || code >= 500) {
+                        logFailure("poll_retry", "http_" + code);
+                    }
                 } catch (Exception e) {
-                    cb.onError("ChatGPT sign-in failed: " + cleanMessage(e));
-                    return;
+                    // Mobile connectivity can briefly change while the browser owns the foreground.
+                    // Keep the same pending device authorization alive until its real expiry.
+                    logFailure("poll_retry", exceptionKind(e));
                 } finally {
                     if (conn != null) conn.disconnect();
                 }
-                try {
-                    Thread.sleep(Math.min(15000L, Math.max(1000L, dc.intervalSeconds * 1000L)));
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    cb.onError("ChatGPT sign-in was cancelled.");
-                    return;
-                }
+                if (!sleepFor(dc.intervalSeconds, deadline)) break;
             }
-            cb.onError("The ChatGPT sign-in code expired. Start sign-in again to get a new code.");
+            finishError(app, dc.deviceAuthId, "device_code_expired",
+                    "The ChatGPT sign-in code expired. Start sign-in again to get a new code.");
         });
     }
 
-    private static void exchangeAuthorizationCode(Context context, String authCode, String verifier, LoginCallback cb) {
+    public static boolean resumePendingDeviceCode(Context context, LoginCallback cb) {
+        if (isSignedIn(context)) {
+            SecureStore.clearPendingChatGptLogin(context);
+            return false;
+        }
+        SecureStore.PendingChatGptLogin pending = SecureStore.loadPendingChatGptLogin(context);
+        if (pending == null) return false;
+        logStage("pending_login_restored");
+        completeDeviceCode(context, new DeviceCode(VERIFICATION_URL, pending.userCode,
+                pending.deviceAuthId, pending.intervalSeconds, pending.expiresAtMs), cb);
+        return true;
+    }
+
+    private static ExchangeResult exchangeAuthorizationCode(Context context, String deviceAuthId,
+                                                              String authCode, String verifier) {
         HttpURLConnection conn = null;
         try {
+            logStage("token_exchange_started");
             String form = formPair("grant_type", "authorization_code") +
                     "&" + formPair("code", authCode) +
                     "&" + formPair("redirect_uri", REDIRECT_URI) +
@@ -166,26 +227,40 @@ public final class ChatGptAuth {
             int code = conn.getResponseCode();
             String body = readAll(code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream());
             if (code < 200 || code >= 300) {
-                cb.onError(oauthError("OpenAI token exchange failed", code, body));
-                return;
+                return ExchangeResult.error(oauthError("OpenAI token exchange failed", code, body),
+                        code == 429 || code >= 500, "http_" + code);
             }
             JSONObject o = new JSONObject(body);
             String id = o.optString("id_token", "");
             String access = o.optString("access_token", "");
             String refresh = o.optString("refresh_token", "");
             if (access.isEmpty() || refresh.isEmpty()) {
-                cb.onError("OpenAI completed sign-in but did not return reusable OAuth credentials.");
-                return;
+                return ExchangeResult.error(
+                        "OpenAI completed sign-in but did not return reusable OAuth credentials.",
+                        false, "incomplete_credentials");
             }
             String accountId = firstNonEmpty(extractAccountId(id), extractAccountId(access));
-            if (!SecureStore.saveChatGptTokens(context, id, access, refresh, accountId)) {
-                cb.onError("ChatGPT sign-in worked, but Orbit could not save the credentials in Android Keystore.");
-                return;
+            synchronized (LOGIN_LOCK) {
+                if (!deviceAuthId.equals(activeDeviceAuthId)) {
+                    return ExchangeResult.error("", false, "superseded_attempt");
+                }
+                if (!SecureStore.saveChatGptTokens(context, id, access, refresh, accountId)) {
+                    return ExchangeResult.error(
+                            "ChatGPT sign-in worked, but Orbit could not save the credentials in Android Keystore.",
+                            false, "credential_persistence");
+                }
+                if (SecureStore.loadChatGptTokens(context) == null) {
+                    return ExchangeResult.error(
+                            "ChatGPT sign-in worked, but Orbit could not verify the saved credentials.",
+                            false, "credential_reload");
+                }
+                Prefs.get(context).edit().putString(Prefs.PROVIDER, Prefs.PROVIDER_CHATGPT).apply();
             }
-            Prefs.get(context).edit().putString(Prefs.PROVIDER, Prefs.PROVIDER_CHATGPT).apply();
-            cb.onSuccess(accountInfo(id, access, accountId));
+            logStage("credentials_persisted_and_verified");
+            return ExchangeResult.success(accountInfo(id, access, accountId));
         } catch (Exception e) {
-            cb.onError("OpenAI token exchange failed: " + cleanMessage(e));
+            return ExchangeResult.error("OpenAI token exchange failed: " + cleanMessage(e),
+                    true, exceptionKind(e));
         } finally {
             if (conn != null) conn.disconnect();
         }
@@ -202,7 +277,12 @@ public final class ChatGptAuth {
     }
 
     public static void logout(Context context) {
-        SecureStore.clearChatGpt(context);
+        synchronized (LOGIN_LOCK) {
+            SecureStore.clearPendingChatGptLogin(context);
+            SecureStore.clearChatGpt(context);
+            activeDeviceAuthId = "";
+            LOGIN_CALLBACKS.clear();
+        }
     }
 
     /** Returns a valid access token, refreshing through OpenAI when it is near expiry. */
@@ -385,6 +465,131 @@ public final class ChatGptAuth {
 
     private static String cleanMessage(Exception e) {
         return e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+    }
+
+    private static boolean persistPendingAttempt(Context context, String deviceAuthId,
+                                                 String userCode, long intervalSeconds,
+                                                 long expiresAtMs) {
+        synchronized (LOGIN_LOCK) {
+            if (!SecureStore.savePendingChatGptLogin(
+                    context, deviceAuthId, userCode, intervalSeconds, expiresAtMs)) {
+                return false;
+            }
+            SecureStore.PendingChatGptLogin saved = SecureStore.loadPendingChatGptLogin(context);
+            if (saved == null || !deviceAuthId.equals(saved.deviceAuthId)) {
+                SecureStore.clearPendingChatGptLogin(context);
+                return false;
+            }
+            if (!activeDeviceAuthId.isEmpty() && !deviceAuthId.equals(activeDeviceAuthId)) {
+                activeDeviceAuthId = "";
+                LOGIN_CALLBACKS.clear();
+            }
+            return true;
+        }
+    }
+
+    private static boolean registerAttempt(DeviceCode dc, LoginCallback cb) {
+        synchronized (LOGIN_LOCK) {
+            for (int i = LOGIN_CALLBACKS.size() - 1; i >= 0; i--) {
+                LoginCallback existing = LOGIN_CALLBACKS.get(i).get();
+                if (existing == null) LOGIN_CALLBACKS.remove(i);
+                else if (existing == cb) cb = null;
+            }
+            if (cb != null) LOGIN_CALLBACKS.add(new WeakReference<>(cb));
+            if (dc.deviceAuthId.equals(activeDeviceAuthId)) return false;
+            activeDeviceAuthId = dc.deviceAuthId;
+            return true;
+        }
+    }
+
+    private static boolean isActiveAttempt(String deviceAuthId) {
+        synchronized (LOGIN_LOCK) {
+            return deviceAuthId != null && deviceAuthId.equals(activeDeviceAuthId);
+        }
+    }
+
+    private static void finishSuccess(Context context, String deviceAuthId, AccountInfo account) {
+        List<LoginCallback> callbacks = takeCallbacks(context, deviceAuthId);
+        if (callbacks == null) return;
+        logStage("login_complete");
+        for (LoginCallback callback : callbacks) {
+            try { callback.onSuccess(account); }
+            catch (RuntimeException e) { logFailure("ui_callback_failed", exceptionKind(e)); }
+        }
+    }
+
+    private static void finishError(Context context, String deviceAuthId, String diagnostic,
+                                    String message) {
+        List<LoginCallback> callbacks = takeCallbacks(context, deviceAuthId);
+        if (callbacks == null) return;
+        logFailure("login_failed", diagnostic);
+        for (LoginCallback callback : callbacks) {
+            try { callback.onError(message); }
+            catch (RuntimeException e) { logFailure("ui_callback_failed", exceptionKind(e)); }
+        }
+    }
+
+    private static List<LoginCallback> takeCallbacks(Context context, String deviceAuthId) {
+        synchronized (LOGIN_LOCK) {
+            if (!deviceAuthId.equals(activeDeviceAuthId)) return null;
+            SecureStore.clearPendingChatGptLogin(context);
+            activeDeviceAuthId = "";
+            List<LoginCallback> callbacks = new ArrayList<>();
+            for (WeakReference<LoginCallback> ref : LOGIN_CALLBACKS) {
+                LoginCallback callback = ref.get();
+                if (callback != null) callbacks.add(callback);
+            }
+            LOGIN_CALLBACKS.clear();
+            return callbacks;
+        }
+    }
+
+    private static boolean sleepFor(long intervalSeconds, long deadlineMs) {
+        long remaining = deadlineMs - System.currentTimeMillis();
+        if (remaining <= 0L) return false;
+        try {
+            Thread.sleep(Math.min(remaining,
+                    Math.min(15000L, Math.max(1000L, intervalSeconds * 1000L))));
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    private static void logStage(String stage) {
+        Log.i(LOG_TAG, "Device sign-in stage=" + stage);
+    }
+
+    private static void logFailure(String stage, String diagnostic) {
+        Log.w(LOG_TAG, "Device sign-in stage=" + stage + " diagnostic=" + diagnostic);
+    }
+
+    private static String exceptionKind(Exception e) {
+        return e == null ? "unknown" : e.getClass().getSimpleName();
+    }
+
+    private static final class ExchangeResult {
+        final AccountInfo account;
+        final String message;
+        final boolean retryable;
+        final String diagnostic;
+
+        private ExchangeResult(AccountInfo account, String message, boolean retryable,
+                               String diagnostic) {
+            this.account = account;
+            this.message = message;
+            this.retryable = retryable;
+            this.diagnostic = diagnostic;
+        }
+
+        static ExchangeResult success(AccountInfo account) {
+            return new ExchangeResult(account, "", false, "success");
+        }
+
+        static ExchangeResult error(String message, boolean retryable, String diagnostic) {
+            return new ExchangeResult(null, message, retryable, diagnostic);
+        }
     }
 
     private static String trim(String s, int n) { return s.length() <= n ? s : s.substring(0, n); }
