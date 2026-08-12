@@ -54,6 +54,8 @@ public final class OrbitUpdater {
     private static final String PREF_CACHED_RELEASE = "orbit_update_cached_release";
     private static final String PREF_LAST_CHECK_MS = "orbit_update_last_check_ms";
     private static final String PREF_NOTIFIED_CODE = "orbit_update_notified_code";
+    private static final String PREF_PENDING_INSTALL_CODE = "orbit_update_pending_install_code";
+    private static final String PREF_PENDING_INSTALL_FILE = "orbit_update_pending_install_file";
 
     private OrbitUpdater() {}
 
@@ -273,10 +275,12 @@ public final class OrbitUpdater {
         activity.startActivity(intent);
     }
 
-    public static void launchPackageInstaller(Activity activity, File apk) throws Exception {
+    public static void launchPackageInstaller(Activity activity, File apk, Release release) throws Exception {
+        validateReleaseFields(release);
         File root = updateDirectory(activity).getCanonicalFile();
         File candidate = apk.getCanonicalFile();
-        if (!candidate.getPath().startsWith(root.getPath() + File.separator) || !candidate.isFile()) {
+        if (!candidate.getPath().startsWith(root.getPath() + File.separator) || !candidate.isFile() ||
+                !candidate.getName().equals(release.apkAssetName)) {
             throw new VerificationException("The verified update file is unavailable.");
         }
         Uri uri = FileProvider.getUriForFile(
@@ -284,8 +288,46 @@ public final class OrbitUpdater {
         Intent install = new Intent(Intent.ACTION_VIEW)
                 .setDataAndType(uri, "application/vnd.android.package-archive")
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        activity.startActivity(install);
+        boolean saved = Prefs.get(activity).edit()
+                .putLong(PREF_PENDING_INSTALL_CODE, release.versionCode)
+                .putString(PREF_PENDING_INSTALL_FILE, candidate.getName())
+                .commit();
+        if (!saved) throw new UpdateException("Orbit could not prepare the update installer.");
+        try {
+            activity.startActivity(install);
+        } catch (Exception e) {
+            clearPendingInstall(activity);
+            throw e;
+        }
         log("installer_opened", "android_package_installer");
+    }
+
+    /** Cleans a verified installer only after Android reports Orbit at the target version or newer. */
+    public static void reconcilePendingInstall(Context context) {
+        long targetCode = Prefs.get(context).getLong(PREF_PENDING_INSTALL_CODE, 0L);
+        String fileName = Prefs.get(context).getString(PREF_PENDING_INSTALL_FILE, "");
+        if (targetCode <= 0L || !fileName.matches("^[A-Za-z0-9._-]+$") || fileName.endsWith(".part")) {
+            clearPendingInstall(context);
+            cleanupAbandonedDownloads(context, null);
+            return;
+        }
+        File directory = updateDirectory(context);
+        File installer = new File(directory, fileName);
+        if (BuildConfig.VERSION_CODE >= targetCode) {
+            safeDelete(installer);
+            safeDelete(new File(directory, fileName + ".part"));
+            clearPendingInstall(context);
+            log("installed_update_cleanup", "target_code_" + targetCode);
+        }
+        cleanupAbandonedDownloads(context, null);
+        if (!installer.exists()) clearPendingInstall(context);
+    }
+
+    private static void clearPendingInstall(Context context) {
+        Prefs.get(context).edit()
+                .remove(PREF_PENDING_INSTALL_CODE)
+                .remove(PREF_PENDING_INSTALL_FILE)
+                .apply();
     }
 
     public static void cleanupAbandonedDownloads(Context context, File keep) {

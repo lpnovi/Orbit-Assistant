@@ -49,6 +49,12 @@ public final class OrbitUpdateNotifier {
         return true;
     }
 
+    public static void cancel(Context context) {
+        NotificationManager manager = (NotificationManager)
+                context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager != null) manager.cancel(NOTIFICATION_ID);
+    }
+
     private static void ensureChannel(NotificationManager manager) {
         if (Build.VERSION.SDK_INT < 26) return;
         NotificationChannel channel = new NotificationChannel(

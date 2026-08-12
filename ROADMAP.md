@@ -152,6 +152,12 @@
 - Add the Ask Orbit Quick Settings tile using the existing assistant-session entry path
 - Add a configurable Routine Quick Settings tile using the existing Routine runner and Action Engine
 
+### 0.6.5.1
+- Make default-assistant setup reliable with supported Android/OEM fallbacks
+- Move Weather into Personalization & data and correct its live accent styling
+- Propagate Accent, app font, and AMOLED changes across active Settings surfaces
+- Add an Update notifications preference and successful-install APK cache cleanup
+
 ### Future 0.6.5.x
 - Custom Commands
 - Continue focused Quick Access refinements based on device testing

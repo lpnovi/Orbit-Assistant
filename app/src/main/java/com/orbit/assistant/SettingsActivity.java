@@ -33,7 +33,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 
-public class SettingsActivity extends Activity {
+public class SettingsActivity extends Activity implements UiKit.AppearanceListener {
     private static final int REQ_ASSISTANT = 70;
     private static final int REQ_AUDIO = 71;
     private static final int REQ_CAMERA = 72;
@@ -42,13 +42,8 @@ public class SettingsActivity extends Activity {
     private static final int REQ_LOCATION = 75;
     private static final int REQ_EXPORT_BACKUP = 76;
     private static final int REQ_RESTORE_BACKUP = 77;
+    private static final int REQ_ASSISTANT_SETTINGS = 78;
     private static final String TAG_CARD = "orbit_card";
-    private static final String TAG_PRIMARY = "orbit_primary";
-    private static final String TAG_SECONDARY = "orbit_secondary";
-    private static final String TAG_ACCENT_TEXT = "orbit_accent_text";
-    private static final String TAG_ACCENT_ICON = "orbit_accent_icon";
-    private static final String TAG_THEME_PREFIX = "orbit_theme:";
-    private static final String TAG_BUBBLE_PREFIX = "orbit_bubble:";
     private static final String TAG_SECTION_PREFIX = "orbit_settings_section:";
     private static final String EXTRA_SECTION = "settings_section";
     private static final String SECTION_ASSISTANT = "assistant";
@@ -65,7 +60,11 @@ public class SettingsActivity extends Activity {
         return new Intent(context, SettingsActivity.class).putExtra(EXTRA_SECTION, SECTION_ASSISTANT);
     }
     private TextView assistantStatus;
+    private Button assistantAction;
     private TextView chatGptStatus;
+    private ScrollView settingsScroll;
+    private String appliedAppearance = "";
+    private boolean rebuildingAppearance;
     private int leloTapCount = 0;
     private long lastLeloTapMs = 0L;
     private String settingsSection = "";
@@ -99,16 +98,26 @@ public class SettingsActivity extends Activity {
         View content = buildContent();
         setContentView(content);
         UiKit.applyActivityInsets(this, content, true);
+        appliedAppearance = UiKit.appearanceSignature(this);
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        UiKit.registerAppearanceListener(this);
+    }
+
+    @Override
+    protected void onStop() {
+        UiKit.unregisterAppearanceListener(this);
+        super.onStop();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         UiPresence.enter(this);
-        // The Settings hub remains underneath a detail page. Refresh typography
-        // every time it resumes so a font changed in Look & Feel is visible on
-        // the parent Settings page immediately after pressing Back.
-        applyFontInPlace();
+        if (!refreshAppearanceIfNeeded()) applyFontInPlace();
         updateAssistantStatus();
         updateChatGptStatus();
         if (!ChatGptAuth.isSignedIn(this)
@@ -131,6 +140,7 @@ public class SettingsActivity extends Activity {
 
     private View buildSettingsHub() {
         ScrollView scroll = new ScrollView(this);
+        settingsScroll = scroll;
         scroll.setFillViewport(true);
         scroll.setBackgroundColor(UiKit.BG);
 
@@ -169,9 +179,9 @@ public class SettingsActivity extends Activity {
         page.addView(settingsCategoryCard(SECTION_AI, "AI & account",
                 "ChatGPT sign-in, provider and intelligence modes"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_VOICE, "Voice, context & permissions",
-                "Voice Beta, screen context, weather and capabilities"), categoryLp());
+                "Voice Beta, screen context and capabilities"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_DATA, "Personalization & data",
-                "Backup, reminders, saved places, Memory, app profiles and notification intelligence"), categoryLp());
+                "Weather, backup, reminders, saved places, Memory and app profiles"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_ROUTINES, "Routines",
                 "Create, edit and run saved Action Engine chains"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_CONVERSATIONS, "Conversations",
@@ -267,8 +277,8 @@ public class SettingsActivity extends Activity {
     private String sectionDescription(String section) {
         if (SECTION_ASSISTANT.equals(section)) return "Set Orbit as your assistant and configure Samsung's Side button behavior.";
         if (SECTION_AI.equals(section)) return "Manage your ChatGPT connection and how much intelligence Orbit uses by default.";
-        if (SECTION_VOICE.equals(section)) return "Control Voice Beta, screen awareness, weather context and device permissions.";
-        if (SECTION_DATA.equals(section)) return "Manage the local information and tools Orbit uses to personalize and organize your assistant experience.";
+        if (SECTION_VOICE.equals(section)) return "Control Voice Beta, screen awareness and device permissions.";
+        if (SECTION_DATA.equals(section)) return "Manage weather preferences and the local information Orbit uses to personalize and organize your assistant experience.";
         if (SECTION_CONVERSATIONS.equals(section)) return "Choose how Orbit stores chats and handles background completions.";
         if (SECTION_APPEARANCE.equals(section)) return "Tune Orbit's colors, typography, AMOLED presentation and tactile feedback.";
         if (SECTION_ADVANCED.equals(section)) return "Optional fallback infrastructure and developer diagnostics.";
@@ -288,6 +298,7 @@ public class SettingsActivity extends Activity {
 
     private View buildDetailContent() {
         ScrollView scroll = new ScrollView(this);
+        settingsScroll = scroll;
         scroll.setFillViewport(true);
         scroll.setBackgroundColor(UiKit.BG);
 
@@ -303,7 +314,6 @@ public class SettingsActivity extends Activity {
         back.setImageResource(R.drawable.ic_back);
         back.setImageTintList(android.content.res.ColorStateList.valueOf(UiKit.accent(this)));
         back.setBackground(UiKit.ripple(UiKit.SURFACE_2, UiKit.accent(this), 18, this));
-        back.setTag(TAG_ACCENT_ICON);
         back.setContentDescription("Back to Settings");
         back.setPadding(UiKit.dp(this, 11), UiKit.dp(this, 11), UiKit.dp(this, 11), UiKit.dp(this, 11));
         back.setOnClickListener(v -> finish());
@@ -335,17 +345,14 @@ public class SettingsActivity extends Activity {
         TextView desc = UiKit.text(this, "Make Orbit the default Digital assistant app, then map Side button → Long press → Digital assistant in Samsung Settings.", 13, UiKit.MUTED, false);
         desc.setPadding(0, UiKit.dp(this, 7), 0, UiKit.dp(this, 14));
         setupCard.addView(desc);
-        Button makeDefault = primaryButton("Make Orbit default assistant");
-        makeDefault.setOnClickListener(v -> requestAssistantRole());
-        setupCard.addView(makeDefault);
+        assistantAction = primaryButton("Make Orbit default assistant");
+        assistantAction.setOnClickListener(v -> requestAssistantRole());
+        setupCard.addView(assistantAction);
         Button samsungSettings = secondaryButton("Open default-app settings");
         LinearLayout.LayoutParams secondLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
         secondLp.setMargins(0, UiKit.dp(this, 10), 0, 0);
         setupCard.addView(samsungSettings, secondLp);
-        samsungSettings.setOnClickListener(v -> {
-            try { startActivity(new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)); }
-            catch (Exception e) { startActivity(new Intent(Settings.ACTION_SETTINGS)); }
-        });
+        samsungSettings.setOnClickListener(v -> openAssistantSettings(true));
         page.addView(setupCard);
 
         page.addView(sectionTitle("REMINDERS", "data"));
@@ -502,9 +509,9 @@ public class SettingsActivity extends Activity {
         voiceCard.addView(capabilities, capabilitiesLp);
         page.addView(voiceCard);
 
-        page.addView(sectionTitle("WEATHER", "weather"));
+        page.addView(sectionTitle("WEATHER", "data"));
         LinearLayout weatherCard = card();
-        tagSectionCard(weatherCard, "weather");
+        tagSectionCard(weatherCard, "data");
         TextView weatherHelp = UiKit.text(this,
                 "Orbit can answer current weather and forecasts directly in chat using Open-Meteo. You can set a default city or allow approximate device location. Weather questions do not need to open a browser.",
                 13, UiKit.MUTED, false);
@@ -795,19 +802,49 @@ public class SettingsActivity extends Activity {
     }
 
     private void requestAssistantRole() {
+        if (isOrbitAssistantActive()) {
+            updateAssistantStatus();
+            Toast.makeText(this, "Orbit is already your assistant", Toast.LENGTH_SHORT).show();
+            return;
+        }
         if (android.os.Build.VERSION.SDK_INT >= 29) {
             RoleManager rm = getSystemService(RoleManager.class);
             if (rm != null && rm.isRoleAvailable(RoleManager.ROLE_ASSISTANT)) {
                 if (rm.isRoleHeld(RoleManager.ROLE_ASSISTANT)) {
-                    Toast.makeText(this, "Orbit is already your assistant", Toast.LENGTH_SHORT).show();
+                    updateAssistantStatus();
                 } else {
-                    startActivityForResult(rm.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT), REQ_ASSISTANT);
+                    try {
+                        Intent request = rm.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT);
+                        if (request.resolveActivity(getPackageManager()) != null) {
+                            startActivityForResult(request, REQ_ASSISTANT);
+                            return;
+                        }
+                    } catch (Exception ignored) {
+                        // Some OEMs advertise the assistant role without a usable request UI.
+                    }
                 }
-                return;
             }
         }
-        try { startActivity(new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)); }
-        catch (Exception e) { startActivity(new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)); }
+        openAssistantSettings(true);
+    }
+
+    private void openAssistantSettings(boolean explain) {
+        Intent[] candidates = new Intent[]{
+                new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS),
+                new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS),
+                new Intent(Settings.ACTION_SETTINGS)
+        };
+        for (Intent candidate : candidates) {
+            try {
+                if (candidate.resolveActivity(getPackageManager()) == null) continue;
+                if (explain) Toast.makeText(this,
+                        "Choose Orbit as the Digital assistant app", Toast.LENGTH_LONG).show();
+                startActivityForResult(candidate, REQ_ASSISTANT_SETTINGS);
+                return;
+            } catch (Exception ignored) {}
+        }
+        showOrbitMessageDialog("Assistant settings unavailable",
+                "Android could not open a supported default-assistant settings screen on this device.");
     }
 
     private void chooseBackupDestination() {
@@ -828,6 +865,17 @@ public class SettingsActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_ASSISTANT || requestCode == REQ_ASSISTANT_SETTINGS) {
+            getWindow().getDecorView().postDelayed(() -> {
+                updateAssistantStatus();
+                if (requestCode == REQ_ASSISTANT && !isOrbitAssistantActive()) {
+                    Toast.makeText(this,
+                            "Orbit is still not selected. Open default-app settings if your device did not show a chooser.",
+                            Toast.LENGTH_LONG).show();
+                }
+            }, 200L);
+            return;
+        }
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
         if (requestCode == REQ_EXPORT_BACKUP) {
@@ -895,10 +943,19 @@ public class SettingsActivity extends Activity {
 
     private void updateAssistantStatus() {
         if (assistantStatus == null) return;
-        ComponentName c = new ComponentName(this, OrbitVoiceInteractionService.class);
-        boolean active = VoiceInteractionService.isActiveService(this, c);
+        boolean active = isOrbitAssistantActive();
         assistantStatus.setText(active ? "✓ Orbit is your active assistant" : "○ Orbit is not the active assistant yet");
         assistantStatus.setTextColor(active ? UiKit.SUCCESS : UiKit.TEXT);
+        if (assistantAction != null) {
+            assistantAction.setText(active ? "Orbit is your default assistant" : "Make Orbit default assistant");
+            assistantAction.setEnabled(!active);
+            assistantAction.setAlpha(active ? 0.72f : 1f);
+        }
+    }
+
+    private boolean isOrbitAssistantActive() {
+        ComponentName component = new ComponentName(this, OrbitVoiceInteractionService.class);
+        return VoiceInteractionService.isActiveService(this, component);
     }
 
     @Override
@@ -960,7 +1017,7 @@ public class SettingsActivity extends Activity {
     private boolean sectionAllows(String section, String key) {
         if (SECTION_ASSISTANT.equals(section)) return "setup".equals(key);
         if (SECTION_AI.equals(section)) return "account".equals(key) || "intelligence".equals(key);
-        if (SECTION_VOICE.equals(section)) return "voice".equals(key) || "weather".equals(key);
+        if (SECTION_VOICE.equals(section)) return "voice".equals(key);
         if (SECTION_DATA.equals(section)) return "data".equals(key);
         if (SECTION_CONVERSATIONS.equals(section)) return "conversations".equals(key);
         if (SECTION_APPEARANCE.equals(section)) return "appearance".equals(key);
@@ -991,7 +1048,6 @@ public class SettingsActivity extends Activity {
         b.setTextSize(14);
         b.setAllCaps(false);
         b.setBackground(UiKit.ripple(UiKit.accent(this), UiKit.onAccent(this), 15, this));
-        b.setTag(TAG_PRIMARY);
         b.setMinHeight(0); b.setMinimumHeight(0); b.setStateListAnimator(null);
         UiKit.pressScale(b);
         return b;
@@ -1004,7 +1060,6 @@ public class SettingsActivity extends Activity {
         b.setTextSize(14);
         b.setAllCaps(false);
         b.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2, Color.rgb(53,58,72), UiKit.accent(this), 15, this));
-        b.setTag(TAG_SECONDARY);
         b.setMinHeight(0); b.setMinimumHeight(0); b.setStateListAnimator(null);
         UiKit.pressScale(b);
         return b;
@@ -1015,9 +1070,7 @@ public class SettingsActivity extends Activity {
         cb.setText(label);
         cb.setTextColor(UiKit.TEXT);
         cb.setTextSize(14);
-        cb.setButtonTintList(new android.content.res.ColorStateList(
-                new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
-                new int[]{UiKit.accent(this), Color.rgb(90,94,105)}));
+        cb.setButtonTintList(UiKit.accentControlTint(this));
         cb.setChecked(Prefs.get(this).getBoolean(key, def));
         cb.setPadding(0, UiKit.dp(this, 7), 0, UiKit.dp(this, 2));
         cb.setOnCheckedChangeListener((button, checked) -> {
@@ -1038,6 +1091,7 @@ public class SettingsActivity extends Activity {
         cb.setText("Use approximate device location for local weather");
         cb.setTextColor(UiKit.TEXT);
         cb.setTextSize(14);
+        cb.setButtonTintList(UiKit.accentControlTint(this));
         boolean granted = checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
                 checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
         cb.setChecked(Prefs.weatherUseDeviceLocation(this) && granted);
@@ -1058,16 +1112,13 @@ public class SettingsActivity extends Activity {
         cb.setText("AMOLED black background");
         cb.setTextColor(UiKit.TEXT);
         cb.setTextSize(14);
-        cb.setButtonTintList(new android.content.res.ColorStateList(
-                new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
-                new int[]{UiKit.accent(this), Color.rgb(90,94,105)}));
+        cb.setButtonTintList(UiKit.accentControlTint(this));
         cb.setChecked(Prefs.amoledMode(this));
         cb.setPadding(0, UiKit.dp(this, 4), 0, UiKit.dp(this, 2));
         cb.setOnCheckedChangeListener((button, checked) -> {
             performSettingsHaptic(button);
             Prefs.get(this).edit().putBoolean(Prefs.AMOLED_MODE, checked).apply();
-            UiKit.syncTheme(this);
-            applyThemeInPlace();
+            UiKit.notifyAppearanceChanged(this);
         });
         return cb;
     }
@@ -1077,9 +1128,7 @@ public class SettingsActivity extends Activity {
         cb.setText("Notify me when a background response finishes");
         cb.setTextColor(UiKit.TEXT);
         cb.setTextSize(14);
-        cb.setButtonTintList(new android.content.res.ColorStateList(
-                new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
-                new int[]{UiKit.accent(this), Color.rgb(90,94,105)}));
+        cb.setButtonTintList(UiKit.accentControlTint(this));
         cb.setChecked(Prefs.backgroundNotifications(this));
         cb.setPadding(0, UiKit.dp(this, 7), 0, UiKit.dp(this, 2));
         cb.setOnCheckedChangeListener((button, checked) -> {
@@ -1117,7 +1166,7 @@ public class SettingsActivity extends Activity {
             String key = keys[Math.max(0, Math.min(keys.length - 1, position))];
             if (!key.equals(Prefs.appFont(this))) {
                 Prefs.get(this).edit().putString(Prefs.APP_FONT, key).apply();
-                applyFontInPlace();
+                UiKit.notifyAppearanceChanged(this);
             }
         });
         selector.setLayoutParams(selectorLp());
@@ -1139,7 +1188,6 @@ public class SettingsActivity extends Activity {
         field.setPadding(UiKit.dp(this, 16), 0, UiKit.dp(this, 14), 0);
         field.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2,
                 UiKit.withAlpha(UiKit.accent(this), 72), UiKit.accent(this), 16, this));
-        field.setTag(TAG_SECONDARY);
 
         int initialIndex = indexOf(keys, selectedKey);
         final int[] current = {initialIndex};
@@ -1169,7 +1217,7 @@ public class SettingsActivity extends Activity {
                 String existing = Prefs.get(this).getString(prefKey, accentSelector ? "dynamic" : "classic");
                 if (!key.equals(existing)) {
                     Prefs.get(this).edit().putString(prefKey, key).apply();
-                    if (accentSelector) applyThemeInPlace();
+                    if (accentSelector) UiKit.notifyAppearanceChanged(this);
                 }
             });
         });
@@ -1203,83 +1251,33 @@ public class SettingsActivity extends Activity {
         if (rootView != null) UiKit.applyTypography(rootView);
     }
 
-    private void applyThemeInPlace() {
-        UiKit.syncTheme(this);
-        int accent = UiKit.accent(this);
-        Window w = getWindow();
-        w.setStatusBarColor(UiKit.BG);
-        w.setNavigationBarColor(UiKit.BG);
-
-        View rootView = w.getDecorView().findViewById(android.R.id.content);
-        if (rootView != null) applyThemeRecursive(rootView, accent);
+    @Override
+    public void onOrbitAppearanceChanged() {
+        refreshAppearanceIfNeeded();
     }
 
-    private void applyThemeRecursive(View view, int accent) {
-        if (view instanceof ScrollView) view.setBackgroundColor(UiKit.BG);
-        Object rawTag = view.getTag();
-        String tag = rawTag instanceof String ? (String) rawTag : "";
-
-        if (TAG_CARD.equals(tag) || tag.startsWith(TAG_CARD + ":")) {
-            view.setBackground(UiKit.outlined(UiKit.SURFACE, UiKit.withAlpha(accent, 38), 24, this));
-        } else if (TAG_PRIMARY.equals(tag)) {
-            view.setBackground(UiKit.ripple(accent, UiKit.onAccent(accent), 15, this));
-            if (view instanceof Button) ((Button) view).setTextColor(UiKit.onAccent(accent));
-        } else if (TAG_SECONDARY.equals(tag)) {
-            view.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2, Color.rgb(53,58,72), accent, 15, this));
-        } else if (TAG_ACCENT_TEXT.equals(tag) && view instanceof TextView) {
-            ((TextView) view).setTextColor(accent);
-        } else if (TAG_ACCENT_ICON.equals(tag) && view instanceof ImageButton) {
-            ImageButton icon = (ImageButton) view;
-            icon.setImageTintList(android.content.res.ColorStateList.valueOf(accent));
-            icon.setBackground(UiKit.ripple(UiKit.SURFACE_2, accent, 18, this));
-        } else if ("orbit_mark".equals(tag)) {
-            // The current Orbit mark is custom-drawn. Force an immediate redraw
-            // after the accent preference changes instead of waiting for re-entry.
-            view.invalidate();
-        } else if ("orbit_mark_shell".equals(tag)) {
-            view.setBackground(UiKit.rounded(UiKit.orbitShellColor(), 999, this));
-        } else if ("orbit_mark_ring".equals(tag)) {
-            view.setBackground(UiKit.rounded(accent, 999, this));
-        } else if ("orbit_mark_core".equals(tag)) {
-            view.setBackground(UiKit.rounded(UiKit.orbitCoreColor(), 999, this));
-        } else if ("orbit_mark_dot".equals(tag)) {
-            view.setBackground(UiKit.rounded(UiKit.orbitSatelliteColor(this), 999, this));
-        } else if (tag.startsWith(TAG_THEME_PREFIX) && view instanceof Button) {
-            String key = tag.substring(TAG_THEME_PREFIX.length());
-            int color = UiKit.accentForName(this, key);
-            boolean active = key.equals(Prefs.get(this).getString(Prefs.ACCENT, "dynamic"));
-            Button swatch = (Button) view;
-            swatch.setTextColor(active ? Color.WHITE : UiKit.TEXT);
-            int fill = active ? UiKit.blend(color, UiKit.SURFACE_2, 0.30f) : UiKit.SURFACE_2;
-            int stroke = active ? color : Color.rgb(55, 60, 74);
-            swatch.setBackground(UiKit.rippleOutlined(fill, stroke, color, 16, this));
-        } else if (tag.startsWith(TAG_BUBBLE_PREFIX) && view instanceof Button) {
-            String payload = tag.substring(TAG_BUBBLE_PREFIX.length());
-            String[] parts = payload.split(":", 3);
-            if (parts.length == 3) {
-                String prefKey = parts[0];
-                String key = parts[1];
-                boolean assistant = "assistant".equals(parts[2]);
-                int color = bubblePreviewColor(key, assistant);
-                boolean active = key.equals(Prefs.get(this).getString(prefKey, "classic"));
-                Button swatch = (Button) view;
-                swatch.setTextColor(active ? UiKit.onBubble(color) : UiKit.TEXT);
-                int fill = active ? color : UiKit.blend(color, UiKit.SURFACE_2, 0.18f);
-                swatch.setBackground(UiKit.rippleOutlined(fill, color, color, 15, this));
+    private boolean refreshAppearanceIfNeeded() {
+        String desired = UiKit.appearanceSignature(this);
+        if (rebuildingAppearance || desired.equals(appliedAppearance)) return false;
+        rebuildingAppearance = true;
+        int oldScrollY = settingsScroll == null ? 0 : settingsScroll.getScrollY();
+        try {
+            UiKit.syncTheme(this);
+            View content = buildContent();
+            setContentView(content);
+            UiKit.applyActivityInsets(this, content, true);
+            appliedAppearance = desired;
+            Window window = getWindow();
+            window.setStatusBarColor(UiKit.BG);
+            window.setNavigationBarColor(UiKit.BG);
+            updateAssistantStatus();
+            updateChatGptStatus();
+            if (settingsScroll != null) {
+                settingsScroll.post(() -> settingsScroll.scrollTo(0, oldScrollY));
             }
-        }
-
-        if (view instanceof CheckBox) {
-            ((CheckBox) view).setButtonTintList(new android.content.res.ColorStateList(
-                    new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
-                    new int[]{accent, Color.rgb(90,94,105)}));
-        }
-
-        if (view instanceof ViewGroup) {
-            ViewGroup group = (ViewGroup) view;
-            for (int i = 0; i < group.getChildCount(); i++) {
-                applyThemeRecursive(group.getChildAt(i), accent);
-            }
+            return true;
+        } finally {
+            rebuildingAppearance = false;
         }
     }
 
@@ -1292,7 +1290,8 @@ public class SettingsActivity extends Activity {
         e.setTextSize(14);
         e.setSingleLine(true);
         e.setPadding(UiKit.dp(this, 15), 0, UiKit.dp(this, 15), 0);
-        e.setBackground(UiKit.outlined(UiKit.SURFACE_2, Color.rgb(53,58,72), 15, this));
+        e.setBackground(UiKit.outlined(UiKit.SURFACE_2,
+                UiKit.withAlpha(UiKit.accent(this), 72), 15, this));
         if (secret) e.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         else e.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         e.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 52)));

@@ -19,6 +19,8 @@ import android.graphics.drawable.ClipDrawable;
 import android.graphics.drawable.LayerDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.TypedValue;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
@@ -40,6 +42,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.ArrayList;
+import java.util.List;
 import android.graphics.drawable.ColorDrawable;
 
 public final class UiKit {
@@ -59,6 +63,7 @@ public final class UiKit {
     private static final Map<TextView, FontPreview> FONT_PREVIEWS = new WeakHashMap<>();
     private static final Map<TextView, Boolean> TYPOGRAPHY_APPLIED = new WeakHashMap<>();
     private static final Map<View, Boolean> TYPOGRAPHY_WATCHED = new WeakHashMap<>();
+    private static final Map<AppearanceListener, Boolean> APPEARANCE_LISTENERS = new WeakHashMap<>();
 
     private UiKit() {}
 
@@ -69,6 +74,56 @@ public final class UiKit {
      */
     public static void syncTheme(Context c) {
         BG = c != null && Prefs.amoledMode(c) ? Color.BLACK : NORMAL_BG;
+    }
+
+    /** Shared signal used by active Orbit Settings surfaces after an appearance preference changes. */
+    public interface AppearanceListener {
+        void onOrbitAppearanceChanged();
+    }
+
+    public static String appearanceSignature(Context c) {
+        if (c == null) return "";
+        return Prefs.get(c).getString(Prefs.ACCENT, "dynamic") +
+                "|resolved=" + Integer.toHexString(accent(c)) +
+                "|amoled=" + Prefs.amoledMode(c) +
+                "|font=" + Prefs.appFont(c);
+    }
+
+    public static void registerAppearanceListener(AppearanceListener listener) {
+        if (listener == null) return;
+        synchronized (APPEARANCE_LISTENERS) {
+            APPEARANCE_LISTENERS.put(listener, true);
+        }
+    }
+
+    public static void unregisterAppearanceListener(AppearanceListener listener) {
+        if (listener == null) return;
+        synchronized (APPEARANCE_LISTENERS) {
+            APPEARANCE_LISTENERS.remove(listener);
+        }
+    }
+
+    public static void notifyAppearanceChanged(Context c) {
+        syncTheme(c);
+        List<AppearanceListener> listeners;
+        synchronized (APPEARANCE_LISTENERS) {
+            listeners = new ArrayList<>(APPEARANCE_LISTENERS.keySet());
+        }
+        Runnable notify = () -> {
+            for (AppearanceListener listener : listeners) {
+                if (listener != null) listener.onOrbitAppearanceChanged();
+            }
+        };
+        // Post so popup-menu selection and checkbox callbacks can finish cleanly
+        // before an active Settings surface replaces its view hierarchy.
+        new Handler(Looper.getMainLooper()).post(notify);
+    }
+
+    /** Current-accent tint for Orbit-owned checkbox/radio controls. */
+    public static ColorStateList accentControlTint(Context c) {
+        return new ColorStateList(
+                new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
+                new int[]{accent(c), Color.rgb(90, 94, 105)});
     }
 
     private static volatile Typeface SYSTEM_LIGHT_BASE;

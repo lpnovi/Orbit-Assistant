@@ -9,6 +9,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -42,7 +43,7 @@ public final class UpdateActivity extends Activity {
         setContentView(content);
         UiKit.applyActivityInsets(this, content, true);
         OrbitUpdateWorker.schedule(this);
-        OrbitUpdater.cleanupAbandonedDownloads(this, null);
+        OrbitUpdater.reconcilePendingInstall(this);
 
         availableRelease = OrbitUpdater.loadCachedAvailable(this);
         if (availableRelease != null) showAvailableState(availableRelease, false);
@@ -146,6 +147,23 @@ public final class UpdateActivity extends Activity {
         action = primaryButton("Check for updates");
         card.addView(action, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48)));
+
+        CheckBox updateNotifications = new CheckBox(this);
+        updateNotifications.setText("Update notifications");
+        updateNotifications.setTextColor(UiKit.TEXT);
+        updateNotifications.setTextSize(14);
+        updateNotifications.setButtonTintList(UiKit.accentControlTint(this));
+        updateNotifications.setChecked(Prefs.updateNotifications(this));
+        updateNotifications.setPadding(0, UiKit.dp(this, 14), 0, 0);
+        updateNotifications.setOnCheckedChangeListener((button, checked) -> {
+            Prefs.get(this).edit().putBoolean(Prefs.UPDATE_NOTIFICATIONS, checked).apply();
+            if (!checked) OrbitUpdateNotifier.cancel(this);
+        });
+        card.addView(updateNotifications);
+        TextView updateNotificationDescription = UiKit.text(this,
+                "Notify me when a new Orbit version is available", 12, UiKit.MUTED, false);
+        updateNotificationDescription.setPadding(UiKit.dp(this, 4), 0, 0, 0);
+        card.addView(updateNotificationDescription);
         page.addView(card);
 
         TextView privacy = UiKit.text(this,
@@ -337,7 +355,7 @@ public final class UpdateActivity extends Activity {
                         status.setText("Ready to install");
                         status.setTextColor(UiKit.SUCCESS);
                         setAction("Install update", UpdateActivity.this::attemptInstall, true);
-                        OrbitUpdater.launchPackageInstaller(UpdateActivity.this, apk);
+                        OrbitUpdater.launchPackageInstaller(UpdateActivity.this, apk, release);
                     } catch (Exception e) {
                         status.setText("Android could not open the package installer.");
                         status.setTextColor(Color.rgb(239, 105, 105));

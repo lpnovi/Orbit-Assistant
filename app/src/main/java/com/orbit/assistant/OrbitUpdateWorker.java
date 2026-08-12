@@ -43,6 +43,7 @@ public final class OrbitUpdateWorker extends Worker {
         try {
             OrbitUpdater.CheckResult result = OrbitUpdater.checkNow(context);
             if (result.updateAvailable && result.release != null &&
+                    Prefs.updateNotifications(context) &&
                     !OrbitUpdater.wasNotified(context, result.release.versionCode) &&
                     OrbitUpdateNotifier.show(context, result.release)) {
                 OrbitUpdater.markNotified(context, result.release.versionCode);

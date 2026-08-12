@@ -45,6 +45,7 @@ public final class Prefs {
     public static final String AMOLED_MODE = "amoled_mode";
     public static final String APP_FONT = "app_font";
     public static final String QUICK_SETTINGS_ROUTINE_ID = "quick_settings_routine_id";
+    public static final String UPDATE_NOTIFICATIONS = "update_notifications";
 
     public static final String PROVIDER_CHATGPT = "chatgpt";
     public static final String PROVIDER_RELAY = "relay";
@@ -66,7 +67,7 @@ public final class Prefs {
             HISTORY_ENABLED, SAVE_SCREEN_THUMBNAILS, KEYBOARD_AWARE_ASSISTANT,
             LELO_MODE, BACKGROUND_NOTIFICATIONS, WEATHER_USE_DEVICE_LOCATION,
             MEMORY_ENABLED, MEMORY_USAGE_INDICATOR, MEMORY_SUGGESTIONS,
-            NOTIFICATION_AI_ENABLED, AMOLED_MODE));
+            NOTIFICATION_AI_ENABLED, AMOLED_MODE, UPDATE_NOTIFICATIONS));
     private static final Set<String> BACKUP_INTEGER_KEYS = new HashSet<>(
             Arrays.asList(NOTIFICATION_RETENTION_DAYS));
 
@@ -150,6 +151,7 @@ public final class Prefs {
     public static int notificationRetentionDays(Context c) { return Math.max(1, Math.min(30, get(c).getInt(NOTIFICATION_RETENTION_DAYS, 7))); }
     public static boolean amoledMode(Context c) { return get(c).getBoolean(AMOLED_MODE, false); }
     public static String appFont(Context c) { return get(c).getString(APP_FONT, "orbit_default"); }
+    public static boolean updateNotifications(Context c) { return get(c).getBoolean(UPDATE_NOTIFICATIONS, true); }
     public static String quickSettingsRoutineId(Context c) {
         return get(c).getString(QUICK_SETTINGS_ROUTINE_ID, "").trim();
     }
