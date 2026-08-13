@@ -2,10 +2,13 @@ package com.orbit.assistant;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.util.Log;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
@@ -15,9 +18,11 @@ import java.util.Map;
 
 /** Private storage for validated declarative extension manifests and enabled state. */
 public final class OrbitExtensionStore {
+    private static final String LOG_TAG = "OrbitExtensions";
     private static final String FILE = "orbit_extensions";
     private static final String KEY = "installed_v1";
     public static final int MAX_EXTENSIONS = 25;
+    private static final int MAX_STORE_BYTES = 2 * 1024 * 1024;
 
     public static final class Installed {
         public final OrbitExtension extension;
@@ -44,6 +49,29 @@ public final class OrbitExtensionStore {
         }
     }
 
+    /** One manager row. Invalid rows retain only an opaque removal token. */
+    static final class ManagerEntry {
+        final Installed installed;
+        final String removalToken;
+
+        private ManagerEntry(Installed installed, String removalToken) {
+            this.installed = installed;
+            this.removalToken = removalToken;
+        }
+
+        boolean isUnavailable() { return installed == null; }
+    }
+
+    static final class ManagerSnapshot {
+        final List<ManagerEntry> entries;
+        final String unreadableStoreToken;
+
+        private ManagerSnapshot(List<ManagerEntry> entries, String unreadableStoreToken) {
+            this.entries = Collections.unmodifiableList(entries);
+            this.unreadableStoreToken = unreadableStoreToken;
+        }
+    }
+
     private OrbitExtensionStore() {}
 
     private static SharedPreferences prefs(Context context) {
@@ -53,24 +81,50 @@ public final class OrbitExtensionStore {
     public static synchronized List<Installed> list(Context context) {
         if (context == null) return Collections.emptyList();
         List<Installed> out = new ArrayList<>();
-        try {
-            JSONArray array = new JSONArray(prefs(context).getString(KEY, "[]"));
-            for (int i = 0; i < array.length() && out.size() < MAX_EXTENSIONS; i++) {
-                JSONObject item = array.optJSONObject(i);
-                JSONObject manifest = item == null ? null : item.optJSONObject("manifest");
-                if (manifest == null) continue;
-                try {
-                    OrbitExtension extension = OrbitExtension.parse(manifest);
-                    JSONObject configuration = OrbitExtensionV2.validateAndNormalizeConfiguration(
-                            extension, item.optJSONObject("configuration"));
-                    out.add(new Installed(extension, item.optBoolean("enabled", true),
-                            item.optLong("installedAt", 0L), configuration));
-                } catch (Exception ignored) {
-                    // Damaged private entries remain inert rather than becoming executable.
-                }
-            }
-        } catch (Exception ignored) {}
+        for (ManagerEntry entry : managerSnapshot(context).entries)
+            if (entry.installed != null) out.add(entry.installed);
         return out;
+    }
+
+    static synchronized ManagerSnapshot managerSnapshot(Context context) {
+        List<ManagerEntry> entries = new ArrayList<>();
+        if (context == null) return new ManagerSnapshot(entries, null);
+        final Object stored;
+        try { stored = prefs(context).getAll().get(KEY); }
+        catch (RuntimeException error) {
+            logFailure("store_read", error);
+            return new ManagerSnapshot(entries, fingerprint("root:unreadable"));
+        }
+        if (stored == null) return new ManagerSnapshot(entries, null);
+        if (!(stored instanceof String)) {
+            logFailure("store_type", new IllegalStateException(stored.getClass().getSimpleName()));
+            return new ManagerSnapshot(entries, fingerprint("root:" + stored.getClass().getName()));
+        }
+        String raw = (String) stored;
+        if (raw.getBytes(StandardCharsets.UTF_8).length > MAX_STORE_BYTES)
+            return new ManagerSnapshot(entries, fingerprint("root:" + raw));
+        final JSONArray array;
+        try { array = new JSONArray(raw); }
+        catch (Exception error) {
+            logFailure("store_json", error);
+            return new ManagerSnapshot(entries, fingerprint("root:" + raw));
+        }
+        // Render at most the supported capacity plus one explicit overflow row.
+        // A stale oversized store therefore cannot create an unbounded view tree.
+        for (int i = 0; i < array.length() && entries.size() <= MAX_EXTENSIONS; i++) {
+            JSONObject item = array.optJSONObject(i);
+            String token = fingerprint(i + ":" + String.valueOf(array.opt(i)));
+            if (entries.size() >= MAX_EXTENSIONS) {
+                entries.add(new ManagerEntry(null, token));
+                break;
+            }
+            try { entries.add(new ManagerEntry(parseInstalled(item), null)); }
+            catch (Exception error) {
+                logFailure("entry_parse", error);
+                entries.add(new ManagerEntry(null, token));
+            }
+        }
+        return new ManagerSnapshot(entries, null);
     }
 
     public static synchronized Installed find(Context context, String extensionId) {
@@ -127,56 +181,101 @@ public final class OrbitExtensionStore {
     }
 
     public static synchronized boolean install(Context context, OrbitExtension extension) {
-        if (context == null || extension == null || find(context, extension.id) != null) return false;
-        List<Installed> current = new ArrayList<>(list(context));
-        if (current.size() >= MAX_EXTENSIONS) return false;
-        current.add(new Installed(extension, true, System.currentTimeMillis(), new JSONObject()));
-        return write(context, current);
+        if (context == null || extension == null) return false;
+        JSONArray current = storedArray(context);
+        if (current == null || current.length() >= MAX_EXTENSIONS) return false;
+        for (int i = 0; i < current.length(); i++) {
+            JSONObject item = current.optJSONObject(i);
+            JSONObject manifest = item == null ? null : item.optJSONObject("manifest");
+            if (manifest != null && extension.id.equals(manifest.optString("id", ""))) return false;
+        }
+        try {
+            current.put(new JSONObject()
+                    .put("manifest", extension.toJson())
+                    .put("configuration", new JSONObject())
+                    .put("enabled", true)
+                    .put("installedAt", System.currentTimeMillis()));
+            return commitArray(context, current);
+        } catch (Exception ignored) { return false; }
     }
 
     public static synchronized boolean setEnabled(Context context, String extensionId, boolean enabled) {
-        List<Installed> current = new ArrayList<>(list(context));
-        boolean changed = false;
-        for (int i = 0; i < current.size(); i++) {
-            Installed item = current.get(i);
-            if (!item.extension.id.equals(extensionId)) continue;
-            current.set(i, new Installed(item.extension, enabled, item.installedAt,
-                    item.configuration));
-            changed = item.enabled != enabled;
-            break;
+        JSONArray current = storedArray(context);
+        if (current == null) return false;
+        for (int i = 0; i < current.length(); i++) {
+            JSONObject raw = current.optJSONObject(i);
+            try {
+                Installed item = parseInstalled(raw);
+                if (!item.extension.id.equals(extensionId)) continue;
+                if (item.enabled == enabled) return false;
+                raw.put("enabled", enabled);
+                return commitArray(context, current);
+            } catch (Exception ignored) {}
         }
-        return changed && write(context, current);
+        return false;
     }
 
     public static synchronized boolean remove(Context context, String extensionId) {
-        List<Installed> current = new ArrayList<>(list(context));
-        boolean removed = false;
-        for (int i = current.size() - 1; i >= 0; i--) {
-            if (current.get(i).extension.id.equals(extensionId)) {
-                current.remove(i);
-                removed = true;
-            }
+        JSONArray current = storedArray(context);
+        if (current == null) return false;
+        int index = -1;
+        for (int i = 0; i < current.length(); i++) {
+            try {
+                if (parseInstalled(current.optJSONObject(i)).extension.id.equals(extensionId)) {
+                    index = i;
+                    break;
+                }
+            } catch (Exception ignored) {}
         }
-        if (!removed) return false;
+        if (index < 0) return false;
         // Clear credentials first. If secure removal fails, keep the extension installed
         // rather than allowing a later reinstall to silently inherit an old credential.
         if (!OrbitExtensionSecretStore.clearExtension(context, extensionId)) return false;
-        return write(context, current);
+        current.remove(index);
+        return commitArray(context, current);
+    }
+
+    static synchronized boolean removeUnavailable(Context context, String removalToken) {
+        if (context == null || removalToken == null || removalToken.isEmpty()) return false;
+        Object stored = prefs(context).getAll().get(KEY);
+        if (!(stored instanceof String)) {
+            String token = stored == null ? "" : fingerprint("root:" + stored.getClass().getName());
+            return removalToken.equals(token) && prefs(context).edit().remove(KEY).commit();
+        }
+        String rawStore = (String) stored;
+        if (removalToken.equals(fingerprint("root:" + rawStore)))
+            return prefs(context).edit().remove(KEY).commit();
+        JSONArray current = storedArray(context);
+        if (current == null) return false;
+        for (int i = 0; i < current.length(); i++) {
+            String token = fingerprint(i + ":" + String.valueOf(current.opt(i)));
+            if (!removalToken.equals(token)) continue;
+            try {
+                parseInstalled(current.optJSONObject(i));
+                return false;
+            } catch (Exception expectedUnavailable) {
+                current.remove(i);
+                return commitArray(context, current);
+            }
+        }
+        return false;
     }
 
     public static synchronized boolean setConfiguration(Context context, String extensionId,
                                                          JSONObject configuration) {
-        List<Installed> current = new ArrayList<>(list(context));
-        for (int i = 0; i < current.size(); i++) {
-            Installed item = current.get(i);
-            if (!item.extension.id.equals(extensionId)) continue;
+        JSONArray current = storedArray(context);
+        if (current == null) return false;
+        for (int i = 0; i < current.length(); i++) {
+            JSONObject raw = current.optJSONObject(i);
             try {
+                Installed item = parseInstalled(raw);
+                if (!item.extension.id.equals(extensionId)) continue;
                 JSONObject safe = OrbitExtensionV2.validateAndNormalizeConfiguration(
                         item.extension, configuration);
-                current.set(i, new Installed(item.extension, item.enabled, item.installedAt, safe));
-                return write(context, current);
+                raw.put("configuration", safe);
+                return commitArray(context, current);
             } catch (Exception ignored) {
-                return false;
+                // Keep scanning: a damaged entry must not shadow a later valid one.
             }
         }
         return false;
@@ -233,20 +332,51 @@ public final class OrbitExtensionStore {
         return false;
     }
 
-    private static boolean write(Context context, List<Installed> installed) {
-        JSONArray array = new JSONArray();
+    private static Installed parseInstalled(JSONObject item) {
+        if (item == null) throw new IllegalArgumentException("Missing extension entry.");
+        JSONObject manifest = item.optJSONObject("manifest");
+        if (manifest == null) throw new IllegalArgumentException("Missing extension manifest.");
+        if (item.has("configuration") && item.optJSONObject("configuration") == null)
+            throw new IllegalArgumentException("Invalid extension configuration.");
+        OrbitExtension extension = OrbitExtension.parse(manifest);
+        JSONObject configuration = OrbitExtensionV2.validateAndNormalizeConfiguration(
+                extension, item.optJSONObject("configuration"));
+        return new Installed(extension, item.optBoolean("enabled", true),
+                item.optLong("installedAt", 0L), configuration);
+    }
+
+    private static JSONArray storedArray(Context context) {
+        if (context == null) return null;
         try {
-            for (Installed item : installed) {
-                array.put(new JSONObject()
-                        .put("manifest", item.extension.toJson())
-                        .put("configuration", item.configuration)
-                        .put("enabled", item.enabled)
-                        .put("installedAt", item.installedAt));
-            }
-            return prefs(context).edit().putString(KEY, array.toString()).commit();
-        } catch (Exception ignored) {
-            return false;
-        }
+            Object stored = prefs(context).getAll().get(KEY);
+            if (stored == null) return new JSONArray();
+            if (!(stored instanceof String)) return null;
+            String raw = (String) stored;
+            if (raw.getBytes(StandardCharsets.UTF_8).length > MAX_STORE_BYTES) return null;
+            return new JSONArray(raw);
+        } catch (Exception ignored) { return null; }
+    }
+
+    private static boolean commitArray(Context context, JSONArray array) {
+        if (context == null || array == null) return false;
+        String raw = array.toString();
+        if (raw.getBytes(StandardCharsets.UTF_8).length > MAX_STORE_BYTES) return false;
+        return prefs(context).edit().putString(KEY, raw).commit();
+    }
+
+    private static String fingerprint(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder out = new StringBuilder(digest.length * 2);
+            for (byte b : digest) out.append(String.format(java.util.Locale.US, "%02x", b & 0xff));
+            return out.toString();
+        } catch (Exception ignored) { return Integer.toHexString(value.hashCode()); }
+    }
+
+    private static void logFailure(String stage, Exception error) {
+        Log.w(LOG_TAG, "stage=" + stage + " error=" +
+                (error == null ? "unknown" : error.getClass().getSimpleName()));
     }
 
     private static JSONObject copy(JSONObject source) {
