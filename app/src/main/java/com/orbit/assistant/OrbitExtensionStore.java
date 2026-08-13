@@ -53,10 +53,12 @@ public final class OrbitExtensionStore {
     static final class ManagerEntry {
         final Installed installed;
         final String removalToken;
+        final String displayId;
 
-        private ManagerEntry(Installed installed, String removalToken) {
+        private ManagerEntry(Installed installed, String removalToken, String displayId) {
             this.installed = installed;
             this.removalToken = removalToken;
+            this.displayId = displayId;
         }
 
         boolean isUnavailable() { return installed == null; }
@@ -87,6 +89,11 @@ public final class OrbitExtensionStore {
     }
 
     static synchronized ManagerSnapshot managerSnapshot(Context context) {
+        return managerSnapshot(context, true);
+    }
+
+    /** Stable-shell reads can deliberately omit v2 before its parser is initialized. */
+    static synchronized ManagerSnapshot managerSnapshot(Context context, boolean includeV2) {
         List<ManagerEntry> entries = new ArrayList<>();
         if (context == null) return new ManagerSnapshot(entries, null);
         final Object stored;
@@ -113,15 +120,21 @@ public final class OrbitExtensionStore {
         // A stale oversized store therefore cannot create an unbounded view tree.
         for (int i = 0; i < array.length() && entries.size() <= MAX_EXTENSIONS; i++) {
             JSONObject item = array.optJSONObject(i);
+            JSONObject manifest = item == null ? null : item.optJSONObject("manifest");
+            if (!includeV2 && manifest != null &&
+                    manifest.optInt("schemaVersion", -1) != OrbitExtension.SCHEMA_VERSION) continue;
             String token = fingerprint(i + ":" + String.valueOf(array.opt(i)));
             if (entries.size() >= MAX_EXTENSIONS) {
-                entries.add(new ManagerEntry(null, token));
+                entries.add(new ManagerEntry(null, token, safeStoredId(item)));
                 break;
             }
-            try { entries.add(new ManagerEntry(parseInstalled(item), null)); }
-            catch (Exception error) {
+            try {
+                Installed installed = parseInstalled(item);
+                entries.add(new ManagerEntry(installed, null, installed.extension.id));
+            }
+            catch (Exception | LinkageError error) {
                 logFailure("entry_parse", error);
-                entries.add(new ManagerEntry(null, token));
+                entries.add(new ManagerEntry(null, token, safeStoredId(item)));
             }
         }
         return new ManagerSnapshot(entries, null);
@@ -339,8 +352,10 @@ public final class OrbitExtensionStore {
         if (item.has("configuration") && item.optJSONObject("configuration") == null)
             throw new IllegalArgumentException("Invalid extension configuration.");
         OrbitExtension extension = OrbitExtension.parse(manifest);
-        JSONObject configuration = OrbitExtensionV2.validateAndNormalizeConfiguration(
-                extension, item.optJSONObject("configuration"));
+        JSONObject configuration = extension.schemaVersion == OrbitExtension.SCHEMA_VERSION_V2
+                ? OrbitExtensionV2.validateAndNormalizeConfiguration(
+                        extension, item.optJSONObject("configuration"))
+                : new JSONObject();
         return new Installed(extension, item.optBoolean("enabled", true),
                 item.optLong("installedAt", 0L), configuration);
     }
@@ -374,7 +389,15 @@ public final class OrbitExtensionStore {
         } catch (Exception ignored) { return Integer.toHexString(value.hashCode()); }
     }
 
-    private static void logFailure(String stage, Exception error) {
+    private static String safeStoredId(JSONObject item) {
+        JSONObject manifest = item == null ? null : item.optJSONObject("manifest");
+        Object raw = manifest == null ? null : manifest.opt("id");
+        if (!(raw instanceof String)) return "";
+        String id = (String) raw;
+        return id.matches("[a-z0-9][a-z0-9._-]{2,79}") ? id : "";
+    }
+
+    private static void logFailure(String stage, Throwable error) {
         Log.w(LOG_TAG, "stage=" + stage + " error=" +
                 (error == null ? "unknown" : error.getClass().getSimpleName()));
     }

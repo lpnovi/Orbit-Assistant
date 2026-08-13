@@ -27,7 +27,7 @@ final class OrbitExtensionV2 {
     private static final Pattern ID = Pattern.compile("[a-z0-9][a-z0-9_-]{1,63}");
     private static final Pattern HEADER_NAME = Pattern.compile("[!#$%&'*+.^_`|~0-9A-Za-z-]{1,64}");
     private static final Pattern PLACEHOLDER = Pattern.compile(
-            "\\{\\{(config|param)\\.([a-z0-9][a-z0-9_-]{1,63})}}" );
+            "\\{\\{(config|param)\\.([a-z0-9][a-z0-9_-]{1,63})\\}\\}" );
     private static final Set<String> BLOCKED_HEADERS = set(
             "host", "content-length", "cookie", "proxy-authorization", "proxy-authenticate",
             "connection", "transfer-encoding", "upgrade", "te", "trailer");

@@ -2,6 +2,9 @@ package com.orbit.assistant;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.database.Cursor;
@@ -61,7 +64,14 @@ public final class ExtensionsActivity extends Activity {
         Window window = getWindow();
         window.setStatusBarColor(UiKit.BG);
         window.setNavigationBarColor(UiKit.BG);
-        rebuild();
+        // Re-establish the v0.7.0.2 manager shell before any v2 parser or
+        // secure-configuration code can participate in Activity startup.
+        try {
+            renderContent(false, -1);
+            window.getDecorView().post(() -> renderFullContent(-1));
+        } catch (RuntimeException | LinkageError error) {
+            showRecovery(error);
+        }
     }
 
     @Override protected void onResume() {
@@ -75,15 +85,24 @@ public final class ExtensionsActivity extends Activity {
     }
 
     private void rebuild() {
-        rebuildAt(-1);
+        renderFullContent(-1);
     }
 
     private void rebuildPreservingPosition() {
-        rebuildAt(activeScroll == null ? 0 : activeScroll.getScrollY());
+        renderFullContent(activeScroll == null ? 0 : activeScroll.getScrollY());
     }
 
-    private void rebuildAt(int requestedScrollY) {
-        View content = buildContent();
+    private void renderFullContent(int requestedScrollY) {
+        try {
+            renderContent(true, requestedScrollY);
+        } catch (RuntimeException | LinkageError error) {
+            logFailure("screen_render", error);
+            showRecovery(error);
+        }
+    }
+
+    private void renderContent(boolean includeV2, int requestedScrollY) {
+        View content = buildContent(includeV2);
         setContentView(content);
         UiKit.applyActivityInsets(this, content, true);
         if (requestedScrollY >= 0 && activeScroll != null) {
@@ -101,7 +120,7 @@ public final class ExtensionsActivity extends Activity {
         }
     }
 
-    private View buildContent() {
+    private View buildContent(boolean includeV2) {
         ScrollView scroll = new ScrollView(this);
         activeScroll = scroll;
         scroll.setFillViewport(true);
@@ -145,13 +164,18 @@ public final class ExtensionsActivity extends Activity {
         introLp.setMargins(UiKit.dp(this, 2), UiKit.dp(this, 17), UiKit.dp(this, 2), UiKit.dp(this, 14));
         page.addView(intro, introLp);
 
+        OrbitExtensionStore.ManagerSnapshot snapshot =
+                OrbitExtensionStore.managerSnapshot(this, includeV2);
+
         page.addView(sectionHeading("FIRST-PARTY EXTENSIONS"));
-        List<OrbitExtension> firstParty = loadFirstPartyExtensions();
+        List<OrbitExtension> firstParty = loadFirstPartyExtensions(includeV2);
         for (int i = 0; i < firstParty.size(); i++) {
             LinearLayout.LayoutParams lp = cardSpacing(i > 0);
             try {
-                page.addView(firstPartyCard(firstParty.get(i)), lp);
-            } catch (RuntimeException e) {
+                OrbitExtension extension = firstParty.get(i);
+                page.addView(firstPartyCard(extension,
+                        findInstalled(snapshot, extension.id)), lp);
+            } catch (RuntimeException | LinkageError e) {
                 bundledLoadFailures++;
                 logFailure("first_party_card", e);
             }
@@ -184,7 +208,6 @@ public final class ExtensionsActivity extends Activity {
 
         page.addView(sectionHeading("INSTALLED EXTENSIONS"));
 
-        OrbitExtensionStore.ManagerSnapshot snapshot = OrbitExtensionStore.managerSnapshot(this);
         if (snapshot.entries.isEmpty() && snapshot.unreadableStoreToken == null) {
             LinearLayout empty = card();
             empty.addView(UiKit.text(this, "No extensions installed", 16, UiKit.TEXT, true));
@@ -201,22 +224,25 @@ public final class ExtensionsActivity extends Activity {
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                 if (rendered++ > 0) lp.topMargin = UiKit.dp(this, 10);
                 if (entry.isUnavailable()) {
-                    page.addView(unavailableExtensionCard(entry.removalToken, false), lp);
+                    page.addView(unavailableExtensionCard(
+                            entry.removalToken, false, entry.displayId), lp);
                     continue;
                 }
                 try {
                     page.addView(extensionCard(entry.installed), lp);
-                } catch (RuntimeException e) {
+                } catch (RuntimeException | LinkageError e) {
                     logFailure("installed_card", e);
                     page.addView(unavailableExtensionCard(
-                            entry.installed.extension.id, true), lp);
+                            entry.installed.extension.id, true,
+                            entry.installed.extension.id), lp);
                 }
             }
             if (snapshot.unreadableStoreToken != null) {
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                 if (rendered > 0) lp.topMargin = UiKit.dp(this, 10);
-                page.addView(unavailableExtensionCard(snapshot.unreadableStoreToken, false), lp);
+                page.addView(unavailableExtensionCard(
+                        snapshot.unreadableStoreToken, false, ""), lp);
             }
         }
 
@@ -232,7 +258,7 @@ public final class ExtensionsActivity extends Activity {
 
     private LinearLayout extensionCard(OrbitExtensionStore.Installed installed) {
         OrbitExtension extension = installed.extension;
-        boolean configured = isConfiguredSafely(installed);
+        boolean requiresSetup = !extension.setupFields.isEmpty();
         LinearLayout card = card();
 
         LinearLayout top = new LinearLayout(this);
@@ -243,9 +269,10 @@ public final class ExtensionsActivity extends Activity {
         copy.addView(UiKit.text(this,
                 "v" + extension.version + " · " + extension.author, 12, UiKit.MUTED, false));
         top.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        String stateText = !configured ? "NEEDS SETUP" : installed.enabled ? "ENABLED" : "DISABLED";
+        String stateText = !installed.enabled ? "DISABLED" :
+                requiresSetup ? "NEEDS SETUP" : "ENABLED";
         TextView state = UiKit.text(this, stateText, 11,
-                configured && !installed.enabled ? UiKit.MUTED : UiKit.accent(this), true);
+                installed.enabled ? UiKit.accent(this) : UiKit.MUTED, true);
         state.setLetterSpacing(0.08f);
         top.addView(state);
         card.addView(top);
@@ -262,9 +289,9 @@ public final class ExtensionsActivity extends Activity {
             card.addView(actionView);
         }
 
-        if (!extension.setupFields.isEmpty()) {
-            Button configure = configured ? secondaryButton("Configure") : primaryButton("Set up");
-            configure.setContentDescription((configured ? "Configure " : "Set up ") + extension.name);
+        if (requiresSetup) {
+            Button configure = secondaryButton("Set up / Configure");
+            configure.setContentDescription("Set up or configure " + extension.name);
             configure.setOnClickListener(v -> showConfiguration(installed));
             LinearLayout.LayoutParams configureLp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44));
@@ -293,9 +320,9 @@ public final class ExtensionsActivity extends Activity {
         return card;
     }
 
-    private LinearLayout firstPartyCard(OrbitExtension extension) {
-        OrbitExtensionStore.Installed installed = OrbitExtensionStore.find(this, extension.id);
-        boolean configured = installed == null || isConfiguredSafely(installed);
+    private LinearLayout firstPartyCard(OrbitExtension extension,
+                                        OrbitExtensionStore.Installed installed) {
+        boolean requiresSetup = !extension.setupFields.isEmpty();
         LinearLayout card = card();
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
@@ -306,7 +333,7 @@ public final class ExtensionsActivity extends Activity {
                 "v" + extension.version + " · " + extension.author, 12, UiKit.MUTED, false));
         top.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         String stateText = installed == null ? "NOT INSTALLED" :
-                configured ? "INSTALLED" : "NEEDS SETUP";
+                !installed.enabled ? "DISABLED" : requiresSetup ? "NEEDS SETUP" : "INSTALLED";
         TextView state = UiKit.text(this, stateText, 10,
                 installed == null ? UiKit.MUTED : UiKit.accent(this), true);
         state.setLetterSpacing(0.07f);
@@ -324,10 +351,10 @@ public final class ExtensionsActivity extends Activity {
             action.setContentDescription("Review and install " + extension.name);
             action.setOnClickListener(v -> showInstallReview(extension));
         } else {
-            action = installedButton(!configured ? "Installed · Needs setup" :
-                    installed.enabled ? "Installed · Enabled" : "Installed · Disabled");
+            action = installedButton(!installed.enabled ? "Installed · Disabled" :
+                    requiresSetup ? "Installed · Needs setup" : "Installed · Enabled");
             action.setContentDescription(extension.name + " is installed and " +
-                    (!configured ? "needs setup" : installed.enabled ? "enabled" : "disabled"));
+                    (!installed.enabled ? "disabled" : requiresSetup ? "needs setup" : "enabled"));
         }
         card.addView(action, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44)));
@@ -648,7 +675,8 @@ public final class ExtensionsActivity extends Activity {
         dialog.show();
     }
 
-    private LinearLayout unavailableExtensionCard(String removalKey, boolean validExtension) {
+    private LinearLayout unavailableExtensionCard(String removalKey, boolean validExtension,
+                                                   String displayId) {
         LinearLayout card = card();
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
@@ -666,6 +694,12 @@ public final class ExtensionsActivity extends Activity {
         guidance.setLineSpacing(0, 1.12f);
         guidance.setPadding(0, UiKit.dp(this, 8), 0, UiKit.dp(this, 12));
         card.addView(guidance);
+        if (displayId != null && !displayId.isEmpty()) {
+            TextView id = UiKit.text(this, "Stored ID: " + displayId,
+                    11, UiKit.MUTED, false);
+            id.setPadding(0, 0, 0, UiKit.dp(this, 10));
+            card.addView(id);
+        }
         Button remove = destructiveButton("Remove");
         remove.setContentDescription("Remove unavailable extension");
         remove.setOnClickListener(v -> confirmRemoveUnavailable(removalKey, validExtension));
@@ -693,15 +727,97 @@ public final class ExtensionsActivity extends Activity {
 
     private boolean isConfiguredSafely(OrbitExtensionStore.Installed installed) {
         try { return OrbitExtensionStore.isConfigured(this, installed); }
-        catch (RuntimeException e) {
+        catch (RuntimeException | LinkageError e) {
             logFailure("configuration_state", e);
             return false;
         }
     }
 
-    private void logFailure(String stage, RuntimeException error) {
+    private void logFailure(String stage, Throwable error) {
         Log.w(LOG_TAG, "stage=" + stage + " error=" +
                 (error == null ? "unknown" : error.getClass().getSimpleName()));
+    }
+
+    private OrbitExtensionStore.Installed findInstalled(
+            OrbitExtensionStore.ManagerSnapshot snapshot, String extensionId) {
+        if (snapshot == null || extensionId == null) return null;
+        for (OrbitExtensionStore.ManagerEntry entry : snapshot.entries) {
+            if (entry.installed != null &&
+                    extensionId.equals(entry.installed.extension.id)) return entry.installed;
+        }
+        return null;
+    }
+
+    private void showRecovery(Throwable error) {
+        final String diagnostic = safeDiagnostic(error);
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setGravity(Gravity.CENTER_VERTICAL);
+        page.setBackgroundColor(UiKit.BG);
+        page.setPadding(UiKit.dp(this, 28), UiKit.dp(this, 40),
+                UiKit.dp(this, 28), UiKit.dp(this, 40));
+
+        page.addView(UiKit.text(this, "Extensions couldn't load", 24, UiKit.TEXT, true));
+        TextView message = UiKit.text(this,
+                "Orbit encountered a problem loading Extensions. Your extensions and Routines have not been deleted.",
+                14, UiKit.MUTED, false);
+        message.setLineSpacing(0, 1.15f);
+        message.setPadding(0, UiKit.dp(this, 12), 0, UiKit.dp(this, 22));
+        page.addView(message);
+
+        Button retry = primaryButton("Retry");
+        retry.setOnClickListener(v -> {
+            try {
+                renderContent(false, -1);
+                getWindow().getDecorView().post(() -> renderFullContent(-1));
+            } catch (RuntimeException | LinkageError retryError) {
+                logFailure("recovery_retry", retryError);
+                showRecovery(retryError);
+            }
+        });
+        page.addView(retry, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 46)));
+
+        Button back = secondaryButton("Back");
+        back.setOnClickListener(v -> finish());
+        LinearLayout.LayoutParams backLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 46));
+        backLp.topMargin = UiKit.dp(this, 9);
+        page.addView(back, backLp);
+
+        Button copy = secondaryButton("Copy diagnostic details");
+        copy.setOnClickListener(v -> {
+            ClipboardManager clipboard = (ClipboardManager)
+                    getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard != null) clipboard.setPrimaryClip(
+                    ClipData.newPlainText("Orbit Extensions diagnostic", diagnostic));
+            Toast.makeText(this, "Diagnostic details copied", Toast.LENGTH_SHORT).show();
+        });
+        LinearLayout.LayoutParams copyLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 46));
+        copyLp.topMargin = UiKit.dp(this, 9);
+        page.addView(copy, copyLp);
+
+        UiKit.applyTypography(page);
+        setContentView(page);
+        UiKit.applyActivityInsets(this, page, true);
+    }
+
+    private String safeDiagnostic(Throwable error) {
+        String type = error == null ? "Unknown" : error.getClass().getName();
+        String location = "unavailable";
+        if (error != null) {
+            for (StackTraceElement frame : error.getStackTrace()) {
+                if (frame.getClassName().startsWith("com.orbit.assistant")) {
+                    location = frame.getClassName() + "." + frame.getMethodName() +
+                            ":" + frame.getLineNumber();
+                    break;
+                }
+            }
+        }
+        return "Orbit " + BuildConfig.VERSION_NAME + "\n" +
+                "Exception: " + type + "\n" +
+                "Location: " + location;
     }
 
     private void showError(String message) {
@@ -720,15 +836,17 @@ public final class ExtensionsActivity extends Activity {
         }
     }
 
-    private List<OrbitExtension> loadFirstPartyExtensions() {
+    private List<OrbitExtension> loadFirstPartyExtensions(boolean includeV2) {
         List<OrbitExtension> out = new ArrayList<>();
         bundledLoadFailures = 0;
-        for (String assetName : FIRST_PARTY_ASSETS) {
+        int count = includeV2 ? FIRST_PARTY_ASSETS.length : 3;
+        for (int i = 0; i < count; i++) {
+            String assetName = FIRST_PARTY_ASSETS[i];
             try (InputStream input = getAssets().open(FIRST_PARTY_ASSET_DIR + assetName)) {
                 // First-party packages use the exact same size limit and untrusted
                 // OrbitExtension parser as files selected through Android SAF.
                 out.add(OrbitExtension.parse(readManifest(input)));
-            } catch (Exception error) {
+            } catch (Exception | LinkageError error) {
                 // A damaged bundled manifest must remain unavailable, never privileged.
                 bundledLoadFailures++;
                 Log.w(LOG_TAG, "stage=first_party_manifest asset=" + assetName +

@@ -32,8 +32,9 @@ android {
         applicationId 'com.orbit.assistant'
         minSdk 29
         targetSdk 35
-        versionCode 680
-        versionName "0.7.1.1"
+        versionCode 681
+        versionName "0.7.1.2"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -88,4 +89,7 @@ dependencies {
     implementation "com.tom-roush:pdfbox-android:2.0.27.0"
     testImplementation "junit:junit:4.13.2"
     testImplementation "org.robolectric:robolectric:4.16"
+    androidTestImplementation "androidx.test:core:1.6.1"
+    androidTestImplementation "androidx.test.ext:junit:1.2.1"
+    androidTestImplementation "androidx.test:runner:1.6.2"
 }
