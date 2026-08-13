@@ -102,6 +102,23 @@ public final class ExtensionsActivity extends Activity {
         page.addView(install, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 50)));
 
+        LinearLayout examples = card();
+        examples.addView(UiKit.text(this, "First-party examples", 16, UiKit.TEXT, true));
+        TextView examplesNote = UiKit.text(this,
+                "Orbit publishes three ordinary v1 reference manifests in the public repository. They are never installed automatically; download one, select it above, review every action and confirm Install.",
+                12, UiKit.MUTED, false);
+        examplesNote.setLineSpacing(0, 1.12f);
+        examplesNote.setPadding(0, UiKit.dp(this, 5), 0, UiKit.dp(this, 11));
+        examples.addView(examplesNote);
+        Button browseExamples = secondaryButton("View first-party examples");
+        browseExamples.setOnClickListener(v -> showFirstPartyExamples());
+        examples.addView(browseExamples, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44)));
+        LinearLayout.LayoutParams examplesLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        examplesLp.topMargin = UiKit.dp(this, 12);
+        page.addView(examples, examplesLp);
+
         TextView heading = UiKit.text(this, "INSTALLED EXTENSIONS", 12, UiKit.MUTED, true);
         heading.setLetterSpacing(0.13f);
         LinearLayout.LayoutParams headingLp = new LinearLayout.LayoutParams(
@@ -192,6 +209,32 @@ public final class ExtensionsActivity extends Activity {
         intent.putExtra(Intent.EXTRA_MIME_TYPES,
                 new String[]{"application/json", "application/octet-stream", "text/plain"});
         startActivityForResult(intent, REQ_IMPORT_EXTENSION);
+    }
+
+    private void showFirstPartyExamples() {
+        String message = "Orbit Web Tools\nOrbit releases, repository and issues\n\n" +
+                "Developer Tools\nAndroid and GitHub documentation plus a public HTTPS GET test\n\n" +
+                "Quick Links\nPublic search, maps and reference destinations\n\n" +
+                "These are reference .orbitext files, not a marketplace or bundled defaults.";
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("First-party examples")
+                .setMessage(message)
+                .setNegativeButton("Close", null)
+                .setPositiveButton("View repository files", (d, w) -> openExamplesRepository())
+                .create();
+        UiKit.styleOrbitDialog(dialog, this, false);
+        dialog.show();
+    }
+
+    private void openExamplesRepository() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(
+                    "https://github.com/lpnovi/Orbit-Assistant/tree/main/examples/orbit-extensions"))
+                    .addCategory(Intent.CATEGORY_BROWSABLE);
+            startActivity(intent);
+        } catch (Exception ignored) {
+            Toast.makeText(this, "Orbit could not open the examples page.", Toast.LENGTH_SHORT).show();
+        }
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {

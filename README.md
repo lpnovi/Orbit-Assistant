@@ -15,7 +15,7 @@ Orbit is built for Android 10 and newer. Development is active, and releases are
 - **Inline response images:** Orbit can natively display a valid public HTTPS image source included in a response; it does not independently search for or invent image URLs.
 - **Local Android actions:** Control supported device settings and actions through Orbit's existing confirmation and capability checks.
 - **Routines and automation:** Build saved action chains with IF conditions, time and location triggers, Routine Templates, Custom Commands, and configurable Quick Settings tiles.
-- **Orbit Extensions:** Install explicitly reviewed declarative `.orbitext` packages that add safe Open URL and bounded HTTPS actions to Routines without loading arbitrary code or accessing Orbit personal data.
+- **Orbit Extensions:** Install explicitly reviewed declarative `.orbitext` packages that add safe Open URL and bounded HTTPS actions to Routines without loading arbitrary code or accessing Orbit personal data. First-party sample extensions are included in the repository.
 - **Home-screen widgets:** Open a ready-to-type chat, run one selected saved Routine, or configure a small set of safe Quick Actions directly from the launcher.
 - **Personal context:** Use Orbit Memory, local reminders, Saved Places, per-app behavior, and Notification Intelligence.
 - **Personalization:** Choose live Accent colors, conversation colors, app fonts, AMOLED surfaces, haptics, and other assistant preferences.

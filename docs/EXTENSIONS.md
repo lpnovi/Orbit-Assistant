@@ -57,7 +57,17 @@ Orbit sends only the fixed body declared in the installed manifest. It never add
 
 Installed manifests and enabled state stay in Orbit's private app storage and are included in Orbit Backup & Restore. Credentials and tokens are not supported or backed up. Disabling or removing an extension does not delete Routines; affected steps report **Extension action unavailable** until the matching extension/action is installed and enabled again.
 
-The repository sample is [`examples/orbit-extensions/example-web-tools.orbitext`](../examples/orbit-extensions/example-web-tools.orbitext). Copy it to the device and follow the installation steps above. It is not installed automatically and Orbit does not depend on it.
+The repository also retains a generic schema sample at [`examples/orbit-extensions/example-web-tools.orbitext`](../examples/orbit-extensions/example-web-tools.orbitext). Copy any manifest to the device and follow the installation steps above. Orbit does not install or depend on repository examples automatically.
+
+## First-party extensions
+
+Orbit publishes three ordinary Extensions v1 manifests for practical testing and as references:
+
+- **Orbit Web Tools** (`com.orbit.extensions.web-tools`) — opens Orbit's public Releases, repository, and Issues pages. File: [`orbit-web-tools.orbitext`](../examples/orbit-extensions/orbit-web-tools.orbitext).
+- **Developer Tools** (`com.orbit.extensions.developer-tools`) — opens official Android and GitHub Actions documentation and includes one bounded, unauthenticated HTTPS GET request to GitHub's public Zen endpoint. File: [`developer-tools.orbitext`](../examples/orbit-extensions/developer-tools.orbitext).
+- **Quick Links** (`com.orbit.extensions.quick-links`) — opens neutral public search, maps, and reference destinations. File: [`quick-links.orbitext`](../examples/orbit-extensions/quick-links.orbitext).
+
+These files are not bundled defaults, a marketplace, or executable plugins. Users must obtain a file, select it through Android's system file picker, review its actions and contacted endpoints, and explicitly confirm installation. They exercise the same parser, private storage, Routine catalog, Action Engine, enable/disable/remove behavior, and safe unavailable state as any manifest built from this schema. Authors can use the same format to create their own declarative extensions without adding arbitrary code or Orbit-data access.
 
 ## Routine integration
 
@@ -67,7 +77,7 @@ HTTPS actions can run headlessly from manual Routines, compatible widgets, the c
 
 ## Versioning and v1 limits
 
-- `schemaVersion` is the compatibility contract for the file format. Orbit v0.7.0.0 accepts schema version `1` only.
+- `schemaVersion` is the compatibility contract for the file format. Orbit v0.7.0.x accepts schema version `1` only.
 - Extension `version` is author-supplied display metadata. Updating an installed manifest is not supported in v1; remove it, review the replacement, and install again.
 - There is no arbitrary code, Java/Kotlin/JavaScript loading, shell access, APK execution, reflection, custom headers/authentication, secrets store, arbitrary Android intents, file access, or Orbit personal/context-data API.
 - Extension actions are intentionally available to saved Routines only in v1. They are not language-model tools or chat plugins.
