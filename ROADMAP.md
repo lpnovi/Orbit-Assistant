@@ -201,11 +201,24 @@
 - Share Android capability destination and location-automation progression logic with the full Capabilities dashboard
 - Refresh direct permission/access status automatically after returning to the persisted onboarding step
 
+## 0.6.7 Screen precision
+
+### 0.6.7.0
+- Add one shared native Screen Selection editor for the Side-button assistant and full chat
+- Support Crop creation, move, edge/corner resize, freehand Mark up, Undo, Reset, and combined final rendering from the immutable original screenshot
+- Preserve one-tap Use screen while adding Select/reselect and an in-editor full-screen fallback
+- Isolate selected-region visual context from text outside the user's chosen area
+- Keep temporary editor images app-private and reuse existing screenshot, attachment, history, provider, and request systems
+
 ### Planned 0.6.x
 - Home-screen widgets
-- Screen-region selection
+- Plugins and extensibility
 - Deeper Android automation
 - Richer chained plans with saved presets and more advanced branching
+- Natural-language Routine creation
+- Additional AI providers
+- Advanced Voice work
+- Local intelligence
 
 ## 1.0 direction
 - Reliable daily-driver overlay and chat experience

@@ -435,7 +435,7 @@ public final class OnboardingActivity extends Activity {
         LinearLayout context = capabilityCard(page, "CONTEXT");
         context.addView(capabilityToggle("Allow Orbit to read current-screen text",
                 Prefs.SCREEN_CONTEXT, Prefs.screenContext(this)));
-        context.addView(capabilityToggle("Allow Orbit to receive screenshots",
+        context.addView(capabilityToggle("Allow screenshots for visual context and screen selection",
                 Prefs.SCREENSHOT, Prefs.screenshot(this)));
         addCapability(context, "Notification intelligence",
                 "Understand notifications only when this access is enabled.",

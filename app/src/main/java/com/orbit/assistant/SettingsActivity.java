@@ -516,6 +516,11 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         voiceCard.addView(cameraPermission, cameraLp);
         voiceCard.addView(toggle("Allow Orbit to read current-screen text", Prefs.SCREEN_CONTEXT, true));
         voiceCard.addView(toggle("Allow Orbit to receive screenshots", Prefs.SCREENSHOT, true));
+        TextView screenshotNote = UiKit.text(this,
+                "Visual context, previews, and screen-region selection.",
+                12, UiKit.MUTED, false);
+        screenshotNote.setPadding(UiKit.dp(this, 4), 0, 0, UiKit.dp(this, 4));
+        voiceCard.addView(screenshotNote);
         voiceCard.addView(toggle("Attach current screen by default", Prefs.ATTACH_SCREEN_BY_DEFAULT, false));
         voiceCard.addView(toggle("Show contextual screen-action chips when attached", Prefs.CONTEXT_CHIPS, true));
         voiceCard.addView(toggle("Speak replies to voice requests", Prefs.SPEAK, true));

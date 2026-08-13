@@ -52,6 +52,7 @@
         </activity>
 
         <activity android:name=".ChatActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".ScreenSelectionActivity" android:exported="false" />
         <activity android:name=".SettingsActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".OnboardingActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".DiagnosticsActivity" android:exported="false" />

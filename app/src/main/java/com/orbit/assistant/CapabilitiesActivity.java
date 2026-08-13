@@ -107,6 +107,11 @@ public final class CapabilitiesActivity extends Activity {
         LinearLayout context = card();
         context.addView(status("Screen text", Prefs.screenContext(this)));
         context.addView(status("Screenshots", Prefs.screenshot(this)));
+        TextView screenshotNote = UiKit.text(this,
+                "Visual context, previews, and screen-region selection.",
+                11, UiKit.MUTED, false);
+        screenshotNote.setPadding(UiKit.dp(this, 4), 0, 0, UiKit.dp(this, 7));
+        context.addView(screenshotNote);
         context.addView(notificationAccessRow());
         context.addView(runtimePermissionRow("Approximate location", Manifest.permission.ACCESS_COARSE_LOCATION, REQ_LOCATION));
         context.addView(status("Per-app behavior", true));
