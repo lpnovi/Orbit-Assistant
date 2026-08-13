@@ -2,15 +2,9 @@ package com.orbit.assistant;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.AlertDialog;
-import android.app.NotificationManager;
-import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.net.Uri;
 import android.content.res.ColorStateList;
 import android.os.Build;
 import android.os.Bundle;
-import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -172,7 +166,7 @@ public final class CapabilitiesActivity extends Activity {
     }
 
     private boolean permission(String permission) {
-        return checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED;
+        return CapabilityAccessHelper.permissionGranted(this, permission);
     }
 
     private LinearLayout runtimePermissionRow(String name, String permission, int requestCode) {
@@ -207,13 +201,8 @@ public final class CapabilitiesActivity extends Activity {
             contactsManage = manage;
         }
 
-        manage.setOnClickListener(v -> {
-            if (permission(permission)) {
-                openAppDetails();
-            } else {
-                requestPermissions(new String[]{permission}, requestCode);
-            }
-        });
+        manage.setOnClickListener(v -> CapabilityAccessHelper.requestOrManageRuntimePermission(
+                this, permission, requestCode));
         refreshRuntimeAccessRows();
         return row;
     }
@@ -235,10 +224,8 @@ public final class CapabilitiesActivity extends Activity {
                 ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 36));
         manageLp.setMargins(UiKit.dp(this, 10), 0, 0, 0);
         row.addView(notificationAccessManage, manageLp);
-        notificationAccessManage.setOnClickListener(v -> {
-            try { startActivity(NotificationAccess.settingsIntent()); }
-            catch (Exception ignored) { openAppDetails(); }
-        });
+        notificationAccessManage.setOnClickListener(v ->
+                CapabilityAccessHelper.openNotificationIntelligence(this));
         refreshNotificationAccessRow();
         return row;
     }
@@ -267,15 +254,6 @@ public final class CapabilitiesActivity extends Activity {
         if (notificationAccessManage != null) notificationAccessManage.setText(ready ? "Manage" : "Set up");
     }
 
-    private void openAppDetails() {
-        try {
-            startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                    Uri.parse("package:" + getPackageName())));
-        } catch (Exception ignored) {
-            startActivity(new Intent(Settings.ACTION_SETTINGS));
-        }
-    }
-
     private LinearLayout specialAccessRow(String name, boolean brightness) {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -297,11 +275,11 @@ public final class CapabilitiesActivity extends Activity {
         if (brightness) {
             brightnessState = state;
             brightnessSetup = setup;
-            setup.setOnClickListener(v -> OrbitPermissionHelper.openWriteSettings(this));
+            setup.setOnClickListener(v -> CapabilityAccessHelper.openWriteSettings(this));
         } else {
             dndState = state;
             dndSetup = setup;
-            setup.setOnClickListener(v -> OrbitPermissionHelper.openDndAccess(this));
+            setup.setOnClickListener(v -> CapabilityAccessHelper.openDndAccess(this));
         }
         refreshSpecialAccessRows();
         return row;
@@ -328,17 +306,12 @@ public final class CapabilitiesActivity extends Activity {
         if (preciseTiming) {
             preciseTimingState = state;
             preciseTimingManage = manage;
-            manage.setOnClickListener(v -> RoutineTriggerScheduler.openExactAlarmAccess(this));
+            manage.setOnClickListener(v -> CapabilityAccessHelper.openExactAlarmAccess(this));
         } else {
             triggerAlertsState = state;
             triggerAlertsManage = manage;
-            manage.setOnClickListener(v -> {
-                if (Build.VERSION.SDK_INT >= 33 && !RoutineTriggerNotifier.runtimePermissionGranted(this)) {
-                    requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_TRIGGER_ALERTS);
-                } else {
-                    RoutineTriggerNotifier.openAlertSettings(this);
-                }
-            });
+            manage.setOnClickListener(v -> CapabilityAccessHelper.requestOrManageTriggerAlerts(
+                    this, REQ_TRIGGER_ALERTS));
         }
         refreshRoutineAutomationRows();
         return row;
@@ -361,39 +334,10 @@ public final class CapabilitiesActivity extends Activity {
                 ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 36));
         manageLp.setMargins(UiKit.dp(this, 10), 0, 0, 0);
         row.addView(locationAutomationManage, manageLp);
-        locationAutomationManage.setOnClickListener(v -> setupRoutineLocationAccess());
+        locationAutomationManage.setOnClickListener(v -> CapabilityAccessHelper.setupLocationAutomation(
+                this, REQ_ROUTINE_FINE_LOCATION, REQ_ROUTINE_BACKGROUND_LOCATION));
         refreshRoutineAutomationRows();
         return row;
-    }
-
-    private void setupRoutineLocationAccess() {
-        if (!RoutineLocationTriggerScheduler.hasFineLocation(this)) {
-            requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION,
-                    Manifest.permission.ACCESS_FINE_LOCATION}, REQ_ROUTINE_FINE_LOCATION);
-            return;
-        }
-        if (!RoutineLocationTriggerScheduler.hasBackgroundLocation(this)) {
-            if (Build.VERSION.SDK_INT == 29) {
-                requestPermissions(new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION},
-                        REQ_ROUTINE_BACKGROUND_LOCATION);
-            } else {
-                String option = RoutineLocationTriggerScheduler.backgroundPermissionLabel(this);
-                AlertDialog dialog = new AlertDialog.Builder(this)
-                        .setTitle("Allow background location")
-                        .setMessage("For arrive/leave Routines to work while Orbit is closed, open Orbit's app permissions, choose Location, then select “" + option + "”.")
-                        .setNegativeButton("Not now", null)
-                        .setPositiveButton("Open settings", (d, w) -> RoutineLocationTriggerScheduler.openAppLocationSettings(this))
-                        .create();
-                UiKit.styleOrbitDialog(dialog, this, false);
-                dialog.show();
-            }
-            return;
-        }
-        if (!RoutineLocationTriggerScheduler.isLocationEnabled(this)) {
-            RoutineLocationTriggerScheduler.openLocationServices(this);
-            return;
-        }
-        RoutineLocationTriggerScheduler.openAppLocationSettings(this);
     }
 
     private void refreshRoutineAutomationRows() {
@@ -402,7 +346,7 @@ public final class CapabilitiesActivity extends Activity {
         boolean locationOn = RoutineLocationTriggerScheduler.isLocationEnabled(this);
         boolean locationReady = fineLocation && backgroundLocation && locationOn;
         if (locationAutomationState != null) {
-            String state = locationReady ? "Ready" : !fineLocation ? "Needs precise" : !backgroundLocation ? "Needs background" : "Location off";
+            String state = CapabilityAccessHelper.locationAutomationStatus(this);
             locationAutomationState.setText(state);
             locationAutomationState.setTextColor(locationReady ? UiKit.SUCCESS : UiKit.MUTED);
         }

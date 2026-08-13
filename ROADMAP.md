@@ -195,6 +195,12 @@
 - Separate Diagnostics into its own Advanced developer-tool card
 - Keep the remaining minor Routine overflow-to-delete-confirmation entrance motion as a non-blocking cosmetic follow-up unless a deterministic fix is identified
 
+### 0.6.6.3
+- Keep Quick Access onboarding self-contained until the later starter-Routine step
+- Expose existing runtime permissions, special access, context toggles, and automation readiness directly in grouped onboarding controls
+- Share Android capability destination and location-automation progression logic with the full Capabilities dashboard
+- Refresh direct permission/access status automatically after returning to the persisted onboarding step
+
 ### Planned 0.6.x
 - Home-screen widgets
 - Screen-region selection

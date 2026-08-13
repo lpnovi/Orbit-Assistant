@@ -7,10 +7,8 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
@@ -35,6 +33,12 @@ public final class OnboardingActivity extends Activity {
     private static final int REQ_RESTORE_BACKUP = 941;
     private static final int REQ_NOTIFICATIONS = 942;
     private static final int REQ_LOCATION = 943;
+    private static final int REQ_MICROPHONE = 944;
+    private static final int REQ_CAMERA = 945;
+    private static final int REQ_CONTACTS = 946;
+    private static final int REQ_TRIGGER_ALERTS = 947;
+    private static final int REQ_ROUTINE_FINE_LOCATION = 948;
+    private static final int REQ_ROUTINE_BACKGROUND_LOCATION = 949;
 
     private int step;
     private boolean manual;
@@ -368,10 +372,7 @@ public final class OnboardingActivity extends Activity {
         LinearLayout routine = card();
         routine.addView(UiKit.text(this, "Routine tile", 16, UiKit.TEXT, true));
         addCardDescription(routine,
-                "A saved Routine can also be assigned to Quick Settings when you are ready.");
-        Button later = secondaryButton("Configure Routine tile later");
-        later.setOnClickListener(v -> startActivity(SettingsActivity.assistantSetupIntent(this)));
-        routine.addView(later, new LinearLayout.LayoutParams(-1, UiKit.dp(this, 44)));
+                "You can assign a saved Routine to the Routine Quick Settings tile later from Settings → Assistant setup.");
         page.addView(routine, cardLp());
 
         LinearLayout side = card();
@@ -384,25 +385,62 @@ public final class OnboardingActivity extends Activity {
 
     private void buildCapabilities(LinearLayout page) {
         addTitle(page, "Choose what Orbit can do",
-                "Set up only what you want now. Specialized access is requested later when a feature actually needs it.");
-        LinearLayout card = card();
-        card.addView(capabilityRow("Notifications",
-                "Needed for reminders, Routine alerts, and update notifications.",
-                ReminderNotifier.notificationsAllowed(this), "Set up", v -> setupNotifications()));
-        card.addView(capabilityRow("Screen context",
-                "Lets Orbit use enabled current-screen and screenshot context.",
-                Prefs.screenContext(this) || Prefs.screenshot(this), "Manage", v -> openCapabilities()));
-        boolean location = checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
-                PackageManager.PERMISSION_GRANTED || checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
-                PackageManager.PERMISSION_GRANTED;
-        card.addView(capabilityRow("Location",
-                "Useful for weather and location-based Routines.", location, "Set up", v -> setupLocation()));
-        card.addView(capabilityRow("Device controls",
-                "DND, brightness, precise timing, and other special access stay progressive.",
-                OrbitPermissionHelper.hasDndAccess(this) || OrbitPermissionHelper.canWriteSystemSettings(this),
-                "Manage", v -> openCapabilities()));
-        page.addView(card, cardLp());
-        Button all = secondaryButton("Manage all permissions & capabilities");
+                "Set up only the access you want. Every action stays on this setup step when you return from Android Settings.");
+
+        LinearLayout recommended = capabilityCard(page, "RECOMMENDED ACCESS");
+        addCapability(recommended, "Notifications",
+                "Reminders, Routine alerts, updates, and background results.",
+                ReminderNotifier.notificationsAllowed(this), v ->
+                        CapabilityAccessHelper.requestOrManageNotifications(this, REQ_NOTIFICATIONS));
+        addRuntimeCapability(recommended, "Microphone", "Used for Orbit Voice.",
+                Manifest.permission.RECORD_AUDIO, REQ_MICROPHONE);
+        addRuntimeCapability(recommended, "Approximate location",
+                "Local weather and location-aware features.",
+                Manifest.permission.ACCESS_COARSE_LOCATION, REQ_LOCATION);
+        addRuntimeCapability(recommended, "Flashlight control",
+                "Android Camera access lets Orbit control the flashlight.",
+                Manifest.permission.CAMERA, REQ_CAMERA);
+
+        LinearLayout context = capabilityCard(page, "CONTEXT");
+        context.addView(capabilityToggle("Allow Orbit to read current-screen text",
+                Prefs.SCREEN_CONTEXT, Prefs.screenContext(this)));
+        context.addView(capabilityToggle("Allow Orbit to receive screenshots",
+                Prefs.SCREENSHOT, Prefs.screenshot(this)));
+        addCapability(context, "Notification intelligence",
+                "Understand notifications only when this access is enabled.",
+                NotificationAccess.enabled(this), v ->
+                        CapabilityAccessHelper.openNotificationIntelligence(this));
+
+        LinearLayout controls = capabilityCard(page, "DEVICE CONTROLS");
+        addCapability(controls, "Brightness control",
+                "Allows Orbit to change system brightness.",
+                OrbitPermissionHelper.canWriteSystemSettings(this), v ->
+                        CapabilityAccessHelper.openWriteSettings(this));
+        addCapability(controls, "Do Not Disturb control",
+                "Allows Orbit to control Do Not Disturb.",
+                OrbitPermissionHelper.hasDndAccess(this), v ->
+                        CapabilityAccessHelper.openDndAccess(this));
+        addRuntimeCapability(controls, "Contact lookup",
+                "Resolve saved contact names for voice and device commands.",
+                Manifest.permission.READ_CONTACTS, REQ_CONTACTS);
+
+        LinearLayout automation = capabilityCard(page, "AUTOMATION");
+        boolean exact = RoutineTriggerScheduler.canScheduleExact(this);
+        addCapability(automation, "Precise timing",
+                "Accurate reminders and Routine time triggers.", exact, v ->
+                        CapabilityAccessHelper.openExactAlarmAccess(this));
+        boolean locationReady = RoutineLocationTriggerScheduler.ready(this);
+        automation.addView(capabilityRow("Location automation",
+                "Arrival and leave Routine triggers.",
+                CapabilityAccessHelper.locationAutomationStatus(this), locationReady, v ->
+                        CapabilityAccessHelper.setupLocationAutomation(this,
+                                REQ_ROUTINE_FINE_LOCATION, REQ_ROUTINE_BACKGROUND_LOCATION)));
+        addCapability(automation, "Trigger alerts",
+                "Visible handoffs when an automatic Routine needs attention.",
+                RoutineTriggerNotifier.notificationsAllowed(this), v ->
+                        CapabilityAccessHelper.requestOrManageTriggerAlerts(this, REQ_TRIGGER_ALERTS));
+
+        Button all = secondaryButton("View full capabilities dashboard");
         all.setOnClickListener(v -> openCapabilities());
         page.addView(all, buttonLp());
     }
@@ -583,8 +621,33 @@ public final class OnboardingActivity extends Activity {
         return row;
     }
 
-    private View capabilityRow(String title, String description, boolean ready,
-                               String actionLabel, View.OnClickListener listener) {
+    private LinearLayout capabilityCard(LinearLayout page, String title) {
+        TextView heading = UiKit.text(this, title, 11, UiKit.MUTED, true);
+        heading.setLetterSpacing(.11f);
+        LinearLayout.LayoutParams headingLp = new LinearLayout.LayoutParams(-1, -2);
+        headingLp.setMargins(UiKit.dp(this, 4), UiKit.dp(this, 6), 0, UiKit.dp(this, 7));
+        page.addView(heading, headingLp);
+        LinearLayout group = card();
+        page.addView(group, cardLp());
+        return group;
+    }
+
+    private void addRuntimeCapability(LinearLayout group, String title, String description,
+                                      String permission, int requestCode) {
+        boolean ready = CapabilityAccessHelper.permissionGranted(this, permission);
+        addCapability(group, title, description, ready, v ->
+                CapabilityAccessHelper.requestOrManageRuntimePermission(
+                        this, permission, requestCode));
+    }
+
+    private void addCapability(LinearLayout group, String title, String description,
+                               boolean ready, View.OnClickListener listener) {
+        group.addView(capabilityRow(title, description, ready ? "Ready" : "Needs access",
+                ready, listener));
+    }
+
+    private View capabilityRow(String title, String description, String status, boolean ready,
+                               View.OnClickListener listener) {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(0, UiKit.dp(this, 8), 0, UiKit.dp(this, 8));
@@ -594,15 +657,29 @@ public final class OnboardingActivity extends Activity {
         TextView descriptionView = UiKit.text(this, description, 11, UiKit.MUTED, false);
         descriptionView.setPadding(0, UiKit.dp(this, 2), 0, UiKit.dp(this, 3));
         copy.addView(descriptionView);
-        copy.addView(UiKit.text(this, ready ? "Available / Granted" : "Not configured",
+        copy.addView(UiKit.text(this, status,
                 11, ready ? UiKit.SUCCESS : UiKit.MUTED, true));
         row.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
-        Button action = quietButton(ready ? "Manage" : actionLabel);
+        Button action = quietButton(ready ? "Manage" : "Set up");
         action.setOnClickListener(listener);
         LinearLayout.LayoutParams actionLp = new LinearLayout.LayoutParams(-2, UiKit.dp(this, 42));
         actionLp.leftMargin = UiKit.dp(this, 8);
         row.addView(action, actionLp);
         return row;
+    }
+
+    private View capabilityToggle(String label, String prefKey, boolean checked) {
+        CheckBox toggle = new CheckBox(this);
+        toggle.setText(label);
+        toggle.setTextColor(UiKit.TEXT);
+        toggle.setTextSize(13);
+        toggle.setButtonTintList(UiKit.accentControlTint(this));
+        toggle.setChecked(checked);
+        toggle.setMinHeight(UiKit.dp(this, 52));
+        toggle.setPadding(0, UiKit.dp(this, 4), 0, UiKit.dp(this, 4));
+        toggle.setOnCheckedChangeListener((button, enabled) ->
+                Prefs.get(this).edit().putBoolean(prefKey, enabled).apply());
+        return toggle;
     }
 
     private void addCardDescription(LinearLayout card, String description) {
@@ -729,20 +806,6 @@ public final class OnboardingActivity extends Activity {
         startActivity(new Intent(this, CapabilitiesActivity.class));
     }
 
-    private void setupNotifications() {
-        if (Build.VERSION.SDK_INT >= 33 &&
-                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIFICATIONS);
-        else openCapabilities();
-    }
-
-    private void setupLocation() {
-        if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
-            requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION,
-                    Manifest.permission.ACCESS_FINE_LOCATION}, REQ_LOCATION);
-        else openCapabilities();
-    }
-
     private void startChatGptLogin() {
         ChatGptAuth.requestDeviceCode(this, new ChatGptAuth.StartCallback() {
             @Override public void onSuccess(ChatGptAuth.DeviceCode code) {
@@ -842,8 +905,15 @@ public final class OnboardingActivity extends Activity {
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions,
                                                      int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQ_NOTIFICATIONS && ReminderNotifier.notificationsAllowed(this))
+        if ((requestCode == REQ_NOTIFICATIONS || requestCode == REQ_TRIGGER_ALERTS) &&
+                CapabilityAccessHelper.permissionGranted(this,
+                        Manifest.permission.POST_NOTIFICATIONS)) {
             NotificationHelper.ensureChannel(this);
+        }
+        if (requestCode == REQ_TRIGGER_ALERTS || requestCode == REQ_ROUTINE_FINE_LOCATION ||
+                requestCode == REQ_ROUTINE_BACKGROUND_LOCATION) {
+            RoutineTriggerScheduler.rescheduleAll(this);
+        }
         render();
     }
 
