@@ -39,6 +39,7 @@ public final class Prefs {
     public static final String BACKGROUND_NOTIFICATIONS = "background_notifications";
     public static final String WEATHER_LOCATION = "weather_location";
     public static final String WEATHER_USE_DEVICE_LOCATION = "weather_use_device_location";
+    public static final String WEATHER_UNITS = "weather_units";
     public static final String MEMORY_ENABLED = "memory_enabled";
     public static final String MEMORY_USAGE_INDICATOR = "memory_usage_indicator";
     public static final String MEMORY_SUGGESTIONS = "memory_suggestions";
@@ -65,11 +66,15 @@ public final class Prefs {
     public static final String CHAT_TEXT_LARGE = "large";
     public static final String CHAT_TEXT_EXTRA_LARGE = "extra_large";
 
+    public static final String WEATHER_UNITS_SYSTEM = "system";
+    public static final String WEATHER_UNITS_FAHRENHEIT = "fahrenheit";
+    public static final String WEATHER_UNITS_CELSIUS = "celsius";
+
     private Prefs() {}
 
     private static final Set<String> BACKUP_STRING_KEYS = new HashSet<>(Arrays.asList(
             MODEL, REASONING, INTELLIGENCE_MODE, ACCENT, USER_BUBBLE_COLOR,
-            ASSISTANT_BUBBLE_COLOR, CHAT_TEXT_SIZE, WEATHER_LOCATION, APP_FONT,
+            ASSISTANT_BUBBLE_COLOR, CHAT_TEXT_SIZE, WEATHER_LOCATION, WEATHER_UNITS, APP_FONT,
             QUICK_SETTINGS_ROUTINE_ID));
     private static final Set<String> BACKUP_BOOLEAN_KEYS = new HashSet<>(Arrays.asList(
             SCREEN_CONTEXT, SCREENSHOT, CONTEXT_CHIPS, ATTACH_SCREEN_BY_DEFAULT,
@@ -182,6 +187,12 @@ public final class Prefs {
     public static boolean backgroundNotifications(Context c) { return get(c).getBoolean(BACKGROUND_NOTIFICATIONS, false); }
     public static String weatherLocation(Context c) { return get(c).getString(WEATHER_LOCATION, "").trim(); }
     public static boolean weatherUseDeviceLocation(Context c) { return get(c).getBoolean(WEATHER_USE_DEVICE_LOCATION, false); }
+    public static String weatherUnits(Context c) {
+        String value = get(c).getString(WEATHER_UNITS, WEATHER_UNITS_SYSTEM);
+        if (WEATHER_UNITS_FAHRENHEIT.equals(value) || WEATHER_UNITS_CELSIUS.equals(value))
+            return value;
+        return WEATHER_UNITS_SYSTEM;
+    }
     public static boolean memoryEnabled(Context c) { return get(c).getBoolean(MEMORY_ENABLED, true); }
     public static boolean memoryUsageIndicator(Context c) { return get(c).getBoolean(MEMORY_USAGE_INDICATOR, false); }
     public static boolean memorySuggestions(Context c) { return get(c).getBoolean(MEMORY_SUGGESTIONS, true); }

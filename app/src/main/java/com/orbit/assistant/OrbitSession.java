@@ -18,6 +18,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.service.voice.VoiceInteractionSession;
@@ -62,6 +63,7 @@ public class OrbitSession extends VoiceInteractionSession {
             "orbit_internal_screen_selection_resume";
     private static final String INTERNAL_SCREEN_SELECTION_STATUS =
             "orbit_internal_screen_selection_status";
+    private static final long EXTERNAL_SHOW_STABILIZATION_MS = 450L;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final List<AssistantClient.History> history = new ArrayList<>();
 
@@ -119,6 +121,7 @@ public class OrbitSession extends VoiceInteractionSession {
     private boolean screenSelectionRestoreFocus = false;
     private boolean screenSelectionRestoreKeyboard = false;
     private boolean internalScreenSelectionResume = false;
+    private long freshExternalShowAtElapsedMs = 0L;
     private String screenSelectionCallbackToken = "";
     private String attachmentCallbackToken = "";
     private boolean attachmentOpening = false;
@@ -815,6 +818,8 @@ public class OrbitSession extends VoiceInteractionSession {
         boolean internalResume = internalScreenSelectionResume || args != null &&
                 args.getBoolean(INTERNAL_SCREEN_SELECTION_RESUME, false);
         internalScreenSelectionResume = false;
+        freshExternalShowAtElapsedMs = internalResume
+                ? 0L : SystemClock.elapsedRealtime();
         sessionVisible = true;
         UiPresence.enter(this);
         // Conversation selection/reset is intentionally done in onPrepareShow(),
@@ -2962,7 +2967,15 @@ public class OrbitSession extends VoiceInteractionSession {
 
     @Override
     public void onCloseSystemDialogs() {
-        // Android sends this when HOME closes assistant/system UI. Animate Orbit away first.
+        // Some Samsung builds can deliver the tail of the Side-button invocation as
+        // close-system-dialogs just after this fresh external sheet becomes visible.
+        // Ignore only that short callback race. Explicit Orbit dismissals bypass this
+        // method, and a genuine system hide still reaches onHide() normally.
+        long sinceExternalShow = SystemClock.elapsedRealtime() - freshExternalShowAtElapsedMs;
+        if (sessionVisible && freshExternalShowAtElapsedMs > 0L &&
+                sinceExternalShow >= 0L && sinceExternalShow < EXTERNAL_SHOW_STABILIZATION_MS) {
+            return;
+        }
         dismissAnimated();
     }
 
@@ -2970,6 +2983,7 @@ public class OrbitSession extends VoiceInteractionSession {
     public void onHide() {
         super.onHide();
         sessionVisible = false;
+        freshExternalShowAtElapsedMs = 0L;
         UiPresence.leave(this);
         orbitOwnsIme = false;
         saveCurrentConversation();

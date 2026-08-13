@@ -516,9 +516,9 @@ public final class OnboardingActivity extends Activity {
         page.addView(fontCard, cardLp());
 
         LinearLayout conversationCard = card();
-        conversationCard.addView(UiKit.text(this, "Conversation colors", 16, UiKit.TEXT, true));
+        conversationCard.addView(UiKit.text(this, "Conversation style", 16, UiKit.TEXT, true));
         addCardDescription(conversationCard,
-                "Optional: choose your message bubbles and Orbit's response bubbles independently.");
+                "Choose how conversation bubbles and chat content look in full chat and the Side-button assistant.");
         conversationCard.addView(UiKit.text(this, "Your bubbles", 12, UiKit.MUTED, true));
         conversationCard.addView(appearanceColorSelector(UiKit.bubbleColorKeys(),
                 UiKit.bubbleColorLabels(), Prefs.USER_BUBBLE_COLOR, false, false));
@@ -527,7 +527,31 @@ public final class OnboardingActivity extends Activity {
         conversationCard.addView(orbitLabel);
         conversationCard.addView(appearanceColorSelector(UiKit.bubbleColorKeys(),
                 UiKit.bubbleColorLabels(), Prefs.ASSISTANT_BUBBLE_COLOR, true, false));
+        TextView chatSizeLabel = UiKit.text(this, "Chat text size", 12, UiKit.MUTED, true);
+        chatSizeLabel.setPadding(0, UiKit.dp(this, 12), 0, 0);
+        conversationCard.addView(chatSizeLabel);
+        String[] chatSizeKeys = {Prefs.CHAT_TEXT_SMALL, Prefs.CHAT_TEXT_DEFAULT,
+                Prefs.CHAT_TEXT_LARGE, Prefs.CHAT_TEXT_EXTRA_LARGE};
+        String[] chatSizeLabels = {"Small", "Default", "Large", "Extra large"};
+        conversationCard.addView(preferenceSelector(chatSizeKeys, chatSizeLabels,
+                Prefs.chatTextSize(this), Prefs.CHAT_TEXT_SIZE));
         page.addView(conversationCard, cardLp());
+
+        LinearLayout everydayCard = card();
+        everydayCard.addView(UiKit.text(this, "Everyday preferences", 16, UiKit.TEXT, true));
+        addCardDescription(everydayCard,
+                "Choose the apps and units Orbit uses for everyday requests.");
+        everydayCard.addView(UiKit.text(this, "Gallery app", 12, UiKit.MUTED, true));
+        everydayCard.addView(galleryAppSelector());
+        TextView weatherUnitsLabel = UiKit.text(this, "Weather units", 12, UiKit.MUTED, true);
+        weatherUnitsLabel.setPadding(0, UiKit.dp(this, 12), 0, 0);
+        everydayCard.addView(weatherUnitsLabel);
+        String[] weatherUnitKeys = {Prefs.WEATHER_UNITS_SYSTEM,
+                Prefs.WEATHER_UNITS_FAHRENHEIT, Prefs.WEATHER_UNITS_CELSIUS};
+        String[] weatherUnitLabels = {"System default", "Fahrenheit (°F)", "Celsius (°C)"};
+        everydayCard.addView(preferenceSelector(weatherUnitKeys, weatherUnitLabels,
+                Prefs.weatherUnits(this), Prefs.WEATHER_UNITS));
+        page.addView(everydayCard, cardLp());
     }
 
     private void buildStarterRoutine(LinearLayout page) {
@@ -922,6 +946,40 @@ public final class OnboardingActivity extends Activity {
                         render();
                     });
         });
+        selector.setLayoutParams(new LinearLayout.LayoutParams(-1, UiKit.dp(this, 46)));
+        return selector;
+    }
+
+    private View preferenceSelector(String[] keys, String[] labels, String selectedKey,
+                                    String prefKey) {
+        int selectedIndex = indexOf(keys, selectedKey);
+        Button selector = secondaryButton(labels[selectedIndex] + "  ▾");
+        selector.setOnClickListener(v -> UiKit.showOrbitMenu(this, selector, labels,
+                selectedIndex, (index, label) -> {
+                    Prefs.get(this).edit().putString(prefKey, keys[index]).apply();
+                    render();
+                }));
+        selector.setLayoutParams(new LinearLayout.LayoutParams(-1, UiKit.dp(this, 46)));
+        return selector;
+    }
+
+    private View galleryAppSelector() {
+        List<GalleryAppPreference.Option> options = GalleryAppPreference.options(this);
+        String preferred = GalleryAppPreference.preferredPackage(this);
+        String[] labels = new String[options.size()];
+        int selected = 0;
+        for (int i = 0; i < options.size(); i++) {
+            GalleryAppPreference.Option option = options.get(i);
+            labels[i] = option.label;
+            if (option.packageName.equals(preferred)) selected = i;
+        }
+        final int selectedIndex = selected;
+        Button selector = secondaryButton(labels[selectedIndex] + "  ▾");
+        selector.setOnClickListener(v -> UiKit.showOrbitMenu(this, selector, labels,
+                selectedIndex, (index, label) -> {
+                    GalleryAppPreference.setPreferredPackage(this, options.get(index).packageName);
+                    render();
+                }));
         selector.setLayoutParams(new LinearLayout.LayoutParams(-1, UiKit.dp(this, 46)));
         return selector;
     }

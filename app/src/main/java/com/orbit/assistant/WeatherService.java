@@ -63,7 +63,7 @@ public final class WeatherService {
             if (!locationQuery.isEmpty()) {
                 place = geocode(locationQuery);
                 if (place == null) {
-                    return text("I couldn't find that location. Try a city and state/country, for example Ann Arbor, Michigan or Dublin, Ireland.");
+                    return text("I couldn't find that location. Try a city and state/country, for example Naples, Florida or Tokyo, Japan.");
                 }
                 Prefs.get(context).edit().putString(Prefs.WEATHER_LOCATION, place.displayName).apply();
             } else if (Prefs.weatherUseDeviceLocation(context) && hasLocationPermission(context)) {
@@ -262,6 +262,9 @@ public final class WeatherService {
     }
 
     private static boolean usesFahrenheit(Context c) {
+        String preference = Prefs.weatherUnits(c);
+        if (Prefs.WEATHER_UNITS_FAHRENHEIT.equals(preference)) return true;
+        if (Prefs.WEATHER_UNITS_CELSIUS.equals(preference)) return false;
         String country = Locale.getDefault().getCountry();
         return "US".equalsIgnoreCase(country) || "BS".equalsIgnoreCase(country) || "BZ".equalsIgnoreCase(country) || "KY".equalsIgnoreCase(country) || "PW".equalsIgnoreCase(country);
     }

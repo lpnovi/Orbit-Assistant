@@ -180,11 +180,11 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         page.addView(settingsCategoryCard(SECTION_VOICE, "Voice, context & permissions",
                 "Voice Beta, screen context and capabilities"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_DATA, "Personalization & data",
-                "Weather, backup, reminders, saved places, Memory and app profiles"), categoryLp());
+                "Weather, Gallery, reminders, saved places, Memory and backup"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_ROUTINES, "Routines",
                 "Create, edit and run saved Action Engine chains"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_CONVERSATIONS, "Conversations",
-                "Attachments, history, chat behavior and background notifications"), categoryLp());
+                "History, chat behavior and background notifications"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_APPEARANCE, "Look & Feel",
                 "Accent, font, AMOLED, conversation colors and haptics"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_UPDATES, "About & updates",
@@ -278,7 +278,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         if (SECTION_AI.equals(section)) return "Choose and configure Orbit's active AI provider, manage your ChatGPT connection, and set default intelligence.";
         if (SECTION_VOICE.equals(section)) return "Control Voice Beta, screen awareness and device permissions.";
         if (SECTION_DATA.equals(section)) return "Manage weather preferences and the local information Orbit uses to personalize and organize your assistant experience.";
-        if (SECTION_CONVERSATIONS.equals(section)) return "Choose attachment behavior, local chat storage and background completions.";
+        if (SECTION_CONVERSATIONS.equals(section)) return "Choose local chat storage and background completion behavior.";
         if (SECTION_APPEARANCE.equals(section)) return "Tune Orbit's colors, typography, AMOLED presentation and tactile feedback.";
         if (SECTION_ADVANCED.equals(section)) return "Inspect local diagnostics and developer troubleshooting information.";
         return "Orbit settings.";
@@ -551,8 +551,10 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         weatherCard.addView(weatherHelp);
         weatherCard.addView(weatherLocationToggle());
         weatherCard.addView(label("Default weather location (optional)"));
-        EditText weatherLocation = field("Ann Arbor, Michigan", Prefs.weatherLocation(this), false);
+        EditText weatherLocation = field("Naples, Florida", Prefs.weatherLocation(this), false);
         weatherCard.addView(weatherLocation);
+        weatherCard.addView(label("Weather units"));
+        weatherCard.addView(weatherUnitsSelector(), selectorLp());
         Button saveWeather = secondaryButton("Save weather location");
         LinearLayout.LayoutParams weatherSaveLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 46));
         weatherSaveLp.setMargins(0, UiKit.dp(this, 10), 0, 0);
@@ -566,10 +568,23 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
                 12, UiKit.MUTED, false);
         weatherNote.setPadding(0, UiKit.dp(this, 8), 0, 0);
         weatherCard.addView(weatherNote);
-        page.addView(personalizationSection);
-        page.addView(personalDataCard);
+
+        TextView gallerySection = sectionTitle("GALLERY", "data");
+        LinearLayout galleryCard = card();
+        tagSectionCard(galleryCard, "data");
+        galleryCard.addView(label("Gallery app"));
+        galleryCard.addView(galleryAppSelector(), selectorLp());
+        TextView galleryHelp = UiKit.text(this,
+                "Choose which compatible installed app Orbit uses when you attach an image. System picker remains the safe fallback if that app becomes unavailable.",
+                12, UiKit.MUTED, false);
+        galleryCard.addView(galleryHelp);
+
         page.addView(weatherSection);
         page.addView(weatherCard);
+        page.addView(gallerySection);
+        page.addView(galleryCard);
+        page.addView(personalizationSection);
+        page.addView(personalDataCard);
         page.addView(remindersSection);
         page.addView(remindersCard);
         page.addView(backupSection);
@@ -631,14 +646,6 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         page.addView(sectionTitle("CONVERSATIONS", "conversations"));
         LinearLayout conversationCard = card();
         tagSectionCard(conversationCard, "conversations");
-        conversationCard.addView(label("Gallery app"));
-        View gallerySelector = galleryAppSelector();
-        conversationCard.addView(gallerySelector, selectorLp());
-        TextView galleryNote = UiKit.text(this,
-                "Choose which compatible installed app opens for image attachments. System picker is the safe default; Orbit falls back to it if your preferred app is unavailable.",
-                12, UiKit.MUTED, false);
-        galleryNote.setPadding(0, 0, 0, UiKit.dp(this, 8));
-        conversationCard.addView(galleryNote);
         conversationCard.addView(toggle("Start a new chat each time Orbit opens", Prefs.NEW_CHAT_ON_OPEN, true));
         conversationCard.addView(toggle("Save recent chats on this device", Prefs.HISTORY_ENABLED, true));
         conversationCard.addView(toggle("Save screen attachment thumbnails in chat history", Prefs.SAVE_SCREEN_THUMBNAILS, false));
@@ -1316,6 +1323,19 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         LinearLayout selector = menuSelector(labels, selected, (position, label) -> {
             String key = keys[Math.max(0, Math.min(keys.length - 1, position))];
             Prefs.get(this).edit().putString(Prefs.CHAT_TEXT_SIZE, key).apply();
+        });
+        selector.setLayoutParams(selectorLp());
+        return selector;
+    }
+
+    private View weatherUnitsSelector() {
+        String[] keys = new String[]{Prefs.WEATHER_UNITS_SYSTEM,
+                Prefs.WEATHER_UNITS_FAHRENHEIT, Prefs.WEATHER_UNITS_CELSIUS};
+        String[] labels = new String[]{"System default", "Fahrenheit (°F)", "Celsius (°C)"};
+        int selected = indexOf(keys, Prefs.weatherUnits(this));
+        LinearLayout selector = menuSelector(labels, selected, (position, label) -> {
+            String key = keys[Math.max(0, Math.min(keys.length - 1, position))];
+            Prefs.get(this).edit().putString(Prefs.WEATHER_UNITS, key).apply();
         });
         selector.setLayoutParams(selectorLp());
         return selector;
