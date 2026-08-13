@@ -408,6 +408,13 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         widgetNote.setPadding(0, UiKit.dp(this, 6), 0, UiKit.dp(this, 12));
         widgetCard.addView(widgetNote);
 
+        TextView widgetEditNote = UiKit.text(this,
+                "The buttons below add new widgets. To change one later, touch and hold it on your Home screen, then choose Settings, Edit, or Configure. The exact label depends on your launcher.",
+                11, UiKit.MUTED, false);
+        widgetEditNote.setLineSpacing(0, 1.12f);
+        widgetEditNote.setPadding(0, 0, 0, UiKit.dp(this, 12));
+        widgetCard.addView(widgetEditNote);
+
         Button pinAskWidget = secondaryButton("Add Ask Orbit widget");
         pinAskWidget.setOnClickListener(v -> OrbitWidgets.requestPin(this,
                 AskOrbitWidgetProvider.class, "Ask Orbit"));

@@ -113,6 +113,7 @@
         <receiver android:name=".RoutineTriggerReceiver" android:exported="false" />
         <receiver android:name=".LocationRoutineTriggerReceiver" android:exported="false" />
         <receiver android:name=".ReminderReceiver" android:exported="false" />
+        <receiver android:name=".OrbitWidgetActionReceiver" android:exported="false" />
         <receiver android:name=".AskOrbitWidgetProvider" android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />

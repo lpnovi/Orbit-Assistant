@@ -1,6 +1,7 @@
 package com.orbit.assistant;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.appwidget.AppWidgetManager;
 import android.content.Intent;
 import android.content.res.ColorStateList;
@@ -138,7 +139,7 @@ public final class OrbitWidgetConfigureActivity extends Activity {
         LinearLayout card = card();
         card.addView(UiKit.text(this, "ROUTINE", 12, UiKit.MUTED, true));
         Button chooser = secondaryButton(routineLabel(runRoutineId));
-        chooser.setOnClickListener(v -> showRoutineChooser(chooser, selected -> {
+        chooser.setOnClickListener(v -> showRoutineChooser(selected -> {
             runRoutineId = selected;
             chooser.setText(routineLabel(selected));
         }));
@@ -177,15 +178,8 @@ public final class OrbitWidgetConfigureActivity extends Activity {
                         action.setText(ACTION_LABELS[position]);
                         routine.setVisibility(OrbitWidgets.TYPE_ROUTINE.equals(quickTypes[index])
                                 ? View.VISIBLE : View.GONE);
-                        if (OrbitWidgets.TYPE_ROUTINE.equals(quickTypes[index]) &&
-                                RoutineStore.findById(this, quickRoutineIds[index]) == null) {
-                            showRoutineChooser(routine, selected -> {
-                                quickRoutineIds[index] = selected;
-                                routine.setText(routineLabel(selected));
-                            });
-                        }
                     }));
-            routine.setOnClickListener(v -> showRoutineChooser(routine, selected -> {
+            routine.setOnClickListener(v -> showRoutineChooser(selected -> {
                 quickRoutineIds[index] = selected;
                 routine.setText(routineLabel(selected));
             }));
@@ -196,7 +190,7 @@ public final class OrbitWidgetConfigureActivity extends Activity {
         }
     }
 
-    private void showRoutineChooser(View anchor, RoutineChoice callback) {
+    private void showRoutineChooser(RoutineChoice callback) {
         List<RoutineStore.Routine> routines = RoutineStore.list(this);
         if (routines.isEmpty()) {
             Toast.makeText(this, "Create a saved Routine first.", Toast.LENGTH_LONG).show();
@@ -204,8 +198,14 @@ public final class OrbitWidgetConfigureActivity extends Activity {
         }
         String[] labels = new String[routines.size()];
         for (int i = 0; i < routines.size(); i++) labels[i] = routines.get(i).name;
-        UiKit.showOrbitMenu(this, anchor, labels, -1,
-                (position, label) -> callback.onChoice(routines.get(position).id));
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Choose Routine")
+                .setItems(labels, (shown, position) ->
+                        callback.onChoice(routines.get(position).id))
+                .setNegativeButton("Cancel", null)
+                .create();
+        UiKit.styleOrbitDialog(dialog, this, false);
+        dialog.show();
     }
 
     private void addNoRoutinesHelp(LinearLayout card) {
@@ -260,7 +260,7 @@ public final class OrbitWidgetConfigureActivity extends Activity {
 
     private String routineLabel(String id) {
         RoutineStore.Routine routine = RoutineStore.findById(this, id);
-        return routine == null ? "Choose Routine  ▾" : routine.name + "  ▾";
+        return routine == null ? "Choose Routine" : "Routine · " + routine.name;
     }
 
     private static int actionIndex(String type) {

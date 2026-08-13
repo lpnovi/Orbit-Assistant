@@ -119,10 +119,8 @@ public final class OrbitWidgets {
             views.setTextViewText(R.id.widget_routine_name, routine.name);
             views.setTextViewText(R.id.widget_routine_hint, "Tap to run");
             views.setContentDescription(R.id.widget_routine_card, "Run " + routine.name);
-            Intent intent = new Intent(context, RoutinesActivity.class)
-                    .putExtra(RoutinesActivity.EXTRA_AUTORUN_ROUTINE_ID, routine.id)
-                    .putExtra(RoutinesActivity.EXTRA_AUTORUN_SCHEDULED, false);
-            pending = activityPendingIntent(context, intent, widgetId, 0, TYPE_ROUTINE);
+            pending = actionPendingIntent(context,
+                    OrbitWidgetActionReceiver.ACTION_RUN_ROUTINE, widgetId, -1);
         }
         views.setOnClickPendingIntent(R.id.widget_routine_card, pending);
         manager.updateAppWidget(widgetId, views);
@@ -169,17 +167,14 @@ public final class OrbitWidgets {
                         "Routine unavailable. Tap to configure Quick Actions.",
                         configurationPendingIntent(context, widgetId, slot + 1));
             }
-            Intent intent = new Intent(context, RoutinesActivity.class)
-                    .putExtra(RoutinesActivity.EXTRA_AUTORUN_ROUTINE_ID, routine.id)
-                    .putExtra(RoutinesActivity.EXTRA_AUTORUN_SCHEDULED, false);
             return new Slot(routine.name, R.drawable.ic_routine_tile, "Run " + routine.name,
-                    activityPendingIntent(context, intent, widgetId, slot, TYPE_ROUTINE));
+                    actionPendingIntent(context, OrbitWidgetActionReceiver.ACTION_RUN_ROUTINE,
+                            widgetId, slot));
         }
         if (TYPE_FLASHLIGHT.equals(type)) {
-            Intent intent = OrbitWidgetActionActivity.intent(context,
-                    OrbitWidgetActionActivity.ACTION_TOGGLE_FLASHLIGHT);
             return new Slot("Flashlight", R.drawable.ic_widget_flashlight,
-                    "Toggle flashlight", activityPendingIntent(context, intent, widgetId, slot, type));
+                    "Toggle flashlight", actionPendingIntent(context,
+                    OrbitWidgetActionReceiver.ACTION_TOGGLE_FLASHLIGHT, widgetId, slot));
         }
         if (TYPE_REMINDER.equals(type)) {
             Intent intent = new Intent(context, ChatActivity.class)
@@ -229,6 +224,24 @@ public final class OrbitWidgets {
                 RunRoutineWidgetProvider.class.getName().equals(info.provider.getClassName());
     }
 
+    static boolean isConfiguredAction(Context context, int widgetId, int slot, String type) {
+        if (context == null || widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) return false;
+        AppWidgetProviderInfo info = AppWidgetManager.getInstance(context).getAppWidgetInfo(widgetId);
+        if (info == null || info.provider == null ||
+                !context.getPackageName().equals(info.provider.getPackageName())) return false;
+        String provider = info.provider.getClassName();
+        if (RunRoutineWidgetProvider.class.getName().equals(provider)) {
+            return slot == -1 && TYPE_ROUTINE.equals(type) && !runRoutineId(context, widgetId).isEmpty();
+        }
+        return QuickActionsWidgetProvider.class.getName().equals(provider) &&
+                slot >= 0 && slot < QUICK_SLOTS && type.equals(quickType(context, widgetId, slot));
+    }
+
+    static String configuredRoutineId(Context context, int widgetId, int slot) {
+        if (!isConfiguredAction(context, widgetId, slot, TYPE_ROUTINE)) return "";
+        return slot == -1 ? runRoutineId(context, widgetId) : quickRoutineId(context, widgetId, slot);
+    }
+
     private static PendingIntent activityPendingIntent(Context context, Intent intent, int widgetId,
                                                        int slot, String action) {
         intent.setPackage(context.getPackageName());
@@ -239,9 +252,27 @@ public final class OrbitWidgets {
     }
 
     private static PendingIntent configurationPendingIntent(Context context, int widgetId, int slot) {
-        Intent intent = new Intent(context, OrbitWidgetConfigureActivity.class)
-                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId);
+        Intent intent = configurationIntent(context, widgetId);
         return activityPendingIntent(context, intent, widgetId, slot, "configure");
+    }
+
+    static Intent configurationIntent(Context context, int widgetId) {
+        return new Intent(context, OrbitWidgetConfigureActivity.class)
+                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+    }
+
+    private static PendingIntent actionPendingIntent(Context context, String action,
+                                                     int widgetId, int slot) {
+        Intent intent = new Intent(context, OrbitWidgetActionReceiver.class)
+                .setAction(action)
+                .setPackage(context.getPackageName())
+                .putExtra(OrbitWidgetActionReceiver.EXTRA_WIDGET_ID, widgetId)
+                .putExtra(OrbitWidgetActionReceiver.EXTRA_SLOT, slot)
+                .setData(Uri.parse("orbit://widget/" + widgetId + "/" + slot + "/" + action));
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
+        return PendingIntent.getBroadcast(context, requestCode(widgetId, slot, action),
+                intent, flags);
     }
 
     private static void updateProvider(Context context, Class<?> provider) {
