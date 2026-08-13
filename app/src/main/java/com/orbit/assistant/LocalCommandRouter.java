@@ -13,6 +13,17 @@ import java.util.regex.Pattern;
 public final class LocalCommandRouter {
     private LocalCommandRouter() {}
 
+    /** Side-effect-free recognition used to keep Custom Commands from shadowing core device commands. */
+    public static boolean canHandle(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return false;
+        List<String> parts = splitIntoCommandParts(raw.trim());
+        if (parts.size() > 1) {
+            for (String part : parts) if (parseSingleCommand(part) == null) return false;
+            return true;
+        }
+        return parseSingleCommand(raw.trim()) != null;
+    }
+
     public static AssistantReply tryHandle(Context context, String raw) {
         if (raw == null) return null;
         String normalized = raw.trim();

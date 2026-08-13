@@ -52,6 +52,7 @@ public final class OrbitBackupManager {
                     data.optJSONArray("conversations").length() + " chats, " +
                     data.optJSONArray("memories").length() + " memories, " +
                     data.optJSONArray("routines").length() + " routines and " +
+                    optionalArray(data, "customCommands").length() + " Custom Commands, and " +
                     data.optJSONArray("reminders").length() + " reminders.\n\n" +
                     "Restoring will replace Orbit's backed-up local data on this device. " +
                     "Account credentials, Android permissions and default-assistant status are not included.";
@@ -154,6 +155,7 @@ public final class OrbitBackupManager {
                 .put("actionResults", ActionResultStore.backupSnapshot(c))
                 .put("memories", parseArray("Orbit Memory", MemoryStore.backupJson(c)))
                 .put("routines", parseArray("Routines", RoutineStore.backupJson(c)))
+                .put("customCommands", parseArray("Custom Commands", CustomCommandStore.backupJson(c)))
                 .put("routineTriggers", parseArray("Routine triggers", RoutineTriggerStore.backupJson(c)))
                 .put("reminders", parseArray("reminders", ReminderStore.backupJson(c)))
                 .put("savedPlaces", parseArray("saved places", SavedPlaceStore.backupJson(c)))
@@ -174,6 +176,7 @@ public final class OrbitBackupManager {
             ok &= ActionResultStore.restoreBackupSnapshot(c, data.getJSONObject("actionResults"));
             ok &= MemoryStore.restoreBackupJson(c, data.getJSONArray("memories").toString());
             ok &= RoutineStore.restoreBackupJson(c, data.getJSONArray("routines").toString());
+            ok &= CustomCommandStore.restoreBackupJson(c, optionalArray(data, "customCommands").toString());
             ok &= RoutineTriggerStore.restoreBackupJson(c, data.getJSONArray("routineTriggers").toString());
             ok &= ReminderStore.restoreBackupJson(c, data.getJSONArray("reminders").toString());
             ok &= SavedPlaceStore.restoreBackupJson(c, data.getJSONArray("savedPlaces").toString());
@@ -191,6 +194,7 @@ public final class OrbitBackupManager {
         JSONObject actionResults = data.optJSONObject("actionResults");
         JSONArray memories = requiredArray(data, "memories");
         JSONArray routines = requiredArray(data, "routines");
+        JSONArray customCommands = optionalArray(data, "customCommands");
         JSONArray triggers = requiredArray(data, "routineTriggers");
         JSONArray reminders = requiredArray(data, "reminders");
         JSONArray places = requiredArray(data, "savedPlaces");
@@ -203,6 +207,7 @@ public final class OrbitBackupManager {
         validateActionResults(actionResults, conversationIds);
         validateMemories(memories);
         Set<String> routineIds = validateRoutines(routines);
+        validateCustomCommands(customCommands);
         validateTriggers(triggers, routineIds);
         validateReminders(reminders);
         validatePlaces(places);
@@ -289,6 +294,35 @@ public final class OrbitBackupManager {
             }
         }
         return ids;
+    }
+
+    private static void validateCustomCommands(JSONArray a) throws Exception {
+        if (a.length() > CustomCommandStore.MAX_COMMANDS) invalid("Custom Commands");
+        Set<String> ids = new HashSet<>();
+        Set<String> enabledPhrases = new HashSet<>();
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject o = a.optJSONObject(i);
+            JSONArray aliases = o == null ? null : o.optJSONArray("aliases");
+            String primary = o == null ? "" : o.optString("primaryPhrase", "").trim();
+            String routineId = o == null ? "" : o.optString("routineId", "").trim();
+            if (o == null || !addUnique(ids, o.optString("id", "")) || routineId.isEmpty() ||
+                    primary.isEmpty() || primary.length() > CustomCommandStore.MAX_PHRASE_LENGTH ||
+                    aliases == null || aliases.length() > CustomCommandStore.MAX_ALIASES)
+                invalid("Custom Commands");
+
+            Set<String> own = new HashSet<>();
+            String normalized = CustomCommandStore.normalizeForMatch(primary);
+            if (normalized.length() < 2 || !own.add(normalized)) invalid("Custom Commands");
+            for (int j = 0; j < aliases.length(); j++) {
+                String alias = aliases.optString(j, "").trim();
+                normalized = CustomCommandStore.normalizeForMatch(alias);
+                if (alias.isEmpty() || alias.length() > CustomCommandStore.MAX_PHRASE_LENGTH ||
+                        normalized.length() < 2 || !own.add(normalized)) invalid("Custom Commands");
+            }
+            if (o.optBoolean("enabled", true)) {
+                for (String phrase : own) if (!enabledPhrases.add(phrase)) invalid("Custom Commands");
+            }
+        }
     }
 
     private static void validateTriggers(JSONArray a, Set<String> routineIds) throws Exception {
@@ -493,6 +527,12 @@ public final class OrbitBackupManager {
         JSONArray value = o.optJSONArray(key);
         if (value == null) invalid(key);
         return value;
+    }
+
+    /** Schema-v1 backups created before Custom Commands remain valid and restore an empty command set. */
+    private static JSONArray optionalArray(JSONObject o, String key) {
+        JSONArray value = o == null ? null : o.optJSONArray(key);
+        return value == null ? new JSONArray() : value;
     }
 
     private static boolean addUnique(Set<String> values, String raw) {

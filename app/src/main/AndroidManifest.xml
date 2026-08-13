@@ -60,6 +60,8 @@
         <activity android:name=".NotificationsActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".CapabilitiesActivity" android:exported="false" />
         <activity android:name=".RoutinesActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".CustomCommandsActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".CustomCommandEditorActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".RoutineEditorActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".RoutineTriggersActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".TimeTriggerEditorActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
@@ -67,6 +69,7 @@
         <activity android:name=".RemindersActivity" android:exported="false" />
         <activity android:name=".SavedPlacesActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".UpdateActivity" android:exported="false" />
+        <activity android:name=".WhatsNewActivity" android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

@@ -2,6 +2,7 @@ package com.orbit.assistant;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.view.Gravity;
@@ -147,6 +148,13 @@ public final class UpdateActivity extends Activity {
         action = primaryButton("Check for updates");
         card.addView(action, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48)));
+
+        Button whatsNew = secondaryButton("What's New");
+        whatsNew.setOnClickListener(v -> startActivity(new Intent(this, WhatsNewActivity.class)));
+        LinearLayout.LayoutParams whatsNewLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44));
+        whatsNewLp.setMargins(0, UiKit.dp(this, 10), 0, 0);
+        card.addView(whatsNew, whatsNewLp);
 
         CheckBox updateNotifications = new CheckBox(this);
         updateNotifications.setText("Update notifications");
@@ -384,6 +392,21 @@ public final class UpdateActivity extends Activity {
         button.setAllCaps(false);
         button.setBackground(UiKit.ripple(
                 UiKit.accent(this), UiKit.onAccent(this), 15, this));
+        button.setMinHeight(0);
+        button.setMinimumHeight(0);
+        button.setStateListAnimator(null);
+        UiKit.pressScale(button);
+        return button;
+    }
+
+    private Button secondaryButton(String text) {
+        Button button = new Button(this);
+        button.setText(text);
+        button.setTextColor(UiKit.TEXT);
+        button.setTextSize(14);
+        button.setAllCaps(false);
+        button.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2,
+                Color.rgb(53, 58, 72), UiKit.accent(this), 15, this));
         button.setMinHeight(0);
         button.setMinimumHeight(0);
         button.setStateListAnimator(null);

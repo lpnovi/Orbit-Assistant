@@ -134,6 +134,15 @@ public final class AssistantClient {
         }
         String notificationContext = notification.context;
 
+        // User-defined phrases are exact local aliases for saved Routines. Core
+        // memory, explicit Routine syntax, device commands, and local notification
+        // queries intentionally retain priority.
+        AssistantReply customCommand = CustomCommandRouter.tryHandle(context, prompt);
+        if (customCommand != null) {
+            cb.onSuccess(customCommand);
+            return;
+        }
+
         final MemoryStore.Selection memorySelection =
                 MemoryStore.select(context, prompt, screenText, history);
         final MemoryStore.Suggestion memorySuggestion =

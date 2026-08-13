@@ -42,11 +42,7 @@ public final class RoutineCommandRouter {
         List<RoutineStore.Routine> routines = RoutineStore.list(context);
         MatchResult match = findRunTarget(routines, candidate);
         if (match.routine != null) {
-            RoutineStore.Routine routine = match.routine;
-            RoutineStore.markRun(context, routine.id);
-            List<AssistantReply.Action> actions = RoutineStore.copyActions(routine.actions);
-            String steps = actions.size() == 1 ? "1 step" : actions.size() + " steps";
-            return new AssistantReply("Running " + routine.name + " · " + steps + ".", actions);
+            return replyForRoutine(context, match.routine);
         }
 
         if (!match.ambiguous.isEmpty()) {
@@ -71,6 +67,26 @@ public final class RoutineCommandRouter {
             return new AssistantReply(text.toString());
         }
         return null;
+    }
+
+    /** Shared handoff used by explicit Routine syntax and user-defined Custom Commands. */
+    static AssistantReply replyForRoutine(Context context, RoutineStore.Routine routine) {
+        if (context == null || routine == null) return null;
+        RoutineStore.markRun(context, routine.id);
+        List<AssistantReply.Action> actions = RoutineStore.copyActions(routine.actions);
+        String steps = actions.size() == 1 ? "1 step" : actions.size() + " steps";
+        return new AssistantReply("Running " + routine.name + " · " + steps + ".", actions);
+    }
+
+    static boolean isReservedCommandPhrase(String raw) {
+        String prompt = clean(raw);
+        if (prompt.isEmpty()) return false;
+        String lower = prompt.toLowerCase(Locale.US);
+        return lower.equals("list routines") || lower.equals("list my routines") ||
+                lower.equals("what routines do i have") || lower.equals("what are my routines") ||
+                lower.equals("which routines do i have") || lower.equals("what routines can i run") ||
+                lower.equals("show my routines") || lower.equals("show me my routines") ||
+                lower.equals("show routines") || extractRunName(prompt) != null;
     }
 
     private static AssistantReply routineListReply(Context context) {

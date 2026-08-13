@@ -111,6 +111,14 @@ public class RoutinesActivity extends Activity {
         page.addView(create, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 50)));
 
+        Button customCommands = secondaryButton("Custom Commands");
+        customCommands.setOnClickListener(v ->
+                startActivity(new Intent(this, CustomCommandsActivity.class)));
+        LinearLayout.LayoutParams customLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44));
+        customLp.setMargins(0, UiKit.dp(this, 10), 0, 0);
+        page.addView(customCommands, customLp);
+
         runPanel = card();
         runPanel.setVisibility(View.GONE);
         runTitle = UiKit.text(this, "Running routine", 15, UiKit.TEXT, true);
@@ -125,7 +133,7 @@ public class RoutinesActivity extends Activity {
         TextView saved = sectionTitle("SAVED ROUTINES");
         LinearLayout.LayoutParams savedLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        savedLp.setMargins(0, UiKit.dp(this, 10), 0, 0);
+        savedLp.setMargins(0, UiKit.dp(this, 14), 0, 0);
         page.addView(saved, savedLp);
 
         routinesList = new LinearLayout(this);

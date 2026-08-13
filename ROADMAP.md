@@ -163,8 +163,14 @@
 - Move Quick Settings tile configuration from Routines into Assistant setup
 - Restore the Routines page focus and spacing around saved automation
 
+### 0.6.5.3
+- Add initial Custom Commands that map exact local phrases and aliases to existing saved Routines
+- Preserve Routine safety by reusing the established Routine and Action Engine execution path
+- Include Custom Commands in versioned Backup & Restore with safe missing-Routine references
+- Add a native What's New view backed by cached public stable GitHub Release notes
+
 ### Future 0.6.5.x
-- Custom Commands
+- Expand Custom Commands only after real-device validation; scripting and plugins remain future work
 - Continue focused Quick Access refinements based on device testing
 
 ### Planned 0.6.x
