@@ -364,9 +364,12 @@ public class OrbitSession extends VoiceInteractionSession {
         screenButtonLp.setMargins(UiKit.dp(c, 8), 0, UiKit.dp(c, 8), 0);
         contextBar.addView(screenButton, screenButtonLp);
 
-        selectScreenButton = tinyTextButton("Select");
+        selectScreenButton = tinyTextButton("Select area");
         selectScreenButton.setTextColor(UiKit.accent(c));
-        selectScreenButton.setPadding(UiKit.dp(c, 9), 0, UiKit.dp(c, 9), 0);
+        selectScreenButton.setPadding(UiKit.dp(c, 10), 0, UiKit.dp(c, 10), 0);
+        selectScreenButton.setBackground(UiKit.rippleOutlined(
+                UiKit.SURFACE_2, UiKit.withAlpha(UiKit.accent(c), 92),
+                UiKit.accent(c), 12, c));
         selectScreenButton.setContentDescription("Select or mark part of the current screen");
         selectScreenButton.setOnClickListener(v -> openScreenSelection());
         LinearLayout.LayoutParams selectLp = new LinearLayout.LayoutParams(
@@ -872,11 +875,19 @@ public class OrbitSession extends VoiceInteractionSession {
                 boolean canSelect = !blocked && image &&
                         !getContext().getPackageName().equals(foregroundPackage) &&
                         AppProfileStore.screenshotAllowed(getContext(), foregroundPackage);
-                selectScreenButton.setEnabled(canSelect);
-                selectScreenButton.setAlpha(canSelect ? 1f : .45f);
-                selectScreenButton.setText("Select");
-                selectScreenButton.setTextColor(canSelect ? UiKit.accent(getContext()) : UiKit.MUTED);
-                selectScreenButton.setContentDescription(canSelect
+                boolean opening = screenSelectionOpening;
+                selectScreenButton.setEnabled(canSelect && !opening);
+                selectScreenButton.setAlpha(canSelect ? (opening ? .72f : 1f) : .45f);
+                selectScreenButton.setText(opening ? "Opening…" : "Select area");
+                selectScreenButton.setTextColor(canSelect
+                        ? UiKit.accent(getContext()) : UiKit.MUTED);
+                selectScreenButton.setBackground(UiKit.rippleOutlined(
+                        UiKit.SURFACE_2,
+                        UiKit.withAlpha(canSelect ? UiKit.accent(getContext()) : UiKit.MUTED, 92),
+                        canSelect ? UiKit.accent(getContext()) : UiKit.MUTED, 12, getContext()));
+                selectScreenButton.setContentDescription(opening
+                        ? "Opening screen selection"
+                        : canSelect
                         ? "Select or mark part of the current screen"
                         : "Screen selection needs available screenshot context");
             }
@@ -956,18 +967,20 @@ public class OrbitSession extends VoiceInteractionSession {
         final String sourcePackage = foregroundPackage;
         final String sourceApp = foregroundAppLabel;
         screenSelectionOpening = true;
-        stateTextSafe("Opening screen selection");
+        updateContextUi();
         new Thread(() -> {
             String sourcePath = ScreenSelectionStore.saveSource(context, original);
             main.post(() -> {
                 if (sourcePath.isEmpty()) {
                     screenSelectionOpening = false;
+                    updateContextUi();
                     stateTextSafe("Could not prepare screen selection");
                     main.postDelayed(() -> stateTextSafe(readyState()), 1200);
                     return;
                 }
                 String token = ScreenSelectionBridge.register(result -> main.post(() -> {
                     screenSelectionOpening = false;
+                    updateContextUi();
                     if (generation != screenContextGeneration) return;
                     if (result == null || result.image == null) {
                         stateTextSafe(readyState());
@@ -986,6 +999,7 @@ public class OrbitSession extends VoiceInteractionSession {
                 catch (Exception e) {
                     ScreenSelectionBridge.cancel(token);
                     screenSelectionOpening = false;
+                    updateContextUi();
                     ScreenSelectionStore.delete(context, sourcePath);
                     stateTextSafe("Screen selection could not be opened");
                     main.postDelayed(() -> stateTextSafe(readyState()), 1200);

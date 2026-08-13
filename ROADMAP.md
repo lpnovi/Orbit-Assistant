@@ -211,6 +211,9 @@
 - Keep temporary editor images app-private and reuse existing screenshot, attachment, history, provider, and request systems
 
 ### Planned 0.6.x
+- Rich Chat Markdown rendering
+- Inline reply image support
+- Unified attachment and voice composer parity
 - Home-screen widgets
 - Plugins and extensibility
 - Deeper Android automation

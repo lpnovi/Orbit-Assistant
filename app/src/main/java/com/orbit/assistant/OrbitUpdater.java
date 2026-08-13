@@ -47,12 +47,15 @@ public final class OrbitUpdater {
     private static final int MAX_JSON_BYTES = 256 * 1024;
     private static final long MAX_APK_BYTES = 500L * 1024L * 1024L;
     private static final long ABANDONED_FILE_MS = 48L * 60L * 60L * 1000L;
+    private static final long FOREGROUND_CHECK_SPACING_MS = 5L * 60L * 60L * 1000L;
     private static final Pattern VERSION_PATTERN = Pattern.compile("^[0-9]+(?:\\.[0-9]+)+$");
     private static final Pattern SHA256_PATTERN = Pattern.compile("^[0-9a-fA-F]{64}$");
     private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool();
 
     private static final String PREF_CACHED_RELEASE = "orbit_update_cached_release";
     private static final String PREF_LAST_CHECK_MS = "orbit_update_last_check_ms";
+    private static final String PREF_LAST_FOREGROUND_CHECK_MS =
+            "orbit_update_last_foreground_check_ms";
     private static final String PREF_NOTIFIED_CODE = "orbit_update_notified_code";
     private static final String PREF_PENDING_INSTALL_CODE = "orbit_update_pending_install_code";
     private static final String PREF_PENDING_INSTALL_FILE = "orbit_update_pending_install_file";
@@ -190,6 +193,18 @@ public final class OrbitUpdater {
 
     public static long lastCheckMs(Context context) {
         return Prefs.get(context).getLong(PREF_LAST_CHECK_MS, 0L);
+    }
+
+    /** Atomically claims the lightweight five-hour companion-app launch check. */
+    public static boolean claimForegroundCheck(Context context) {
+        long now = System.currentTimeMillis();
+        long last = Prefs.get(context).getLong(PREF_LAST_FOREGROUND_CHECK_MS, 0L);
+        if (last > 0L && now >= last && now - last < FOREGROUND_CHECK_SPACING_MS) {
+            return false;
+        }
+        return Prefs.get(context).edit()
+                .putLong(PREF_LAST_FOREGROUND_CHECK_MS, now)
+                .commit();
     }
 
     public static boolean wasNotified(Context context, long versionCode) {

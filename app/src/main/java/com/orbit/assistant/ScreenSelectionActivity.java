@@ -87,7 +87,9 @@ public final class ScreenSelectionActivity extends Activity {
             @Override public void onStateChanged() { refreshControls(); }
             @Override public void onCropEstablished() { performTick(); }
         });
-        editor.setBackground(UiKit.rounded(UiKit.SURFACE, 18, this));
+        // Fit-center letterboxing is intentional for exact bitmap mapping. Blend
+        // that unused canvas into the page rather than showing raised gray bars.
+        editor.setBackground(UiKit.rounded(UiKit.BG, 18, this));
         LinearLayout.LayoutParams editorLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
         editorLp.setMargins(0, UiKit.dp(this, 8), 0, UiKit.dp(this, 8));
@@ -100,8 +102,21 @@ public final class ScreenSelectionActivity extends Activity {
         instructionLp.setMargins(0, 0, 0, UiKit.dp(this, 7));
         root.addView(instruction, instructionLp);
 
+        LinearLayout undoRow = new LinearLayout(this);
+        undoRow.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        undoButton = secondaryButton("Undo", "Undo last markup stroke");
+        undoButton.setOnClickListener(v -> editor.undoMarkup());
+        undoRow.addView(undoButton, new LinearLayout.LayoutParams(
+                UiKit.dp(this, 88), UiKit.dp(this, 38)));
+        root.addView(undoRow, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
         LinearLayout tools = new LinearLayout(this);
         tools.setGravity(Gravity.CENTER_VERTICAL);
+        tools.setPadding(UiKit.dp(this, 3), UiKit.dp(this, 3),
+                UiKit.dp(this, 3), UiKit.dp(this, 3));
+        tools.setBackground(UiKit.outlined(UiKit.SURFACE_2,
+                UiKit.withAlpha(UiKit.accent(this), 70), 17, this));
         cropButton = toolButton("Crop", "Crop tool");
         cropButton.setOnClickListener(v -> selectTool(ScreenSelectionView.Tool.CROP, true));
         tools.addView(cropButton, new LinearLayout.LayoutParams(0, UiKit.dp(this, 44), 1));
@@ -109,15 +124,10 @@ public final class ScreenSelectionActivity extends Activity {
         markupButton.setOnClickListener(v -> selectTool(ScreenSelectionView.Tool.MARKUP, true));
         LinearLayout.LayoutParams markupLp = new LinearLayout.LayoutParams(0,
                 UiKit.dp(this, 44), 1);
-        markupLp.setMargins(UiKit.dp(this, 8), 0, 0, 0);
+        markupLp.setMargins(UiKit.dp(this, 3), 0, 0, 0);
         tools.addView(markupButton, markupLp);
-        undoButton = secondaryButton("Undo", "Undo last markup stroke");
-        undoButton.setOnClickListener(v -> editor.undoMarkup());
-        LinearLayout.LayoutParams undoLp = new LinearLayout.LayoutParams(0,
-                UiKit.dp(this, 44), .72f);
-        undoLp.setMargins(UiKit.dp(this, 8), 0, 0, 0);
-        tools.addView(undoButton, undoLp);
-        root.addView(tools);
+        root.addView(tools, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 50)));
 
         LinearLayout actions = new LinearLayout(this);
         actions.setGravity(Gravity.CENTER_VERTICAL);
@@ -126,12 +136,12 @@ public final class ScreenSelectionActivity extends Activity {
         actionsLp.setMargins(0, UiKit.dp(this, 10), 0, 0);
         Button full = secondaryButton("Use full screen", "Use full screen");
         full.setOnClickListener(v -> complete(true));
-        actions.addView(full, new LinearLayout.LayoutParams(0, UiKit.dp(this, 48), .82f));
+        actions.addView(full, new LinearLayout.LayoutParams(0, UiKit.dp(this, 48), 1));
         Button use = primaryButton("Use selection", "Use screen selection");
         use.setOnClickListener(v -> complete(false));
         LinearLayout.LayoutParams useLp = new LinearLayout.LayoutParams(0,
                 UiKit.dp(this, 48), 1);
-        useLp.setMargins(UiKit.dp(this, 9), 0, 0, 0);
+        useLp.setMargins(UiKit.dp(this, 8), 0, 0, 0);
         actions.addView(use, useLp);
         root.addView(actions, actionsLp);
 
@@ -154,12 +164,12 @@ public final class ScreenSelectionActivity extends Activity {
         styleTool(cropButton, crop, "Crop tool");
         styleTool(markupButton, !crop, "Mark up tool");
         instruction.setText(crop
-                ? (editor.hasCrop() ? "Drag inside to move or use the handles to resize"
+                ? (editor.hasCrop() ? "Drag to move or use the handles to resize"
                 : "Drag to select an area")
-                : "Draw to mark what Orbit should notice");
-        undoButton.setVisibility(crop ? View.INVISIBLE : View.VISIBLE);
-        undoButton.setEnabled(!crop && editor.canUndo());
-        undoButton.setAlpha(editor.canUndo() ? 1f : .42f);
+                : "Mark what you want Orbit to notice");
+        boolean canUndo = !crop && editor.canUndo();
+        undoButton.setVisibility(canUndo ? View.VISIBLE : View.GONE);
+        undoButton.setEnabled(canUndo);
     }
 
     private void styleTool(Button button, boolean selected, String description) {
@@ -168,8 +178,7 @@ public final class ScreenSelectionActivity extends Activity {
         button.setTextColor(selected ? UiKit.onAccent(this) : UiKit.TEXT);
         button.setBackground(selected
                 ? UiKit.ripple(UiKit.accent(this), UiKit.onAccent(this), 14, this)
-                : UiKit.rippleOutlined(UiKit.SURFACE_2,
-                        UiKit.withAlpha(UiKit.accent(this), 85), UiKit.accent(this), 14, this));
+                : UiKit.ripple(Color.TRANSPARENT, UiKit.accent(this), 14, this));
     }
 
     private void complete(boolean useFullScreen) {

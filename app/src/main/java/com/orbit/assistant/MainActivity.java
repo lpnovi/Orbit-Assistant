@@ -35,6 +35,9 @@ public class MainActivity extends Activity {
     private ScrollView chatScroller;
     private String appliedAccentName;
     private boolean rebuildingTheme;
+    private boolean foregroundActive;
+    private OrbitUpdater.Release pendingForegroundRelease;
+    private AlertDialog foregroundUpdateDialog;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -58,6 +61,8 @@ public class MainActivity extends Activity {
         if (launchOnboarding) {
             getWindow().getDecorView().post(() ->
                     startActivity(OnboardingActivity.freshInstallIntent(this)));
+        } else {
+            getWindow().getDecorView().postDelayed(this::checkForForegroundUpdate, 900L);
         }
     }
 
@@ -77,13 +82,72 @@ public class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        foregroundActive = true;
         UiPresence.enter(this);
         if (!syncThemeIfNeeded()) refresh();
+        maybeShowForegroundUpdate();
     }
 
     @Override protected void onPause() {
+        foregroundActive = false;
         UiPresence.leave(this);
         super.onPause();
+    }
+
+    private void checkForForegroundUpdate() {
+        if (!Prefs.updateNotifications(this) || isFinishing() || isDestroyed()) return;
+        OrbitUpdater.Release cached = OrbitUpdater.loadCachedAvailable(this);
+        if (cached != null && !OrbitUpdater.wasNotified(this, cached.versionCode)) {
+            pendingForegroundRelease = cached;
+            maybeShowForegroundUpdate();
+            return;
+        }
+        if (!OrbitUpdater.claimForegroundCheck(this)) return;
+        OrbitUpdater.checkAsync(this, new OrbitUpdater.CheckCallback() {
+            @Override public void onResult(OrbitUpdater.CheckResult result) {
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed() || !Prefs.updateNotifications(MainActivity.this)) {
+                        return;
+                    }
+                    if (result.updateAvailable && result.release != null &&
+                            !OrbitUpdater.wasNotified(MainActivity.this,
+                                    result.release.versionCode)) {
+                        pendingForegroundRelease = result.release;
+                        maybeShowForegroundUpdate();
+                    }
+                });
+            }
+
+            @Override public void onError(String message) {
+                // Foreground discovery is opportunistic. Manual checks retain errors.
+            }
+        });
+    }
+
+    private void maybeShowForegroundUpdate() {
+        OrbitUpdater.Release release = pendingForegroundRelease;
+        if (!foregroundActive || release == null || foregroundUpdateDialog != null ||
+                !Prefs.updateNotifications(this) ||
+                OrbitUpdater.wasNotified(this, release.versionCode)) return;
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Orbit update available")
+                .setMessage("Orbit Assistant v" + release.versionName +
+                        " is ready to view. Orbit will not download it without your approval.")
+                .setNegativeButton("Later", null)
+                .setPositiveButton("View update", (ignored, which) ->
+                        startActivity(new Intent(this, UpdateActivity.class)))
+                .create();
+        foregroundUpdateDialog = dialog;
+        UiKit.styleOrbitDialog(dialog, this, false);
+        dialog.setOnDismissListener(ignored -> foregroundUpdateDialog = null);
+        try {
+            dialog.show();
+            pendingForegroundRelease = null;
+            OrbitUpdater.markNotified(this, release.versionCode);
+        } catch (Exception ignored) {
+            foregroundUpdateDialog = null;
+        }
     }
 
 
