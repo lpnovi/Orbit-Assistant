@@ -111,12 +111,20 @@ public class RoutinesActivity extends Activity {
         page.addView(create, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 50)));
 
+        Button templates = secondaryButton("Templates");
+        templates.setOnClickListener(v ->
+                startActivity(new Intent(this, RoutineTemplatesActivity.class)));
+        LinearLayout.LayoutParams templatesLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44));
+        templatesLp.setMargins(0, UiKit.dp(this, 10), 0, 0);
+        page.addView(templates, templatesLp);
+
         Button customCommands = secondaryButton("Custom Commands");
         customCommands.setOnClickListener(v ->
                 startActivity(new Intent(this, CustomCommandsActivity.class)));
         LinearLayout.LayoutParams customLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44));
-        customLp.setMargins(0, UiKit.dp(this, 10), 0, 0);
+        customLp.setMargins(0, UiKit.dp(this, 8), 0, 0);
         page.addView(customCommands, customLp);
 
         runPanel = card();
@@ -571,15 +579,7 @@ public class RoutinesActivity extends Activity {
     }
 
     private void styleOrbitDialog(AlertDialog dialog, boolean destructive) {
-        UiKit.prepareOrbitDialog(dialog, UiKit.rounded(UiKit.SURFACE, 22, this));
-        dialog.setOnShowListener(ignore -> {
-            UiKit.applyDialogTypography(dialog);
-            tintDialogText(dialog.getWindow() == null ? null : dialog.getWindow().getDecorView());
-            Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-            Button negative = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
-            if (positive != null) positive.setTextColor(destructive ? Color.rgb(239,105,105) : UiKit.accent(this));
-            if (negative != null) negative.setTextColor(UiKit.accent(this));
-        });
+        UiKit.styleOrbitDialog(dialog, this, destructive);
     }
 
     private void tintDialogText(View view) {

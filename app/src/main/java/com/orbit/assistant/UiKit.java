@@ -31,8 +31,10 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.animation.OvershootInterpolator;
+import android.view.animation.AccelerateInterpolator;
 import android.widget.TextView;
 import android.widget.Button;
+import android.widget.CompoundButton;
 import android.widget.LinearLayout;
 import android.widget.FrameLayout;
 import android.widget.PopupWindow;
@@ -366,6 +368,9 @@ public final class UiKit {
     /** Applies Orbit's readable dialog foregrounds without flattening custom-view hierarchy. */
     public static void applyOrbitDialogColors(AlertDialog dialog, Context c) {
         if (dialog == null) return;
+        if (dialog.getWindow() != null) {
+            ensureReadableDialogText(dialog.getWindow().getDecorView());
+        }
         TextView message = dialog.findViewById(android.R.id.message);
         if (message != null) message.setTextColor(TEXT);
         if (c != null) {
@@ -382,6 +387,80 @@ public final class UiKit {
         if (positive != null) positive.setTextColor(actionColor);
         if (negative != null) negative.setTextColor(actionColor);
         if (neutral != null) neutral.setTextColor(actionColor);
+    }
+
+    /**
+     * One hardened styling path for normal Orbit-owned dialogs. It owns the
+     * surface, motion, Force Dark behavior, selected typography, readable text,
+     * and action colors so callers cannot accidentally omit one of those pieces.
+     */
+    public static void styleOrbitDialog(AlertDialog dialog, Context c, boolean destructive) {
+        styleOrbitDialog(dialog, c, destructive, null);
+    }
+
+    public static void styleOrbitDialog(AlertDialog dialog, Context c, boolean destructive,
+                                        Runnable afterShown) {
+        styleOrbitDialog(dialog, c, destructive, rounded(SURFACE, 22, c), -1f, afterShown);
+    }
+
+    /** Shared styling with an optional Orbit-owned surface variant and dim strength. */
+    public static void styleOrbitDialog(AlertDialog dialog, Context c, boolean destructive,
+                                        Drawable background, float dimAmount,
+                                        Runnable afterShown) {
+        if (dialog == null || c == null) return;
+        prepareOrbitDialog(dialog, background);
+        if (dimAmount >= 0f && dialog.getWindow() != null) {
+            dialog.getWindow().setDimAmount(dimAmount);
+        }
+        dialog.setOnShowListener(ignore -> {
+            applyDialogTypography(dialog);
+            applyOrbitDialogColors(dialog, c);
+            Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            if (destructive && positive != null) {
+                positive.setTextColor(Color.rgb(239, 105, 105));
+            }
+            if (afterShown != null) afterShown.run();
+        });
+    }
+
+    /** Corrects only low-contrast inherited OEM colors, preserving readable accent/muted text. */
+    private static void ensureReadableDialogText(View view) {
+        if (view == null) return;
+        if (view instanceof TextView &&
+                (!(view instanceof Button) || view instanceof CompoundButton)) {
+            TextView text = (TextView) view;
+            if (contrastRatio(text.getCurrentTextColor(), SURFACE) < 3.0d) {
+                text.setTextColor(TEXT);
+            }
+            if (text.getHint() != null && contrastRatio(
+                    text.getHintTextColors().getDefaultColor(), SURFACE) < 3.0d) {
+                text.setHintTextColor(MUTED);
+            }
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                ensureReadableDialogText(group.getChildAt(i));
+            }
+        }
+    }
+
+    private static double contrastRatio(int foreground, int background) {
+        double lighter = Math.max(relativeLuminance(foreground), relativeLuminance(background));
+        double darker = Math.min(relativeLuminance(foreground), relativeLuminance(background));
+        return (lighter + 0.05d) / (darker + 0.05d);
+    }
+
+    private static double relativeLuminance(int color) {
+        double r = linearChannel(Color.red(color) / 255d);
+        double g = linearChannel(Color.green(color) / 255d);
+        double b = linearChannel(Color.blue(color) / 255d);
+        return 0.2126d * r + 0.7152d * g + 0.0722d * b;
+    }
+
+    private static double linearChannel(double channel) {
+        return channel <= 0.04045d ? channel / 12.92d :
+                Math.pow((channel + 0.055d) / 1.055d, 2.4d);
     }
 
     /** Orbit-styled determinate progress for measurable foreground work. */
@@ -733,12 +812,37 @@ public final class UiKit {
 
             pressScale(row);
             row.setOnClickListener(v -> {
-                popup.dismiss();
-                if (choice == null) return;
+                if (choice == null) {
+                    popup.dismiss();
+                    return;
+                }
                 if (index == dialogHandoffIndex) {
-                    anchor.postDelayed(() -> anchor.postOnAnimation(
-                            () -> choice.onChoice(index, labelText)), ORBIT_POPUP_EXIT_MS);
+                    // Drive this one exit in the popup's own content hierarchy and
+                    // hand off from the real animation-completion callback. The
+                    // transparent window is dismissed before the dialog is posted,
+                    // avoiding Samsung WindowManager timing guesses and overlap.
+                    popup.setTouchable(false);
+                    box.animate().cancel();
+                    box.setPivotX(box.getWidth() / 2f);
+                    box.setPivotY(box.getHeight() / 2f);
+                    box.animate()
+                            .alpha(0f)
+                            .scaleX(0.992f)
+                            .scaleY(0.992f)
+                            .setDuration(ORBIT_POPUP_EXIT_MS)
+                            .setInterpolator(new AccelerateInterpolator())
+                            .withEndAction(() -> {
+                                // The content has already completed its exit. Do not
+                                // ask WindowManager to run a second popup exit while
+                                // the confirmation dialog begins.
+                                popup.setAnimationStyle(0);
+                                popup.dismiss();
+                                anchor.postOnAnimation(
+                                        () -> choice.onChoice(index, labelText));
+                            })
+                            .start();
                 } else {
+                    popup.dismiss();
                     choice.onChoice(index, labelText);
                 }
             });

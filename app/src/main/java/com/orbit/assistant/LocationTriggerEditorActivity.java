@@ -628,8 +628,7 @@ public final class LocationTriggerEditorActivity extends Activity {
     }
 
     private void styleDialog(AlertDialog d, boolean destructive) {
-        UiKit.prepareOrbitDialog(d, UiKit.rounded(UiKit.SURFACE, 22, this));
-        d.setOnShowListener(x -> styleShown(d, destructive));
+        UiKit.styleOrbitDialog(d, this, destructive);
     }
 
     private void styleShown(AlertDialog d, boolean destructive) {

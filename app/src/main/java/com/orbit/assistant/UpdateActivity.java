@@ -422,11 +422,7 @@ public final class UpdateActivity extends Activity {
     }
 
     private void styleOrbitDialog(AlertDialog dialog) {
-        UiKit.prepareOrbitDialog(dialog, UiKit.rounded(UiKit.SURFACE, 22, this));
-        dialog.setOnShowListener(ignore -> {
-            UiKit.applyDialogTypography(dialog);
-            UiKit.applyOrbitDialogColors(dialog, this);
-        });
+        UiKit.styleOrbitDialog(dialog, this, false);
     }
 
     private void showDownloadProgress(int percent) {

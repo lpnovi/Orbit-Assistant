@@ -316,16 +316,9 @@ public class MemoryActivity extends Activity {
 
         b.setPositiveButton("Save", null);
         AlertDialog dialog = b.create();
-        prepareDialog(dialog);
-        dialog.setOnShowListener(ignore -> {
-            styleDialog(dialog);
-
+        UiKit.styleOrbitDialog(dialog, this, false, () -> {
             Button save = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-            Button cancel = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
             Button delete = dialog.getButton(AlertDialog.BUTTON_NEUTRAL);
-
-            if (save != null) save.setTextColor(UiKit.accent(this));
-            if (cancel != null) cancel.setTextColor(UiKit.accent(this));
             if (delete != null) delete.setTextColor(Color.rgb(244, 110, 150));
 
             if (save != null) {
@@ -410,14 +403,7 @@ public class MemoryActivity extends Activity {
                     MemoryStore.delete(this, m.id);
                     refresh();
                 }).create();
-        prepareDialog(dialog);
-        dialog.setOnShowListener(ignore -> {
-            styleDialog(dialog);
-            Button cancel = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
-            Button delete = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-            if (cancel != null) cancel.setTextColor(UiKit.accent(this));
-            if (delete != null) delete.setTextColor(Color.rgb(244, 110, 150));
-        });
+        UiKit.styleOrbitDialog(dialog, this, true);
         dialog.show();
     }
 
@@ -430,26 +416,8 @@ public class MemoryActivity extends Activity {
                     MemoryStore.clear(this);
                     refresh();
                 }).create();
-        prepareDialog(dialog);
-        dialog.setOnShowListener(ignore -> {
-            styleDialog(dialog);
-            Button cancel = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
-            Button clear = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-            if (cancel != null) cancel.setTextColor(UiKit.accent(this));
-            if (clear != null) clear.setTextColor(Color.rgb(244, 110, 150));
-        });
+        UiKit.styleOrbitDialog(dialog, this, true);
         dialog.show();
-    }
-
-    private void prepareDialog(AlertDialog dialog) {
-        UiKit.prepareOrbitDialog(dialog, UiKit.rounded(UiKit.SURFACE, 22, this));
-    }
-
-    private void styleDialog(AlertDialog dialog) {
-        UiKit.applyDialogTypography(dialog);
-        if (dialog.getWindow() != null) {
-            tintDialogText(dialog.getWindow().getDecorView());
-        }
     }
 
     private void tintDialogText(View view) {

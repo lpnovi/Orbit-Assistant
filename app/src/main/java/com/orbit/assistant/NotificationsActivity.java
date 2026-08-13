@@ -352,19 +352,7 @@ public class NotificationsActivity extends Activity {
     }
 
     private void styleOrbitDialog(AlertDialog dialog) {
-        UiKit.prepareOrbitDialog(dialog,
-                UiKit.rounded(UiKit.SURFACE, 22, NotificationsActivity.this));
-        dialog.setOnShowListener(ignore -> {
-            UiKit.applyDialogTypography(dialog);
-            if (dialog.getWindow() != null) {
-                tintDialogText(dialog.getWindow().getDecorView());
-            }
-
-            Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-            Button negative = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
-            if (positive != null) positive.setTextColor(UiKit.accent(this));
-            if (negative != null) negative.setTextColor(UiKit.accent(this));
-        });
+        UiKit.styleOrbitDialog(dialog, this, false);
     }
 
     private void tintDialogText(View view) {

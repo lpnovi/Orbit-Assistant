@@ -801,21 +801,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     }
 
     private void styleOrbitDialog(AlertDialog dialog, boolean destructivePositive) {
-        UiKit.prepareOrbitDialog(dialog,
-                UiKit.rounded(UiKit.SURFACE, 22, SettingsActivity.this));
-        dialog.setOnShowListener(ignore -> {
-            UiKit.applyDialogTypography(dialog);
-            if (dialog.getWindow() != null) {
-                tintDialogText(dialog.getWindow().getDecorView());
-            }
-            Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-            Button negative = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
-            Button neutral = dialog.getButton(AlertDialog.BUTTON_NEUTRAL);
-            if (positive != null) positive.setTextColor(destructivePositive
-                    ? Color.rgb(239, 105, 105) : UiKit.accent(this));
-            if (negative != null) negative.setTextColor(UiKit.accent(this));
-            if (neutral != null) neutral.setTextColor(UiKit.accent(this));
-        });
+        UiKit.styleOrbitDialog(dialog, this, destructivePositive);
     }
 
     private void tintDialogText(View view) {

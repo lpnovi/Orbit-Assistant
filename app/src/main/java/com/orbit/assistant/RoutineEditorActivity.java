@@ -978,16 +978,7 @@ public class RoutineEditorActivity extends Activity {
     }
 
     private void styleOrbitDialog(AlertDialog dialog, boolean destructive, Runnable afterShown) {
-        UiKit.prepareOrbitDialog(dialog, UiKit.rounded(UiKit.SURFACE, 22, this));
-        dialog.setOnShowListener(ignore -> {
-            UiKit.applyDialogTypography(dialog);
-            tintDialogText(dialog.getWindow() == null ? null : dialog.getWindow().getDecorView());
-            Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-            Button negative = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
-            if (positive != null) positive.setTextColor(destructive ? Color.rgb(239,105,105) : UiKit.accent(this));
-            if (negative != null) negative.setTextColor(UiKit.accent(this));
-            if (afterShown != null) afterShown.run();
-        });
+        UiKit.styleOrbitDialog(dialog, this, destructive, afterShown);
     }
 
     private void tintDialogText(View view) {

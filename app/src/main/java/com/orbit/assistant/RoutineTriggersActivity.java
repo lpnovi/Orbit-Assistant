@@ -505,14 +505,7 @@ public class RoutineTriggersActivity extends Activity {
     }
 
     private void styleOrbitDialog(AlertDialog dialog, boolean destructive) {
-        UiKit.prepareOrbitDialog(dialog, UiKit.rounded(UiKit.SURFACE, 22, this));
-        dialog.setOnShowListener(ignore -> {
-            UiKit.applyDialogTypography(dialog);
-            tint(dialog.getWindow() == null ? null : dialog.getWindow().getDecorView());
-            Button p = dialog.getButton(AlertDialog.BUTTON_POSITIVE), n = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
-            if (p != null) p.setTextColor(destructive ? Color.rgb(239,105,105) : UiKit.accent(this));
-            if (n != null) n.setTextColor(UiKit.accent(this));
-        });
+        UiKit.styleOrbitDialog(dialog, this, destructive);
     }
 
     private void tint(View v) {

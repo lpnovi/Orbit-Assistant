@@ -208,12 +208,7 @@ public final class CustomCommandsActivity extends Activity {
                 .setPositiveButton("Delete", (d, which) -> {
                     if (CustomCommandStore.delete(this, command.id)) refresh();
                 }).create();
-        UiKit.prepareOrbitDialog(dialog, UiKit.rounded(UiKit.SURFACE, 22, this));
-        dialog.setOnShowListener(ignore -> {
-            UiKit.applyDialogTypography(dialog);
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(Color.rgb(239, 105, 105));
-            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(UiKit.accent(this));
-        });
+        UiKit.styleOrbitDialog(dialog, this, true);
         dialog.show();
     }
 

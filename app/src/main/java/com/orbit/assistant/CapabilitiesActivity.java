@@ -384,15 +384,7 @@ public final class CapabilitiesActivity extends Activity {
                         .setNegativeButton("Not now", null)
                         .setPositiveButton("Open settings", (d, w) -> RoutineLocationTriggerScheduler.openAppLocationSettings(this))
                         .create();
-                UiKit.prepareOrbitDialog(dialog, UiKit.rounded(UiKit.SURFACE, 22, this));
-                dialog.setOnShowListener(ignore -> {
-                    UiKit.applyDialogTypography(dialog);
-                    tintDialogText(dialog.getWindow() == null ? null : dialog.getWindow().getDecorView());
-                    if (dialog.getButton(AlertDialog.BUTTON_POSITIVE) != null)
-                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(UiKit.accent(this));
-                    if (dialog.getButton(AlertDialog.BUTTON_NEGATIVE) != null)
-                        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(UiKit.accent(this));
-                });
+                UiKit.styleOrbitDialog(dialog, this, false);
                 dialog.show();
             }
             return;

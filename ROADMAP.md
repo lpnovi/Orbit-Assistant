@@ -173,6 +173,20 @@
 - Expand Custom Commands only after real-device validation; scripting and plugins remain future work
 - Continue focused Quick Access refinements based on device testing
 
+## 0.6.6 Release readiness
+
+### 0.6.6.0
+- Add built-in Routine Templates that create normal editable Routines through the existing Routine and Action Engine architecture
+- Add capability-aware previews and optional Custom Command phrase suggestions without silently creating shortcuts
+- Harden Orbit-owned dialog foregrounds, typography, surfaces, actions, AMOLED behavior, and animation through one shared styling path
+- Make the Routine overflow-to-delete-dialog handoff deterministic instead of delay-based
+
+### 0.6.6.1
+- Add first-run onboarding for a clean initial Orbit setup experience
+
+### 0.6.6.2
+- Complete release-candidate and fresh-install polish based on device validation
+
 ### Planned 0.6.x
 - Home-screen widgets
 - Screen-region selection

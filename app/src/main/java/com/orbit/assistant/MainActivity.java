@@ -371,16 +371,7 @@ public class MainActivity extends Activity {
     }
 
     private void styleOrbitDialog(AlertDialog dialog) {
-        UiKit.prepareOrbitDialog(dialog, UiKit.rounded(UiKit.SURFACE, 22, this));
-        dialog.setOnShowListener(ignore -> {
-            UiKit.applyDialogTypography(dialog);
-            TextView message = dialog.findViewById(android.R.id.message);
-            if (message != null) message.setTextColor(UiKit.TEXT);
-            Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-            Button negative = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
-            if (positive != null) positive.setTextColor(UiKit.accent(this));
-            if (negative != null) negative.setTextColor(UiKit.accent(this));
-        });
+        UiKit.styleOrbitDialog(dialog, this, false);
     }
 
     private void openChat(String id) {
