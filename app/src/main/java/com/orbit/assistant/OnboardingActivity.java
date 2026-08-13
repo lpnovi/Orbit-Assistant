@@ -211,8 +211,9 @@ public final class OnboardingActivity extends Activity {
         View mark = UiKit.orbitMark(this, 38);
         markHost.addView(mark, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        int markBoxSize = UiKit.dp(this, step == 7 ? 64 : 44);
         LinearLayout.LayoutParams markLp = new LinearLayout.LayoutParams(
-                UiKit.dp(this, 44), UiKit.dp(this, 44));
+                markBoxSize, markBoxSize);
         markLp.rightMargin = UiKit.dp(this, 10);
         header.addView(markHost, markLp);
         completionMarkHost = step == 7 ? markHost : null;
@@ -606,47 +607,73 @@ public final class OnboardingActivity extends Activity {
 
         List<Animator> animations = new ArrayList<>();
         ObjectAnimator pulse = ObjectAnimator.ofPropertyValuesHolder(mark,
-                PropertyValuesHolder.ofFloat(View.SCALE_X, .94f, 1.08f, 1f),
-                PropertyValuesHolder.ofFloat(View.SCALE_Y, .94f, 1.08f, 1f));
-        pulse.setDuration(680L);
+                PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, .90f, 1.16f, 1f),
+                PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, .90f, 1.16f, 1f));
+        pulse.setDuration(920L);
         pulse.setInterpolator(new PathInterpolator(.2f, 0f, 0f, 1f));
         animations.add(pulse);
 
-        int dotSize = UiKit.dp(this, 4);
-        int center = UiKit.dp(this, 22) - dotSize / 2;
-        int initialRadius = UiKit.dp(this, 8);
-        int travel = UiKit.dp(this, 10);
         int accent = UiKit.accent(this);
+        int hostSize = UiKit.dp(this, 64);
+        int ringSize = UiKit.dp(this, 44);
+        View ring = new View(this);
+        GradientDrawable ringShape = new GradientDrawable();
+        ringShape.setShape(GradientDrawable.OVAL);
+        ringShape.setColor(Color.TRANSPARENT);
+        ringShape.setStroke(UiKit.dp(this, 2), UiKit.withAlpha(accent, 190));
+        ring.setBackground(ringShape);
+        ring.setAlpha(0f);
+        ring.setScaleX(.62f);
+        ring.setScaleY(.62f);
+        ring.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        FrameLayout.LayoutParams ringLp = new FrameLayout.LayoutParams(ringSize, ringSize);
+        ringLp.leftMargin = (hostSize - ringSize) / 2;
+        ringLp.topMargin = (hostSize - ringSize) / 2;
+        host.addView(ring, 0, ringLp);
+        ObjectAnimator ringBurst = ObjectAnimator.ofPropertyValuesHolder(ring,
+                PropertyValuesHolder.ofFloat(View.ALPHA, 0f, .82f, .52f, 0f),
+                PropertyValuesHolder.ofFloat(View.SCALE_X, .62f, .88f, 1.38f),
+                PropertyValuesHolder.ofFloat(View.SCALE_Y, .62f, .88f, 1.38f));
+        ringBurst.setDuration(920L);
+        ringBurst.setInterpolator(new PathInterpolator(.2f, 0f, 0f, 1f));
+        animations.add(ringBurst);
+
         List<View> particles = new ArrayList<>();
         for (int i = 0; i < 8; i++) {
             double angle = (Math.PI * 2d * i / 8d) - Math.PI / 2d;
+            int dotSize = UiKit.dp(this, i % 2 == 0 ? 6 : 5);
+            int center = hostSize / 2 - dotSize / 2;
+            int initialRadius = UiKit.dp(this, 10);
+            int travel = UiKit.dp(this, i % 2 == 0 ? 19 : 18);
             View dot = new View(this);
             GradientDrawable shape = new GradientDrawable();
             shape.setShape(GradientDrawable.OVAL);
-            shape.setColor(accent);
+            shape.setColor(i % 2 == 0 ? accent : UiKit.orbitSatelliteColor(this));
             dot.setBackground(shape);
             dot.setAlpha(0f);
-            dot.setScaleX(.65f);
-            dot.setScaleY(.65f);
+            dot.setScaleX(.58f);
+            dot.setScaleY(.58f);
+            dot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             FrameLayout.LayoutParams dotLp = new FrameLayout.LayoutParams(dotSize, dotSize);
             dotLp.leftMargin = center + (int) Math.round(Math.cos(angle) * initialRadius);
             dotLp.topMargin = center + (int) Math.round(Math.sin(angle) * initialRadius);
-            host.addView(dot, 0, dotLp);
+            host.addView(dot, 1, dotLp);
             particles.add(dot);
 
             PropertyValuesHolder x = PropertyValuesHolder.ofFloat(View.TRANSLATION_X, 0f,
                     (float) (Math.cos(angle) * travel));
             PropertyValuesHolder y = PropertyValuesHolder.ofFloat(View.TRANSLATION_Y, 0f,
                     (float) (Math.sin(angle) * travel));
-            PropertyValuesHolder alpha = PropertyValuesHolder.ofFloat(View.ALPHA, 0f, 1f, 0f);
+            PropertyValuesHolder alpha = PropertyValuesHolder.ofFloat(
+                    View.ALPHA, 0f, 1f, .92f, 0f);
             PropertyValuesHolder scaleX = PropertyValuesHolder.ofFloat(
-                    View.SCALE_X, .65f, 1f, .4f);
+                    View.SCALE_X, .58f, 1.18f, .35f);
             PropertyValuesHolder scaleY = PropertyValuesHolder.ofFloat(
-                    View.SCALE_Y, .65f, 1f, .4f);
+                    View.SCALE_Y, .58f, 1.18f, .35f);
             ObjectAnimator particle = ObjectAnimator.ofPropertyValuesHolder(
                     dot, x, y, alpha, scaleX, scaleY);
-            particle.setStartDelay(35L + i * 8L);
-            particle.setDuration(620L);
+            particle.setStartDelay(80L + i * 10L);
+            particle.setDuration(820L);
             particle.setInterpolator(new PathInterpolator(.2f, 0f, 0f, 1f));
             animations.add(particle);
         }
@@ -654,10 +681,23 @@ public final class OnboardingActivity extends Activity {
         AnimatorSet ignition = new AnimatorSet();
         ignition.playTogether(animations);
         ignition.addListener(new AnimatorListenerAdapter() {
-            @Override public void onAnimationEnd(Animator animation) {
+            private boolean cleaned;
+
+            private void cleanUp() {
+                if (cleaned) return;
+                cleaned = true;
+                host.removeView(ring);
                 for (View particle : particles) host.removeView(particle);
                 mark.setScaleX(1f);
                 mark.setScaleY(1f);
+            }
+
+            @Override public void onAnimationEnd(Animator animation) {
+                cleanUp();
+            }
+
+            @Override public void onAnimationCancel(Animator animation) {
+                cleanUp();
             }
         });
         ignition.start();
