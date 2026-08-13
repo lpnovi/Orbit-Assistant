@@ -382,6 +382,20 @@ public class OrbitSession extends VoiceInteractionSession {
         LinearLayout screenActions = new LinearLayout(c);
         screenActions.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
 
+        screenshotPreview = new ImageView(c);
+        screenshotPreview.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        screenshotPreview.setBackground(UiKit.rounded(UiKit.SURFACE_2, 8, c));
+        screenshotPreview.setClipToOutline(true);
+        screenshotPreview.setContentDescription("Current screen preview. Select an area.");
+        screenshotPreview.setOnClickListener(v -> openScreenSelection());
+        // Keep this slot allocated before Android delivers the screenshot. If it
+        // were GONE, the bottom-anchored sheet would grow and visibly jump upward.
+        screenshotPreview.setVisibility(View.INVISIBLE);
+        LinearLayout.LayoutParams previewLp = new LinearLayout.LayoutParams(
+                UiKit.dp(c, 56), UiKit.dp(c, 40));
+        previewLp.setMargins(0, 0, UiKit.dp(c, 4), 0);
+        screenActions.addView(screenshotPreview, previewLp);
+
         screenButton = tinyTextButton(screenAttached ? "Attached" : "Use screen");
         screenButton.setTextColor(screenAttached ? UiKit.SUCCESS : UiKit.accent(c));
         screenButton.setPadding(UiKit.dp(c, 10), 0, UiKit.dp(c, 10), 0);
@@ -393,7 +407,7 @@ public class OrbitSession extends VoiceInteractionSession {
         screenButton.setOnClickListener(v -> toggleScreenAttachment());
         LinearLayout.LayoutParams screenButtonLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(c, 32));
-        screenButtonLp.setMargins(UiKit.dp(c, 5), 0, UiKit.dp(c, 5), 0);
+        screenButtonLp.setMargins(0, 0, UiKit.dp(c, 4), 0);
         screenActions.addView(screenButton, screenButtonLp);
 
         selectScreenButton = tinyTextButton("Select area");
@@ -406,20 +420,7 @@ public class OrbitSession extends VoiceInteractionSession {
         selectScreenButton.setOnClickListener(v -> openScreenSelection());
         LinearLayout.LayoutParams selectLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(c, 32));
-        selectLp.setMargins(0, 0, UiKit.dp(c, 5), 0);
         screenActions.addView(selectScreenButton, selectLp);
-
-        screenshotPreview = new ImageView(c);
-        screenshotPreview.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        screenshotPreview.setBackground(UiKit.rounded(UiKit.SURFACE_2, 8, c));
-        screenshotPreview.setClipToOutline(true);
-        screenshotPreview.setContentDescription("Current screen preview. Select an area.");
-        screenshotPreview.setOnClickListener(v -> openScreenSelection());
-        // Keep this slot allocated before Android delivers the screenshot. If it
-        // were GONE, the bottom-anchored sheet would grow and visibly jump upward.
-        screenshotPreview.setVisibility(View.INVISIBLE);
-        screenActions.addView(screenshotPreview, new LinearLayout.LayoutParams(
-                UiKit.dp(c, 56), UiKit.dp(c, 40)));
         contextBar.addView(screenActions, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         LinearLayout.LayoutParams contextLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);

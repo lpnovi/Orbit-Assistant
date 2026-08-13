@@ -26,6 +26,7 @@ public final class ScreenSelectionActivity extends Activity {
     private Button cropButton;
     private Button markupButton;
     private Button undoButton;
+    private LinearLayout undoRow;
     private boolean finished;
     private boolean bridgeDeliveryPending;
     private boolean bridgeFailurePending;
@@ -64,8 +65,8 @@ public final class ScreenSelectionActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(UiKit.BG);
         root.setForceDarkAllowed(false);
-        root.setPadding(UiKit.dp(this, 12), UiKit.dp(this, 6),
-                UiKit.dp(this, 12), UiKit.dp(this, 8));
+        root.setPadding(UiKit.dp(this, 12), UiKit.dp(this, 2),
+                UiKit.dp(this, 12), UiKit.dp(this, 2));
 
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
@@ -97,17 +98,17 @@ public final class ScreenSelectionActivity extends Activity {
         editor.setBackground(UiKit.rounded(UiKit.BG, 18, this));
         LinearLayout.LayoutParams editorLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
-        editorLp.setMargins(0, UiKit.dp(this, 4), 0, UiKit.dp(this, 4));
+        editorLp.setMargins(0, UiKit.dp(this, 1), 0, UiKit.dp(this, 1));
         root.addView(editor, editorLp);
 
         instruction = UiKit.text(this, "Drag to select an area", 12, UiKit.MUTED, false);
         instruction.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams instructionLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        instructionLp.setMargins(0, 0, 0, UiKit.dp(this, 3));
+        instructionLp.setMargins(0, 0, 0, 0);
         root.addView(instruction, instructionLp);
 
-        LinearLayout undoRow = new LinearLayout(this);
+        undoRow = new LinearLayout(this);
         undoRow.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         undoButton = secondaryButton("Undo", "Undo last markup stroke");
         undoButton.setOnClickListener(v -> editor.undoMarkup());
@@ -138,7 +139,7 @@ public final class ScreenSelectionActivity extends Activity {
         actions.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams actionsLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        actionsLp.setMargins(0, UiKit.dp(this, 6), 0, 0);
+        actionsLp.setMargins(0, UiKit.dp(this, 3), 0, 0);
         Button full = secondaryButton("Use full screen", "Use full screen");
         full.setOnClickListener(v -> complete(true));
         actions.addView(full, new LinearLayout.LayoutParams(0, UiKit.dp(this, 46), 1));
@@ -173,7 +174,7 @@ public final class ScreenSelectionActivity extends Activity {
                 : "Drag to select an area")
                 : "Mark what you want Orbit to notice");
         boolean canUndo = !crop && editor.canUndo();
-        undoButton.setVisibility(canUndo ? View.VISIBLE : View.GONE);
+        undoRow.setVisibility(canUndo ? View.VISIBLE : View.GONE);
         undoButton.setEnabled(canUndo);
     }
 
