@@ -58,6 +58,10 @@ import java.util.List;
 import java.util.Locale;
 
 public class OrbitSession extends VoiceInteractionSession {
+    private static final String INTERNAL_SCREEN_SELECTION_RESUME =
+            "orbit_internal_screen_selection_resume";
+    private static final String INTERNAL_SCREEN_SELECTION_STATUS =
+            "orbit_internal_screen_selection_status";
     private final Handler main = new Handler(Looper.getMainLooper());
     private final List<AssistantClient.History> history = new ArrayList<>();
 
@@ -108,6 +112,11 @@ public class OrbitSession extends VoiceInteractionSession {
     private boolean dismissAnimating = false;
     private boolean sessionVisible = false;
     private boolean orbitOwnsIme = false;
+    private String screenSelectionComposerText = "";
+    private boolean screenSelectionRestoreFocus = false;
+    private boolean screenSelectionRestoreKeyboard = false;
+    private boolean internalScreenSelectionResume = false;
+    private String screenSelectionCallbackToken = "";
     private String uiRequestConversationId = null;
 
     public OrbitSession(Context context) {
@@ -154,8 +163,28 @@ public class OrbitSession extends VoiceInteractionSession {
     @Override
     public void onPrepareShow(Bundle args, int showFlags) {
         super.onPrepareShow(args, showFlags);
+        boolean internalResume = args != null &&
+                args.getBoolean(INTERNAL_SCREEN_SELECTION_RESUME, false);
         orbitOwnsIme = false;
         setAssistantAboveExistingIme();
+
+        if (internalResume) {
+            // Screen Selection temporarily hid this same VoiceInteractionSession.
+            // Keep its invocation, context, conversation, attachments, and views;
+            // only prepare the existing sheet to become visible again.
+            internalScreenSelectionResume = true;
+            if (input != null && !screenSelectionComposerText.equals(input.getText().toString())) {
+                input.setText(screenSelectionComposerText);
+                input.setSelection(input.length());
+            }
+            if (root != null) {
+                prepareHiddenState();
+                updateContextUi();
+                root.requestApplyInsets();
+            }
+            return;
+        }
+        internalScreenSelectionResume = false;
 
         // Prepare the conversation state BEFORE rebuilding the visible sheet. In
         // v0.3.5 the reset happened in onShow(), after renderConversation() had
@@ -344,11 +373,14 @@ public class OrbitSession extends VoiceInteractionSession {
 
         LinearLayout contextBar = new LinearLayout(c);
         contextBar.setGravity(Gravity.CENTER_VERTICAL);
-        contextBar.setMinimumHeight(UiKit.dp(c, 44));
-        contextBar.setPadding(UiKit.dp(c, 12), UiKit.dp(c, 8), UiKit.dp(c, 12), UiKit.dp(c, 8));
+        contextBar.setMinimumHeight(UiKit.dp(c, 52));
+        contextBar.setPadding(UiKit.dp(c, 10), UiKit.dp(c, 6), UiKit.dp(c, 8), UiKit.dp(c, 6));
         contextBar.setBackground(UiKit.rounded(UiKit.SURFACE, 14, c));
         contextText = UiKit.text(c, "Current screen available", 12, UiKit.MUTED, false);
         contextBar.addView(contextText, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
+        LinearLayout screenActions = new LinearLayout(c);
+        screenActions.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
 
         screenButton = tinyTextButton(screenAttached ? "Attached" : "Use screen");
         screenButton.setTextColor(screenAttached ? UiKit.SUCCESS : UiKit.accent(c));
@@ -361,8 +393,8 @@ public class OrbitSession extends VoiceInteractionSession {
         screenButton.setOnClickListener(v -> toggleScreenAttachment());
         LinearLayout.LayoutParams screenButtonLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(c, 32));
-        screenButtonLp.setMargins(UiKit.dp(c, 8), 0, UiKit.dp(c, 8), 0);
-        contextBar.addView(screenButton, screenButtonLp);
+        screenButtonLp.setMargins(UiKit.dp(c, 5), 0, UiKit.dp(c, 5), 0);
+        screenActions.addView(screenButton, screenButtonLp);
 
         selectScreenButton = tinyTextButton("Select area");
         selectScreenButton.setTextColor(UiKit.accent(c));
@@ -374,15 +406,22 @@ public class OrbitSession extends VoiceInteractionSession {
         selectScreenButton.setOnClickListener(v -> openScreenSelection());
         LinearLayout.LayoutParams selectLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(c, 32));
-        selectLp.setMargins(0, 0, UiKit.dp(c, 8), 0);
-        contextBar.addView(selectScreenButton, selectLp);
+        selectLp.setMargins(0, 0, UiKit.dp(c, 5), 0);
+        screenActions.addView(selectScreenButton, selectLp);
 
         screenshotPreview = new ImageView(c);
         screenshotPreview.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        screenshotPreview.setBackground(UiKit.rounded(UiKit.SURFACE_2, 8, c));
+        screenshotPreview.setClipToOutline(true);
+        screenshotPreview.setContentDescription("Current screen preview. Select an area.");
+        screenshotPreview.setOnClickListener(v -> openScreenSelection());
         // Keep this slot allocated before Android delivers the screenshot. If it
         // were GONE, the bottom-anchored sheet would grow and visibly jump upward.
         screenshotPreview.setVisibility(View.INVISIBLE);
-        contextBar.addView(screenshotPreview, new LinearLayout.LayoutParams(UiKit.dp(c, 42), UiKit.dp(c, 28)));
+        screenActions.addView(screenshotPreview, new LinearLayout.LayoutParams(
+                UiKit.dp(c, 56), UiKit.dp(c, 40)));
+        contextBar.addView(screenActions, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         LinearLayout.LayoutParams contextLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         contextLp.setMargins(0, UiKit.dp(c, 10), 0, UiKit.dp(c, 7));
         sheet.addView(contextBar, contextLp);
@@ -726,11 +765,19 @@ public class OrbitSession extends VoiceInteractionSession {
     @Override
     public void onShow(Bundle args, int showFlags) {
         super.onShow(args, showFlags);
+        boolean internalResume = internalScreenSelectionResume || args != null &&
+                args.getBoolean(INTERNAL_SCREEN_SELECTION_RESUME, false);
+        internalScreenSelectionResume = false;
         sessionVisible = true;
         UiPresence.enter(this);
         // Conversation selection/reset is intentionally done in onPrepareShow(),
         // before the sheet is rendered. onShow() only exposes/animates that state.
-        if (busy && conversationId.equals(uiRequestConversationId)) {
+        String resumeStatus = internalResume && args != null
+                ? args.getString(INTERNAL_SCREEN_SELECTION_STATUS, "") : "";
+        if (!resumeStatus.isEmpty()) {
+            stateTextSafe(resumeStatus);
+            main.postDelayed(() -> stateTextSafe(readyState()), 1000);
+        } else if (busy && conversationId.equals(uiRequestConversationId)) {
             stateTextSafe("Thinking");
             showThinkingIndicator();
         } else {
@@ -738,9 +785,22 @@ public class OrbitSession extends VoiceInteractionSession {
         }
         main.post(this::animateOpen);
         if (Prefs.haptics(getContext())) vibrate(22);
-        main.postDelayed(() -> {
-            if (input != null && !Prefs.autoListen(getContext()) && !Prefs.keyboardAwareAssistant(getContext())) input.requestFocus();
-        }, 120);
+        if (internalResume) {
+            boolean restoreKeyboard = screenSelectionRestoreKeyboard;
+            boolean restoreFocus = screenSelectionRestoreFocus;
+            screenSelectionRestoreKeyboard = false;
+            screenSelectionRestoreFocus = false;
+            main.postDelayed(() -> {
+                if (input == null) return;
+                if (restoreKeyboard) connectOrbitToIme();
+                else if (restoreFocus) input.requestFocus();
+            }, 120);
+        } else {
+            main.postDelayed(() -> {
+                if (input != null && !Prefs.autoListen(getContext()) &&
+                        !Prefs.keyboardAwareAssistant(getContext())) input.requestFocus();
+            }, 120);
+        }
     }
 
     @Override
@@ -966,6 +1026,10 @@ public class OrbitSession extends VoiceInteractionSession {
         final int generation = screenContextGeneration;
         final String sourcePackage = foregroundPackage;
         final String sourceApp = foregroundAppLabel;
+        screenSelectionComposerText = input == null ? "" : input.getText().toString();
+        screenSelectionRestoreFocus = input != null && input.hasFocus();
+        screenSelectionRestoreKeyboard = orbitOwnsIme && screenSelectionRestoreFocus;
+        stopListening();
         screenSelectionOpening = true;
         updateContextUi();
         new Thread(() -> {
@@ -979,33 +1043,60 @@ public class OrbitSession extends VoiceInteractionSession {
                     return;
                 }
                 String token = ScreenSelectionBridge.register(result -> main.post(() -> {
+                    screenSelectionCallbackToken = "";
                     screenSelectionOpening = false;
                     updateContextUi();
                     if (generation != screenContextGeneration) return;
+                    if (result != null && result.failed) {
+                        resumeFromScreenSelection("Screen selection couldn't be applied");
+                        return;
+                    }
                     if (result == null || result.image == null) {
-                        stateTextSafe(readyState());
+                        resumeFromScreenSelection("");
                         return;
                     }
                     screenAttached = true;
                     selectionAttached = result.precise;
                     selectedScreenshot = result.precise ? result.image : null;
                     updateContextUi();
-                    stateTextSafe(result.precise ? "Selection attached" : "Current screen attached");
-                    main.postDelayed(() -> stateTextSafe(readyState()), 900);
+                    resumeFromScreenSelection(result.precise
+                            ? "Selection attached" : "Screen attached");
                 }));
+                screenSelectionCallbackToken = token;
                 Intent intent = ScreenSelectionStore.editorIntent(context, sourcePath,
                         sourcePackage, sourceApp, "", token);
                 try { startAssistantActivity(intent); }
                 catch (Exception e) {
                     ScreenSelectionBridge.cancel(token);
+                    screenSelectionCallbackToken = "";
                     screenSelectionOpening = false;
                     updateContextUi();
                     ScreenSelectionStore.delete(context, sourcePath);
                     stateTextSafe("Screen selection could not be opened");
                     main.postDelayed(() -> stateTextSafe(readyState()), 1200);
+                    return;
                 }
+                try { hide(); } catch (Exception ignored) { }
             });
         }, "orbit-screen-selection-source").start();
+    }
+
+    private void resumeFromScreenSelection(String status) {
+        Bundle resume = new Bundle();
+        resume.putBoolean(INTERNAL_SCREEN_SELECTION_RESUME, true);
+        if (status != null && !status.isEmpty()) {
+            resume.putString(INTERNAL_SCREEN_SELECTION_STATUS, status);
+        }
+        try {
+            // No SHOW_WITH_ASSIST/SHOW_WITH_SCREENSHOT: the original captured
+            // underlying screen remains authoritative for this same invocation.
+            show(resume, 0);
+        } catch (Exception ignored) {
+            screenSelectionOpening = false;
+            updateContextUi();
+            stateTextSafe(status == null || status.isEmpty()
+                    ? readyState() : status);
+        }
     }
 
     private String selectedScreenContext() {
@@ -2665,6 +2756,8 @@ public class OrbitSession extends VoiceInteractionSession {
     @Override
     public void onDestroy() {
         UiPresence.leave(this);
+        ScreenSelectionBridge.cancel(screenSelectionCallbackToken);
+        screenSelectionCallbackToken = "";
         saveCurrentConversation();
         super.onDestroy();
         if (recognizer != null) try { recognizer.destroy(); } catch (Exception ignored) {}

@@ -27,6 +27,10 @@ public final class ScreenSelectionActivity extends Activity {
     private Button markupButton;
     private Button undoButton;
     private boolean finished;
+    private boolean bridgeDeliveryPending;
+    private boolean bridgeFailurePending;
+    private Bitmap bridgeResult;
+    private boolean bridgePrecise;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -41,7 +45,8 @@ public final class ScreenSelectionActivity extends Activity {
         Bitmap original = ScreenSelectionStore.load(this, sourcePath);
         if (original == null) {
             Toast.makeText(this, "Orbit could not open this screen image", Toast.LENGTH_LONG).show();
-            cancelAndFinish();
+            if (callbackToken.isEmpty()) cancelAndFinish();
+            else failAndFinish();
             return;
         }
 
@@ -59,16 +64,16 @@ public final class ScreenSelectionActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(UiKit.BG);
         root.setForceDarkAllowed(false);
-        root.setPadding(UiKit.dp(this, 14), UiKit.dp(this, 10),
-                UiKit.dp(this, 14), UiKit.dp(this, 12));
+        root.setPadding(UiKit.dp(this, 12), UiKit.dp(this, 6),
+                UiKit.dp(this, 12), UiKit.dp(this, 8));
 
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
         Button cancel = quietButton("Cancel", "Cancel screen selection");
         cancel.setOnClickListener(v -> cancelAndFinish());
         top.addView(cancel, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 44)));
-        TextView title = UiKit.text(this, "Screen selection", 18, UiKit.TEXT, true);
+                ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 40)));
+        TextView title = UiKit.text(this, "Screen selection", 17, UiKit.TEXT, true);
         title.setGravity(Gravity.CENTER);
         top.addView(title, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1));
@@ -78,7 +83,7 @@ public final class ScreenSelectionActivity extends Activity {
             selectTool(ScreenSelectionView.Tool.CROP, false);
         });
         top.addView(reset, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 44)));
+                ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 40)));
         root.addView(top);
 
         editor = new ScreenSelectionView(this);
@@ -92,14 +97,14 @@ public final class ScreenSelectionActivity extends Activity {
         editor.setBackground(UiKit.rounded(UiKit.BG, 18, this));
         LinearLayout.LayoutParams editorLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
-        editorLp.setMargins(0, UiKit.dp(this, 8), 0, UiKit.dp(this, 8));
+        editorLp.setMargins(0, UiKit.dp(this, 4), 0, UiKit.dp(this, 4));
         root.addView(editor, editorLp);
 
         instruction = UiKit.text(this, "Drag to select an area", 12, UiKit.MUTED, false);
         instruction.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams instructionLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        instructionLp.setMargins(0, 0, 0, UiKit.dp(this, 7));
+        instructionLp.setMargins(0, 0, 0, UiKit.dp(this, 3));
         root.addView(instruction, instructionLp);
 
         LinearLayout undoRow = new LinearLayout(this);
@@ -107,7 +112,7 @@ public final class ScreenSelectionActivity extends Activity {
         undoButton = secondaryButton("Undo", "Undo last markup stroke");
         undoButton.setOnClickListener(v -> editor.undoMarkup());
         undoRow.addView(undoButton, new LinearLayout.LayoutParams(
-                UiKit.dp(this, 88), UiKit.dp(this, 38)));
+                UiKit.dp(this, 84), UiKit.dp(this, 34)));
         root.addView(undoRow, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -127,20 +132,20 @@ public final class ScreenSelectionActivity extends Activity {
         markupLp.setMargins(UiKit.dp(this, 3), 0, 0, 0);
         tools.addView(markupButton, markupLp);
         root.addView(tools, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 50)));
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 46)));
 
         LinearLayout actions = new LinearLayout(this);
         actions.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams actionsLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        actionsLp.setMargins(0, UiKit.dp(this, 10), 0, 0);
+        actionsLp.setMargins(0, UiKit.dp(this, 6), 0, 0);
         Button full = secondaryButton("Use full screen", "Use full screen");
         full.setOnClickListener(v -> complete(true));
-        actions.addView(full, new LinearLayout.LayoutParams(0, UiKit.dp(this, 48), 1));
+        actions.addView(full, new LinearLayout.LayoutParams(0, UiKit.dp(this, 46), 1));
         Button use = primaryButton("Use selection", "Use screen selection");
         use.setOnClickListener(v -> complete(false));
         LinearLayout.LayoutParams useLp = new LinearLayout.LayoutParams(0,
-                UiKit.dp(this, 48), 1);
+                UiKit.dp(this, 46), 1);
         useLp.setMargins(UiKit.dp(this, 8), 0, 0, 0);
         actions.addView(use, useLp);
         root.addView(actions, actionsLp);
@@ -188,16 +193,19 @@ public final class ScreenSelectionActivity extends Activity {
         catch (Exception e) { result = null; }
         if (result == null) {
             Toast.makeText(this, "Orbit could not render this selection", Toast.LENGTH_LONG).show();
+            if (!callbackToken.isEmpty()) failAndFinish();
             return;
         }
         final Bitmap renderedResult = result;
         boolean precise = !useFullScreen && (editor.hasCrop() || editor.hasMarkup());
         finished = true;
         if (!callbackToken.isEmpty()) {
-            ScreenSelectionBridge.deliver(callbackToken, result, precise);
+            bridgeResult = result;
+            bridgePrecise = precise;
+            bridgeDeliveryPending = true;
             performTick();
             ScreenSelectionStore.delete(this, sourcePath);
-            finish();
+            finishAndRemoveTask();
             return;
         }
         instruction.setText("Preparing selection...");
@@ -234,11 +242,26 @@ public final class ScreenSelectionActivity extends Activity {
         if (finished) return;
         finished = true;
         if (!callbackToken.isEmpty()) {
-            ScreenSelectionBridge.deliver(callbackToken, null, false);
+            bridgeDeliveryPending = true;
+            bridgeResult = null;
+            bridgePrecise = false;
         }
         ScreenSelectionStore.delete(this, sourcePath);
         setResult(RESULT_CANCELED);
-        finish();
+        if (callbackToken.isEmpty()) finish();
+        else finishAndRemoveTask();
+    }
+
+    private void failAndFinish() {
+        if (finished) return;
+        finished = true;
+        bridgeDeliveryPending = true;
+        bridgeFailurePending = true;
+        bridgeResult = null;
+        bridgePrecise = false;
+        ScreenSelectionStore.delete(this, sourcePath);
+        setResult(RESULT_CANCELED);
+        finishAndRemoveTask();
     }
 
     @Override public void onBackPressed() { cancelAndFinish(); }
@@ -250,7 +273,22 @@ public final class ScreenSelectionActivity extends Activity {
 
     @Override protected void onDestroy() {
         if (isFinishing() && !finished) cancelAndFinish();
+        deliverPendingBridge();
         super.onDestroy();
+    }
+
+    @Override protected void onStop() {
+        super.onStop();
+        if (isFinishing()) deliverPendingBridge();
+    }
+
+    private void deliverPendingBridge() {
+        if (!bridgeDeliveryPending) return;
+        bridgeDeliveryPending = false;
+        if (bridgeFailurePending) ScreenSelectionBridge.fail(callbackToken);
+        else ScreenSelectionBridge.deliver(callbackToken, bridgeResult, bridgePrecise);
+        bridgeFailurePending = false;
+        bridgeResult = null;
     }
 
     private void performTick() {
