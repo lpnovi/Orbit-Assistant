@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "com.orbit.extensions.developer-tools",
+  "name": "Developer Tools",
+  "version": "1.0.0",
+  "author": "Orbit",
+  "description": "Public Android and GitHub developer resources plus a harmless HTTPS GET test.",
+  "actions": [
+    {
+      "id": "open-android-developers",
+      "name": "Open Android Developers",
+      "description": "Opens Android's official development documentation.",
+      "type": "open_url",
+      "url": "https://developer.android.com/develop"
+    },
+    {
+      "id": "open-github-actions-docs",
+      "name": "Open GitHub Actions Docs",
+      "description": "Opens GitHub's official Actions documentation.",
+      "type": "open_url",
+      "url": "https://docs.github.com/en/actions"
+    },
+    {
+      "id": "test-public-https-get",
+      "name": "Test Public HTTPS GET",
+      "description": "Makes a bounded unauthenticated GET request to GitHub's public Zen endpoint.",
+      "type": "https_request",
+      "endpoint": "https://api.github.com/zen",
+      "method": "GET",
+      "timeoutSeconds": 8
+    }
+  ]
+}

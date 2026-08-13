@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "com.orbit.extensions.web-tools",
+  "name": "Orbit Web Tools",
+  "version": "1.0.0",
+  "author": "Orbit",
+  "description": "Quick access to Orbit's official public GitHub pages.",
+  "actions": [
+    {
+      "id": "open-orbit-releases",
+      "name": "Open Orbit Releases",
+      "description": "Opens Orbit's official release downloads.",
+      "type": "open_url",
+      "url": "https://github.com/lpnovi/Orbit-Assistant/releases"
+    },
+    {
+      "id": "open-orbit-repository",
+      "name": "Open Orbit Repository",
+      "description": "Opens the public Orbit Assistant source repository.",
+      "type": "open_url",
+      "url": "https://github.com/lpnovi/Orbit-Assistant"
+    },
+    {
+      "id": "open-orbit-issues",
+      "name": "Open Orbit Issues",
+      "description": "Opens Orbit's public issue tracker.",
+      "type": "open_url",
+      "url": "https://github.com/lpnovi/Orbit-Assistant/issues"
+    }
+  ]
+}

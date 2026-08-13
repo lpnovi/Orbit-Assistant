@@ -49,15 +49,30 @@ Orbit sends only the fixed body declared in the installed manifest. It never add
 
 ## Install and manage
 
+Orbit provides two explicit installation paths:
+
+### First-party extensions
+
+1. Open **Orbit Settings → Extensions → First-party extensions**.
+2. Choose **Install** beside Orbit Web Tools, Developer Tools, or Quick Links.
+3. Review the extension identity, actions, contacted endpoints/domains, and isolation notice.
+4. Choose **Install** explicitly.
+
+The official manifest is read from Orbit's packaged, read-only assets and passed through the same manifest size limit and `OrbitExtension` parser/validator as an external file. It is not preinstalled, privileged, or written into user state until the user confirms the review. A matching stable extension ID is shown as Installed and cannot be duplicated. Replacement/update support remains future work; Orbit never silently overwrites an installed manifest.
+
+### External extensions
+
 1. Save a valid manifest with a `.orbitext` filename.
-2. Open **Orbit Settings → Extensions → Install extension**.
+2. Open **Orbit Settings → Extensions → Import → Import extension from file**.
 3. Select the file with Android's system file picker.
-4. Review the extension identity, actions, endpoints/domains, and isolation notice.
+4. Review the same identity, actions, endpoints/domains, and isolation notice.
 5. Choose **Install** explicitly.
+
+This path remains available for user-created, community, and custom extensions. Android's Storage Access Framework supplies only the selected file; Orbit does not request broad storage access.
 
 Installed manifests and enabled state stay in Orbit's private app storage and are included in Orbit Backup & Restore. Credentials and tokens are not supported or backed up. Disabling or removing an extension does not delete Routines; affected steps report **Extension action unavailable** until the matching extension/action is installed and enabled again.
 
-The repository also retains a generic schema sample at [`examples/orbit-extensions/example-web-tools.orbitext`](../examples/orbit-extensions/example-web-tools.orbitext). Copy any manifest to the device and follow the installation steps above. Orbit does not install or depend on repository examples automatically.
+The repository retains a generic schema sample at [`examples/orbit-extensions/example-web-tools.orbitext`](../examples/orbit-extensions/example-web-tools.orbitext) for developers and format reference. Custom copies can be tested through Import from file.
 
 ## First-party extensions
 
@@ -67,7 +82,7 @@ Orbit publishes three ordinary Extensions v1 manifests for practical testing and
 - **Developer Tools** (`com.orbit.extensions.developer-tools`) — opens official Android and GitHub Actions documentation and includes one bounded, unauthenticated HTTPS GET request to GitHub's public Zen endpoint. File: [`developer-tools.orbitext`](../examples/orbit-extensions/developer-tools.orbitext).
 - **Quick Links** (`com.orbit.extensions.quick-links`) — opens neutral public search, maps, and reference destinations. File: [`quick-links.orbitext`](../examples/orbit-extensions/quick-links.orbitext).
 
-These files are not bundled defaults, a marketplace, or executable plugins. Users must obtain a file, select it through Android's system file picker, review its actions and contacted endpoints, and explicitly confirm installation. They exercise the same parser, private storage, Routine catalog, Action Engine, enable/disable/remove behavior, and safe unavailable state as any manifest built from this schema. Authors can use the same format to create their own declarative extensions without adding arbitrary code or Orbit-data access.
+These files are not bundled installed defaults, a marketplace, or executable plugins. Current releases package read-only copies so users can start the normal review from **First-party extensions** without manually downloading GitHub files. The repository copies remain available for developers and reference. First-party and external installs use the same parser, validation, review, private storage, Routine catalog, Action Engine, enable/disable/remove behavior, and safe unavailable state. Authors can use the same format to create their own declarative extensions without adding arbitrary code or Orbit-data access.
 
 ## Routine integration
 

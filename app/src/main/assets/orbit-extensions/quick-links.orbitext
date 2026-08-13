@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "com.orbit.extensions.quick-links",
+  "name": "Quick Links",
+  "version": "1.0.0",
+  "author": "Orbit",
+  "description": "Simple public search, maps, and reference links for reusable Routines.",
+  "actions": [
+    {
+      "id": "open-web-search",
+      "name": "Open Web Search",
+      "description": "Opens the Google search home page.",
+      "type": "open_url",
+      "url": "https://www.google.com/"
+    },
+    {
+      "id": "open-maps",
+      "name": "Open Maps",
+      "description": "Opens the public OpenStreetMap map page.",
+      "type": "open_url",
+      "url": "https://www.openstreetmap.org/"
+    },
+    {
+      "id": "open-reference",
+      "name": "Open Reference",
+      "description": "Opens Wikipedia's public reference portal.",
+      "type": "open_url",
+      "url": "https://www.wikipedia.org/"
+    }
+  ]
+}

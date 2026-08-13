@@ -23,11 +23,18 @@ import android.widget.Toast;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 
 /** Orbit-native manager and SAF installer for declarative .orbitext packages. */
 public final class ExtensionsActivity extends Activity {
     private static final int REQ_IMPORT_EXTENSION = 7010;
+    private static final String FIRST_PARTY_ASSET_DIR = "orbit-extensions/";
+    private static final String[] FIRST_PARTY_ASSETS = {
+            "orbit-web-tools.orbitext",
+            "developer-tools.orbitext",
+            "quick-links.orbitext"
+    };
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -97,34 +104,36 @@ public final class ExtensionsActivity extends Activity {
         introLp.setMargins(UiKit.dp(this, 2), UiKit.dp(this, 17), UiKit.dp(this, 2), UiKit.dp(this, 14));
         page.addView(intro, introLp);
 
-        Button install = primaryButton("Install extension");
-        install.setOnClickListener(v -> chooseExtension());
-        page.addView(install, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 50)));
+        page.addView(sectionHeading("FIRST-PARTY EXTENSIONS"));
+        List<OrbitExtension> firstParty = loadFirstPartyExtensions();
+        for (int i = 0; i < firstParty.size(); i++) {
+            LinearLayout.LayoutParams lp = cardSpacing(i > 0);
+            page.addView(firstPartyCard(firstParty.get(i)), lp);
+        }
+        if (firstParty.size() != FIRST_PARTY_ASSETS.length) {
+            LinearLayout unavailable = card();
+            unavailable.addView(UiKit.text(this,
+                    "Official extensions are unavailable in this build.", 13, UiKit.TEXT, true));
+            page.addView(unavailable, cardSpacing(!firstParty.isEmpty()));
+        }
 
-        LinearLayout examples = card();
-        examples.addView(UiKit.text(this, "First-party examples", 16, UiKit.TEXT, true));
-        TextView examplesNote = UiKit.text(this,
-                "Orbit publishes three ordinary v1 reference manifests in the public repository. They are never installed automatically; download one, select it above, review every action and confirm Install.",
+        page.addView(sectionHeading("IMPORT"));
+        LinearLayout importCard = card();
+        importCard.addView(UiKit.text(this, "Import extension from file", 16, UiKit.TEXT, true));
+        TextView importNote = UiKit.text(this,
+                "Choose a user-created, community, or custom .orbitext file. Orbit validates it and shows the same complete review before installation.",
                 12, UiKit.MUTED, false);
-        examplesNote.setLineSpacing(0, 1.12f);
-        examplesNote.setPadding(0, UiKit.dp(this, 5), 0, UiKit.dp(this, 11));
-        examples.addView(examplesNote);
-        Button browseExamples = secondaryButton("View first-party examples");
-        browseExamples.setOnClickListener(v -> showFirstPartyExamples());
-        examples.addView(browseExamples, new LinearLayout.LayoutParams(
+        importNote.setLineSpacing(0, 1.12f);
+        importNote.setPadding(0, UiKit.dp(this, 5), 0, UiKit.dp(this, 11));
+        importCard.addView(importNote);
+        Button install = secondaryButton("Import extension from file");
+        install.setContentDescription("Import extension from file using Android file picker");
+        install.setOnClickListener(v -> chooseExtension());
+        importCard.addView(install, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44)));
-        LinearLayout.LayoutParams examplesLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        examplesLp.topMargin = UiKit.dp(this, 12);
-        page.addView(examples, examplesLp);
+        page.addView(importCard);
 
-        TextView heading = UiKit.text(this, "INSTALLED EXTENSIONS", 12, UiKit.MUTED, true);
-        heading.setLetterSpacing(0.13f);
-        LinearLayout.LayoutParams headingLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        headingLp.setMargins(UiKit.dp(this, 4), UiKit.dp(this, 24), 0, UiKit.dp(this, 9));
-        page.addView(heading, headingLp);
+        page.addView(sectionHeading("INSTALLED EXTENSIONS"));
 
         List<OrbitExtensionStore.Installed> installed = OrbitExtensionStore.list(this);
         if (installed.isEmpty()) {
@@ -188,17 +197,56 @@ public final class ExtensionsActivity extends Activity {
         LinearLayout buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
         buttons.setPadding(0, UiKit.dp(this, 14), 0, 0);
-        Button toggle = secondaryButton(installed.enabled ? "Disable" : "Enable");
+        Button toggle = installed.enabled ? warningButton("Disable") : primaryButton("Enable");
+        toggle.setContentDescription((installed.enabled ? "Disable " : "Enable ") + extension.name);
         toggle.setOnClickListener(v -> {
             if (OrbitExtensionStore.setEnabled(this, extension.id, !installed.enabled)) rebuild();
         });
         buttons.addView(toggle, new LinearLayout.LayoutParams(0, UiKit.dp(this, 44), 1));
-        Button remove = secondaryButton("Remove");
+        Button remove = destructiveButton("Remove");
+        remove.setContentDescription("Remove " + extension.name);
         LinearLayout.LayoutParams removeLp = new LinearLayout.LayoutParams(0, UiKit.dp(this, 44), 1);
         removeLp.leftMargin = UiKit.dp(this, 9);
         buttons.addView(remove, removeLp);
         remove.setOnClickListener(v -> confirmRemove(extension));
         card.addView(buttons);
+        return card;
+    }
+
+    private LinearLayout firstPartyCard(OrbitExtension extension) {
+        OrbitExtensionStore.Installed installed = OrbitExtensionStore.find(this, extension.id);
+        LinearLayout card = card();
+        LinearLayout top = new LinearLayout(this);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout copy = new LinearLayout(this);
+        copy.setOrientation(LinearLayout.VERTICAL);
+        copy.addView(UiKit.text(this, extension.name, 16, UiKit.TEXT, true));
+        copy.addView(UiKit.text(this,
+                "v" + extension.version + " · " + extension.author, 12, UiKit.MUTED, false));
+        top.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        TextView state = UiKit.text(this, installed == null ? "NOT INSTALLED" : "INSTALLED", 10,
+                installed == null ? UiKit.MUTED : UiKit.accent(this), true);
+        state.setLetterSpacing(0.07f);
+        top.addView(state);
+        card.addView(top);
+
+        TextView description = UiKit.text(this, extension.description, 12, UiKit.MUTED, false);
+        description.setLineSpacing(0, 1.12f);
+        description.setPadding(0, UiKit.dp(this, 7), 0, UiKit.dp(this, 12));
+        card.addView(description);
+
+        Button action;
+        if (installed == null) {
+            action = primaryButton("Install");
+            action.setContentDescription("Review and install " + extension.name);
+            action.setOnClickListener(v -> showInstallReview(extension));
+        } else {
+            action = installedButton(installed.enabled ? "Installed · Enabled" : "Installed · Disabled");
+            action.setContentDescription(extension.name + " is installed and " +
+                    (installed.enabled ? "enabled" : "disabled"));
+        }
+        card.addView(action, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44)));
         return card;
     }
 
@@ -209,32 +257,6 @@ public final class ExtensionsActivity extends Activity {
         intent.putExtra(Intent.EXTRA_MIME_TYPES,
                 new String[]{"application/json", "application/octet-stream", "text/plain"});
         startActivityForResult(intent, REQ_IMPORT_EXTENSION);
-    }
-
-    private void showFirstPartyExamples() {
-        String message = "Orbit Web Tools\nOrbit releases, repository and issues\n\n" +
-                "Developer Tools\nAndroid and GitHub documentation plus a public HTTPS GET test\n\n" +
-                "Quick Links\nPublic search, maps and reference destinations\n\n" +
-                "These are reference .orbitext files, not a marketplace or bundled defaults.";
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("First-party examples")
-                .setMessage(message)
-                .setNegativeButton("Close", null)
-                .setPositiveButton("View repository files", (d, w) -> openExamplesRepository())
-                .create();
-        UiKit.styleOrbitDialog(dialog, this, false);
-        dialog.show();
-    }
-
-    private void openExamplesRepository() {
-        try {
-            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(
-                    "https://github.com/lpnovi/Orbit-Assistant/tree/main/examples/orbit-extensions"))
-                    .addCategory(Intent.CATEGORY_BROWSABLE);
-            startActivity(intent);
-        } catch (Exception ignored) {
-            Toast.makeText(this, "Orbit could not open the examples page.", Toast.LENGTH_SHORT).show();
-        }
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -326,9 +348,28 @@ public final class ExtensionsActivity extends Activity {
     }
 
     private String readManifest(Uri uri) throws Exception {
-        try (InputStream input = getContentResolver().openInputStream(uri);
-             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+        try (InputStream input = getContentResolver().openInputStream(uri)) {
             if (input == null) throw new IllegalArgumentException("Android could not open the selected file.");
+            return readManifest(input);
+        }
+    }
+
+    private List<OrbitExtension> loadFirstPartyExtensions() {
+        List<OrbitExtension> out = new ArrayList<>();
+        for (String assetName : FIRST_PARTY_ASSETS) {
+            try (InputStream input = getAssets().open(FIRST_PARTY_ASSET_DIR + assetName)) {
+                // First-party packages use the exact same size limit and untrusted
+                // OrbitExtension parser as files selected through Android SAF.
+                out.add(OrbitExtension.parse(readManifest(input)));
+            } catch (Exception ignored) {
+                // A damaged bundled manifest must remain unavailable, never privileged.
+            }
+        }
+        return out;
+    }
+
+    private String readManifest(InputStream input) throws Exception {
+        try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[4096];
             int total = 0;
             int read;
@@ -371,6 +412,23 @@ public final class ExtensionsActivity extends Activity {
         return card;
     }
 
+    private TextView sectionHeading(String text) {
+        TextView heading = UiKit.text(this, text, 12, UiKit.MUTED, true);
+        heading.setLetterSpacing(0.13f);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(UiKit.dp(this, 4), UiKit.dp(this, 24), 0, UiKit.dp(this, 9));
+        heading.setLayoutParams(lp);
+        return heading;
+    }
+
+    private LinearLayout.LayoutParams cardSpacing(boolean separated) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        if (separated) lp.topMargin = UiKit.dp(this, 10);
+        return lp;
+    }
+
     private Button primaryButton(String text) {
         Button button = new Button(this);
         button.setText(text);
@@ -391,6 +449,39 @@ public final class ExtensionsActivity extends Activity {
         button.setAllCaps(false);
         button.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2,
                 Color.rgb(53, 58, 72), UiKit.accent(this), 14, this));
+        button.setMinHeight(0); button.setMinimumHeight(0); button.setStateListAnimator(null);
+        UiKit.pressScale(button);
+        return button;
+    }
+
+    private Button warningButton(String text) {
+        int warning = Color.rgb(224, 157, 78);
+        Button button = outlinedActionButton(text, warning,
+                UiKit.blend(warning, UiKit.SURFACE_2, 0.10f));
+        return button;
+    }
+
+    private Button destructiveButton(String text) {
+        int destructive = Color.rgb(226, 100, 108);
+        return outlinedActionButton(text, destructive,
+                UiKit.blend(destructive, UiKit.SURFACE_2, 0.08f));
+    }
+
+    private Button installedButton(String text) {
+        Button button = secondaryButton(text);
+        button.setEnabled(false);
+        button.setAlpha(0.72f);
+        return button;
+    }
+
+    private Button outlinedActionButton(String text, int color, int fill) {
+        Button button = new Button(this);
+        button.setText(text);
+        button.setTextColor(color);
+        button.setTextSize(13);
+        button.setAllCaps(false);
+        button.setBackground(UiKit.rippleOutlined(fill,
+                UiKit.withAlpha(color, 190), color, 14, this));
         button.setMinHeight(0); button.setMinimumHeight(0); button.setStateListAnimator(null);
         UiKit.pressScale(button);
         return button;
