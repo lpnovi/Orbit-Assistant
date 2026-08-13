@@ -26,6 +26,14 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.PICK" />
+            <data android:mimeType="image/*" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.GET_CONTENT" />
+            <data android:mimeType="image/*" />
+        </intent>
     </queries>
 
     <application
@@ -76,6 +84,7 @@
         <activity android:name=".SavedPlacesActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".UpdateActivity" android:exported="false" />
         <activity android:name=".WhatsNewActivity" android:exported="false" />
+        <activity android:name=".RoadmapActivity" android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

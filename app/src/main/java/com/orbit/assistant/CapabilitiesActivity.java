@@ -14,7 +14,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-/** Visible 0.6-readiness dashboard introduced in Orbit 0.5.11.1. */
+/** Current Orbit capability and Android-access dashboard. */
 public final class CapabilitiesActivity extends Activity {
     private static final int REQ_TRIGGER_ALERTS = 864;
     private static final int REQ_MICROPHONE = 870;
@@ -90,7 +90,7 @@ public final class CapabilitiesActivity extends Activity {
         page.addView(header);
 
         TextView intro = UiKit.text(this,
-                "See what Orbit can use now, what still needs Android access, and what is planned next.",
+                "See what Orbit can do now and manage the Android permissions or special access each capability needs.",
                 13, UiKit.MUTED, false);
         intro.setPadding(UiKit.dp(this,4), UiKit.dp(this,14), UiKit.dp(this,4), UiKit.dp(this,4));
         page.addView(intro);
@@ -150,22 +150,6 @@ public final class CapabilitiesActivity extends Activity {
         automationNote.setPadding(0, UiKit.dp(this,10), 0, 0);
         automation.addView(automationNote);
         page.addView(automation, cardLp());
-
-        page.addView(section("0.6 POWER ASSISTANT"));
-        LinearLayout future = card();
-        future.addView(planned("Routines & macros", "Live in 0.6.2"));
-        future.addView(planned("Routine time triggers", "Live in 0.6.3"));
-        future.addView(planned("Routine location triggers", "Live in 0.6.4"));
-        future.addView(planned("Chained actions", "Live in 0.6"));
-        future.addView(planned("Quick Settings tiles", "Live in 0.6.5"));
-        future.addView(planned("Home-screen widgets", "Planned for 0.6"));
-        future.addView(planned("Screen-region selection", "Planned for 0.6"));
-        TextView note = UiKit.text(this,
-                "0.6 Power Assistant now includes chained execution, persistent action results, saved routines, and automatic time/location triggers.",
-                12, UiKit.MUTED, false);
-        note.setPadding(0, UiKit.dp(this,10), 0, 0);
-        future.addView(note);
-        page.addView(future, cardLp());
 
         return scroll;
     }
@@ -462,18 +446,6 @@ public final class CapabilitiesActivity extends Activity {
         TextView label = UiKit.text(this, name, 14, UiKit.TEXT, false);
         row.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         TextView state = UiKit.text(this, stateText, 12, positive ? UiKit.SUCCESS : UiKit.MUTED, true);
-        row.addView(state);
-        return row;
-    }
-
-    private LinearLayout planned(String name, String stateText) {
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(UiKit.dp(this, 48));
-        row.setPadding(0, UiKit.dp(this, 2), 0, UiKit.dp(this, 2));
-        TextView label = UiKit.text(this, name, 14, UiKit.TEXT, false);
-        row.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        TextView state = UiKit.text(this, stateText, 12, UiKit.accent(this), true);
         row.addView(state);
         return row;
     }

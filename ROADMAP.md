@@ -220,15 +220,32 @@
 - Full-chat pause-friendly Voice Beta and Side-button Camera, Gallery, File, Screen, and Clipboard access
 - One shared explicit-attachment model and preserved local conversation/history request paths
 
-### Planned 0.6.x
+### 0.6.8.1
+- Add one preferred compatible Gallery app setting shared by full chat and the Side-button overlay
+- Keep Android's System picker as the safe default and automatic fallback
+- Move future product direction from Capabilities into a dedicated Roadmap under About & updates
+- Add shared Small, Default, Large, and Extra large chat-content sizing with rich Markdown hierarchy preserved
+
+## Future direction
+
+### Next up
 - Home-screen widgets
-- Plugins and extensibility
-- Deeper Android automation
-- Richer chained plans with saved presets and more advanced branching
+- Richer quick access
 - Natural-language Routine creation
+
+### Planned
+- Plugins and extensibility
+- Richer automation, chained plans, conditions and branching
+- Deeper Android actions
+- Stronger Custom Commands
 - Additional AI providers
-- Advanced Voice work
-- Local intelligence
+- Conversational Voice improvements
+- Automation history and timeline
+
+### Exploring
+- Proactive screen intelligence
+- Image retrieval integrations with safe sourcing and attribution
+- Local and on-device intelligence
 
 ## 1.0 direction
 - Reliable daily-driver overlay and chat experience

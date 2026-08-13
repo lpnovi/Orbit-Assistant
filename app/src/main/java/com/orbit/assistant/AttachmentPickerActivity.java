@@ -64,14 +64,26 @@ public final class AttachmentPickerActivity extends Activity {
             if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
                 requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_CAMERA_PERMISSION);
             } else launchCamera();
+        } else if (KIND_GALLERY.equals(kind)) {
+            launchGallery();
         } else {
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType(KIND_GALLERY.equals(kind) ? "image/*" : "*/*");
+            intent.setType("*/*");
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
                     Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
             try { startActivityForResult(intent, REQ_PICK); }
             catch (Exception e) { finishWith(null, "No compatible picker is available"); }
+        }
+    }
+
+    private void launchGallery() {
+        try {
+            startActivityForResult(GalleryAppPreference.createIntent(this), REQ_PICK);
+        } catch (Exception first) {
+            GalleryAppPreference.clear(this);
+            try { startActivityForResult(GalleryAppPreference.systemPickerIntent(), REQ_PICK); }
+            catch (Exception second) { finishWith(null, "No compatible gallery picker is available"); }
         }
     }
 

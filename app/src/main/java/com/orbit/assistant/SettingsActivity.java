@@ -184,7 +184,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         page.addView(settingsCategoryCard(SECTION_ROUTINES, "Routines",
                 "Create, edit and run saved Action Engine chains"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_CONVERSATIONS, "Conversations",
-                "History, chat behavior and background notifications"), categoryLp());
+                "Attachments, history, chat behavior and background notifications"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_APPEARANCE, "Look & Feel",
                 "Accent, font, AMOLED, conversation colors and haptics"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_UPDATES, "About & updates",
@@ -278,7 +278,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         if (SECTION_AI.equals(section)) return "Choose and configure Orbit's active AI provider, manage your ChatGPT connection, and set default intelligence.";
         if (SECTION_VOICE.equals(section)) return "Control Voice Beta, screen awareness and device permissions.";
         if (SECTION_DATA.equals(section)) return "Manage weather preferences and the local information Orbit uses to personalize and organize your assistant experience.";
-        if (SECTION_CONVERSATIONS.equals(section)) return "Choose how Orbit stores chats and handles background completions.";
+        if (SECTION_CONVERSATIONS.equals(section)) return "Choose attachment behavior, local chat storage and background completions.";
         if (SECTION_APPEARANCE.equals(section)) return "Tune Orbit's colors, typography, AMOLED presentation and tactile feedback.";
         if (SECTION_ADVANCED.equals(section)) return "Inspect local diagnostics and developer troubleshooting information.";
         return "Orbit settings.";
@@ -631,6 +631,14 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         page.addView(sectionTitle("CONVERSATIONS", "conversations"));
         LinearLayout conversationCard = card();
         tagSectionCard(conversationCard, "conversations");
+        conversationCard.addView(label("Gallery app"));
+        View gallerySelector = galleryAppSelector();
+        conversationCard.addView(gallerySelector, selectorLp());
+        TextView galleryNote = UiKit.text(this,
+                "Choose which compatible installed app opens for image attachments. System picker is the safe default; Orbit falls back to it if your preferred app is unavailable.",
+                12, UiKit.MUTED, false);
+        galleryNote.setPadding(0, 0, 0, UiKit.dp(this, 8));
+        conversationCard.addView(galleryNote);
         conversationCard.addView(toggle("Start a new chat each time Orbit opens", Prefs.NEW_CHAT_ON_OPEN, true));
         conversationCard.addView(toggle("Save recent chats on this device", Prefs.HISTORY_ENABLED, true));
         conversationCard.addView(toggle("Save screen attachment thumbnails in chat history", Prefs.SAVE_SCREEN_THUMBNAILS, false));
@@ -699,6 +707,14 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         styleCard.addView(bubbleColorSelector(Prefs.USER_BUBBLE_COLOR, false));
         styleCard.addView(label("Orbit bubbles"));
         styleCard.addView(bubbleColorSelector(Prefs.ASSISTANT_BUBBLE_COLOR, true));
+        TextView chatSizeLabel = label("Chat text size");
+        chatSizeLabel.setPadding(UiKit.dp(this, 2), UiKit.dp(this, 12), 0, UiKit.dp(this, 6));
+        styleCard.addView(chatSizeLabel);
+        styleCard.addView(chatTextSizeSelector());
+        TextView chatSizeNote = UiKit.text(this,
+                "Changes conversation content only, including rich Markdown in full chat and the Side-button assistant.",
+                12, UiKit.MUTED, false);
+        styleCard.addView(chatSizeNote);
         page.addView(styleCard);
 
         TextView footer = UiKit.text(this, "Orbit " + BuildConfig.VERSION_NAME + " • Power Assistant", 12, UiKit.MUTED, false);
@@ -1289,6 +1305,38 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         String[] labels = UiKit.bubbleColorLabels();
         String selected = Prefs.get(this).getString(prefKey, "classic");
         return colorMenuSelector(keys, labels, selected, assistant, false, prefKey);
+    }
+
+    private View chatTextSizeSelector() {
+        String[] keys = new String[]{
+                Prefs.CHAT_TEXT_SMALL, Prefs.CHAT_TEXT_DEFAULT,
+                Prefs.CHAT_TEXT_LARGE, Prefs.CHAT_TEXT_EXTRA_LARGE};
+        String[] labels = new String[]{"Small", "Default", "Large", "Extra large"};
+        int selected = indexOf(keys, Prefs.chatTextSize(this));
+        LinearLayout selector = menuSelector(labels, selected, (position, label) -> {
+            String key = keys[Math.max(0, Math.min(keys.length - 1, position))];
+            Prefs.get(this).edit().putString(Prefs.CHAT_TEXT_SIZE, key).apply();
+        });
+        selector.setLayoutParams(selectorLp());
+        return selector;
+    }
+
+    private View galleryAppSelector() {
+        List<GalleryAppPreference.Option> options = GalleryAppPreference.options(this);
+        String preferred = GalleryAppPreference.preferredPackage(this);
+        String[] labels = new String[options.size()];
+        int selected = 0;
+        for (int i = 0; i < options.size(); i++) {
+            GalleryAppPreference.Option option = options.get(i);
+            labels[i] = option.label;
+            if (option.packageName.equals(preferred)) selected = i;
+        }
+        LinearLayout selector = menuSelector(labels, selected, (position, label) -> {
+            int safe = Math.max(0, Math.min(options.size() - 1, position));
+            GalleryAppPreference.setPreferredPackage(this, options.get(safe).packageName);
+        });
+        selector.setLayoutParams(selectorLp());
+        return selector;
     }
 
     private View colorMenuSelector(String[] keys, String[] labels, String selectedKey,

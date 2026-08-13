@@ -61,7 +61,8 @@ public final class OrbitRichResponseRenderer {
         try { renderBlocks(context, bubble, source, bubbleFill, compact); }
         catch (Throwable ignored) {
             bubble.removeAllViews();
-            bubble.addView(text(context, source, 15, UiKit.onBubble(bubbleFill), false));
+            bubble.addView(text(context, source, chatSize(context, compact ? 14 : 15),
+                    UiKit.onBubble(bubbleFill), false));
         }
         if (!prefersWideLayout(source)) {
             for (int i = 0; i < bubble.getChildCount(); i++) {
@@ -124,7 +125,7 @@ public final class OrbitRichResponseRenderer {
                 int level = heading.group(1).length();
                 float size = level == 1 ? (compact ? 18 : 19) :
                         level == 2 ? (compact ? 16.5f : 17.5f) : 15.5f;
-                TextView view = richText(c, heading.group(2), size, foreground, true);
+                TextView view = richText(c, heading.group(2), chatSize(c, size), foreground, true);
                 addBlock(out, view, c, level == 1 ? 9 : 6);
                 i++;
                 continue;
@@ -162,7 +163,7 @@ public final class OrbitRichResponseRenderer {
                     int indent = Math.min(3, item.group(1).replace("\t", "    ").length() / 2);
                     String marker = item.group(2).matches("\\d+.*") ? item.group(2) : "•";
                     TextView itemView = richText(c, marker + "  " + item.group(3),
-                            compact ? 14 : 15, foreground, false);
+                            chatSize(c, compact ? 14 : 15), foreground, false);
                     itemView.setPadding(UiKit.dp(c, 8 + indent * 14), UiKit.dp(c, 2), 0,
                             UiKit.dp(c, 2));
                     listBlock.addView(itemView);
@@ -179,10 +180,11 @@ public final class OrbitRichResponseRenderer {
                 paragraph.append('\n').append(lines[i].trim());
                 i++;
             }
-            addBlock(out, richText(c, paragraph.toString(), compact ? 14 : 15,
+            addBlock(out, richText(c, paragraph.toString(), chatSize(c, compact ? 14 : 15),
                     foreground, false), c, 6);
         }
-        if (out.getChildCount() == 0) out.addView(text(c, source, compact ? 14 : 15,
+        if (out.getChildCount() == 0) out.addView(text(c, source,
+                chatSize(c, compact ? 14 : 15),
                 foreground, false));
     }
 
@@ -220,7 +222,8 @@ public final class OrbitRichResponseRenderer {
         rule.setBackgroundColor(UiKit.accent(c));
         row.addView(rule, new LinearLayout.LayoutParams(UiKit.dp(c, 3),
                 ViewGroup.LayoutParams.MATCH_PARENT));
-        TextView body = richText(c, value, 14, UiKit.withAlpha(foreground, 220), false);
+        TextView body = richText(c, value, chatSize(c, 14),
+                UiKit.withAlpha(foreground, 220), false);
         body.setPadding(UiKit.dp(c, 10), UiKit.dp(c, 4), UiKit.dp(c, 3), UiKit.dp(c, 4));
         row.addView(body, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1));
@@ -259,7 +262,7 @@ public final class OrbitRichResponseRenderer {
 
         HorizontalScrollView scroll = new HorizontalScrollView(c);
         scroll.setHorizontalScrollBarEnabled(true);
-        TextView body = text(c, code, 13, UiKit.TEXT, false);
+        TextView body = text(c, code, chatSize(c, 13), UiKit.TEXT, false);
         UiKit.applyCodeTypeface(body);
         body.setHorizontallyScrolling(true);
         body.setPadding(0, UiKit.dp(c, 4), UiKit.dp(c, 10), 0);
@@ -285,10 +288,11 @@ public final class OrbitRichResponseRenderer {
             TableRow row = new TableRow(c);
             String[] cells = rows.get(r);
             for (String cell : cells) {
-                TextView view = richText(c, cell.trim(), 12.5f, foreground, r == 0);
+                TextView view = richText(c, cell.trim(), chatSize(c, 12.5f), foreground, r == 0);
                 view.setGravity(Gravity.TOP | Gravity.START);
-                view.setMinWidth(UiKit.dp(c, 104));
-                view.setMaxWidth(UiKit.dp(c, 220));
+                float scale = Prefs.chatTextScale(c);
+                view.setMinWidth(UiKit.dp(c, Math.round(104 * scale)));
+                view.setMaxWidth(UiKit.dp(c, Math.round(220 * scale)));
                 view.setPadding(UiKit.dp(c, 9), UiKit.dp(c, 7),
                         UiKit.dp(c, 9), UiKit.dp(c, 7));
                 view.setBackground(UiKit.outlined(r == 0 ? UiKit.SURFACE_3 : UiKit.SURFACE_2,
@@ -315,7 +319,7 @@ public final class OrbitRichResponseRenderer {
         FrameLayout.LayoutParams progressLp = new FrameLayout.LayoutParams(
                 UiKit.dp(c, 28), UiKit.dp(c, 28), Gravity.CENTER);
         frame.addView(progress, progressLp);
-        TextView loading = UiKit.text(c, "Loading image…", 12, UiKit.MUTED, false);
+        TextView loading = UiKit.text(c, "Loading image…", chatSize(c, 12), UiKit.MUTED, false);
         FrameLayout.LayoutParams loadingLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM);
@@ -326,7 +330,8 @@ public final class OrbitRichResponseRenderer {
 
         String description = alt == null ? "" : alt.trim();
         if (!description.isEmpty()) {
-            TextView caption = UiKit.text(c, description, 11, UiKit.withAlpha(foreground, 205), false);
+            TextView caption = UiKit.text(c, description, chatSize(c, 11),
+                    UiKit.withAlpha(foreground, 205), false);
             caption.setPadding(UiKit.dp(c, 10), UiKit.dp(c, 7), UiKit.dp(c, 10), UiKit.dp(c, 8));
             caption.setContentDescription("Image caption: " + description);
             card.addView(caption);
@@ -369,9 +374,9 @@ public final class OrbitRichResponseRenderer {
         failure.setGravity(Gravity.CENTER);
         failure.setPadding(UiKit.dp(c, 12), UiKit.dp(c, 12), UiKit.dp(c, 12), UiKit.dp(c, 12));
         String label = alt.isEmpty() ? "Image unavailable" : alt;
-        failure.addView(UiKit.text(c, label, 12, foreground, true));
+        failure.addView(UiKit.text(c, label, chatSize(c, 12), foreground, true));
         failure.addView(UiKit.text(c, error == null || error.isEmpty()
-                ? "Image could not be loaded" : error, 11, UiKit.MUTED, false));
+                ? "Image could not be loaded" : error, chatSize(c, 11), UiKit.MUTED, false));
         if (RemoteImageLoader.hasSafeHttpsSyntax(url) &&
                 (error == null || !error.startsWith("Orbit blocked"))) {
             Button open = new Button(c);
@@ -391,7 +396,7 @@ public final class OrbitRichResponseRenderer {
 
     private static View linkedFallback(Context c, String alt, String url, int foreground) {
         TextView view = richText(c, "[" + (alt == null || alt.isEmpty() ? "Image" : alt) +
-                "](" + url + ")", 13, foreground, false);
+                "](" + url + ")", chatSize(c, 13), foreground, false);
         view.setContentDescription("Additional response image link");
         return view;
     }
@@ -406,5 +411,9 @@ public final class OrbitRichResponseRenderer {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.setMargins(0, 0, 0, UiKit.dp(c, bottomDp));
         out.addView(child, lp);
+    }
+
+    private static float chatSize(Context context, float defaultSp) {
+        return Prefs.chatTextSp(context, defaultSp);
     }
 }

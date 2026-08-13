@@ -33,6 +33,8 @@ public final class Prefs {
     public static final String KEYBOARD_AWARE_ASSISTANT = "keyboard_aware_assistant";
     public static final String USER_BUBBLE_COLOR = "user_bubble_color";
     public static final String ASSISTANT_BUBBLE_COLOR = "assistant_bubble_color";
+    public static final String CHAT_TEXT_SIZE = "chat_text_size";
+    public static final String GALLERY_APP_PACKAGE = "gallery_app_package";
     public static final String LELO_MODE = "lelo_mode";
     public static final String BACKGROUND_NOTIFICATIONS = "background_notifications";
     public static final String WEATHER_LOCATION = "weather_location";
@@ -58,11 +60,17 @@ public final class Prefs {
     public static final String MODE_DEEP = "deep";
     public static final String MODE_CUSTOM = "custom";
 
+    public static final String CHAT_TEXT_SMALL = "small";
+    public static final String CHAT_TEXT_DEFAULT = "default";
+    public static final String CHAT_TEXT_LARGE = "large";
+    public static final String CHAT_TEXT_EXTRA_LARGE = "extra_large";
+
     private Prefs() {}
 
     private static final Set<String> BACKUP_STRING_KEYS = new HashSet<>(Arrays.asList(
             MODEL, REASONING, INTELLIGENCE_MODE, ACCENT, USER_BUBBLE_COLOR,
-            ASSISTANT_BUBBLE_COLOR, WEATHER_LOCATION, APP_FONT, QUICK_SETTINGS_ROUTINE_ID));
+            ASSISTANT_BUBBLE_COLOR, CHAT_TEXT_SIZE, WEATHER_LOCATION, APP_FONT,
+            QUICK_SETTINGS_ROUTINE_ID));
     private static final Set<String> BACKUP_BOOLEAN_KEYS = new HashSet<>(Arrays.asList(
             SCREEN_CONTEXT, SCREENSHOT, CONTEXT_CHIPS, ATTACH_SCREEN_BY_DEFAULT,
             SPEAK, HAPTICS, AUTO_LISTEN, VOICE_PAUSE_FRIENDLY, NEW_CHAT_ON_OPEN,
@@ -154,6 +162,22 @@ public final class Prefs {
     public static boolean keyboardAwareAssistant(Context c) { return get(c).getBoolean(KEYBOARD_AWARE_ASSISTANT, true); }
     public static String userBubbleColor(Context c) { return get(c).getString(USER_BUBBLE_COLOR, "classic"); }
     public static String assistantBubbleColor(Context c) { return get(c).getString(ASSISTANT_BUBBLE_COLOR, "classic"); }
+    public static String chatTextSize(Context c) {
+        String value = get(c).getString(CHAT_TEXT_SIZE, CHAT_TEXT_DEFAULT);
+        if (CHAT_TEXT_SMALL.equals(value) || CHAT_TEXT_LARGE.equals(value) ||
+                CHAT_TEXT_EXTRA_LARGE.equals(value)) return value;
+        return CHAT_TEXT_DEFAULT;
+    }
+    public static float chatTextScale(Context c) {
+        String value = chatTextSize(c);
+        if (CHAT_TEXT_SMALL.equals(value)) return 0.88f;
+        if (CHAT_TEXT_LARGE.equals(value)) return 1.15f;
+        if (CHAT_TEXT_EXTRA_LARGE.equals(value)) return 1.30f;
+        return 1f;
+    }
+    public static float chatTextSp(Context c, float defaultSizeSp) {
+        return defaultSizeSp * chatTextScale(c);
+    }
     public static boolean leloMode(Context c) { return get(c).getBoolean(LELO_MODE, false); }
     public static boolean backgroundNotifications(Context c) { return get(c).getBoolean(BACKGROUND_NOTIFICATIONS, false); }
     public static String weatherLocation(Context c) { return get(c).getString(WEATHER_LOCATION, "").trim(); }

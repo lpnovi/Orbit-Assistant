@@ -265,7 +265,8 @@ public class ChatActivity extends Activity {
         thinkingRow = null;
         streamingBubble = null;
         if (history.isEmpty()) {
-            TextView welcome = UiKit.text(this, "What can I help with?", 17, UiKit.TEXT, false);
+            TextView welcome = UiKit.text(this, "What can I help with?",
+                    Prefs.chatTextSp(this, 17), UiKit.TEXT, false);
             welcome.setPadding(UiKit.dp(this, 16), UiKit.dp(this, 14), UiKit.dp(this, 16), UiKit.dp(this, 14));
             welcome.setBackground(UiKit.rounded(UiKit.SURFACE, 18, this));
             messages.addView(welcome, bubbleLp(Gravity.START, UiKit.dp(this, 240)));
@@ -284,7 +285,8 @@ public class ChatActivity extends Activity {
         int classicFill = user ? UiKit.blend(UiKit.accent(this), UiKit.SURFACE_2, 0.46f) : UiKit.SURFACE;
         int fill = user ? UiKit.userBubbleFill(this, classicFill) : UiKit.assistantBubbleFill(this, classicFill);
         if (user) {
-            TextView bubble = UiKit.text(this, visible, 15, UiKit.onBubble(fill), false);
+            TextView bubble = UiKit.text(this, visible, Prefs.chatTextSp(this, 15),
+                    UiKit.onBubble(fill), false);
             bubble.setLineSpacing(0, 1.08f);
             bubble.setPadding(UiKit.dp(this, 15), UiKit.dp(this, 12), UiKit.dp(this, 15), UiKit.dp(this, 12));
             bubble.setBackground(UiKit.rounded(fill, 18, this));
@@ -612,7 +614,9 @@ public class ChatActivity extends Activity {
                     removeThinkingRow();
                     if (streamingBubble == null) {
                         int fill = UiKit.assistantBubbleFill(ChatActivity.this, UiKit.SURFACE);
-                        streamingBubble = UiKit.text(ChatActivity.this, "", 15, UiKit.onBubble(fill), false);
+                        streamingBubble = UiKit.text(ChatActivity.this, "",
+                                Prefs.chatTextSp(ChatActivity.this, 15),
+                                UiKit.onBubble(fill), false);
                         streamingBubble.setLineSpacing(0, 1.08f);
                         streamingBubble.setPadding(UiKit.dp(ChatActivity.this, 15), UiKit.dp(ChatActivity.this, 12), UiKit.dp(ChatActivity.this, 15), UiKit.dp(ChatActivity.this, 12));
                         streamingBubble.setBackground(UiKit.rounded(fill, 18, ChatActivity.this));
@@ -911,11 +915,19 @@ public class ChatActivity extends Activity {
     }
 
     private void openGallery() {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("image/*");
-        try { startActivityForResult(intent, REQ_GALLERY); }
-        catch (Exception e) { Toast.makeText(this, "No gallery picker is available", Toast.LENGTH_SHORT).show(); }
+        Intent intent = GalleryAppPreference.createIntent(this);
+        try {
+            startActivityForResult(intent, REQ_GALLERY);
+        } catch (Exception first) {
+            GalleryAppPreference.clear(this);
+            try {
+                startActivityForResult(GalleryAppPreference.systemPickerIntent(), REQ_GALLERY);
+                Toast.makeText(this, "Preferred gallery unavailable; using System picker",
+                        Toast.LENGTH_SHORT).show();
+            } catch (Exception second) {
+                Toast.makeText(this, "No gallery picker is available", Toast.LENGTH_SHORT).show();
+            }
+        }
     }
 
     private void openFile() {

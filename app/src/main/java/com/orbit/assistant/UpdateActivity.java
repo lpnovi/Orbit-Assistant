@@ -175,6 +175,37 @@ public final class UpdateActivity extends Activity {
         card.addView(updateNotificationDescription);
         page.addView(card);
 
+        TextView roadmapSection = UiKit.text(this, "ROADMAP", 12, UiKit.MUTED, true);
+        roadmapSection.setLetterSpacing(0.13f);
+        LinearLayout.LayoutParams roadmapSectionLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        roadmapSectionLp.setMargins(UiKit.dp(this, 4), UiKit.dp(this, 22), 0, UiKit.dp(this, 9));
+        page.addView(roadmapSection, roadmapSectionLp);
+
+        LinearLayout roadmap = new LinearLayout(this);
+        roadmap.setOrientation(LinearLayout.HORIZONTAL);
+        roadmap.setGravity(Gravity.CENTER_VERTICAL);
+        roadmap.setPadding(UiKit.dp(this, 18), UiKit.dp(this, 16),
+                UiKit.dp(this, 16), UiKit.dp(this, 16));
+        roadmap.setBackground(UiKit.rippleOutlined(UiKit.SURFACE,
+                UiKit.withAlpha(UiKit.accent(this), 38), UiKit.accent(this), 22, this));
+        roadmap.setElevation(UiKit.dp(this, 2));
+        roadmap.setClickable(true);
+        roadmap.setFocusable(true);
+        LinearLayout roadmapCopy = new LinearLayout(this);
+        roadmapCopy.setOrientation(LinearLayout.VERTICAL);
+        roadmapCopy.addView(UiKit.text(this, "Roadmap", 17, UiKit.TEXT, true));
+        TextView roadmapDescription = UiKit.text(this,
+                "See what's next for Orbit", 12, UiKit.MUTED, false);
+        roadmapDescription.setPadding(0, UiKit.dp(this, 3), 0, 0);
+        roadmapCopy.addView(roadmapDescription);
+        roadmap.addView(roadmapCopy, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        roadmap.addView(UiKit.text(this, "›", 28, UiKit.accent(this), false));
+        roadmap.setOnClickListener(v -> startActivity(new Intent(this, RoadmapActivity.class)));
+        UiKit.pressScale(roadmap);
+        page.addView(roadmap);
+
         TextView privacy = UiKit.text(this,
                 "Orbit checks only the public lpnovi/Orbit-Assistant stable releases. It sends no account credentials, never downloads without your approval, verifies the APK checksum, package, version and permanent signing certificate, then uses Android's normal installer.",
                 12, UiKit.MUTED, false);

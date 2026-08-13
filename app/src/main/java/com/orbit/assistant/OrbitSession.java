@@ -2514,7 +2514,7 @@ public class OrbitSession extends VoiceInteractionSession {
         int classicFill = user ? blend(UiKit.accent(c), UiKit.BG, 0.43f) : UiKit.SURFACE;
         int fill = error ? Color.rgb(70, 34, 40) : user ? UiKit.userBubbleFill(c, classicFill) : UiKit.assistantBubbleFill(c, classicFill);
         int textColor = error ? Color.rgb(255, 177, 177) : UiKit.onBubble(fill);
-        TextView bubble = UiKit.text(c, text, 14, textColor, false);
+        TextView bubble = UiKit.text(c, text, Prefs.chatTextSp(c, 14), textColor, false);
         bubble.setLineSpacing(0, 1.13f);
         bubble.setPadding(UiKit.dp(c, 13), UiKit.dp(c, 10), UiKit.dp(c, 13), UiKit.dp(c, 10));
         bubble.setBackground(UiKit.rounded(fill, 18, c));
