@@ -187,8 +187,13 @@
 - Keep setup resumable, skippable, and safely re-runnable from Assistant setup
 
 ### 0.6.6.2
-- Complete release-candidate and fresh-install polish based on phone/tablet validation
-- Revisit the remaining minor Routine overflow-to-delete-confirmation entrance motion without changing deletion behavior
+- Complete release-candidate and fresh-install onboarding polish based on phone/tablet validation
+- Share the full Accent and conversation-color catalogs between onboarding and Look & Feel
+- Simplify setup navigation with live state-aware Skip for now / Continue labels and a hardened manual-exit confirmation
+- Surface the existing private HTTPS-relay fallback alongside recommended ChatGPT setup without adding raw API-key storage
+- Consolidate active-provider configuration under AI & account while preserving ChatGPT authentication independently of provider selection
+- Separate Diagnostics into its own Advanced developer-tool card
+- Keep the remaining minor Routine overflow-to-delete-confirmation entrance motion as a non-blocking cosmetic follow-up unless a deterministic fix is identified
 
 ### Planned 0.6.x
 - Home-screen widgets

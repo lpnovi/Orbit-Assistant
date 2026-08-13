@@ -60,6 +60,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     private Button assistantAction;
     private TextView quickRoutineSelection;
     private TextView chatGptStatus;
+    private LinearLayout providerDetails;
     private ScrollView settingsScroll;
     private String appliedAppearance = "";
     private boolean rebuildingAppearance;
@@ -119,9 +120,8 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         updateAssistantStatus();
         refreshQuickRoutineSelection();
         updateChatGptStatus();
-        if (!ChatGptAuth.isSignedIn(this)
-                && ChatGptAuth.resumePendingDeviceCode(this, chatGptLoginCallback)
-                && chatGptStatus != null) {
+        if (chatGptStatus != null && !ChatGptAuth.isSignedIn(this) &&
+                ChatGptAuth.resumePendingDeviceCode(this, chatGptLoginCallback)) {
             chatGptStatus.setText("Finishing secure ChatGPT sign-in…");
             chatGptStatus.setTextColor(UiKit.TEXT);
         }
@@ -190,7 +190,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         page.addView(settingsCategoryCard(SECTION_UPDATES, "About & updates",
                 "Current version and verified official Orbit releases"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_ADVANCED, "Advanced",
-                "API relay fallback and diagnostics"), categoryLp());
+                "Diagnostics and developer tools"), categoryLp());
 
         TextView footer = UiKit.text(this, "Orbit " + BuildConfig.VERSION_NAME + " • Power Assistant", 12, UiKit.MUTED, false);
         footer.setGravity(Gravity.CENTER);
@@ -275,12 +275,12 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
 
     private String sectionDescription(String section) {
         if (SECTION_ASSISTANT.equals(section)) return "Set Orbit as your assistant and configure Side button and Quick Settings access.";
-        if (SECTION_AI.equals(section)) return "Manage your ChatGPT connection and how much intelligence Orbit uses by default.";
+        if (SECTION_AI.equals(section)) return "Choose and configure Orbit's active AI provider, manage your ChatGPT connection, and set default intelligence.";
         if (SECTION_VOICE.equals(section)) return "Control Voice Beta, screen awareness and device permissions.";
         if (SECTION_DATA.equals(section)) return "Manage weather preferences and the local information Orbit uses to personalize and organize your assistant experience.";
         if (SECTION_CONVERSATIONS.equals(section)) return "Choose how Orbit stores chats and handles background completions.";
         if (SECTION_APPEARANCE.equals(section)) return "Tune Orbit's colors, typography, AMOLED presentation and tactile feedback.";
-        if (SECTION_ADVANCED.equals(section)) return "Optional fallback infrastructure and developer diagnostics.";
+        if (SECTION_ADVANCED.equals(section)) return "Inspect local diagnostics and developer troubleshooting information.";
         return "Orbit settings.";
     }
 
@@ -474,43 +474,28 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         backupCard.addView(restoreBackup, restoreBackupLp);
         // Added last in Personalization & data below.
 
-        page.addView(sectionTitle("CHATGPT ACCOUNT", "account"));
+        page.addView(sectionTitle("CONNECTION & PROVIDER", "account"));
         LinearLayout accountCard = card();
         tagSectionCard(accountCard, "account");
-        chatGptStatus = UiKit.text(this, "Checking ChatGPT sign-in…", 15, UiKit.TEXT, true);
-        accountCard.addView(chatGptStatus);
-        TextView accountHelp = UiKit.text(this,
-                "Recommended: sign in with your normal ChatGPT account using OpenAI's Codex device-code flow. This path uses your account-backed Codex/ChatGPT allowance and does not require an OpenAI API key.",
-                13, UiKit.MUTED, false);
-        accountHelp.setPadding(0, UiKit.dp(this, 7), 0, UiKit.dp(this, 13));
-        accountCard.addView(accountHelp);
-
-        Button signIn = primaryButton("Sign in with ChatGPT");
-        signIn.setOnClickListener(v -> startChatGptLogin());
-        accountCard.addView(signIn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48)));
-
-        Button signOut = secondaryButton("Sign out of ChatGPT");
-        LinearLayout.LayoutParams signOutLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
-        signOutLp.setMargins(0, UiKit.dp(this, 8), 0, 0);
-        accountCard.addView(signOut, signOutLp);
-        signOut.setOnClickListener(v -> {
-            ChatGptAuth.logout(this);
-            updateChatGptStatus();
-            Toast.makeText(this, "Signed out of ChatGPT in Orbit", Toast.LENGTH_SHORT).show();
-        });
-
         accountCard.addView(label("Provider"));
-        String[] providerLabels = {"ChatGPT account (recommended)", "OpenAI API relay (fallback)"};
+        String[] providerKeys = UiKit.providerKeys();
+        String[] providerLabels = UiKit.providerLabels();
         LinearLayout provider = menuSelector(providerLabels,
-                Prefs.PROVIDER_RELAY.equals(Prefs.provider(this)) ? 1 : 0,
-                (pos, selectedLabel) -> Prefs.get(this).edit().putString(
-                        Prefs.PROVIDER, pos == 0 ? Prefs.PROVIDER_CHATGPT : Prefs.PROVIDER_RELAY).apply());
+                indexOf(providerKeys, Prefs.provider(this)),
+                (pos, selectedLabel) -> {
+                    String selectedProvider = providerKeys[Math.max(0,
+                            Math.min(providerKeys.length - 1, pos))];
+                    if (!selectedProvider.equals(Prefs.provider(this))) {
+                        Prefs.get(this).edit().putString(Prefs.PROVIDER, selectedProvider).apply();
+                        swapProviderDetails();
+                    }
+                });
         accountCard.addView(provider, selectorLp());
-        TextView experimental = UiKit.text(this,
-                "Orbit uses the public Codex OAuth protocol for ChatGPT-account mode. Because OpenAI does not document the Codex backend as a general third-party mobile API, this integration is experimental and the API relay remains available as an explicit fallback.",
-                12, UiKit.MUTED, false);
-        experimental.setPadding(0, UiKit.dp(this, 7), 0, 0);
-        accountCard.addView(experimental);
+        providerDetails = new LinearLayout(this);
+        providerDetails.setOrientation(LinearLayout.VERTICAL);
+        providerDetails.setPadding(0, UiKit.dp(this, 13), 0, 0);
+        populateProviderDetails(providerDetails);
+        accountCard.addView(providerDetails);
         page.addView(accountCard);
 
         page.addView(sectionTitle("VOICE & CONTEXT", "voice"));
@@ -623,39 +608,20 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         aiCard.addView(cost);
         page.addView(aiCard);
 
-        page.addView(sectionTitle("API RELAY FALLBACK", "relay"));
-        LinearLayout relayCard = card();
-        tagSectionCard(relayCard, "relay");
-        TextView relayHelp = UiKit.text(this, "Optional fallback only. If ChatGPT-account mode is unavailable, Orbit can call a small HTTPS relay you control. Your OpenAI API key stays on that server and is never embedded in the APK. Orbit never silently switches to this paid path.", 13, UiKit.MUTED, false);
-        relayHelp.setPadding(0, 0, 0, UiKit.dp(this, 12));
-        relayCard.addView(relayHelp);
-        EditText url = field("https://your-relay.example.com", Prefs.backendUrl(this), false);
-        relayCard.addView(url);
-        EditText token = field("Relay access token (optional)", Prefs.token(this), true);
-        LinearLayout.LayoutParams tokenLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 52));
-        tokenLp.setMargins(0, UiKit.dp(this, 10), 0, 0);
-        relayCard.addView(token, tokenLp);
-        Button save = primaryButton("Save relay settings");
-        LinearLayout.LayoutParams saveLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
-        saveLp.setMargins(0, UiKit.dp(this, 12), 0, 0);
-        relayCard.addView(save, saveLp);
-        save.setOnClickListener(v -> {
-            String u = url.getText().toString().trim();
-            if (!u.isEmpty() && !u.startsWith("https://")) {
-                Toast.makeText(this, "Use an HTTPS relay URL.", Toast.LENGTH_LONG).show();
-                return;
-            }
-            Prefs.get(this).edit().putString(Prefs.BACKEND_URL, u).apply();
-            SecureStore.saveRelayToken(this, token.getText().toString().trim());
-            Toast.makeText(this, "Relay settings saved securely", Toast.LENGTH_SHORT).show();
-        });
+        page.addView(sectionTitle("DIAGNOSTICS", "diagnostics"));
+        LinearLayout diagnosticsCard = card();
+        tagSectionCard(diagnosticsCard, "diagnostics");
+        diagnosticsCard.addView(UiKit.text(this, "Orbit diagnostics", 16, UiKit.TEXT, true));
+        TextView diagnosticsHelp = UiKit.text(this,
+                "View local routing, context, account, capability, and troubleshooting information.",
+                13, UiKit.MUTED, false);
+        diagnosticsHelp.setPadding(0, UiKit.dp(this, 7), 0, UiKit.dp(this, 12));
+        diagnosticsCard.addView(diagnosticsHelp);
         Button diagnostics = secondaryButton("Open Orbit diagnostics");
-        LinearLayout.LayoutParams diagnosticsLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
-        diagnosticsLp.setMargins(0, UiKit.dp(this, 10), 0, 0);
-        relayCard.addView(diagnostics, diagnosticsLp);
+        diagnosticsCard.addView(diagnostics, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48)));
         diagnostics.setOnClickListener(v -> startActivity(new Intent(this, DiagnosticsActivity.class)));
-        page.addView(relayCard);
+        page.addView(diagnosticsCard);
 
         page.addView(sectionTitle("CONVERSATIONS", "conversations"));
         LinearLayout conversationCard = card();
@@ -834,6 +800,105 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         if (!info.email.isEmpty()) status.append("\n").append(info.email);
         chatGptStatus.setText(status.toString());
         chatGptStatus.setTextColor(UiKit.SUCCESS);
+    }
+
+    private void populateProviderDetails(LinearLayout container) {
+        if (container == null) return;
+        chatGptStatus = null;
+        if (Prefs.PROVIDER_RELAY.equals(Prefs.provider(this))) {
+            TextView relayHelp = UiKit.text(this,
+                    "Advanced fallback: Orbit calls a private HTTPS relay you control. Your OpenAI API key stays on that server and is never stored in Orbit. ChatGPT credentials, if present, remain securely saved but inactive while this provider is selected.",
+                    13, UiKit.MUTED, false);
+            relayHelp.setPadding(0, 0, 0, UiKit.dp(this, 12));
+            container.addView(relayHelp);
+
+            container.addView(label("HTTPS relay URL"));
+            EditText url = field("https://your-relay.example.com", Prefs.backendUrl(this), false);
+            container.addView(url);
+            container.addView(label("Relay access token (optional)"));
+            EditText token = field("Relay access token (optional)", Prefs.token(this), true);
+            container.addView(token);
+
+            Button save = primaryButton("Save relay settings");
+            LinearLayout.LayoutParams saveLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
+            saveLp.setMargins(0, UiKit.dp(this, 12), 0, 0);
+            container.addView(save, saveLp);
+            save.setOnClickListener(v -> {
+                try {
+                    String error = Prefs.saveRelaySettings(this, url.getText().toString(),
+                            token.getText().toString());
+                    if (!error.isEmpty()) {
+                        Toast.makeText(this, error, Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    Toast.makeText(this, "Relay settings saved securely", Toast.LENGTH_SHORT).show();
+                } catch (Exception error) {
+                    showOrbitMessageDialog("Could not save relay settings",
+                            "Orbit could not securely save the optional relay access token.");
+                }
+            });
+
+            TextView future = UiKit.text(this,
+                    "More provider options, including Claude and Gemini, are planned for future Orbit versions.",
+                    11, UiKit.MUTED, false);
+            future.setPadding(0, UiKit.dp(this, 10), 0, 0);
+            container.addView(future);
+            return;
+        }
+
+        chatGptStatus = UiKit.text(this, "Checking ChatGPT sign-in…", 15, UiKit.TEXT, true);
+        container.addView(chatGptStatus);
+        TextView accountHelp = UiKit.text(this,
+                "Recommended: sign in with your normal ChatGPT account using OpenAI's Codex device-code flow. This path uses your account-backed Codex/ChatGPT allowance and does not require an OpenAI API key.",
+                13, UiKit.MUTED, false);
+        accountHelp.setPadding(0, UiKit.dp(this, 7), 0, UiKit.dp(this, 13));
+        container.addView(accountHelp);
+
+        Button signIn = primaryButton("Sign in with ChatGPT");
+        signIn.setOnClickListener(v -> startChatGptLogin());
+        container.addView(signIn, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48)));
+
+        Button signOut = secondaryButton("Sign out of ChatGPT");
+        LinearLayout.LayoutParams signOutLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
+        signOutLp.setMargins(0, UiKit.dp(this, 8), 0, 0);
+        container.addView(signOut, signOutLp);
+        signOut.setOnClickListener(v -> {
+            ChatGptAuth.logout(this);
+            updateChatGptStatus();
+            Toast.makeText(this, "Signed out of ChatGPT in Orbit", Toast.LENGTH_SHORT).show();
+        });
+
+        TextView experimental = UiKit.text(this,
+                "Orbit uses the public Codex OAuth protocol for ChatGPT-account mode. Because OpenAI does not document the Codex backend as a general third-party mobile API, this integration is experimental and the API relay remains available as an explicit fallback.",
+                12, UiKit.MUTED, false);
+        experimental.setPadding(0, UiKit.dp(this, 8), 0, 0);
+        container.addView(experimental);
+        updateChatGptStatus();
+    }
+
+    private void swapProviderDetails() {
+        if (providerDetails == null) return;
+        providerDetails.animate().cancel();
+        providerDetails.animate()
+                .alpha(0f)
+                .translationY(-UiKit.dp(this, 3))
+                .setDuration(85L)
+                .withEndAction(() -> {
+                    if (providerDetails == null || isFinishing() || isDestroyed()) return;
+                    providerDetails.removeAllViews();
+                    populateProviderDetails(providerDetails);
+                    UiKit.applyTypography(providerDetails);
+                    providerDetails.setTranslationY(UiKit.dp(this, 4));
+                    providerDetails.animate()
+                            .alpha(1f)
+                            .translationY(0f)
+                            .setDuration(150L)
+                            .start();
+                })
+                .start();
     }
 
     private void openAssistantSettings(boolean explain) {
@@ -1062,7 +1127,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         if (SECTION_DATA.equals(section)) return "data".equals(key);
         if (SECTION_CONVERSATIONS.equals(section)) return "conversations".equals(key);
         if (SECTION_APPEARANCE.equals(section)) return "appearance".equals(key);
-        if (SECTION_ADVANCED.equals(section)) return "relay".equals(key);
+        if (SECTION_ADVANCED.equals(section)) return "diagnostics".equals(key);
         return false;
     }
 
@@ -1192,8 +1257,8 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     }
 
     private View themeSelector() {
-        String[] keys = new String[]{"dynamic", "blurple", "violet", "blue", "mint", "rose", "nova", "pastel_pink", "pastel_blue"};
-        String[] labels = new String[]{"Dynamic", "Blurple", "Violet", "Blue", "Mint", "Rose", "Nova", "Pastel Pink", "Pastel Blue"};
+        String[] keys = UiKit.accentKeys();
+        String[] labels = UiKit.accentLabels();
         String selected = Prefs.get(this).getString(Prefs.ACCENT, "dynamic");
         return colorMenuSelector(keys, labels, selected, false, true, Prefs.ACCENT);
     }
@@ -1215,8 +1280,8 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     }
 
     private View bubbleColorSelector(String prefKey, boolean assistant) {
-        String[] keys = new String[]{"classic", "accent", "blurple", "violet", "blue", "mint", "rose", "nova", "pastel_pink", "pastel_blue"};
-        String[] labels = new String[]{"Classic", "Accent", "Blurple", "Violet", "Blue", "Mint", "Rose", "Nova", "Pastel Pink", "Pastel Blue"};
+        String[] keys = UiKit.bubbleColorKeys();
+        String[] labels = UiKit.bubbleColorLabels();
         String selected = Prefs.get(this).getString(prefKey, "classic");
         return colorMenuSelector(keys, labels, selected, assistant, false, prefKey);
     }
@@ -1258,7 +1323,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
                 String existing = Prefs.get(this).getString(prefKey, accentSelector ? "dynamic" : "classic");
                 if (!key.equals(existing)) {
                     Prefs.get(this).edit().putString(prefKey, key).apply();
-                    if (accentSelector) UiKit.notifyAppearanceChanged(this);
+                    UiKit.notifyAppearanceChanged(this);
                 }
             });
         });

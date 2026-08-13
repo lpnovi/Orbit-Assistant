@@ -63,6 +63,29 @@ public final class UiKit {
     public static final int PASTEL_BLUE = Color.rgb(203, 229, 242); // #CBE5F2
     public static final int SUCCESS = Color.rgb(87, 214, 146);
 
+    private static final String[] ACCENT_KEYS = {
+            "dynamic", "blurple", "violet", "blue", "mint", "rose", "nova",
+            "pastel_pink", "pastel_blue"
+    };
+    private static final String[] ACCENT_LABELS = {
+            "Dynamic", "Blurple", "Violet", "Blue", "Mint", "Rose", "Nova",
+            "Pastel Pink", "Pastel Blue"
+    };
+    private static final String[] BUBBLE_COLOR_KEYS = {
+            "classic", "accent", "blurple", "violet", "blue", "mint", "rose", "nova",
+            "pastel_pink", "pastel_blue"
+    };
+    private static final String[] BUBBLE_COLOR_LABELS = {
+            "Classic", "Accent", "Blurple", "Violet", "Blue", "Mint", "Rose", "Nova",
+            "Pastel Pink", "Pastel Blue"
+    };
+    private static final String[] PROVIDER_KEYS = {
+            Prefs.PROVIDER_CHATGPT, Prefs.PROVIDER_RELAY
+    };
+    private static final String[] PROVIDER_LABELS = {
+            "ChatGPT account (recommended)", "OpenAI API relay (fallback)"
+    };
+
     private static final Map<TextView, FontPreview> FONT_PREVIEWS = new WeakHashMap<>();
     private static final Map<TextView, Boolean> TYPOGRAPHY_APPLIED = new WeakHashMap<>();
     private static final Map<View, Boolean> TYPOGRAPHY_WATCHED = new WeakHashMap<>();
@@ -89,8 +112,18 @@ public final class UiKit {
         return Prefs.get(c).getString(Prefs.ACCENT, "dynamic") +
                 "|resolved=" + Integer.toHexString(accent(c)) +
                 "|amoled=" + Prefs.amoledMode(c) +
-                "|font=" + Prefs.appFont(c);
+                "|font=" + Prefs.appFont(c) +
+                "|userBubble=" + Prefs.userBubbleColor(c) +
+                "|assistantBubble=" + Prefs.assistantBubbleColor(c);
     }
+
+    /** Shared appearance/provider presentation catalogs used by Settings and onboarding. */
+    public static String[] accentKeys() { return ACCENT_KEYS.clone(); }
+    public static String[] accentLabels() { return ACCENT_LABELS.clone(); }
+    public static String[] bubbleColorKeys() { return BUBBLE_COLOR_KEYS.clone(); }
+    public static String[] bubbleColorLabels() { return BUBBLE_COLOR_LABELS.clone(); }
+    public static String[] providerKeys() { return PROVIDER_KEYS.clone(); }
+    public static String[] providerLabels() { return PROVIDER_LABELS.clone(); }
 
     public static void registerAppearanceListener(AppearanceListener listener) {
         if (listener == null) return;

@@ -128,6 +128,18 @@ public final class Prefs {
     public static String provider(Context c) { return get(c).getString(PROVIDER, PROVIDER_CHATGPT); }
     public static String backendUrl(Context c) { return get(c).getString(BACKEND_URL, "").trim(); }
     public static String token(Context c) { return SecureStore.loadRelayToken(c); }
+    public static boolean relayConfigured(Context c) {
+        return backendUrl(c).startsWith("https://");
+    }
+
+    /** Save the existing HTTPS-relay configuration without ever handling a raw OpenAI API key. */
+    public static String saveRelaySettings(Context c, String rawUrl, String relayToken) {
+        String url = rawUrl == null ? "" : rawUrl.trim();
+        if (!url.isEmpty() && !url.startsWith("https://")) return "Use an HTTPS relay URL.";
+        SecureStore.saveRelayToken(c, relayToken == null ? "" : relayToken.trim());
+        get(c).edit().putString(BACKEND_URL, url).apply();
+        return "";
+    }
     public static boolean screenContext(Context c) { return get(c).getBoolean(SCREEN_CONTEXT, true); }
     public static boolean screenshot(Context c) { return get(c).getBoolean(SCREENSHOT, true); }
     public static boolean contextChips(Context c) { return get(c).getBoolean(CONTEXT_CHIPS, true); }

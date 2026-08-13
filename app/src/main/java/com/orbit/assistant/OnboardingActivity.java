@@ -12,12 +12,14 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -37,6 +39,7 @@ public final class OnboardingActivity extends Activity {
     private int step;
     private boolean manual;
     private boolean resumedOnce;
+    private boolean relayExpanded;
     private String appliedAppearance = "";
 
     private final ChatGptAuth.LoginCallback loginCallback = new ChatGptAuth.LoginCallback() {
@@ -71,9 +74,14 @@ public final class OnboardingActivity extends Activity {
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         manual = getIntent() != null && getIntent().getBooleanExtra(EXTRA_MANUAL, false);
-        if (savedInstanceState != null) step = savedInstanceState.getInt("step", 0);
+        if (savedInstanceState != null) {
+            step = savedInstanceState.getInt("step", 0);
+            relayExpanded = savedInstanceState.getBoolean("relayExpanded", false);
+        }
         else if (manual) step = 0;
         else step = OnboardingState.currentStep(this);
+        if (savedInstanceState == null && Prefs.PROVIDER_RELAY.equals(Prefs.provider(this)))
+            relayExpanded = true;
         persistStep();
         render();
     }
@@ -91,6 +99,7 @@ public final class OnboardingActivity extends Activity {
 
     @Override protected void onSaveInstanceState(Bundle outState) {
         outState.putInt("step", step);
+        outState.putBoolean("relayExpanded", relayExpanded);
         super.onSaveInstanceState(outState);
     }
 
@@ -117,7 +126,7 @@ public final class OnboardingActivity extends Activity {
             persistStep();
             render();
         } else if (manual) {
-            finish();
+            confirmExitSetup();
         } else {
             confirmSkip();
         }
@@ -187,7 +196,7 @@ public final class OnboardingActivity extends Activity {
 
         Button skip = quietButton(manual ? "Exit setup" : "Skip setup");
         skip.setOnClickListener(v -> {
-            if (manual) finish(); else confirmSkip();
+            if (manual) confirmExitSetup(); else confirmSkip();
         });
         header.addView(skip, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 42)));
@@ -224,8 +233,9 @@ public final class OnboardingActivity extends Activity {
 
     private void buildConnect(LinearLayout page) {
         addTitle(page, "Connect Orbit",
-                "Connect your ChatGPT account using Orbit's secure Codex device-code flow.");
+                "ChatGPT is the recommended connection. Advanced users can instead use Orbit's existing private HTTPS-relay fallback.");
         boolean connected = ChatGptAuth.isSignedIn(this);
+        boolean chatGptActive = Prefs.PROVIDER_CHATGPT.equals(Prefs.provider(this));
         LinearLayout card = card();
         TextView state = UiKit.text(this,
                 connected ? "✓ Connected to ChatGPT" : "○ Not connected yet",
@@ -237,12 +247,84 @@ public final class OnboardingActivity extends Activity {
                 13, UiKit.MUTED, false);
         help.setPadding(0, UiKit.dp(this, 7), 0, UiKit.dp(this, 13));
         card.addView(help);
-        Button action = primaryButton(connected ? "Connected" : "Sign in with ChatGPT");
-        action.setEnabled(!connected);
-        action.setAlpha(connected ? .68f : 1f);
-        action.setOnClickListener(v -> startChatGptLogin());
+        Button action = primaryButton(connected
+                ? (chatGptActive ? "ChatGPT account active" : "Use ChatGPT account")
+                : "Sign in with ChatGPT");
+        action.setEnabled(!connected || !chatGptActive);
+        action.setAlpha(connected && chatGptActive ? .68f : 1f);
+        action.setOnClickListener(v -> {
+            if (connected) {
+                Prefs.get(this).edit().putString(Prefs.PROVIDER, Prefs.PROVIDER_CHATGPT).apply();
+                render();
+            } else startChatGptLogin();
+        });
         card.addView(action, new LinearLayout.LayoutParams(-1, UiKit.dp(this, 48)));
         page.addView(card, cardLp());
+
+        Button fallback = quietButton(relayExpanded ? "Hide OpenAI API fallback" :
+                "Configure OpenAI API fallback");
+        fallback.setOnClickListener(v -> {
+            relayExpanded = !relayExpanded;
+            render();
+        });
+        page.addView(fallback, buttonLp());
+
+        if (relayExpanded) buildRelayFallback(page);
+    }
+
+    private void buildRelayFallback(LinearLayout page) {
+        LinearLayout relayCard = card();
+        relayCard.addView(UiKit.text(this, "OpenAI API relay fallback", 16, UiKit.TEXT, true));
+        addCardDescription(relayCard,
+                "For advanced users. Orbit can use a private HTTPS relay connected to the OpenAI API. Your OpenAI API key remains on your relay server rather than inside Orbit.");
+        TextView status = UiKit.text(this,
+                Prefs.PROVIDER_RELAY.equals(Prefs.provider(this)) && Prefs.relayConfigured(this)
+                        ? "✓ API fallback is the active provider"
+                        : Prefs.relayConfigured(this) ? "Relay saved; ChatGPT remains active"
+                        : "Relay not configured",
+                12, Prefs.relayConfigured(this) ? UiKit.SUCCESS : UiKit.MUTED, true);
+        status.setPadding(0, 0, 0, UiKit.dp(this, 10));
+        relayCard.addView(status);
+
+        EditText url = field("https://your-relay.example.com", Prefs.backendUrl(this), false);
+        relayCard.addView(url, new LinearLayout.LayoutParams(-1, UiKit.dp(this, 52)));
+        EditText token = field("Relay access token (optional)", Prefs.token(this), true);
+        LinearLayout.LayoutParams tokenLp = new LinearLayout.LayoutParams(-1, UiKit.dp(this, 52));
+        tokenLp.topMargin = UiKit.dp(this, 9);
+        relayCard.addView(token, tokenLp);
+
+        Button save = secondaryButton("Save and use API fallback");
+        LinearLayout.LayoutParams saveLp = new LinearLayout.LayoutParams(-1, UiKit.dp(this, 46));
+        saveLp.topMargin = UiKit.dp(this, 11);
+        relayCard.addView(save, saveLp);
+        save.setOnClickListener(v -> {
+            try {
+                String requestedUrl = url.getText().toString().trim();
+                if (requestedUrl.isEmpty()) {
+                    Toast.makeText(this, "Enter an HTTPS relay URL first.", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                String error = Prefs.saveRelaySettings(this, requestedUrl,
+                        token.getText().toString());
+                if (!error.isEmpty()) {
+                    Toast.makeText(this, error, Toast.LENGTH_LONG).show();
+                    return;
+                }
+                Prefs.get(this).edit().putString(Prefs.PROVIDER, Prefs.PROVIDER_RELAY).apply();
+                Toast.makeText(this, "API fallback saved and selected", Toast.LENGTH_SHORT).show();
+                render();
+            } catch (Exception error) {
+                showMessage("Could not save relay settings",
+                        "Orbit could not securely save the optional relay access token.");
+            }
+        });
+
+        TextView future = UiKit.text(this,
+                "More provider options, including Claude and Gemini, are planned for future Orbit versions.",
+                11, UiKit.MUTED, false);
+        future.setPadding(0, UiKit.dp(this, 11), 0, 0);
+        relayCard.addView(future);
+        page.addView(relayCard, cardLp());
     }
 
     private void buildAssistant(LinearLayout page) {
@@ -331,32 +413,8 @@ public final class OnboardingActivity extends Activity {
         LinearLayout accentCard = card();
         accentCard.addView(UiKit.text(this, "Accent", 16, UiKit.TEXT, true));
         addCardDescription(accentCard, "Choose one of Orbit's existing presets.");
-        String[] keys = {"dynamic", "nova", "pastel_blue", "rose"};
-        String[] labels = {"Dynamic", "Nova", "Pastel Blue", "Rose"};
-        LinearLayout choices = new LinearLayout(this);
-        choices.setOrientation(LinearLayout.VERTICAL);
-        for (int i = 0; i < keys.length; i++) {
-            if (i % 2 == 0) {
-                LinearLayout row = new LinearLayout(this);
-                if (i > 0) {
-                    LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, -2);
-                    rowLp.topMargin = UiKit.dp(this, 6);
-                    choices.addView(row, rowLp);
-                } else choices.addView(row);
-            }
-            LinearLayout row = (LinearLayout) choices.getChildAt(choices.getChildCount() - 1);
-            final String key = keys[i];
-            Button choice = secondaryButton(labels[i]);
-            boolean selected = key.equals(Prefs.get(this).getString(Prefs.ACCENT, "dynamic"));
-            choice.setTextColor(selected ? UiKit.onAccent(this) : UiKit.TEXT);
-            if (selected) choice.setBackground(UiKit.ripple(
-                    UiKit.accent(this), UiKit.onAccent(this), 14, this));
-            choice.setOnClickListener(v -> setAccent(key));
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, UiKit.dp(this, 44), 1);
-            if (i % 2 == 1) lp.leftMargin = UiKit.dp(this, 6);
-            row.addView(choice, lp);
-        }
-        accentCard.addView(choices);
+        accentCard.addView(appearanceColorSelector(UiKit.accentKeys(), UiKit.accentLabels(),
+                Prefs.ACCENT, false, true));
         page.addView(accentCard, cardLp());
 
         LinearLayout fontCard = card();
@@ -387,6 +445,20 @@ public final class OnboardingActivity extends Activity {
         });
         fontCard.addView(amoled);
         page.addView(fontCard, cardLp());
+
+        LinearLayout conversationCard = card();
+        conversationCard.addView(UiKit.text(this, "Conversation colors", 16, UiKit.TEXT, true));
+        addCardDescription(conversationCard,
+                "Optional: choose your message bubbles and Orbit's response bubbles independently.");
+        conversationCard.addView(UiKit.text(this, "Your bubbles", 12, UiKit.MUTED, true));
+        conversationCard.addView(appearanceColorSelector(UiKit.bubbleColorKeys(),
+                UiKit.bubbleColorLabels(), Prefs.USER_BUBBLE_COLOR, false, false));
+        TextView orbitLabel = UiKit.text(this, "Orbit bubbles", 12, UiKit.MUTED, true);
+        orbitLabel.setPadding(0, UiKit.dp(this, 12), 0, 0);
+        conversationCard.addView(orbitLabel);
+        conversationCard.addView(appearanceColorSelector(UiKit.bubbleColorKeys(),
+                UiKit.bubbleColorLabels(), Prefs.ASSISTANT_BUBBLE_COLOR, true, false));
+        page.addView(conversationCard, cardLp());
     }
 
     private void buildStarterRoutine(LinearLayout page) {
@@ -461,7 +533,7 @@ public final class OnboardingActivity extends Activity {
             nav.addView(back, new LinearLayout.LayoutParams(0, UiKit.dp(this, 48), .36f));
         }
         Button next = primaryButton(step == 0 ? "Get started" : step == 7 ?
-                "Start using Orbit" : "Continue");
+                "Start using Orbit" : adaptiveNavigationLabel());
         next.setOnClickListener(v -> {
             if (step == 7) completeAndExit();
             else {
@@ -474,16 +546,19 @@ public final class OnboardingActivity extends Activity {
         if (step > 0 && step < 7) nextLp.leftMargin = UiKit.dp(this, 9);
         nav.addView(next, nextLp);
         page.addView(nav, navLp);
+    }
 
-        if (step == 1 || step == 2 || step == 6) {
-            Button skip = quietButton("Skip for now");
-            skip.setOnClickListener(v -> {
-                step++;
-                persistStep();
-                render();
-            });
-            page.addView(skip, buttonLp());
-        }
+    private String adaptiveNavigationLabel() {
+        if (step == 1 && !connectionConfigured()) return "Skip for now";
+        if (step == 2 && !OrbitSetupHelper.isOrbitAssistantActive(this)) return "Skip for now";
+        if (step == 6 && RoutineStore.findById(this,
+                OnboardingState.starterRoutineId(this)) == null) return "Skip for now";
+        return "Continue";
+    }
+
+    private boolean connectionConfigured() {
+        return ChatGptAuth.isSignedIn(this) ||
+                (Prefs.PROVIDER_RELAY.equals(Prefs.provider(this)) && Prefs.relayConfigured(this));
     }
 
     private void addTitle(LinearLayout page, String title, String subtitle) {
@@ -591,10 +666,52 @@ public final class OnboardingActivity extends Activity {
         return button;
     }
 
-    private void setAccent(String key) {
-        Prefs.get(this).edit().putString(Prefs.ACCENT, key).apply();
-        UiKit.notifyAppearanceChanged(this);
-        render();
+    private EditText field(String hint, String value, boolean secret) {
+        EditText field = new EditText(this);
+        field.setHint(hint);
+        field.setHintTextColor(Color.rgb(115, 120, 135));
+        field.setText(value);
+        field.setTextColor(UiKit.TEXT);
+        field.setTextSize(14);
+        field.setSingleLine(true);
+        field.setPadding(UiKit.dp(this, 15), 0, UiKit.dp(this, 15), 0);
+        field.setBackground(UiKit.outlined(UiKit.SURFACE_2,
+                UiKit.withAlpha(UiKit.accent(this), 72), 15, this));
+        if (secret) field.setInputType(InputType.TYPE_CLASS_TEXT |
+                InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        return field;
+    }
+
+    private View appearanceColorSelector(String[] keys, String[] labels, String prefKey,
+                                         boolean assistantBubble, boolean accentSelector) {
+        String fallback = accentSelector ? "dynamic" : "classic";
+        String selected = Prefs.get(this).getString(prefKey, fallback);
+        int selectedIndex = indexOf(keys, selected);
+        Button selector = secondaryButton(labels[selectedIndex] + "  ▾");
+        selector.setOnClickListener(v -> {
+            int[] colors = new int[keys.length];
+            for (int i = 0; i < keys.length; i++) {
+                if (accentSelector) colors[i] = UiKit.accentForName(this, keys[i]);
+                else colors[i] = bubblePreviewColor(keys[i], assistantBubble);
+            }
+            UiKit.showOrbitColorMenu(this, selector, labels, colors, selectedIndex,
+                    (index, label) -> {
+                        String key = keys[index];
+                        Prefs.get(this).edit().putString(prefKey, key).apply();
+                        UiKit.notifyAppearanceChanged(this);
+                        render();
+                    });
+        });
+        selector.setLayoutParams(new LinearLayout.LayoutParams(-1, UiKit.dp(this, 46)));
+        return selector;
+    }
+
+    private int bubblePreviewColor(String key, boolean assistant) {
+        int classic = assistant ? UiKit.SURFACE :
+                UiKit.blend(UiKit.accent(this), UiKit.SURFACE_2, 0.46f);
+        if ("classic".equals(key)) return classic;
+        if ("accent".equals(key)) return UiKit.accent(this);
+        return UiKit.accentForName(this, key);
     }
 
     private int indexOf(String[] values, String target) {
@@ -738,6 +855,17 @@ public final class OnboardingActivity extends Activity {
                 .setPositiveButton("Skip setup", (d, which) -> completeAndExit())
                 .create();
         UiKit.styleOrbitDialog(dialog, this, false);
+        dialog.show();
+    }
+
+    private void confirmExitSetup() {
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Exit setup?")
+                .setMessage("Your current Orbit settings are already saved. You can return to setup anytime from Assistant setup.")
+                .setNegativeButton("Keep setting up", null)
+                .setPositiveButton("Exit setup", (d, which) -> finish())
+                .create();
+        UiKit.styleOrbitDialog(dialog, this, true);
         dialog.show();
     }
 
