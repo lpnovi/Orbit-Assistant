@@ -80,11 +80,10 @@ public final class RoadmapActivity extends Activity {
         page.addView(intro, introLp);
 
         addGroup(page, "NEXT UP", new String[][]{
-                {"Plugins & extensibility", "Safe ways to expand Orbit without weakening predictable behavior."},
-                {"Natural-language Routine creation", "Create editable Routines by describing the outcome in ordinary language."}
+                {"Natural-language Routine creation", "Create editable Routines by describing the outcome in ordinary language."},
+                {"Richer automation & branching", "More expressive chained plans, conditions and saved automation."}
         });
         addGroup(page, "PLANNED", new String[][]{
-                {"Richer automation & branching", "More expressive chained plans, conditions and saved automation."},
                 {"Deeper Android actions", "Broader device controls through supported Android surfaces."},
                 {"Stronger Custom Commands", "More capable personal phrases built on Orbit's existing safety model."},
                 {"Additional AI providers", "More provider choices while preserving explicit account and privacy controls."},

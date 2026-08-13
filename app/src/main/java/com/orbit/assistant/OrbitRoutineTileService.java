@@ -33,11 +33,13 @@ public final class OrbitRoutineTileService extends TileService {
 
     private void openRoutine() {
         RoutineStore.Routine routine = QuickSettingsTiles.assignedRoutine(this);
-        Intent intent = new Intent(this, RoutinesActivity.class);
         if (routine != null) {
-            intent.putExtra(RoutinesActivity.EXTRA_AUTORUN_ROUTINE_ID, routine.id)
-                    .putExtra(RoutinesActivity.EXTRA_AUTORUN_SCHEDULED, false);
+            // Reuse the same headless-safe executor as Routine widgets. Actions that
+            // genuinely need confirmation or setup still hand off to Orbit's runner.
+            OrbitWidgetExecutor.runRoutine(this, routine, () -> {});
+            return;
         }
+        Intent intent = new Intent(this, RoutinesActivity.class);
         PendingIntent pending = QuickSettingsTiles.activityPendingIntent(this, intent, 6502);
         if (Build.VERSION.SDK_INT >= 34) startActivityAndCollapse(pending);
         else startActivityAndCollapse(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));

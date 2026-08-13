@@ -163,7 +163,7 @@ public class RoutineEditorActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 50)));
 
         TextView safety = UiKit.text(this,
-                "Routine actions are stored only on this device. Orbit currently exposes deterministic device actions here; outbound communication actions are intentionally excluded.",
+                "Routine actions are stored only on this device. Enabled Extensions can add reviewed declarative actions; outbound communication actions remain intentionally excluded.",
                 11, UiKit.MUTED, false);
         safety.setGravity(Gravity.CENTER);
         safety.setPadding(UiKit.dp(this, 8), UiKit.dp(this, 14), UiKit.dp(this, 8), 0);
@@ -261,9 +261,36 @@ public class RoutineEditorActivity extends Activity {
 
     private void showActionPicker(View anchor) {
         if (workingActions.size() >= RoutineActionCatalog.MAX_STEPS) return;
-        UiKit.showOrbitMenu(this, anchor, RoutineActionCatalog.LABELS, -1, (index, label) -> {
-            if (index < 0 || index >= RoutineActionCatalog.TYPES.length) return;
-            configureAction(RoutineActionCatalog.TYPES[index], -1);
+        List<OrbitExtensionStore.ActionChoice> extensions = OrbitExtensionStore.enabledActions(this);
+        int builtInCount = RoutineActionCatalog.LABELS.length;
+        String[] labels = new String[builtInCount + (extensions.isEmpty() ? 0 : 1)];
+        System.arraycopy(RoutineActionCatalog.LABELS, 0, labels, 0, builtInCount);
+        if (!extensions.isEmpty()) labels[builtInCount] = "Extensions";
+        UiKit.showOrbitMenu(this, anchor, labels, -1, (index, label) -> {
+            if (index >= 0 && index < RoutineActionCatalog.TYPES.length) {
+                configureAction(RoutineActionCatalog.TYPES[index], -1);
+            } else if (index == builtInCount) {
+                anchor.post(() -> showExtensionActionPicker(anchor, -1));
+            }
+        });
+    }
+
+    private void showExtensionActionPicker(View anchor, int editIndex) {
+        List<OrbitExtensionStore.ActionChoice> choices = OrbitExtensionStore.enabledActions(this);
+        if (choices.isEmpty()) {
+            Toast.makeText(this, "No enabled extension actions are available.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String[] labels = new String[choices.size()];
+        for (int i = 0; i < choices.size(); i++) {
+            OrbitExtensionStore.ActionChoice choice = choices.get(i);
+            labels[i] = choice.extension.name + " · " + choice.action.name;
+        }
+        UiKit.showOrbitMenu(this, anchor, labels, -1, (index, label) -> {
+            if (index < 0 || index >= choices.size()) return;
+            OrbitExtensionStore.ActionChoice choice = choices.get(index);
+            putAction(editIndex, RoutineActionCatalog.extensionAction(
+                    choice.extension, choice.action));
         });
     }
 
@@ -298,6 +325,9 @@ public class RoutineEditorActivity extends Activity {
             case RoutineActionCatalog.OPEN_INTERNET_PANEL:
             case RoutineActionCatalog.OPEN_BLUETOOTH_SETTINGS:
                 putAction(editIndex, new AssistantReply.Action(type, new JSONObject(), false));
+                break;
+            case RoutineActionCatalog.EXTENSION_ACTION:
+                showExtensionActionPicker(addStepButton, editIndex);
                 break;
             default:
                 Toast.makeText(this, "That action is not available for routines yet.", Toast.LENGTH_SHORT).show();

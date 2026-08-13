@@ -53,7 +53,8 @@ public final class OrbitBackupManager {
                     data.optJSONArray("memories").length() + " memories, " +
                     data.optJSONArray("routines").length() + " routines and " +
                     optionalArray(data, "customCommands").length() + " Custom Commands, and " +
-                    data.optJSONArray("reminders").length() + " reminders.\n\n" +
+                    data.optJSONArray("reminders").length() + " reminders, plus " +
+                    optionalArray(data, "extensions").length() + " extensions.\n\n" +
                     "Restoring will replace Orbit's backed-up local data on this device. " +
                     "Account credentials, Android permissions and default-assistant status are not included.";
         }
@@ -161,6 +162,7 @@ public final class OrbitBackupManager {
                 .put("savedPlaces", parseArray("saved places", SavedPlaceStore.backupJson(c)))
                 .put("appProfiles", parseArray("app profiles", AppProfileStore.backupJson(c)))
                 .put("notificationConfiguration", NotificationStore.backupConfiguration(c))
+                .put("extensions", OrbitExtensionStore.backupJson(c))
                 .put("attachments", new JSONArray());
     }
 
@@ -182,6 +184,8 @@ public final class OrbitBackupManager {
             ok &= SavedPlaceStore.restoreBackupJson(c, data.getJSONArray("savedPlaces").toString());
             ok &= AppProfileStore.restoreBackupJson(c, data.getJSONArray("appProfiles").toString());
             ok &= NotificationStore.restoreBackupConfiguration(c, data.getJSONObject("notificationConfiguration"));
+            if (data.has("extensions"))
+                ok &= OrbitExtensionStore.restoreBackupJson(c, data.getJSONArray("extensions"));
             return ok;
         } catch (Exception ignored) {
             return false;
@@ -200,6 +204,7 @@ public final class OrbitBackupManager {
         JSONArray places = requiredArray(data, "savedPlaces");
         JSONArray profiles = requiredArray(data, "appProfiles");
         JSONObject notifications = data.optJSONObject("notificationConfiguration");
+        JSONArray extensions = optionalArray(data, "extensions");
         JSONArray attachments = requiredArray(data, "attachments");
         if (actionResults == null || notifications == null) invalid("stored data");
 
@@ -213,6 +218,7 @@ public final class OrbitBackupManager {
         validatePlaces(places);
         validateProfiles(profiles);
         validateNotifications(notifications);
+        if (!OrbitExtensionStore.isValidBackup(extensions)) invalid("extensions");
         validateAttachments(conversations, attachments);
     }
 

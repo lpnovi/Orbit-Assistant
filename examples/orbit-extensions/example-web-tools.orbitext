@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "org.example.orbit.web-tools",
+  "name": "Example Web Tools",
+  "version": "1.0.0",
+  "author": "Orbit Assistant",
+  "description": "Harmless examples of the two Orbit Extensions v1 action types.",
+  "actions": [
+    {
+      "id": "open-orbit-releases",
+      "name": "Open Orbit releases",
+      "description": "Opens Orbit's public GitHub Releases page.",
+      "type": "open_url",
+      "url": "https://github.com/lpnovi/Orbit-Assistant/releases"
+    },
+    {
+      "id": "test-https-get",
+      "name": "Test HTTPS GET",
+      "description": "Makes a bounded GET request to a public test endpoint.",
+      "type": "https_request",
+      "endpoint": "https://httpbin.org/get",
+      "method": "GET",
+      "timeoutSeconds": 8
+    }
+  ]
+}

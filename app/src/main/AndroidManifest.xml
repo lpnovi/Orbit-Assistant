@@ -73,6 +73,7 @@
         <activity android:name=".NotificationsActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".CapabilitiesActivity" android:exported="false" />
         <activity android:name=".RoutinesActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".ExtensionsActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".RoutineTemplatesActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".CustomCommandsActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".CustomCommandEditorActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />

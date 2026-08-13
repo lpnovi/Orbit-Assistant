@@ -49,6 +49,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     private static final String SECTION_DATA = "data";
     private static final String SECTION_CONVERSATIONS = "conversations";
     private static final String SECTION_ROUTINES = "routines";
+    private static final String SECTION_EXTENSIONS = "extensions";
     private static final String SECTION_APPEARANCE = "appearance";
     private static final String SECTION_UPDATES = "updates";
     private static final String SECTION_ADVANCED = "advanced";
@@ -183,6 +184,8 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
                 "Weather, Gallery, reminders, saved places, Memory and backup"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_ROUTINES, "Routines",
                 "Create, edit and run saved Action Engine chains"), categoryLp());
+        page.addView(settingsCategoryCard(SECTION_EXTENSIONS, "Extensions",
+                "Add integrations and new actions to Orbit"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_CONVERSATIONS, "Conversations",
                 "History, chat behavior and background notifications"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_APPEARANCE, "Look & Feel",
@@ -244,6 +247,10 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     private void openSettingsSection(String section) {
         if (SECTION_ROUTINES.equals(section)) {
             startActivity(new Intent(this, RoutinesActivity.class));
+            return;
+        }
+        if (SECTION_EXTENSIONS.equals(section)) {
+            startActivity(new Intent(this, ExtensionsActivity.class));
             return;
         }
         if (SECTION_UPDATES.equals(section)) {
@@ -492,7 +499,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         LinearLayout backupCard = card();
         tagSectionCard(backupCard, "data");
         TextView backupHelp = UiKit.text(this,
-                "Orbit backups stay in the file you choose. They include local chats, Memory, Routines, reminders, saved places and personalization. Sensitive account credentials are not included. Android permissions and default-assistant status are not included and may need to be granted again after reinstalling Orbit.",
+                "Orbit backups stay in the file you choose. They include local chats, Memory, Routines, safe extension manifests, reminders, saved places and personalization. Sensitive account credentials are not included. Android permissions and default-assistant status are not included and may need to be granted again after reinstalling Orbit.",
                 13, UiKit.MUTED, false);
         backupHelp.setPadding(0, 0, 0, UiKit.dp(this, 12));
         backupCard.addView(backupHelp);

@@ -86,13 +86,14 @@ public final class OrbitActionEngine {
                 return;
             }
 
-            DeviceActionExecutor.Result result = DeviceActionExecutor.executeDetailed(context, action);
-            if (listener != null) listener.onStep(action, result, index, actions.size());
-            if (result.shouldContinue) {
-                runStep(context, actions, index + 1, confirmationHandler, listener);
-            } else if (listener != null) {
-                listener.onFinished(false, index + 1, actions.size());
+            if (RoutineActionCatalog.EXTENSION_ACTION.equals(action.type)) {
+                OrbitExtensionActionExecutor.execute(context, action,
+                        result -> handleResult(context, actions, index, confirmationHandler,
+                                listener, action, result));
+                return;
             }
+            handleResult(context, actions, index, confirmationHandler, listener, action,
+                    DeviceActionExecutor.executeDetailed(context, action));
         };
 
         if (action.requiresConfirmation && confirmationHandler != null) {
@@ -103,6 +104,20 @@ public final class OrbitActionEngine {
             });
         } else {
             executeNow.run();
+        }
+    }
+
+    private static void handleResult(Context context, List<AssistantReply.Action> actions,
+                                     int index, ConfirmationHandler confirmationHandler,
+                                     Listener listener, AssistantReply.Action action,
+                                     DeviceActionExecutor.Result result) {
+        DeviceActionExecutor.Result safeResult = result == null
+                ? DeviceActionExecutor.Result.failed("Action did not finish") : result;
+        if (listener != null) listener.onStep(action, safeResult, index, actions.size());
+        if (safeResult.shouldContinue) {
+            runStep(context, actions, index + 1, confirmationHandler, listener);
+        } else if (listener != null) {
+            listener.onFinished(false, index + 1, actions.size());
         }
     }
 }

@@ -33,6 +33,8 @@ public class RoutineTriggerReceiver extends BroadcastReceiver {
         } else {
             RoutineTriggerScheduler.schedule(context, trigger.withNextRun(0L));
         }
-        RoutineTriggerExecution.execute(context, routine, RoutineTriggerStore.findById(context, trigger.id));
+        PendingResult pending = goAsync();
+        RoutineTriggerExecution.execute(context, routine,
+                RoutineTriggerStore.findById(context, trigger.id), pending::finish);
     }
 }

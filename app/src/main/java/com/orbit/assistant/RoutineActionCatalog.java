@@ -25,6 +25,7 @@ public final class RoutineActionCatalog {
     public static final String OPEN_SETTINGS = "OPEN_SETTINGS";
     public static final String OPEN_INTERNET_PANEL = "OPEN_INTERNET_PANEL";
     public static final String OPEN_BLUETOOTH_SETTINGS = "OPEN_BLUETOOTH_SETTINGS";
+    public static final String EXTENSION_ACTION = "EXTENSION_ACTION";
 
     public static final String[] TYPES = {
             IF_CONDITION,
@@ -58,6 +59,7 @@ public final class RoutineActionCatalog {
 
     public static boolean isSupported(String type) {
         if (type == null) return false;
+        if (EXTENSION_ACTION.equalsIgnoreCase(type)) return true;
         for (String candidate : TYPES) if (candidate.equalsIgnoreCase(type)) return true;
         return false;
     }
@@ -115,6 +117,10 @@ public final class RoutineActionCatalog {
                 return "Open Internet panel";
             case OPEN_BLUETOOTH_SETTINGS:
                 return "Open Bluetooth settings";
+            case EXTENSION_ACTION: {
+                String actionName = clean(p.optString("actionName", ""));
+                return actionName.isEmpty() ? "Extension action" : actionName;
+            }
             default:
                 return labelForType(type);
         }
@@ -164,6 +170,12 @@ public final class RoutineActionCatalog {
                 return "Opens Android's Internet controls";
             case OPEN_BLUETOOTH_SETTINGS:
                 return "Opens Bluetooth settings";
+            case EXTENSION_ACTION: {
+                String extensionName = clean(p.optString("extensionName", ""));
+                return extensionName.isEmpty()
+                        ? "Runs a saved declarative extension action"
+                        : "Extension · " + extensionName;
+            }
             default:
                 return "Saved Orbit action";
         }
@@ -214,9 +226,29 @@ public final class RoutineActionCatalog {
             case SET_ALARM:
                 return p.optInt("hour", -1) >= 0 && p.optInt("hour", 24) <= 23 &&
                         p.optInt("minute", -1) >= 0 && p.optInt("minute", 60) <= 59;
+            case EXTENSION_ACTION:
+                return validReference(p.optString("extensionId", ""), 80) &&
+                        validReference(p.optString("actionId", ""), 64) &&
+                        clean(p.optString("extensionName", "")).length() <= 60 &&
+                        clean(p.optString("actionName", "")).length() <= 60;
             default:
                 return true;
         }
+    }
+
+    public static AssistantReply.Action extensionAction(OrbitExtension extension,
+                                                        OrbitExtension.Action action) {
+        if (extension == null || action == null) return null;
+        JSONObject params = new JSONObject();
+        try {
+            params.put("extensionId", extension.id);
+            params.put("actionId", action.id);
+            // Display-only snapshots keep a removed action understandable. Execution
+            // always resolves the stable IDs against the current validated manifest.
+            params.put("extensionName", extension.name);
+            params.put("actionName", action.name);
+        } catch (Exception ignored) {}
+        return new AssistantReply.Action(EXTENSION_ACTION, params, false);
     }
 
     public static int clampPercent(int percent) {
@@ -257,6 +289,12 @@ public final class RoutineActionCatalog {
 
     private static String clean(String s) {
         return s == null ? "" : s.trim().replaceAll("\\s+", " ");
+    }
+
+    private static boolean validReference(String value, int maxLength) {
+        String clean = value == null ? "" : value.trim();
+        return !clean.isEmpty() && clean.length() <= maxLength &&
+                clean.matches("[a-z0-9][a-z0-9._-]+");
     }
 
     private static String titleCase(String s) {

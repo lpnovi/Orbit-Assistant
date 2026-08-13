@@ -169,8 +169,8 @@
 - Include Custom Commands in versioned Backup & Restore with safe missing-Routine references
 - Add a native What's New view backed by cached public stable GitHub Release notes
 
-### Future 0.6.5.x
-- Expand Custom Commands only after real-device validation; scripting and plugins remain future work
+### 0.6.5.x follow-up direction at the time
+- Expand Custom Commands only after real-device validation; arbitrary scripting remained intentionally unsupported
 - Continue focused Quick Access refinements based on device testing
 
 ## 0.6.6 Release readiness
@@ -234,14 +234,23 @@
 - Add safe per-widget configuration, normal launcher resizing, Accent/AMOLED refresh, and deleted-Routine fallback
 - Keep launcher surfaces limited to explicit safe labels without exposing private Orbit data
 
+## 0.7 Orbit Extensions
+
+### 0.7.0.0
+- Ship the Orbit Extensions manager and versioned declarative `.orbitext` manifest format
+- Add explicitly reviewed Open URL and bounded HTTPS GET/POST actions without arbitrary executable code
+- Integrate extension-provided actions into saved Routines through stable extension/action IDs and the existing OrbitActionEngine
+- Preserve safe unavailable states for disabled, removed, malformed, or missing extension actions
+- Support compatible headless execution from widgets, Quick Settings, and automatic time/location triggers
+- Include safe manifests and enabled state in Backup & Restore, with credentials and secrets excluded
+
 ## Future direction
 
 ### Next up
-- Plugins and extensibility
 - Natural-language Routine creation
+- Richer automation, chained plans, conditions and branching
 
 ### Planned
-- Richer automation, chained plans, conditions and branching
 - Deeper Android actions
 - Stronger Custom Commands
 - Additional AI providers

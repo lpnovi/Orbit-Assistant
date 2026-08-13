@@ -10,7 +10,15 @@ public final class RoutineTriggerExecution {
     private RoutineTriggerExecution() {}
 
     public static void execute(Context c, RoutineStore.Routine routine, RoutineTriggerStore.Trigger trigger) {
-        if (c == null || routine == null || trigger == null || routine.actions.isEmpty()) return;
+        execute(c, routine, trigger, null);
+    }
+
+    public static void execute(Context c, RoutineStore.Routine routine,
+                               RoutineTriggerStore.Trigger trigger, Runnable completion) {
+        if (c == null || routine == null || trigger == null || routine.actions.isEmpty()) {
+            finish(completion);
+            return;
+        }
         final long firedAt = System.currentTimeMillis();
         final boolean visible = UiPresence.isVisible();
         RoutineStore.markRun(c, routine.id);
@@ -20,6 +28,7 @@ public final class RoutineTriggerExecution {
         if (!visible && containsForegroundOrConfirmationStep(c, routine) &&
                 !RoutineTriggerNotifier.notificationsAllowed(c)) {
             updateStatus(c, trigger.id, firedAt, "Skipped · trigger alerts unavailable");
+            finish(completion);
             return;
         }
 
@@ -33,6 +42,7 @@ public final class RoutineTriggerExecution {
             String reason = "Grant access for " + actionName + " before this routine can run automatically.";
             updateStatus(c, trigger.id, firedAt, "Needs access · " + actionName);
             RoutineTriggerNotifier.notifyFailure(c, routine, trigger.id, missingAccessIndex, reason);
+            finish(completion);
             return;
         }
 
@@ -71,7 +81,7 @@ public final class RoutineTriggerExecution {
                 blockedIndex = i;
                 break;
             }
-            if (!visible && requiresForeground(action)) {
+            if (!visible && requiresForeground(c, action)) {
                 blockedIndex = i;
                 break;
             }
@@ -88,10 +98,12 @@ public final class RoutineTriggerExecution {
             updateStatus(c, trigger.id, firedAt, state);
             RoutineTriggerNotifier.notifyNeedsContinuation(c, routine, trigger.id, firstBlocked,
                     "Tap to continue at step " + (firstBlocked + 1) + ": " + actionName + ".");
+            finish(completion);
             return;
         }
 
-        OrbitActionEngine.execute(c, allowed, null, new OrbitActionEngine.Listener() {
+        try {
+            OrbitActionEngine.execute(c, allowed, null, new OrbitActionEngine.Listener() {
             private String lastFailure = "";
             private int lastFailureIndex = 0;
 
@@ -103,25 +115,33 @@ public final class RoutineTriggerExecution {
             }
 
             @Override public void onFinished(boolean completedAllSteps, int completedSteps, int totalSteps) {
-                if (!completedAllSteps) {
-                    String reason = lastFailure == null || lastFailure.trim().isEmpty()
-                            ? "Stopped at step " + completedSteps
-                            : lastFailure.trim();
-                    updateStatus(c, trigger.id, firedAt, "Stopped · " + reason);
-                    RoutineTriggerNotifier.notifyFailure(c, routine, trigger.id, lastFailureIndex, reason);
-                    return;
-                }
-                if (firstBlocked >= 0) {
-                    String actionName = RoutineActionCatalog.title(routine.actions.get(firstBlocked));
-                    updateStatus(c, trigger.id, firedAt, "Partially ran · waiting for " + actionName);
-                    RoutineTriggerNotifier.notifyNeedsContinuation(c, routine, trigger.id, firstBlocked,
-                            "Orbit completed the background-safe steps. Tap to continue at step " +
-                                    (firstBlocked + 1) + ": " + actionName + ".");
-                } else {
-                    updateStatus(c, trigger.id, firedAt, "Completed automatically");
+                try {
+                    if (!completedAllSteps) {
+                        String reason = lastFailure == null || lastFailure.trim().isEmpty()
+                                ? "Stopped at step " + completedSteps
+                                : lastFailure.trim();
+                        updateStatus(c, trigger.id, firedAt, "Stopped · " + reason);
+                        RoutineTriggerNotifier.notifyFailure(c, routine, trigger.id, lastFailureIndex, reason);
+                        return;
+                    }
+                    if (firstBlocked >= 0) {
+                        String actionName = RoutineActionCatalog.title(routine.actions.get(firstBlocked));
+                        updateStatus(c, trigger.id, firedAt, "Partially ran · waiting for " + actionName);
+                        RoutineTriggerNotifier.notifyNeedsContinuation(c, routine, trigger.id, firstBlocked,
+                                "Orbit completed the background-safe steps. Tap to continue at step " +
+                                        (firstBlocked + 1) + ": " + actionName + ".");
+                    } else {
+                        updateStatus(c, trigger.id, firedAt, "Completed automatically");
+                    }
+                } finally {
+                    finish(completion);
                 }
             }
-        });
+            });
+        } catch (Exception ignored) {
+            updateStatus(c, trigger.id, firedAt, "Stopped · Orbit could not run this Routine");
+            finish(completion);
+        }
     }
 
 
@@ -136,7 +156,7 @@ public final class RoutineTriggerExecution {
                 continue;
             }
             if (action != null && action.requiresConfirmation) return true;
-            if (requiresForeground(action)) return true;
+            if (requiresForeground(c, action)) return true;
         }
         return false;
     }
@@ -166,7 +186,22 @@ public final class RoutineTriggerExecution {
     }
 
     public static boolean requiresForeground(AssistantReply.Action action) {
+        return requiresForeground(null, action);
+    }
+
+    public static boolean requiresForeground(Context context, AssistantReply.Action action) {
         if (action == null || action.type == null) return true;
+        if (RoutineActionCatalog.EXTENSION_ACTION.equals(action.type)) {
+            if (context == null || action.params == null) return false;
+            OrbitExtensionStore.Installed installed = OrbitExtensionStore.find(context,
+                    action.params.optString("extensionId", ""));
+            OrbitExtension.Action extensionAction = installed == null || !installed.enabled
+                    ? null : installed.extension.findAction(action.params.optString("actionId", ""));
+            // Missing/disabled references should execute in place and report the
+            // normal unavailable result, not wake the user with a continuation UI.
+            return extensionAction != null &&
+                    !OrbitExtension.TYPE_HTTPS_REQUEST.equals(extensionAction.type);
+        }
         switch (action.type) {
             case RoutineActionCatalog.IF_CONDITION:
             case RoutineActionCatalog.SET_BRIGHTNESS:
@@ -189,5 +224,9 @@ public final class RoutineTriggerExecution {
         RoutineTriggerStore.Trigger latest = RoutineTriggerStore.findById(c, triggerId);
         if (latest == null) return;
         RoutineTriggerStore.updateRunState(c, latest.id, firedAt, latest.nextRunAt, result, latest.enabled);
+    }
+
+    private static void finish(Runnable completion) {
+        if (completion != null) completion.run();
     }
 }

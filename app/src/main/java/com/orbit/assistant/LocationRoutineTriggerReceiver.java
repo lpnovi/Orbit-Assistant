@@ -34,6 +34,8 @@ public final class LocationRoutineTriggerReceiver extends BroadcastReceiver {
         // Stamp the transition before the action chain starts so a noisy boundary cannot
         // enqueue the same location event twice while the first run is still executing.
         RoutineTriggerStore.updateRunState(context, trigger.id, now, 0L, "Triggered · running", true);
-        RoutineTriggerExecution.execute(context, routine, RoutineTriggerStore.findById(context, trigger.id));
+        PendingResult pending = goAsync();
+        RoutineTriggerExecution.execute(context, routine,
+                RoutineTriggerStore.findById(context, trigger.id), pending::finish);
     }
 }
