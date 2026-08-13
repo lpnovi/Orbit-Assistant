@@ -218,7 +218,7 @@ public class RoutinesActivity extends Activity {
 
     private void showRoutineMenu(View anchor, RoutineStore.Routine routine) {
         String[] labels = {"Edit", "Automatic triggers", "Duplicate", "Delete"};
-        UiKit.showOrbitMenu(this, anchor, labels, -1, (index, label) -> {
+        UiKit.showOrbitMenuWithDialogHandoff(this, anchor, labels, 3, (index, label) -> {
             if (index == 0) {
                 openEditor(routine.id);
             } else if (index == 1) {

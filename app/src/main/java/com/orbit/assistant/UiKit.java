@@ -47,6 +47,7 @@ import java.util.List;
 import android.graphics.drawable.ColorDrawable;
 
 public final class UiKit {
+    private static final long ORBIT_POPUP_EXIT_MS = 85L;
     private static final int NORMAL_BG = Color.rgb(10, 12, 17);
     public static int BG = NORMAL_BG;
     public static final int SURFACE = Color.rgb(22, 25, 33);
@@ -651,7 +652,17 @@ public final class UiKit {
      */
     public static void showOrbitMenu(Context c, View anchor, String[] labels,
                                      int selectedIndex, OrbitMenuChoice choice) {
-        showOrbitMenuInternal(c, anchor, labels, null, selectedIndex, choice);
+        showOrbitMenuInternal(c, anchor, labels, null, selectedIndex, -1, choice);
+    }
+
+    /**
+     * Action-menu variant for a row that opens an Orbit dialog. That one callback
+     * begins only after the shared popup exit motion finishes, preventing two
+     * independently positioned windows from fading/scaling over each other.
+     */
+    public static void showOrbitMenuWithDialogHandoff(Context c, View anchor, String[] labels,
+                                                       int dialogIndex, OrbitMenuChoice choice) {
+        showOrbitMenuInternal(c, anchor, labels, null, -1, dialogIndex, choice);
     }
 
     /** Font-picker variant whose labels preview the font they represent. */
@@ -661,12 +672,12 @@ public final class UiKit {
             showOrbitMenu(c, anchor, labels, selectedIndex, choice);
             return;
         }
-        showOrbitMenuInternal(c, anchor, labels, fontKeys, selectedIndex, choice);
+        showOrbitMenuInternal(c, anchor, labels, fontKeys, selectedIndex, -1, choice);
     }
 
     private static void showOrbitMenuInternal(Context c, View anchor, String[] labels,
                                               String[] previewFontKeys, int selectedIndex,
-                                              OrbitMenuChoice choice) {
+                                              int dialogHandoffIndex, OrbitMenuChoice choice) {
         if (c == null || anchor == null || labels == null || labels.length == 0) return;
 
         LinearLayout box = new LinearLayout(c);
@@ -723,7 +734,13 @@ public final class UiKit {
             pressScale(row);
             row.setOnClickListener(v -> {
                 popup.dismiss();
-                if (choice != null) choice.onChoice(index, labelText);
+                if (choice == null) return;
+                if (index == dialogHandoffIndex) {
+                    anchor.postDelayed(() -> anchor.postOnAnimation(
+                            () -> choice.onChoice(index, labelText)), ORBIT_POPUP_EXIT_MS);
+                } else {
+                    choice.onChoice(index, labelText);
+                }
             });
 
             LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(

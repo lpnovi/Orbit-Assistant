@@ -393,7 +393,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         refreshQuickRoutineSelection();
         page.addView(quickCard);
 
-        page.addView(sectionTitle("REMINDERS", "data"));
+        TextView remindersSection = sectionTitle("REMINDERS", "data");
         LinearLayout remindersCard = card();
         tagSectionCard(remindersCard, "data");
         TextView remindersHelp = UiKit.text(this,
@@ -405,9 +405,9 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         manageReminders.setOnClickListener(v -> startActivity(new Intent(this, RemindersActivity.class)));
         remindersCard.addView(manageReminders, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48)));
-        page.addView(remindersCard);
+        // Added with the other Personalization & data sections below.
 
-        page.addView(sectionTitle("PERSONALIZATION & CONTEXT", "data"));
+        TextView personalizationSection = sectionTitle("PERSONALIZATION & CONTEXT", "data");
         LinearLayout personalDataCard = card();
         tagSectionCard(personalDataCard, "data");
         TextView personalDataHelp = UiKit.text(this,
@@ -441,9 +441,9 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
         manageNotificationsLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
         personalDataCard.addView(manageNotifications, manageNotificationsLp);
-        page.addView(personalDataCard);
+        // Added with the other Personalization & data sections below.
 
-        page.addView(sectionTitle("BACKUP & RESTORE", "data"));
+        TextView backupSection = sectionTitle("BACKUP & RESTORE", "data");
         LinearLayout backupCard = card();
         tagSectionCard(backupCard, "data");
         TextView backupHelp = UiKit.text(this,
@@ -468,7 +468,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
         restoreBackupLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
         backupCard.addView(restoreBackup, restoreBackupLp);
-        page.addView(backupCard);
+        // Added last in Personalization & data below.
 
         page.addView(sectionTitle("CHATGPT ACCOUNT", "account"));
         LinearLayout accountCard = card();
@@ -547,7 +547,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         voiceCard.addView(capabilities, capabilitiesLp);
         page.addView(voiceCard);
 
-        page.addView(sectionTitle("WEATHER", "data"));
+        TextView weatherSection = sectionTitle("WEATHER", "data");
         LinearLayout weatherCard = card();
         tagSectionCard(weatherCard, "data");
         TextView weatherHelp = UiKit.text(this,
@@ -572,7 +572,14 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
                 12, UiKit.MUTED, false);
         weatherNote.setPadding(0, UiKit.dp(this, 8), 0, 0);
         weatherCard.addView(weatherNote);
+        page.addView(personalizationSection);
+        page.addView(personalDataCard);
+        page.addView(weatherSection);
         page.addView(weatherCard);
+        page.addView(remindersSection);
+        page.addView(remindersCard);
+        page.addView(backupSection);
+        page.addView(backupCard);
 
         page.addView(sectionTitle("INTELLIGENCE", "intelligence"));
         LinearLayout aiCard = card();
