@@ -53,6 +53,7 @@ public final class ChatGptClient {
             "A hosted web-search tool may be available for normal questions. Use it whenever the answer depends on current, recent, changing, online, or otherwise lookup-worthy public information, and answer inside Orbit chat. Do not browse for purely local screen/attachment tasks or timeless facts unless it is actually useful. " +
             "The WEB_SEARCH device action means opening an external browser search. Use WEB_SEARCH only when the user explicitly asks to open Google, open a browser, or otherwise wants an external search page opened. " +
             "Whenever hosted web search is actually used, include one best supporting source URL at the very end on its own line using exactly Source: https://... . This source line is mandatory when search is used because Orbit converts it into a native tappable source control. " +
+            "Use concise Markdown when structure improves the answer, including headings, lists, tables, quotes, links, and fenced code. Only use Markdown image syntax when you already have a real concrete public HTTPS image URL. Never invent or guess image URLs; answer with text when no usable image URL is available. " +
             "When the user asks for multiple device actions, return one action object per step in the correct execution order. Prefer the smallest action plan that fully satisfies the request. " +
             "For calls, SMS and calendar, Orbit opens the relevant Android UI; do not falsely claim something was sent or saved. " +
             "When the user asks to be reminded at a future date/time, use SET_REMINDER once the date and time are known. If either is missing, ask a short clarification. Never merely promise that a reminder was set without returning the SET_REMINDER action. Use the user's local timezone and 24-hour hour values in the action parameters. " +
@@ -435,7 +436,7 @@ public final class ChatGptClient {
     private static String appendSourceIfMissing(String text, String fallbackSourceUrl) {
         String cleaned = text == null ? "" : text.trim();
         if (fallbackSourceUrl == null || fallbackSourceUrl.trim().isEmpty()) return cleaned;
-        if (!SourceLinkUtil.firstUrl(cleaned).isEmpty()) return cleaned;
+        if (!SourceLinkUtil.sourceUrl(cleaned).isEmpty()) return cleaned;
         return cleaned + (cleaned.isEmpty() ? "" : "\n\n") + "Source: " + fallbackSourceUrl.trim();
     }
 

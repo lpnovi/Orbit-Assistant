@@ -15,6 +15,13 @@ public final class SourceLinkUtil {
 
     private SourceLinkUtil() {}
 
+    /** URL from Orbit's explicit hosted-search source marker, not an inline Markdown link. */
+    public static String sourceUrl(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return "";
+        Matcher source = SOURCE_LINE.matcher(raw);
+        return source.find() ? validatedUrl(source.group(1)) : "";
+    }
+
     public static String firstUrl(String raw) {
         if (raw == null || raw.trim().isEmpty()) return "";
         Matcher markdown = MARKDOWN.matcher(raw);
@@ -33,6 +40,17 @@ public final class SourceLinkUtil {
 
     public static String sourceLabel(String raw) {
         if (raw == null) return "Source";
+        String explicit = sourceUrl(raw);
+        if (!explicit.isEmpty()) {
+            try {
+                String host = Uri.parse(explicit).getHost();
+                if (host != null && !host.trim().isEmpty()) {
+                    host = host.toLowerCase(Locale.US);
+                    if (host.startsWith("www.")) host = host.substring(4);
+                    return compactLabel(host);
+                }
+            } catch (Exception ignored) {}
+        }
         Matcher markdown = MARKDOWN.matcher(raw);
         if (markdown.find()) {
             String label = markdown.group(1) == null ? "" : markdown.group(1).trim();
@@ -64,16 +82,13 @@ public final class SourceLinkUtil {
     public static String displayText(String raw) {
         if (raw == null) return "";
         String text = raw.trim();
-        text = text.replaceAll("(?is)\\s*\\[[^\\]]{1,100}\\]\\(https?://[^\\s)]+\\)\\s*$", "");
-        text = text.replaceAll("(?is)\\s*\\([^()]{1,100}\\)\\(https?://[^\\s)]+\\)\\s*$", "");
         text = text.replaceAll("(?is)\\s*(?:source|read more|learn more)\\s*:\\s*https?://\\S+\\s*$", "");
-        text = text.replaceAll("(?is)\\s*https?://\\S+\\s*$", "");
         return text.trim();
     }
 
     public static String copyText(String raw) {
         String display = displayText(raw);
-        String url = firstUrl(raw);
+        String url = sourceUrl(raw);
         if (url.isEmpty()) return display;
         if (display.isEmpty()) return url;
         return display + "\n\nSource: " + url;

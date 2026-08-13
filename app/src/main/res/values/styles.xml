@@ -8,6 +8,14 @@
         <item name="android:windowActionModeOverlay">true</item>
     </style>
 
+    <style name="Theme.Orbit.Bridge" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:colorAccent">#8B7CFF</item>
+    </style>
+
     <style name="OrbitPopupAnimation">
         <item name="android:windowEnterAnimation">@anim/orbit_popup_enter</item>
         <item name="android:windowExitAnimation">@anim/orbit_popup_exit</item>

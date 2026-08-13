@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <cache-path name="orbit_updates" path="updates/" />
+    <cache-path name="orbit_picker_camera" path="orbit_picker_camera/" />
 </paths>

@@ -50,6 +50,9 @@ public class ChatActivity extends Activity {
     private LinearLayout messages;
     private ScrollView scroll;
     private EditText input;
+    private ImageButton mic;
+    private TextView voiceStatus;
+    private VoiceInputController voiceController;
     private Button modeChip;
     private LinearLayout thinkingRow;
     private TextView streamingBubble;
@@ -60,6 +63,7 @@ public class ChatActivity extends Activity {
     private static final int REQ_FILE = 5603;
     private static final int REQ_CAMERA_PERMISSION = 5604;
     private static final int REQ_SCREEN_SELECTION = 5605;
+    private static final int REQ_MIC_PERMISSION = 5606;
 
     private LinearLayout attachmentTray;
     private TextView attachmentTrayLabel;
@@ -72,18 +76,6 @@ public class ChatActivity extends Activity {
     private String pendingScreenSelectionAge = "";
     private boolean screenSelectionOpening;
     private final ExecutorService attachmentExecutor = Executors.newSingleThreadExecutor();
-
-    private static final class ComposerAttachment {
-        final String kind, label, contextText;
-        final Bitmap image;
-
-        ComposerAttachment(String kind, String label, String contextText, Bitmap image) {
-            this.kind = kind == null ? "" : kind;
-            this.label = label == null ? "Attachment" : label;
-            this.contextText = contextText == null ? "" : contextText;
-            this.image = image;
-        }
-    }
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -121,6 +113,7 @@ public class ChatActivity extends Activity {
     @Override protected void onPause() {
         UiPresence.leave(this);
         detachListeners();
+        if (voiceController != null) voiceController.stop(false);
         super.onPause();
     }
 
@@ -196,6 +189,13 @@ public class ChatActivity extends Activity {
         trayLp.setMargins(UiKit.dp(this, 2), 0, UiKit.dp(this, 2), UiKit.dp(this, 8));
         root.addView(attachmentTray, trayLp);
 
+        voiceStatus = UiKit.text(this, "", 11, UiKit.MUTED, false);
+        voiceStatus.setGravity(Gravity.CENTER);
+        voiceStatus.setVisibility(View.GONE);
+        voiceStatus.setPadding(0, 0, 0, UiKit.dp(this, 5));
+        root.addView(voiceStatus, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
         LinearLayout composer = new LinearLayout(this);
         composer.setGravity(Gravity.CENTER_VERTICAL);
         composer.setPadding(UiKit.dp(this, 5), UiKit.dp(this, 5), UiKit.dp(this, 5), UiKit.dp(this, 5));
@@ -225,16 +225,27 @@ public class ChatActivity extends Activity {
             if (hasFocus) input.postDelayed(this::showComposerKeyboard, 50);
         });
         composer.addView(input, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
+        mic = iconButton(com.orbit.assistant.R.drawable.ic_mic, "Voice input");
+        mic.setOnClickListener(v -> {
+            hideComposerKeyboard();
+            if (voiceController != null) voiceController.toggle();
+        });
+        composer.addView(mic,
+                new LinearLayout.LayoutParams(UiKit.dp(this, 42), UiKit.dp(this, 42)));
+
         ImageButton send = iconButton(com.orbit.assistant.R.drawable.ic_send, "Send");
         send.setImageTintList(ColorStateList.valueOf(UiKit.onAccent(this)));
         send.setBackground(UiKit.ripple(UiKit.accent(this), UiKit.onAccent(this), 18, this));
-        send.setOnClickListener(v -> submit());
+        send.setOnClickListener(v -> submit(false));
         composer.addView(send, new LinearLayout.LayoutParams(UiKit.dp(this, 46), UiKit.dp(this, 46)));
         input.setOnEditorActionListener((v, actionId, event) -> {
-            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND) { submit(); return true; }
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND) { submit(false); return true; }
             return false;
         });
         root.addView(composer);
+        initVoiceController();
+        UiKit.watchTypography(root);
         return root;
     }
 
@@ -272,11 +283,23 @@ public class ChatActivity extends Activity {
         String visible = user ? rawVisible : SourceLinkUtil.displayText(rawVisible);
         int classicFill = user ? UiKit.blend(UiKit.accent(this), UiKit.SURFACE_2, 0.46f) : UiKit.SURFACE;
         int fill = user ? UiKit.userBubbleFill(this, classicFill) : UiKit.assistantBubbleFill(this, classicFill);
-        TextView bubble = UiKit.text(this, visible, 15, UiKit.onBubble(fill), false);
-        bubble.setLineSpacing(0, 1.08f);
-        bubble.setPadding(UiKit.dp(this, 15), UiKit.dp(this, 12), UiKit.dp(this, 15), UiKit.dp(this, 12));
-        bubble.setBackground(UiKit.rounded(fill, 18, this));
-        messages.addView(bubble, bubbleLp(user ? Gravity.END : Gravity.START, UiKit.dp(this, 310)));
+        if (user) {
+            TextView bubble = UiKit.text(this, visible, 15, UiKit.onBubble(fill), false);
+            bubble.setLineSpacing(0, 1.08f);
+            bubble.setPadding(UiKit.dp(this, 15), UiKit.dp(this, 12), UiKit.dp(this, 15), UiKit.dp(this, 12));
+            bubble.setBackground(UiKit.rounded(fill, 18, this));
+            messages.addView(bubble, bubbleLp(Gravity.END, UiKit.dp(this, 310)));
+        } else {
+            View bubble = OrbitRichResponseRenderer.render(this, visible, fill, false);
+            LinearLayout.LayoutParams richLp = new LinearLayout.LayoutParams(
+                    OrbitRichResponseRenderer.prefersWideLayout(visible)
+                            ? ViewGroup.LayoutParams.MATCH_PARENT
+                            : ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            richLp.gravity = Gravity.START;
+            richLp.setMargins(0, UiKit.dp(this, 5), UiKit.dp(this, 8), UiKit.dp(this, 5));
+            messages.addView(bubble, richLp);
+        }
         if (!user && !visible.trim().isEmpty() && !visible.startsWith("Orbit could not finish")) {
             addMemoryUsageIndicator(h);
             if (index == history.size() - 1) addMemorySuggestion(h, index);
@@ -420,7 +443,7 @@ public class ChatActivity extends Activity {
 
     private void addSourceLink(String rawText) {
         if (rawText == null) return;
-        String url = SourceLinkUtil.firstUrl(rawText);
+        String url = SourceLinkUtil.sourceUrl(rawText);
         if (url.isEmpty()) return;
         Button source = new Button(this);
         source.setAllCaps(false);
@@ -527,7 +550,7 @@ public class ChatActivity extends Activity {
         messages.addView(row, lp);
     }
 
-    private void submit() {
+    private void submit(boolean voiceRequest) {
         String q = input.getText().toString().trim();
         ComposerAttachment attached = pendingAttachment;
         if (q.isEmpty() && attached == null) return;
@@ -554,9 +577,9 @@ public class ChatActivity extends Activity {
         clearPendingAttachment();
         render();
 
-        OrbitRequestManager.Listener listener = createRequestListener();
+        OrbitRequestManager.Listener listener = createRequestListener(voiceRequest);
         String requestId = OrbitRequestManager.enqueue(this, conversationId, q,
-                requestContext, requestImage, false, false, currentMode,
+                requestContext, requestImage, voiceRequest, false, currentMode,
                 hasAttachment, listener);
         listeners.put(requestId, listener);
         addThinkingRow();
@@ -579,6 +602,10 @@ public class ChatActivity extends Activity {
     }
 
     private OrbitRequestManager.Listener createRequestListener() {
+        return createRequestListener(false);
+    }
+
+    private OrbitRequestManager.Listener createRequestListener(boolean voiceRequest) {
         return new OrbitRequestManager.Listener() {
             @Override public void onDelta(String requestId, String delta) {
                 runOnUiThread(() -> {
@@ -600,6 +627,11 @@ public class ChatActivity extends Activity {
                     listeners.remove(requestId);
                     reloadConversation();
                     executeActions(reply.actions);
+                    if (voiceRequest && Prefs.speak(ChatActivity.this) &&
+                            voiceController != null && reply != null) {
+                        voiceController.speak(OrbitMarkdown.toSpeechText(
+                                SourceLinkUtil.displayText(reply.text)));
+                    }
                 });
             }
             @Override public void onError(String requestId, String message) {
@@ -810,6 +842,52 @@ public class ChatActivity extends Activity {
         input.post(() -> {
             InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
             if (imm != null) imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT);
+        });
+    }
+
+    private void hideComposerKeyboard() {
+        if (input == null) return;
+        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null) imm.hideSoftInputFromWindow(input.getWindowToken(), 0);
+        input.clearFocus();
+    }
+
+    private void initVoiceController() {
+        voiceController = new VoiceInputController(this, new VoiceInputController.Callback() {
+            @Override public String currentComposerText() {
+                return input == null ? "" : input.getText().toString();
+            }
+            @Override public void onDraft(String text) {
+                if (input == null) return;
+                input.setText(text);
+                input.setSelection(input.length());
+            }
+            @Override public void onSubmit(String text) {
+                if (input == null || text == null || text.trim().isEmpty()) return;
+                input.setText(text);
+                input.setSelection(input.length());
+                submit(true);
+            }
+            @Override public void onStatus(String status) {
+                if (voiceStatus == null) return;
+                String value = status == null ? "" : status;
+                voiceStatus.setText(value);
+                voiceStatus.setVisibility(value.isEmpty() ? View.GONE : View.VISIBLE);
+            }
+            @Override public void onStateChanged(boolean listening, boolean finalizing,
+                                                 boolean speaking) {
+                if (mic == null) return;
+                mic.setImageTintList(ColorStateList.valueOf(listening || finalizing
+                        ? Color.rgb(255, 112, 112) : UiKit.accent(ChatActivity.this)));
+                mic.setContentDescription(listening ? "Stop listening" : finalizing
+                        ? "Finalizing voice input" : speaking
+                        ? "Interrupt and speak" : "Voice input");
+                mic.setAlpha(finalizing ? .78f : 1f);
+            }
+            @Override public void onPermissionNeeded() {
+                requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},
+                        REQ_MIC_PERMISSION);
+            }
         });
     }
 
@@ -1133,6 +1211,15 @@ public class ChatActivity extends Activity {
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions,
                                                      int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQ_MIC_PERMISSION) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                if (voiceController != null) voiceController.start();
+            } else {
+                Toast.makeText(this, "Microphone permission is needed for Voice Beta",
+                        Toast.LENGTH_SHORT).show();
+            }
+            return;
+        }
         if (requestCode != REQ_CAMERA_PERMISSION) return;
         if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             launchCamera();
@@ -1333,6 +1420,7 @@ public class ChatActivity extends Activity {
     }
     @Override protected void onDestroy() {
         attachmentExecutor.shutdownNow();
+        if (voiceController != null) voiceController.destroy();
         super.onDestroy();
     }
 

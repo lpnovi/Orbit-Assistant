@@ -87,6 +87,7 @@ public final class UiKit {
     };
 
     private static final Map<TextView, FontPreview> FONT_PREVIEWS = new WeakHashMap<>();
+    private static final Map<TextView, Boolean> INTENTIONAL_MONOSPACE = new WeakHashMap<>();
     private static final Map<TextView, Boolean> TYPOGRAPHY_APPLIED = new WeakHashMap<>();
     private static final Map<View, Boolean> TYPOGRAPHY_WATCHED = new WeakHashMap<>();
     private static final Map<AppearanceListener, Boolean> APPEARANCE_LISTENERS = new WeakHashMap<>();
@@ -307,6 +308,13 @@ public final class UiKit {
 
     private static void applyTypography(TextView text, int style) {
         if (text == null) return;
+        if (INTENTIONAL_MONOSPACE.containsKey(text)) {
+            text.setTypeface(Typeface.MONOSPACE, style);
+            text.setTextScaleX(1f);
+            text.setLetterSpacing(0f);
+            TYPOGRAPHY_APPLIED.put(text, true);
+            return;
+        }
         FontPreview preview = FONT_PREVIEWS.get(text);
         if (preview != null) {
             text.setTypeface(typefaceForFontChoice(preview.choice, preview.style));
@@ -325,6 +333,13 @@ public final class UiKit {
         if (text == null) return;
         FONT_PREVIEWS.put(text, new FontPreview(choice, style));
         applyTypography(text, style);
+    }
+
+    /** Preserve intentional code typography while global Orbit font watchers run. */
+    public static void applyCodeTypeface(TextView text) {
+        if (text == null) return;
+        INTENTIONAL_MONOSPACE.put(text, true);
+        applyTypography(text, Typeface.NORMAL);
     }
 
     /** Apply the saved Orbit font to every text-bearing child in a rendered surface. */

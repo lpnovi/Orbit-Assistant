@@ -10,6 +10,9 @@ Orbit is built for Android 10 and newer. Development is active, and releases are
 - **Flexible AI access:** Connect a ChatGPT account through the Codex device-code flow, or use the optional private OpenAI API relay fallback. Choose Auto, Fast, Balanced, or Deep intelligence modes.
 - **Screen understanding:** Attach configurable screen text and screenshots, use one-tap full-screen context, or precisely Crop and Mark up a Screen Selection.
 - **Voice Beta:** Speak requests and optionally hear responses while retaining the normal text workflow.
+- **Rich conversations:** Assistant replies render native Markdown, including headings, lists, quotes, code blocks, links, and readable tables in both full chat and the Side-button overlay.
+- **Consistent composers:** Camera, Gallery, File, Screen, and Clipboard attachment access plus Voice Beta are available from the same Attach / text / mic / Send layout across both chat surfaces.
+- **Inline response images:** Orbit can natively display a valid public HTTPS image source included in a response; it does not independently search for or invent image URLs.
 - **Local Android actions:** Control supported device settings and actions through Orbit's existing confirmation and capability checks.
 - **Routines and automation:** Build saved action chains with IF conditions, time and location triggers, Routine Templates, Custom Commands, and configurable Quick Settings tiles.
 - **Personal context:** Use Orbit Memory, local reminders, Saved Places, per-app behavior, and Notification Intelligence.
@@ -50,7 +53,7 @@ Curated public screenshots will be added here later. No private device or user s
 
 ## Development status
 
-Orbit is actively developed. Future areas under consideration include richer chat rendering, inline reply images, home-screen widgets, plugins and extensibility, additional AI providers, deeper Android automation, advanced Voice work, and more local intelligence. These are directions rather than fixed promises or dates.
+Orbit is actively developed. Future areas under consideration include home-screen widgets, plugins and extensibility, image retrieval integrations, additional AI providers, deeper Android automation, advanced Voice work, and more local intelligence. These are directions rather than fixed promises or dates.
 
 ## Changelog
 

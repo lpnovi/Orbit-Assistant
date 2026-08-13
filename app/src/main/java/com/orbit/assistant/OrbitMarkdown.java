@@ -8,6 +8,7 @@ import android.text.style.BackgroundColorSpan;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.RelativeSizeSpan;
 import android.text.style.StyleSpan;
+import android.text.style.StrikethroughSpan;
 import android.text.style.TypefaceSpan;
 import android.text.style.URLSpan;
 
@@ -25,6 +26,7 @@ public final class OrbitMarkdown {
             "|__([^_\\n]+)__" +
             "|(?<!\\*)\\*([^*\\n]+)\\*(?!\\*)" +
             "|(?<!_)_([^_\\n]+)_(?!_)" +
+            "|~~([^~\\n]+)~~" +
             "|`([^`\\n]+)`");
 
     private OrbitMarkdown() {}
@@ -77,6 +79,27 @@ public final class OrbitMarkdown {
         return output;
     }
 
+    /** Inline-only Markdown for native rich-message blocks. */
+    public static CharSequence renderInline(Context context, String source, int foreground) {
+        SpannableStringBuilder output = new SpannableStringBuilder();
+        appendInline(context, output, source == null ? "" : source);
+        return output;
+    }
+
+    /** Lightweight readable text for TTS; stored/copied Markdown remains unchanged. */
+    public static String toSpeechText(String source) {
+        if (source == null) return "";
+        return source.replaceAll("(?m)^```[^\\n]*$", "")
+                .replaceAll("!\\[([^]]*)]\\(https?://[^\\s)]+\\)", "$1")
+                .replaceAll("\\[([^]]+)]\\(https?://[^\\s)]+\\)", "$1")
+                .replaceAll("(?m)^#{1,6}\\s+", "")
+                .replaceAll("(?m)^>\\s?", "")
+                .replaceAll("(?m)^[-+*]\\s+", "")
+                .replace("**", "").replace("__", "")
+                .replace("~~", "").replace("`", "")
+                .replaceAll("\\n{3,}", "\n\n").trim();
+    }
+
     private static void appendInline(Context context, SpannableStringBuilder output, String line) {
         Matcher matcher = INLINE.matcher(line);
         int cursor = 0;
@@ -95,8 +118,12 @@ public final class OrbitMarkdown {
                 output.append(matcher.group(5) != null ? matcher.group(5) : matcher.group(6));
                 output.setSpan(new StyleSpan(Typeface.ITALIC), start, output.length(),
                         Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-            } else {
+            } else if (matcher.group(7) != null) {
                 output.append(matcher.group(7));
+                output.setSpan(new StrikethroughSpan(), start, output.length(),
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            } else {
+                output.append(matcher.group(8));
                 applyCode(context, output, start, output.length());
             }
             cursor = matcher.end();
@@ -109,7 +136,7 @@ public final class OrbitMarkdown {
         if (end <= start) return;
         output.setSpan(new TypefaceSpan("monospace"), start, end,
                 Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-        output.setSpan(new ForegroundColorSpan(UiKit.accent(context)), start, end,
+        output.setSpan(new ForegroundColorSpan(UiKit.TEXT), start, end,
                 Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         output.setSpan(new BackgroundColorSpan(UiKit.SURFACE_2), start, end,
                 Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);

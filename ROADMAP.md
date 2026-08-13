@@ -210,10 +210,17 @@
 - Isolate selected-region visual context from text outside the user's chosen area
 - Keep temporary editor images app-private and reuse existing screenshot, attachment, history, provider, and request systems
 
+## 0.6.8 Rich Chat + composer parity
+
+### 0.6.8.0
+- Shared native rich assistant responses across full chat and the Side-button overlay
+- Markdown headings, emphasis, lists, quotes, code blocks, links, horizontal rules, and native scrollable tables
+- Safe inline rendering for concrete public HTTPS image sources, without claiming general image search
+- Matching Attach / text / Voice Beta / Send composers
+- Full-chat pause-friendly Voice Beta and Side-button Camera, Gallery, File, Screen, and Clipboard access
+- One shared explicit-attachment model and preserved local conversation/history request paths
+
 ### Planned 0.6.x
-- Rich Chat Markdown rendering
-- Inline reply image support
-- Unified attachment and voice composer parity
 - Home-screen widgets
 - Plugins and extensibility
 - Deeper Android automation

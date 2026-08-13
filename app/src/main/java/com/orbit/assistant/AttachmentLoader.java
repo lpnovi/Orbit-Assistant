@@ -72,7 +72,7 @@ public final class AttachmentLoader {
                 return new Result("file_text", label, context, null, "");
             }
 
-            return error("Orbit 0.5.9 can attach images, PDFs, and text-based files. This file type is not supported yet.");
+            return error("Orbit can attach images, PDFs, and text-based files. This file type is not supported yet.");
         } catch (Exception e) {
             return error("Orbit could not read that attachment: " +
                     (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
