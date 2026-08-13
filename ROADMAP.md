@@ -182,10 +182,13 @@
 - Make the Routine overflow-to-delete-dialog handoff deterministic instead of delay-based
 
 ### 0.6.6.1
-- Add first-run onboarding for a clean initial Orbit setup experience
+- Add first-run onboarding with safe legacy-user migration and versioned completion state
+- Reuse ChatGPT connection, default-assistant guidance, Quick Settings, progressive capabilities, Backup & Restore, normal appearance settings, and Routine Templates
+- Keep setup resumable, skippable, and safely re-runnable from Assistant setup
 
 ### 0.6.6.2
-- Complete release-candidate and fresh-install polish based on device validation
+- Complete release-candidate and fresh-install polish based on phone/tablet validation
+- Revisit the remaining minor Routine overflow-to-delete-confirmation entrance motion without changing deletion behavior
 
 ### Planned 0.6.x
 - Home-screen widgets

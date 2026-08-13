@@ -3,7 +3,6 @@ package com.orbit.assistant;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -14,8 +13,6 @@ import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.provider.Settings;
-import android.service.voice.VoiceInteractionService;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -350,6 +347,13 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         assistantAction = primaryButton("Make Orbit default assistant");
         assistantAction.setOnClickListener(v -> openAssistantSettings(true));
         setupCard.addView(assistantAction);
+        Button rerunSetup = secondaryButton("Run setup again");
+        rerunSetup.setOnClickListener(v ->
+                startActivity(OnboardingActivity.manualIntent(this)));
+        LinearLayout.LayoutParams rerunLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44));
+        rerunLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
+        setupCard.addView(rerunSetup, rerunLp);
         page.addView(setupCard);
 
         page.addView(sectionTitle("QUICK ACCESS", "setup"));
@@ -833,22 +837,9 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     }
 
     private void openAssistantSettings(boolean explain) {
-        Intent[] candidates = new Intent[]{
-                new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS),
-                new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS),
-                new Intent(Settings.ACTION_SETTINGS)
-        };
-        for (Intent candidate : candidates) {
-            try {
-                if (candidate.resolveActivity(getPackageManager()) == null) continue;
-                if (explain) Toast.makeText(this,
-                        "Choose Orbit as the Digital assistant app", Toast.LENGTH_LONG).show();
-                startActivityForResult(candidate, REQ_ASSISTANT_SETTINGS);
-                return;
-            } catch (Exception ignored) {}
-        }
-        showOrbitMessageDialog("Assistant settings unavailable",
-                "Android could not open a supported default-assistant settings screen on this device.");
+        if (!OrbitSetupHelper.openAssistantSettings(this, REQ_ASSISTANT_SETTINGS, explain))
+            showOrbitMessageDialog("Assistant settings unavailable",
+                    "Android could not open a supported default-assistant settings screen on this device.");
     }
 
     private void refreshQuickRoutineSelection() {
@@ -998,7 +989,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
 
     private void updateAssistantStatus() {
         if (assistantStatus == null) return;
-        boolean active = isOrbitAssistantActive();
+        boolean active = OrbitSetupHelper.isOrbitAssistantActive(this);
         assistantStatus.setText(active ? "✓ Orbit is your default assistant" : "○ Orbit is not the active assistant yet");
         assistantStatus.setTextColor(active ? UiKit.SUCCESS : UiKit.TEXT);
         if (assistantAction != null) {
@@ -1006,11 +997,6 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
             assistantAction.setEnabled(true);
             assistantAction.setAlpha(1f);
         }
-    }
-
-    private boolean isOrbitAssistantActive() {
-        ComponentName component = new ComponentName(this, OrbitVoiceInteractionService.class);
-        return VoiceInteractionService.isActiveService(this, component);
     }
 
     @Override

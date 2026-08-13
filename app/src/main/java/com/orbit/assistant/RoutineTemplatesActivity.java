@@ -201,18 +201,26 @@ public final class RoutineTemplatesActivity extends Activity {
     }
 
     private void useTemplate(RoutineTemplateCatalog.Template template) {
-        if (RoutineStore.list(this).size() >= RoutineStore.MAX_ROUTINES) {
-            Toast.makeText(this, "Routine limit reached.", Toast.LENGTH_SHORT).show();
-            return;
+        createAndEdit(this, template);
+    }
+
+    /** Shared template-instantiation path used by the catalog and onboarding. */
+    public static RoutineStore.Routine createAndEdit(Activity activity,
+                                                       RoutineTemplateCatalog.Template template) {
+        if (activity == null || template == null) return null;
+        if (RoutineStore.list(activity).size() >= RoutineStore.MAX_ROUTINES) {
+            Toast.makeText(activity, "Routine limit reached.", Toast.LENGTH_SHORT).show();
+            return null;
         }
-        String name = RoutineTemplateCatalog.uniqueRoutineName(this, template.suggestedRoutineName);
+        String name = RoutineTemplateCatalog.uniqueRoutineName(activity, template.suggestedRoutineName);
         RoutineStore.Routine routine = RoutineStore.create(name, template.actions);
-        if (!RoutineStore.upsert(this, routine)) {
-            Toast.makeText(this, "Orbit could not create this Routine.", Toast.LENGTH_SHORT).show();
-            return;
+        if (!RoutineStore.upsert(activity, routine)) {
+            Toast.makeText(activity, "Orbit could not create this Routine.", Toast.LENGTH_SHORT).show();
+            return null;
         }
-        startActivity(new Intent(this, RoutineEditorActivity.class)
+        activity.startActivity(new Intent(activity, RoutineEditorActivity.class)
                 .putExtra(RoutineEditorActivity.EXTRA_ROUTINE_ID, routine.id));
+        return routine;
     }
 
     private TextView dialogLabel(String text) {

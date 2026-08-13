@@ -32,8 +32,8 @@ android {
         applicationId 'com.orbit.assistant'
         minSdk 29
         targetSdk 35
-        versionCode 661
-        versionName "0.6.6.0"
+        versionCode 662
+        versionName "0.6.6.1"
     }
 
     signingConfigs {

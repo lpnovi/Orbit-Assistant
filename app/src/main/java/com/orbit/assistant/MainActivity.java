@@ -39,6 +39,7 @@ public class MainActivity extends Activity {
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         UiKit.syncTheme(this);
+        boolean launchOnboarding = OnboardingState.shouldLaunchAutomatically(this);
         // AlarmManager state can be cleared by force-stop/reboot. Reconcile saved
         // routine schedules whenever the companion app is launched as an extra
         // recovery path in addition to the manifest reschedule receiver.
@@ -54,6 +55,10 @@ public class MainActivity extends Activity {
         UiKit.applyActivityInsets(this, content, true);
         appliedAccentName = currentAccentName();
         maybeOpenConversation(getIntent());
+        if (launchOnboarding) {
+            getWindow().getDecorView().post(() ->
+                    startActivity(OnboardingActivity.freshInstallIntent(this)));
+        }
     }
 
     @Override protected void onNewIntent(Intent intent) {

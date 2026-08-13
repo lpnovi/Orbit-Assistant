@@ -12,6 +12,10 @@ import android.widget.Toast;
 
 /** Shared, user-consented Quick Settings tile setup and launch helpers. */
 public final class QuickSettingsTiles {
+    public interface AddTileCallback {
+        void onResult(boolean addedOrAlreadyPresent);
+    }
+
     private QuickSettingsTiles() {}
 
     public static RoutineStore.Routine assignedRoutine(Context c) {
@@ -31,27 +35,35 @@ public final class QuickSettingsTiles {
     }
 
     public static void requestAddAskTile(android.app.Activity activity) {
-        requestAddTile(activity, AskOrbitTileService.class, "Orbit", R.drawable.ic_orbit_tile);
+        requestAddAskTile(activity, null);
+    }
+
+    public static void requestAddAskTile(android.app.Activity activity, AddTileCallback callback) {
+        requestAddTile(activity, AskOrbitTileService.class, "Orbit", R.drawable.ic_orbit_tile,
+                callback);
     }
 
     public static void requestAddRoutineTile(android.app.Activity activity) {
         requestAddTile(activity, OrbitRoutineTileService.class,
-                "Orbit Routine", R.drawable.ic_routine_tile);
+                "Orbit Routine", R.drawable.ic_routine_tile, null);
     }
 
     private static void requestAddTile(android.app.Activity activity,
                                        Class<? extends TileService> service,
-                                       String label, int iconResource) {
+                                       String label, int iconResource,
+                                       AddTileCallback callback) {
         if (Build.VERSION.SDK_INT < 33) {
             Toast.makeText(activity,
                     "Open Android Quick Settings, tap Edit, then add the " + label + " tile.",
                     Toast.LENGTH_LONG).show();
+            if (callback != null) callback.onResult(false);
             return;
         }
         StatusBarManager manager = activity.getSystemService(StatusBarManager.class);
         if (manager == null) {
             Toast.makeText(activity, "Android's Quick Settings editor is unavailable.",
                     Toast.LENGTH_LONG).show();
+            if (callback != null) callback.onResult(false);
             return;
         }
         manager.requestAddTileService(
@@ -69,6 +81,9 @@ public final class QuickSettingsTiles {
                                 "Open Android Quick Settings, tap Edit, then add the " + label + " tile.",
                                 Toast.LENGTH_LONG).show();
                     }
+                    if (callback != null) callback.onResult(
+                            result == StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED ||
+                                    result == StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED);
                 });
     }
 

@@ -46,6 +46,8 @@ public final class Prefs {
     public static final String APP_FONT = "app_font";
     public static final String QUICK_SETTINGS_ROUTINE_ID = "quick_settings_routine_id";
     public static final String UPDATE_NOTIFICATIONS = "update_notifications";
+    // Onboarding keys intentionally remain outside Backup & Restore. A backup cannot
+    // restore account credentials, Android permissions, or default-assistant state.
 
     public static final String PROVIDER_CHATGPT = "chatgpt";
     public static final String PROVIDER_RELAY = "relay";
