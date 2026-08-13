@@ -19,6 +19,7 @@ import java.util.regex.Pattern;
 /** Immutable, fully validated representation of an untrusted .orbitext manifest. */
 public final class OrbitExtension {
     public static final int SCHEMA_VERSION = 1;
+    public static final int SCHEMA_VERSION_V2 = 2;
     public static final int MAX_MANIFEST_BYTES = 64 * 1024;
     public static final int MAX_ACTIONS = 20;
     public static final int MAX_POST_BODY_BYTES = 16 * 1024;
@@ -28,6 +29,13 @@ public final class OrbitExtension {
 
     public static final String TYPE_OPEN_URL = "open_url";
     public static final String TYPE_HTTPS_REQUEST = "https_request";
+
+    public static final String SETUP_TEXT = "text";
+    public static final String SETUP_URL = "url";
+    public static final String SETUP_SECRET = "secret";
+    public static final String SETUP_SECRET_URL = "secret_url";
+    public static final String PARAM_TEXT = "text";
+    public static final String PARAM_CHOICE = "choice";
 
     private static final Pattern ID = Pattern.compile("[a-z0-9][a-z0-9._-]{2,79}");
     private static final Pattern ACTION_ID = Pattern.compile("[a-z0-9][a-z0-9_-]{1,63}");
@@ -41,6 +49,7 @@ public final class OrbitExtension {
     public final String version;
     public final String author;
     public final String description;
+    public final List<SetupField> setupFields;
     public final List<Action> actions;
     private final JSONObject manifest;
 
@@ -53,9 +62,18 @@ public final class OrbitExtension {
         public final String method;
         public final JSONObject body;
         public final int timeoutSeconds;
+        public final List<ActionParameter> parameters;
+        public final List<RequestHeader> headers;
 
         private Action(String id, String name, String description, String type, String url,
                        String method, JSONObject body, int timeoutSeconds) {
+            this(id, name, description, type, url, method, body, timeoutSeconds,
+                    Collections.emptyList(), Collections.emptyList());
+        }
+
+        Action(String id, String name, String description, String type, String url,
+               String method, JSONObject body, int timeoutSeconds,
+               List<ActionParameter> parameters, List<RequestHeader> headers) {
             this.id = id;
             this.name = name;
             this.description = description;
@@ -64,23 +82,109 @@ public final class OrbitExtension {
             this.method = method;
             this.body = copyObject(body);
             this.timeoutSeconds = timeoutSeconds;
+            this.parameters = Collections.unmodifiableList(new ArrayList<>(parameters));
+            this.headers = Collections.unmodifiableList(new ArrayList<>(headers));
         }
 
         public String capabilityLabel() {
             if (TYPE_OPEN_URL.equals(type)) return "Open URL";
             return "HTTPS " + method;
         }
+
+        public ActionParameter findParameter(String parameterId) {
+            if (parameterId == null) return null;
+            for (ActionParameter parameter : parameters)
+                if (parameter.id.equals(parameterId)) return parameter;
+            return null;
+        }
+    }
+
+    public static final class SetupField {
+        public final String id;
+        public final String label;
+        public final String description;
+        public final String type;
+        public final boolean required;
+        public final int maxLength;
+        public final String defaultValue;
+
+        SetupField(String id, String label, String description, String type, boolean required,
+                   int maxLength, String defaultValue) {
+            this.id = id;
+            this.label = label;
+            this.description = description;
+            this.type = type;
+            this.required = required;
+            this.maxLength = maxLength;
+            this.defaultValue = defaultValue;
+        }
+
+        public boolean isSecret() {
+            return SETUP_SECRET.equals(type) || SETUP_SECRET_URL.equals(type);
+        }
+    }
+
+    public static final class Choice {
+        public final String value;
+        public final String label;
+
+        Choice(String value, String label) {
+            this.value = value;
+            this.label = label;
+        }
+    }
+
+    public static final class ActionParameter {
+        public final String id;
+        public final String label;
+        public final String description;
+        public final String type;
+        public final boolean required;
+        public final int maxLength;
+        public final String defaultValue;
+        public final List<Choice> choices;
+
+        ActionParameter(String id, String label, String description, String type,
+                        boolean required, int maxLength, String defaultValue,
+                        List<Choice> choices) {
+            this.id = id;
+            this.label = label;
+            this.description = description;
+            this.type = type;
+            this.required = required;
+            this.maxLength = maxLength;
+            this.defaultValue = defaultValue;
+            this.choices = Collections.unmodifiableList(new ArrayList<>(choices));
+        }
+    }
+
+    public static final class RequestHeader {
+        public final String name;
+        public final String valueTemplate;
+
+        RequestHeader(String name, String valueTemplate) {
+            this.name = name;
+            this.valueTemplate = valueTemplate;
+        }
     }
 
     private OrbitExtension(int schemaVersion, String id, String name, String version,
                            String author, String description, List<Action> actions,
                            JSONObject manifest) {
+        this(schemaVersion, id, name, version, author, description,
+                Collections.emptyList(), actions, manifest);
+    }
+
+    OrbitExtension(int schemaVersion, String id, String name, String version,
+                   String author, String description, List<SetupField> setupFields,
+                   List<Action> actions, JSONObject manifest) {
         this.schemaVersion = schemaVersion;
         this.id = id;
         this.name = name;
         this.version = version;
         this.author = author;
         this.description = description;
+        this.setupFields = Collections.unmodifiableList(new ArrayList<>(setupFields));
         this.actions = Collections.unmodifiableList(new ArrayList<>(actions));
         this.manifest = copyObject(manifest);
     }
@@ -103,14 +207,16 @@ public final class OrbitExtension {
         JSONObject manifest = copyObject(source);
         if (manifest.toString().getBytes(StandardCharsets.UTF_8).length > MAX_MANIFEST_BYTES)
             fail("The extension manifest is too large.");
-        requireOnlyKeys(manifest, set("schemaVersion", "id", "name", "version", "author",
-                "description", "actions"), "extension manifest");
-
         Object schemaValue = manifest.opt("schemaVersion");
         if (!(schemaValue instanceof Number)) fail("Extension schemaVersion must be a number.");
         int schema = ((Number) schemaValue).intValue();
-        if (schema != SCHEMA_VERSION || ((Number) schemaValue).doubleValue() != schema)
+        if (((Number) schemaValue).doubleValue() != schema)
             fail("This extension schema version is not supported.");
+        if (schema == SCHEMA_VERSION_V2) return OrbitExtensionV2.parse(manifest);
+        if (schema != SCHEMA_VERSION)
+            fail("This extension schema version is not supported.");
+        requireOnlyKeys(manifest, set("schemaVersion", "id", "name", "version", "author",
+                "description", "actions"), "extension manifest");
         String id = requiredText(manifest, "id", 80);
         if (!ID.matcher(id).matches()) fail("The extension ID is invalid.");
         String name = requiredText(manifest, "name", 60);
@@ -181,6 +287,12 @@ public final class OrbitExtension {
         return null;
     }
 
+    public SetupField findSetupField(String fieldId) {
+        if (fieldId == null) return null;
+        for (SetupField field : setupFields) if (field.id.equals(fieldId)) return field;
+        return null;
+    }
+
     public JSONObject toJson() {
         return copyObject(manifest);
     }
@@ -195,6 +307,13 @@ public final class OrbitExtension {
             } catch (Exception ignored) {}
         }
         return hosts;
+    }
+
+    public boolean hasDynamicDestination() {
+        for (Action action : actions) {
+            if (action.url != null && action.url.contains("{{")) return true;
+        }
+        return false;
     }
 
     /** Rechecks resolved addresses immediately before an HTTPS request is opened. */
@@ -237,7 +356,7 @@ public final class OrbitExtension {
         return true;
     }
 
-    private static void validatePublicUrl(String value, boolean allowHttp) {
+    static void validatePublicUrl(String value, boolean allowHttp) {
         try {
             URI uri = new URI(value);
             String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.US);
@@ -257,7 +376,7 @@ public final class OrbitExtension {
         }
     }
 
-    private static void rejectSensitiveKeys(Object value) {
+    static void rejectSensitiveKeys(Object value) {
         if (value instanceof JSONObject) {
             JSONObject object = (JSONObject) value;
             Iterator<String> keys = object.keys();
@@ -317,7 +436,7 @@ public final class OrbitExtension {
         return value;
     }
 
-    private static JSONObject copyObject(JSONObject source) {
+    static JSONObject copyObject(JSONObject source) {
         try { return source == null ? new JSONObject() : new JSONObject(source.toString()); }
         catch (Exception ignored) { return new JSONObject(); }
     }

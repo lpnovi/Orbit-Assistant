@@ -31,8 +31,10 @@ import android.widget.Toast;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.List;
+import java.util.Map;
 
 /** Create/edit UI for deterministic saved routines. */
 public class RoutineEditorActivity extends Activity {
@@ -163,7 +165,7 @@ public class RoutineEditorActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 50)));
 
         TextView safety = UiKit.text(this,
-                "Routine actions are stored only on this device. Enabled Extensions can add reviewed declarative actions; outbound communication actions remain intentionally excluded.",
+                "Routine actions are stored only on this device. Enabled Extensions can add reviewed declarative actions; secure setup values stay outside Routine storage.",
                 11, UiKit.MUTED, false);
         safety.setGravity(Gravity.CENTER);
         safety.setPadding(UiKit.dp(this, 8), UiKit.dp(this, 14), UiKit.dp(this, 8), 0);
@@ -278,7 +280,8 @@ public class RoutineEditorActivity extends Activity {
     private void showExtensionActionPicker(View anchor, int editIndex) {
         List<OrbitExtensionStore.ActionChoice> choices = OrbitExtensionStore.enabledActions(this);
         if (choices.isEmpty()) {
-            Toast.makeText(this, "No enabled extension actions are available.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "No enabled and configured extension actions are available.",
+                    Toast.LENGTH_SHORT).show();
             return;
         }
         String[] labels = new String[choices.size()];
@@ -289,8 +292,13 @@ public class RoutineEditorActivity extends Activity {
         UiKit.showOrbitMenu(this, anchor, labels, -1, (index, label) -> {
             if (index < 0 || index >= choices.size()) return;
             OrbitExtensionStore.ActionChoice choice = choices.get(index);
-            putAction(editIndex, RoutineActionCatalog.extensionAction(
-                    choice.extension, choice.action));
+            if (choice.action.parameters.isEmpty()) {
+                putAction(editIndex, RoutineActionCatalog.extensionAction(
+                        choice.extension, choice.action));
+            } else {
+                showExtensionParameterDialog(choice.extension, choice.action,
+                        new JSONObject(), editIndex);
+            }
         });
     }
 
@@ -327,11 +335,111 @@ public class RoutineEditorActivity extends Activity {
                 putAction(editIndex, new AssistantReply.Action(type, new JSONObject(), false));
                 break;
             case RoutineActionCatalog.EXTENSION_ACTION:
-                showExtensionActionPicker(addStepButton, editIndex);
+                showExistingExtensionActionDialog(editIndex);
                 break;
             default:
                 Toast.makeText(this, "That action is not available for routines yet.", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    private void showExistingExtensionActionDialog(int editIndex) {
+        AssistantReply.Action saved = actionAt(editIndex, RoutineActionCatalog.EXTENSION_ACTION);
+        if (saved == null || saved.params == null) {
+            showExtensionActionPicker(addStepButton, editIndex);
+            return;
+        }
+        OrbitExtensionStore.Installed installed = OrbitExtensionStore.find(this,
+                saved.params.optString("extensionId", ""));
+        OrbitExtension.Action action = installed == null ? null : installed.extension.findAction(
+                saved.params.optString("actionId", ""));
+        if (action == null) {
+            Toast.makeText(this, "Extension action unavailable", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (action.parameters.isEmpty()) {
+            showExtensionActionPicker(addStepButton, editIndex);
+            return;
+        }
+        showExtensionParameterDialog(installed.extension, action,
+                saved.params.optJSONObject("actionParameters"), editIndex);
+    }
+
+    private void showExtensionParameterDialog(OrbitExtension extension,
+            OrbitExtension.Action action, JSONObject current, int editIndex) {
+        JSONObject old = current == null ? new JSONObject() : current;
+        LinearLayout form = dialogForm();
+        Map<String, EditText> textFields = new LinkedHashMap<>();
+        Map<String, int[]> choiceIndexes = new LinkedHashMap<>();
+
+        for (OrbitExtension.ActionParameter parameter : action.parameters) {
+            String required = parameter.required ? " · Required" : " · Optional";
+            form.addView(dialogLabel(parameter.label + required));
+            if (!parameter.description.isEmpty()) {
+                TextView description = UiKit.text(this, parameter.description,
+                        11, UiKit.MUTED, false);
+                description.setPadding(UiKit.dp(this, 2), 0, 0, UiKit.dp(this, 6));
+                form.addView(description);
+            }
+            String existing = old.optString(parameter.id, parameter.defaultValue);
+            if (OrbitExtension.PARAM_CHOICE.equals(parameter.type)) {
+                String[] labels = new String[parameter.choices.size()];
+                int selected = 0;
+                for (int i = 0; i < parameter.choices.size(); i++) {
+                    OrbitExtension.Choice choice = parameter.choices.get(i);
+                    labels[i] = choice.label;
+                    if (choice.value.equals(existing)) selected = i;
+                }
+                int[] index = {selected};
+                choiceIndexes.put(parameter.id, index);
+                form.addView(dialogSelector(labels, index), selectorLp());
+            } else {
+                EditText input = inputField(parameter.label, existing, false);
+                input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(parameter.maxLength)});
+                if (parameter.maxLength > 160) {
+                    input.setSingleLine(false);
+                    input.setMinLines(2);
+                    input.setMaxLines(4);
+                    input.setGravity(Gravity.TOP | Gravity.START);
+                    input.setPadding(UiKit.dp(this, 15), UiKit.dp(this, 12),
+                            UiKit.dp(this, 15), UiKit.dp(this, 10));
+                }
+                textFields.put(parameter.id, input);
+                int height = parameter.maxLength > 160 ? UiKit.dp(this, 92) : UiKit.dp(this, 52);
+                form.addView(input, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, height));
+            }
+        }
+
+        showFormDialog((editIndex < 0 ? "Add " : "Edit ") + action.name, form,
+                editIndex < 0 ? "Add" : "Save", () -> {
+                    try {
+                        JSONObject values = new JSONObject();
+                        for (OrbitExtension.ActionParameter parameter : action.parameters) {
+                            if (OrbitExtension.PARAM_CHOICE.equals(parameter.type)) {
+                                int[] selected = choiceIndexes.get(parameter.id);
+                                if (selected != null && !parameter.choices.isEmpty()) {
+                                    int safe = Math.max(0, Math.min(
+                                            parameter.choices.size() - 1, selected[0]));
+                                    values.put(parameter.id, parameter.choices.get(safe).value);
+                                }
+                            } else {
+                                EditText input = textFields.get(parameter.id);
+                                String value = input == null ? "" : input.getText().toString();
+                                if (!value.trim().isEmpty()) values.put(parameter.id, value);
+                            }
+                        }
+                        JSONObject safe = OrbitExtensionV2.validateAndNormalizeParameters(
+                                action, values, true);
+                        putAction(editIndex, RoutineActionCatalog.extensionAction(
+                                extension, action, safe));
+                        return true;
+                    } catch (IllegalArgumentException e) {
+                        return formError(e.getMessage() == null
+                                ? "Check the extension action values." : e.getMessage());
+                    } catch (Exception e) {
+                        return formError("Could not save that extension action.");
+                    }
+                });
     }
 
     private void showConditionDialog(int editIndex) {

@@ -2,6 +2,8 @@ package com.orbit.assistant;
 
 import org.json.JSONObject;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Iterator;
 import java.util.Locale;
 
 /**
@@ -227,10 +229,12 @@ public final class RoutineActionCatalog {
                 return p.optInt("hour", -1) >= 0 && p.optInt("hour", 24) <= 23 &&
                         p.optInt("minute", -1) >= 0 && p.optInt("minute", 60) <= 59;
             case EXTENSION_ACTION:
-                return validReference(p.optString("extensionId", ""), 80) &&
+                return hasOnlyExtensionKeys(p) &&
+                        validReference(p.optString("extensionId", ""), 80) &&
                         validReference(p.optString("actionId", ""), 64) &&
                         clean(p.optString("extensionName", "")).length() <= 60 &&
-                        clean(p.optString("actionName", "")).length() <= 60;
+                        clean(p.optString("actionName", "")).length() <= 60 &&
+                        validStoredActionParameters(p.optJSONObject("actionParameters"));
             default:
                 return true;
         }
@@ -238,6 +242,11 @@ public final class RoutineActionCatalog {
 
     public static AssistantReply.Action extensionAction(OrbitExtension extension,
                                                         OrbitExtension.Action action) {
+        return extensionAction(extension, action, new JSONObject());
+    }
+
+    public static AssistantReply.Action extensionAction(OrbitExtension extension,
+            OrbitExtension.Action action, JSONObject actionParameters) {
         if (extension == null || action == null) return null;
         JSONObject params = new JSONObject();
         try {
@@ -247,8 +256,46 @@ public final class RoutineActionCatalog {
             // always resolves the stable IDs against the current validated manifest.
             params.put("extensionName", extension.name);
             params.put("actionName", action.name);
+            if (actionParameters != null && actionParameters.length() > 0) {
+                params.put("actionParameters", new JSONObject(actionParameters.toString()));
+            }
         } catch (Exception ignored) {}
         return new AssistantReply.Action(EXTENSION_ACTION, params, false);
+    }
+
+    private static boolean hasOnlyExtensionKeys(JSONObject params) {
+        Iterator<String> keys = params.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            if (!("extensionId".equals(key) || "actionId".equals(key) ||
+                    "extensionName".equals(key) || "actionName".equals(key) ||
+                    "actionParameters".equals(key))) return false;
+        }
+        return true;
+    }
+
+    private static boolean validStoredActionParameters(JSONObject parameters) {
+        if (parameters == null) return true;
+        if (parameters.length() > OrbitExtensionV2.MAX_PARAMETERS ||
+                parameters.toString().getBytes(StandardCharsets.UTF_8).length >
+                        OrbitExtension.MAX_POST_BODY_BYTES) return false;
+        Iterator<String> keys = parameters.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            if (!key.matches("[a-z0-9][a-z0-9_-]{1,63}") || sensitiveParameterId(key))
+                return false;
+            Object value = parameters.opt(key);
+            if (!(value instanceof String) || ((String) value).length() > OrbitExtensionV2.MAX_TEXT_LENGTH)
+                return false;
+        }
+        return true;
+    }
+
+    private static boolean sensitiveParameterId(String id) {
+        String lower = id.toLowerCase(Locale.US);
+        return lower.contains("secret") || lower.contains("password") ||
+                lower.contains("credential") || lower.contains("token") ||
+                lower.contains("api_key") || lower.contains("apikey");
     }
 
     public static int clampPercent(int percent) {

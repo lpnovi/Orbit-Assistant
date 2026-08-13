@@ -15,10 +15,13 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** Executes only the two capabilities explicitly allowed by Extensions v1. */
+/** Executes only validated declarative URL and HTTPS capabilities from Extensions v1/v2. */
 public final class OrbitExtensionActionExecutor {
     public interface Completion { void finish(DeviceActionExecutor.Result result); }
 
@@ -42,6 +45,11 @@ public final class OrbitExtensionActionExecutor {
             finish(completion, unavailable());
             return;
         }
+        if (!OrbitExtensionStore.isConfigured(context, installed)) {
+            finish(completion, DeviceActionExecutor.Result.unavailable(
+                    installed.extension.name + " needs setup"));
+            return;
+        }
 
         if (OrbitExtension.TYPE_OPEN_URL.equals(action.type)) {
             NETWORK.execute(() -> openReviewedUrl(context, action, completion));
@@ -53,7 +61,8 @@ public final class OrbitExtensionActionExecutor {
             return;
         }
         Context app = context.getApplicationContext();
-        NETWORK.execute(() -> finish(completion, executeHttps(app, action)));
+        NETWORK.execute(() -> finish(completion,
+                executeHttps(app, installed, action, routineAction)));
     }
 
     public static boolean isHeadlessHttps(Context context, AssistantReply.Action routineAction) {
@@ -65,12 +74,52 @@ public final class OrbitExtensionActionExecutor {
     }
 
     private static DeviceActionExecutor.Result executeHttps(Context context,
-                                                            OrbitExtension.Action action) {
+            OrbitExtensionStore.Installed installed, OrbitExtension.Action action,
+            AssistantReply.Action routineAction) {
         HttpURLConnection connection = null;
         try {
-            // Re-resolve immediately before connecting and refuse local/private destinations.
-            OrbitExtension.validateResolvedPublicHost(action.url);
-            connection = (HttpURLConnection) new URL(action.url).openConnection();
+            Map<String, String> configuration = installed.extension.schemaVersion ==
+                    OrbitExtension.SCHEMA_VERSION_V2
+                    ? OrbitExtensionStore.resolvedConfiguration(context, installed)
+                    : Collections.emptyMap();
+            if (configuration == null) return DeviceActionExecutor.Result.unavailable(
+                    installed.extension.name + " needs setup");
+            JSONObject rawParameters = routineAction.params.optJSONObject("actionParameters");
+            JSONObject safeParameters = installed.extension.schemaVersion ==
+                    OrbitExtension.SCHEMA_VERSION_V2
+                    ? OrbitExtensionV2.validateAndNormalizeParameters(
+                            action, rawParameters, true) : new JSONObject();
+            Map<String, String> parameters = jsonStrings(safeParameters);
+            String finalUrl = installed.extension.schemaVersion == OrbitExtension.SCHEMA_VERSION_V2
+                    ? OrbitExtensionV2.renderString(action.url, configuration, parameters)
+                    : action.url;
+
+            // Validate the fully rendered URL and resolve its host immediately before connecting.
+            if (finalUrl.length() > 2048)
+                return DeviceActionExecutor.Result.failed(
+                        "Extension endpoint exceeded Orbit's safe size limit.");
+            OrbitExtension.validatePublicUrl(finalUrl, false);
+            OrbitExtension.validateResolvedPublicHost(finalUrl);
+
+            JSONObject renderedBody = action.body == null ? new JSONObject()
+                    : installed.extension.schemaVersion == OrbitExtension.SCHEMA_VERSION_V2
+                    ? OrbitExtensionV2.renderBody(action.body, configuration, parameters)
+                    : action.body;
+            byte[] body = renderedBody.toString().getBytes(StandardCharsets.UTF_8);
+            if (body.length > OrbitExtension.MAX_POST_BODY_BYTES)
+                return DeviceActionExecutor.Result.failed(
+                        "Extension request exceeded Orbit's safe size limit.");
+
+            Map<String, String> renderedHeaders = new LinkedHashMap<>();
+            for (OrbitExtension.RequestHeader header : action.headers) {
+                String value = OrbitExtensionV2.renderString(
+                        header.valueTemplate, configuration, parameters);
+                if (value.length() > 1024 || unsafeHeaderValue(value))
+                    return DeviceActionExecutor.Result.failed("Extension request headers are invalid.");
+                renderedHeaders.put(header.name, value);
+            }
+
+            connection = (HttpURLConnection) new URL(finalUrl).openConnection();
             // Split the declared total budget between connection and response read.
             int timeoutMs = Math.max(1000, action.timeoutSeconds * 500);
             connection.setConnectTimeout(timeoutMs);
@@ -80,12 +129,13 @@ public final class OrbitExtensionActionExecutor {
             connection.setRequestMethod(action.method);
             connection.setRequestProperty("Accept", "application/json, text/plain;q=0.8, */*;q=0.2");
             connection.setRequestProperty("User-Agent", "Orbit-Assistant/" + BuildConfig.VERSION_NAME);
+            for (Map.Entry<String, String> header : renderedHeaders.entrySet())
+                connection.setRequestProperty(header.getKey(), header.getValue());
             if ("POST".equals(action.method)) {
-                byte[] body = (action.body == null ? new JSONObject() : action.body)
-                        .toString().getBytes(StandardCharsets.UTF_8);
                 connection.setDoOutput(true);
                 connection.setFixedLengthStreamingMode(body.length);
-                connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                if (!containsHeader(renderedHeaders, "Content-Type"))
+                    connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
                 try (OutputStream output = connection.getOutputStream()) {
                     output.write(body);
                 }
@@ -113,6 +163,30 @@ public final class OrbitExtensionActionExecutor {
         } finally {
             if (connection != null) connection.disconnect();
         }
+    }
+
+    private static Map<String, String> jsonStrings(JSONObject object) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (object == null) return out;
+        java.util.Iterator<String> keys = object.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            out.put(key, object.optString(key, ""));
+        }
+        return out;
+    }
+
+    private static boolean containsHeader(Map<String, String> headers, String wanted) {
+        for (String name : headers.keySet()) if (wanted.equalsIgnoreCase(name)) return true;
+        return false;
+    }
+
+    private static boolean unsafeHeaderValue(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isISOControl(c)) return true;
+        }
+        return false;
     }
 
     private static void readBounded(InputStream input, int maxBytes) throws Exception {

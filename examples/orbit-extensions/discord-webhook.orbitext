@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 2,
+  "id": "com.orbit.extensions.discord-webhook",
+  "name": "Discord Webhook",
+  "version": "1.0.0",
+  "author": "Orbit",
+  "description": "Send a configured message to a Discord channel through a securely stored webhook URL.",
+  "setupFields": [
+    {
+      "id": "webhook_url",
+      "label": "Webhook URL",
+      "description": "Create a webhook in Discord and paste its HTTPS URL here.",
+      "type": "secret_url",
+      "required": true,
+      "maxLength": 2048
+    }
+  ],
+  "actions": [
+    {
+      "id": "send-message",
+      "name": "Send Discord message",
+      "description": "Posts the configured Routine message to the saved Discord webhook.",
+      "type": "https_request",
+      "endpoint": "{{config.webhook_url}}",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "content": "{{param.message}}"
+      },
+      "parameters": [
+        {
+          "id": "message",
+          "label": "Message",
+          "description": "The message Discord should receive.",
+          "type": "text",
+          "required": true,
+          "maxLength": 2000
+        }
+      ],
+      "timeoutSeconds": 10
+    }
+  ]
+}

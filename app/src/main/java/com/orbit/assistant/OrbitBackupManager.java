@@ -145,6 +145,16 @@ public final class OrbitBackupManager {
             ReminderScheduler.rescheduleAll(context);
             throw new IllegalStateException("Orbit could not replace all local data; the previous data was restored.");
         }
+        // Extension credentials are intentionally never part of portable backups.
+        // Clear device-local encrypted values only after the full safe snapshot commits,
+        // so a failed restore cannot discard credentials from the current installation.
+        if (!OrbitExtensionSecretStore.clearAll(context)) {
+            applySnapshot(context, before);
+            RoutineTriggerScheduler.rescheduleAll(context);
+            ReminderScheduler.rescheduleAll(context);
+            throw new IllegalStateException(
+                    "Orbit could not securely clear extension credentials; the previous local data was restored.");
+        }
         RoutineTriggerScheduler.rescheduleAll(context);
         ReminderScheduler.rescheduleAll(context);
     }

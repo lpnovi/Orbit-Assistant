@@ -71,7 +71,7 @@ public final class RoadmapActivity extends Activity {
         page.addView(header);
 
         TextView intro = UiKit.text(this,
-                "Orbit's roadmap is a direction, not a promise of dates or release numbers. Completed work stays in What's New.",
+                "Orbit's roadmap is a direction, not a promise of dates or release numbers. Shipped features stay in What's New; this page remains future-only.",
                 13, UiKit.MUTED, false);
         intro.setLineSpacing(0, 1.14f);
         LinearLayout.LayoutParams introLp = new LinearLayout.LayoutParams(

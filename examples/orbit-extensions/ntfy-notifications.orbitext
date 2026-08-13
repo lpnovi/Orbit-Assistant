@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 2,
+  "id": "com.orbit.extensions.ntfy",
+  "name": "ntfy Notifications",
+  "version": "1.0.0",
+  "author": "Orbit",
+  "description": "Publish a configurable notification to an ntfy topic using its public HTTPS API.",
+  "setupFields": [
+    {
+      "id": "server_url",
+      "label": "Server URL",
+      "description": "Public HTTPS ntfy server. The default uses ntfy.sh.",
+      "type": "url",
+      "required": true,
+      "maxLength": 2048,
+      "default": "https://ntfy.sh"
+    },
+    {
+      "id": "topic",
+      "label": "Topic",
+      "description": "The ntfy topic that should receive Orbit notifications.",
+      "type": "text",
+      "required": true,
+      "maxLength": 256
+    }
+  ],
+  "actions": [
+    {
+      "id": "send-notification",
+      "name": "Send notification",
+      "description": "Publishes a title, message and priority to the configured ntfy topic.",
+      "type": "https_request",
+      "endpoint": "{{config.server_url}}",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "topic": "{{config.topic}}",
+        "title": "{{param.title}}",
+        "message": "{{param.message}}",
+        "priority": "{{param.priority}}"
+      },
+      "parameters": [
+        {
+          "id": "title",
+          "label": "Title",
+          "description": "Optional notification title.",
+          "type": "text",
+          "required": false,
+          "maxLength": 250
+        },
+        {
+          "id": "message",
+          "label": "Message",
+          "description": "The notification message.",
+          "type": "text",
+          "required": true,
+          "maxLength": 4096
+        },
+        {
+          "id": "priority",
+          "label": "Priority",
+          "description": "ntfy delivery priority.",
+          "type": "choice",
+          "required": true,
+          "default": "default",
+          "choices": [
+            {"value": "min", "label": "Min"},
+            {"value": "low", "label": "Low"},
+            {"value": "default", "label": "Default"},
+            {"value": "high", "label": "High"},
+            {"value": "max", "label": "Max"}
+          ]
+        }
+      ],
+      "timeoutSeconds": 10
+    }
+  ]
+}

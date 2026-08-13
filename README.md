@@ -15,7 +15,7 @@ Orbit is built for Android 10 and newer. Development is active, and releases are
 - **Inline response images:** Orbit can natively display a valid public HTTPS image source included in a response; it does not independently search for or invent image URLs.
 - **Local Android actions:** Control supported device settings and actions through Orbit's existing confirmation and capability checks.
 - **Routines and automation:** Build saved action chains with IF conditions, time and location triggers, Routine Templates, Custom Commands, and configurable Quick Settings tiles.
-- **Orbit Extensions:** Install official first-party extensions directly inside Orbit, or import custom reviewed `.orbitext` files. Both add only safe Open URL and bounded HTTPS actions to Routines without loading arbitrary code or accessing Orbit personal data.
+- **Orbit Extensions:** Add reviewed configurable Routine actions—including securely configured Discord Webhook and ntfy integrations—without loading executable plugin code or exposing Orbit personal data.
 - **Home-screen widgets:** Open a ready-to-type chat, run one selected saved Routine, or configure a small set of safe Quick Actions directly from the launcher.
 - **Personal context:** Use Orbit Memory, local reminders, Saved Places, per-app behavior, and Notification Intelligence.
 - **Personalization:** Choose live Accent colors, conversation colors, app fonts, AMOLED surfaces, haptics, and other assistant preferences.
@@ -57,7 +57,7 @@ Curated public screenshots will be added here later. No private device or user s
 
 Orbit is actively developed. Future areas under consideration include natural-language Routine creation, richer automation and branching, image retrieval integrations, additional AI providers, deeper Android actions, advanced Voice work, and more local intelligence. These are directions rather than fixed promises or dates.
 
-The declarative Extensions v1 format and security model are documented in [docs/EXTENSIONS.md](docs/EXTENSIONS.md).
+The declarative Extensions v1/v2 format and security model are documented in [docs/EXTENSIONS.md](docs/EXTENSIONS.md).
 
 ## Changelog
 

@@ -244,6 +244,14 @@
 - Support compatible headless execution from widgets, Quick Settings, and automatic time/location triggers
 - Include safe manifests and enabled state in Backup & Restore, with credentials and secrets excluded
 
+### 0.7.1.0
+- Add backward-compatible configurable Extensions v2 without executable plugin code
+- Encrypt extension secrets with Android Keystore-backed storage and no plaintext fallback
+- Add bounded Routine parameters, structural request templates, and safe manifest-declared authentication headers
+- Ship generic-engine Discord Webhook and ntfy Notifications first-party extensions
+- Preserve non-secret configuration in Backup & Restore while requiring secret setup again after restore
+- Preserve Extensions screen position after Enable, Disable, Remove, and configuration refreshes
+
 ## Future direction
 
 ### Next up
