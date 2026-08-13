@@ -1,6 +1,12 @@
 package com.orbit.assistant;
 
 import android.Manifest;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.AnimatorSet;
+import android.animation.ObjectAnimator;
+import android.animation.PropertyValuesHolder;
+import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ClipData;
@@ -8,16 +14,21 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.animation.PathInterpolator;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -44,7 +55,10 @@ public final class OnboardingActivity extends Activity {
     private boolean manual;
     private boolean resumedOnce;
     private boolean relayExpanded;
+    private boolean completionCelebrationPlayed;
     private String appliedAppearance = "";
+    private FrameLayout completionMarkHost;
+    private View completionMark;
 
     private final ChatGptAuth.LoginCallback loginCallback = new ChatGptAuth.LoginCallback() {
         @Override public void onSuccess(ChatGptAuth.AccountInfo account) {
@@ -81,6 +95,8 @@ public final class OnboardingActivity extends Activity {
         if (savedInstanceState != null) {
             step = savedInstanceState.getInt("step", 0);
             relayExpanded = savedInstanceState.getBoolean("relayExpanded", false);
+            completionCelebrationPlayed = savedInstanceState.getBoolean(
+                    "completionCelebrationPlayed", false);
         }
         else if (manual) step = 0;
         else step = OnboardingState.currentStep(this);
@@ -96,6 +112,7 @@ public final class OnboardingActivity extends Activity {
         if (intent != null && intent.getBooleanExtra(EXTRA_MANUAL, false)) {
             manual = true;
             step = 0;
+            completionCelebrationPlayed = false;
             persistStep();
             render();
         }
@@ -104,6 +121,7 @@ public final class OnboardingActivity extends Activity {
     @Override protected void onSaveInstanceState(Bundle outState) {
         outState.putInt("step", step);
         outState.putBoolean("relayExpanded", relayExpanded);
+        outState.putBoolean("completionCelebrationPlayed", completionCelebrationPlayed);
         super.onSaveInstanceState(outState);
     }
 
@@ -126,6 +144,7 @@ public final class OnboardingActivity extends Activity {
 
     @Override public void onBackPressed() {
         if (step > 0) {
+            if (step == 7) completionCelebrationPlayed = false;
             step--;
             persistStep();
             render();
@@ -145,6 +164,10 @@ public final class OnboardingActivity extends Activity {
         setContentView(root);
         UiKit.applyActivityInsets(this, root, true);
         appliedAppearance = UiKit.appearanceSignature(this);
+        if (step == 7 && !completionCelebrationPlayed) {
+            completionCelebrationPlayed = true;
+            root.post(this::playCompletionCelebration);
+        }
     }
 
     private View buildPage() {
@@ -182,11 +205,18 @@ public final class OnboardingActivity extends Activity {
     private View header() {
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
+        FrameLayout markHost = new FrameLayout(this);
+        markHost.setClipChildren(false);
+        markHost.setClipToPadding(false);
         View mark = UiKit.orbitMark(this, 38);
+        markHost.addView(mark, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         LinearLayout.LayoutParams markLp = new LinearLayout.LayoutParams(
                 UiKit.dp(this, 44), UiKit.dp(this, 44));
         markLp.rightMargin = UiKit.dp(this, 10);
-        header.addView(mark, markLp);
+        header.addView(markHost, markLp);
+        completionMarkHost = step == 7 ? markHost : null;
+        completionMark = step == 7 ? mark : null;
 
         LinearLayout progress = new LinearLayout(this);
         progress.setOrientation(LinearLayout.VERTICAL);
@@ -453,6 +483,19 @@ public final class OnboardingActivity extends Activity {
         addCardDescription(accentCard, "Choose one of Orbit's existing presets.");
         accentCard.addView(appearanceColorSelector(UiKit.accentKeys(), UiKit.accentLabels(),
                 Prefs.ACCENT, false, true));
+        CheckBox amoled = new CheckBox(this);
+        amoled.setText("Use true black AMOLED backgrounds");
+        amoled.setTextColor(UiKit.TEXT);
+        amoled.setTextSize(14);
+        amoled.setButtonTintList(UiKit.accentControlTint(this));
+        amoled.setChecked(Prefs.amoledMode(this));
+        amoled.setPadding(0, UiKit.dp(this, 11), 0, 0);
+        amoled.setOnCheckedChangeListener((button, checked) -> {
+            Prefs.get(this).edit().putBoolean(Prefs.AMOLED_MODE, checked).apply();
+            UiKit.notifyAppearanceChanged(this);
+            render();
+        });
+        accentCard.addView(amoled);
         page.addView(accentCard, cardLp());
 
         LinearLayout fontCard = card();
@@ -469,19 +512,6 @@ public final class OnboardingActivity extends Activity {
                     render();
                 }));
         fontCard.addView(selector, new LinearLayout.LayoutParams(-1, UiKit.dp(this, 46)));
-        CheckBox amoled = new CheckBox(this);
-        amoled.setText("Use true black AMOLED backgrounds");
-        amoled.setTextColor(UiKit.TEXT);
-        amoled.setTextSize(14);
-        amoled.setButtonTintList(UiKit.accentControlTint(this));
-        amoled.setChecked(Prefs.amoledMode(this));
-        amoled.setPadding(0, UiKit.dp(this, 11), 0, 0);
-        amoled.setOnCheckedChangeListener((button, checked) -> {
-            Prefs.get(this).edit().putBoolean(Prefs.AMOLED_MODE, checked).apply();
-            UiKit.notifyAppearanceChanged(this);
-            render();
-        });
-        fontCard.addView(amoled);
         page.addView(fontCard, cardLp());
 
         LinearLayout conversationCard = card();
@@ -530,7 +560,7 @@ public final class OnboardingActivity extends Activity {
 
     private void buildFinish(LinearLayout page) {
         addTitle(page, "Orbit is ready",
-                "Setup is complete. Everything here can be changed later in Settings.");
+                "You're all set. Orbit is ready when you are.");
         LinearLayout summary = card();
         List<String> items = new ArrayList<>();
         if (ChatGptAuth.isSignedIn(this)) items.add("✓ ChatGPT connected");
@@ -558,6 +588,79 @@ public final class OnboardingActivity extends Activity {
             examples.addView(text);
         }
         page.addView(examples, cardLp());
+    }
+
+    /** Decorative, non-blocking finish-page moment using the current Orbit accent. */
+    private void playCompletionCelebration() {
+        FrameLayout host = completionMarkHost;
+        View mark = completionMark;
+        if (host == null || mark == null || !mark.isAttachedToWindow()) return;
+
+        if (Prefs.haptics(this)) {
+            int feedback = Build.VERSION.SDK_INT >= 30
+                    ? HapticFeedbackConstants.CONFIRM : HapticFeedbackConstants.CLOCK_TICK;
+            try { mark.performHapticFeedback(feedback); }
+            catch (Exception ignored) { }
+        }
+        if (!ValueAnimator.areAnimatorsEnabled()) return;
+
+        List<Animator> animations = new ArrayList<>();
+        ObjectAnimator pulse = ObjectAnimator.ofPropertyValuesHolder(mark,
+                PropertyValuesHolder.ofFloat(View.SCALE_X, .94f, 1.08f, 1f),
+                PropertyValuesHolder.ofFloat(View.SCALE_Y, .94f, 1.08f, 1f));
+        pulse.setDuration(680L);
+        pulse.setInterpolator(new PathInterpolator(.2f, 0f, 0f, 1f));
+        animations.add(pulse);
+
+        int dotSize = UiKit.dp(this, 4);
+        int center = UiKit.dp(this, 22) - dotSize / 2;
+        int initialRadius = UiKit.dp(this, 8);
+        int travel = UiKit.dp(this, 10);
+        int accent = UiKit.accent(this);
+        List<View> particles = new ArrayList<>();
+        for (int i = 0; i < 8; i++) {
+            double angle = (Math.PI * 2d * i / 8d) - Math.PI / 2d;
+            View dot = new View(this);
+            GradientDrawable shape = new GradientDrawable();
+            shape.setShape(GradientDrawable.OVAL);
+            shape.setColor(accent);
+            dot.setBackground(shape);
+            dot.setAlpha(0f);
+            dot.setScaleX(.65f);
+            dot.setScaleY(.65f);
+            FrameLayout.LayoutParams dotLp = new FrameLayout.LayoutParams(dotSize, dotSize);
+            dotLp.leftMargin = center + (int) Math.round(Math.cos(angle) * initialRadius);
+            dotLp.topMargin = center + (int) Math.round(Math.sin(angle) * initialRadius);
+            host.addView(dot, 0, dotLp);
+            particles.add(dot);
+
+            PropertyValuesHolder x = PropertyValuesHolder.ofFloat(View.TRANSLATION_X, 0f,
+                    (float) (Math.cos(angle) * travel));
+            PropertyValuesHolder y = PropertyValuesHolder.ofFloat(View.TRANSLATION_Y, 0f,
+                    (float) (Math.sin(angle) * travel));
+            PropertyValuesHolder alpha = PropertyValuesHolder.ofFloat(View.ALPHA, 0f, 1f, 0f);
+            PropertyValuesHolder scaleX = PropertyValuesHolder.ofFloat(
+                    View.SCALE_X, .65f, 1f, .4f);
+            PropertyValuesHolder scaleY = PropertyValuesHolder.ofFloat(
+                    View.SCALE_Y, .65f, 1f, .4f);
+            ObjectAnimator particle = ObjectAnimator.ofPropertyValuesHolder(
+                    dot, x, y, alpha, scaleX, scaleY);
+            particle.setStartDelay(35L + i * 8L);
+            particle.setDuration(620L);
+            particle.setInterpolator(new PathInterpolator(.2f, 0f, 0f, 1f));
+            animations.add(particle);
+        }
+
+        AnimatorSet ignition = new AnimatorSet();
+        ignition.playTogether(animations);
+        ignition.addListener(new AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(Animator animation) {
+                for (View particle : particles) host.removeView(particle);
+                mark.setScaleX(1f);
+                mark.setScaleY(1f);
+            }
+        });
+        ignition.start();
     }
 
     private void addNavigation(LinearLayout page) {
@@ -924,7 +1027,7 @@ public final class OnboardingActivity extends Activity {
                 .setNegativeButton("Keep setting up", null)
                 .setPositiveButton("Skip setup", (d, which) -> completeAndExit())
                 .create();
-        UiKit.styleOrbitDialog(dialog, this, false);
+        UiKit.styleOrbitDialog(dialog, this, true);
         dialog.show();
     }
 

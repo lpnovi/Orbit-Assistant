@@ -662,6 +662,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
                 12, UiKit.MUTED, false);
         note.setPadding(0, UiKit.dp(this, 8), 0, UiKit.dp(this, 8));
         styleCard.addView(note);
+        styleCard.addView(amoledToggle());
 
         TextView fontLabel = label("App font");
         fontLabel.setPadding(UiKit.dp(this, 2), UiKit.dp(this, 14), 0, UiKit.dp(this, 6));
@@ -673,7 +674,6 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         fontNote.setPadding(0, 0, 0, UiKit.dp(this, 8));
         styleCard.addView(fontNote);
 
-        styleCard.addView(amoledToggle());
         styleCard.addView(toggle("Haptic feedback", Prefs.HAPTICS, true));
         TextView hapticNote = UiKit.text(this,
                 "Uses light tactile ticks for Orbit controls and Settings interactions. Turn this off to disable those haptics.",
@@ -1215,7 +1215,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
 
     private CheckBox amoledToggle() {
         CheckBox cb = new CheckBox(this);
-        cb.setText("AMOLED black background");
+        cb.setText("Use true black AMOLED backgrounds");
         cb.setTextColor(UiKit.TEXT);
         cb.setTextSize(14);
         cb.setButtonTintList(UiKit.accentControlTint(this));
