@@ -43,6 +43,8 @@ import java.util.concurrent.Executors;
 /** Full-screen local Orbit chat. */
 public class ChatActivity extends Activity {
     public static final String EXTRA_CONVERSATION_ID = "conversation_id";
+    public static final String EXTRA_FOCUS_COMPOSER = "focus_composer";
+    public static final String EXTRA_INITIAL_DRAFT = "initial_draft";
 
     private String conversationId;
     private final List<AssistantClient.History> history = new ArrayList<>();
@@ -108,6 +110,22 @@ public class ChatActivity extends Activity {
         UiPresence.enter(this);
         reloadConversation();
         attachToPending();
+        applyLauncherComposerIntent();
+    }
+
+    private void applyLauncherComposerIntent() {
+        Intent intent = getIntent();
+        if (intent == null || input == null) return;
+        String draft = intent.getStringExtra(EXTRA_INITIAL_DRAFT);
+        if (draft != null && input.getText().toString().trim().isEmpty()) {
+            input.setText(draft);
+            input.setSelection(input.length());
+        }
+        if (intent.getBooleanExtra(EXTRA_FOCUS_COMPOSER, false)) {
+            input.post(this::showComposerKeyboard);
+        }
+        intent.removeExtra(EXTRA_INITIAL_DRAFT);
+        intent.removeExtra(EXTRA_FOCUS_COMPOSER);
     }
 
     @Override protected void onPause() {

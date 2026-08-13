@@ -142,6 +142,7 @@ public final class UiKit {
 
     public static void notifyAppearanceChanged(Context c) {
         syncTheme(c);
+        OrbitWidgets.updateAll(c);
         List<AppearanceListener> listeners;
         synchronized (APPEARANCE_LISTENERS) {
             listeners = new ArrayList<>(APPEARANCE_LISTENERS.keySet());

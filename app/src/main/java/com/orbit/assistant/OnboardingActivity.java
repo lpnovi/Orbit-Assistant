@@ -406,6 +406,16 @@ public final class OnboardingActivity extends Activity {
                 "You can assign a saved Routine to the Routine Quick Settings tile later from Settings → Assistant setup.");
         page.addView(routine, cardLp());
 
+        TextView widgetNote = UiKit.text(this,
+                "Orbit also supports home-screen widgets. Add them later from your launcher or Orbit Settings.",
+                12, UiKit.MUTED, false);
+        widgetNote.setLineSpacing(0, 1.12f);
+        LinearLayout.LayoutParams widgetNoteLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        widgetNoteLp.setMargins(UiKit.dp(this, 4), UiKit.dp(this, 2), UiKit.dp(this, 4),
+                UiKit.dp(this, 10));
+        page.addView(widgetNote, widgetNoteLp);
+
         LinearLayout side = card();
         side.addView(UiKit.text(this, "Side button and assistant gesture", 16, UiKit.TEXT, true));
         addCardDescription(side, OrbitSetupHelper.isOrbitAssistantActive(this)

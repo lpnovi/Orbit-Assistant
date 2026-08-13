@@ -80,18 +80,17 @@ public final class RoadmapActivity extends Activity {
         page.addView(intro, introLp);
 
         addGroup(page, "NEXT UP", new String[][]{
-                {"Home-screen widgets", "Useful Orbit and Routine actions directly from the launcher."},
-                {"Richer quick access", "More flexible entry points for common assistant and automation flows."},
+                {"Plugins & extensibility", "Safe ways to expand Orbit without weakening predictable behavior."},
                 {"Natural-language Routine creation", "Create editable Routines by describing the outcome in ordinary language."}
         });
         addGroup(page, "PLANNED", new String[][]{
-                {"Plugins & extensibility", "Safe ways to expand Orbit without weakening predictable behavior."},
                 {"Richer automation & branching", "More expressive chained plans, conditions and saved automation."},
                 {"Deeper Android actions", "Broader device controls through supported Android surfaces."},
                 {"Stronger Custom Commands", "More capable personal phrases built on Orbit's existing safety model."},
                 {"Additional AI providers", "More provider choices while preserving explicit account and privacy controls."},
                 {"Conversational Voice improvements", "A more natural, responsive voice experience across chat and overlay."},
-                {"Automation history & timeline", "Clear visibility into what ran, when it ran and what happened."}
+                {"Automation history & timeline", "Clear visibility into what ran, when it ran and what happened."},
+                {"Richer quick access", "More flexible entry points for common assistant and automation flows."}
         });
         addGroup(page, "EXPLORING", new String[][]{
                 {"Proactive screen intelligence", "Helpful context-aware assistance that remains transparent and controllable."},

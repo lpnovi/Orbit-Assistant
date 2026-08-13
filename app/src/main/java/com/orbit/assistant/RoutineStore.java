@@ -110,7 +110,9 @@ public final class RoutineStore {
         if (nameExistsIn(routines, routine.name, routine.id)) return false;
         if (replace >= 0) routines.set(replace, routine);
         else routines.add(routine);
-        return write(c, routines);
+        boolean written = write(c, routines);
+        if (written) OrbitWidgets.updateAll(c);
+        return written;
     }
 
     public static synchronized boolean delete(Context c, String id) {
@@ -131,6 +133,7 @@ public final class RoutineStore {
             Prefs.setQuickSettingsRoutineId(c, "");
             QuickSettingsTiles.refreshRoutineTile(c);
         }
+        if (written) OrbitWidgets.updateAll(c);
         return written;
     }
 
@@ -164,7 +167,9 @@ public final class RoutineStore {
     }
 
     static synchronized boolean restoreBackupJson(Context c, String raw) {
-        return prefs(c).edit().putString(KEY, raw == null ? "[]" : raw).commit();
+        boolean restored = prefs(c).edit().putString(KEY, raw == null ? "[]" : raw).commit();
+        if (restored) OrbitWidgets.updateAll(c);
+        return restored;
     }
 
     public static String sanitizeName(String name) {

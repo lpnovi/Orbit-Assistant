@@ -85,6 +85,20 @@
         <activity android:name=".UpdateActivity" android:exported="false" />
         <activity android:name=".WhatsNewActivity" android:exported="false" />
         <activity android:name=".RoadmapActivity" android:exported="false" />
+        <activity
+            android:name=".OrbitWidgetConfigureActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".OrbitWidgetActionActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:theme="@style/Theme.Orbit.Bridge" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -99,6 +113,30 @@
         <receiver android:name=".RoutineTriggerReceiver" android:exported="false" />
         <receiver android:name=".LocationRoutineTriggerReceiver" android:exported="false" />
         <receiver android:name=".ReminderReceiver" android:exported="false" />
+        <receiver android:name=".AskOrbitWidgetProvider" android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ask_orbit_widget_info" />
+        </receiver>
+        <receiver android:name=".RunRoutineWidgetProvider" android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/run_routine_widget_info" />
+        </receiver>
+        <receiver android:name=".QuickActionsWidgetProvider" android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_actions_widget_info" />
+        </receiver>
         <receiver android:name=".RoutineTriggerRescheduleReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

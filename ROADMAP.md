@@ -226,21 +226,28 @@
 - Move future product direction from Capabilities into a dedicated Roadmap under About & updates
 - Add shared Small, Default, Large, and Extra large chat-content sizing with rich Markdown hierarchy preserved
 
+## 0.6.9 Home-screen widgets
+
+### 0.6.9.0
+- Ship native Ask Orbit, Run Routine, and Quick Actions home-screen widgets
+- Reuse full chat, the saved Routine runner, OrbitActionEngine, reminder creation, and device-action permission paths
+- Add safe per-widget configuration, normal launcher resizing, Accent/AMOLED refresh, and deleted-Routine fallback
+- Keep launcher surfaces limited to explicit safe labels without exposing private Orbit data
+
 ## Future direction
 
 ### Next up
-- Home-screen widgets
-- Richer quick access
+- Plugins and extensibility
 - Natural-language Routine creation
 
 ### Planned
-- Plugins and extensibility
 - Richer automation, chained plans, conditions and branching
 - Deeper Android actions
 - Stronger Custom Commands
 - Additional AI providers
 - Conversational Voice improvements
 - Automation history and timeline
+- Richer quick access
 
 ### Exploring
 - Proactive screen intelligence

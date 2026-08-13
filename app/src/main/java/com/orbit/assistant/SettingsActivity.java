@@ -397,6 +397,40 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         refreshQuickRoutineSelection();
         page.addView(quickCard);
 
+        page.addView(sectionTitle("HOME-SCREEN WIDGETS", "setup"));
+        LinearLayout widgetCard = card();
+        tagSectionCard(widgetCard, "setup");
+        widgetCard.addView(UiKit.text(this, "Orbit widgets", 16, UiKit.TEXT, true));
+        TextView widgetNote = UiKit.text(this,
+                "Add Orbit widgets from your launcher's widget picker, or ask Android to pin one below.",
+                12, UiKit.MUTED, false);
+        widgetNote.setLineSpacing(0, 1.12f);
+        widgetNote.setPadding(0, UiKit.dp(this, 6), 0, UiKit.dp(this, 12));
+        widgetCard.addView(widgetNote);
+
+        Button pinAskWidget = secondaryButton("Add Ask Orbit widget");
+        pinAskWidget.setOnClickListener(v -> OrbitWidgets.requestPin(this,
+                AskOrbitWidgetProvider.class, "Ask Orbit"));
+        widgetCard.addView(pinAskWidget, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44)));
+
+        Button pinRoutineWidget = secondaryButton("Add Run Routine widget");
+        pinRoutineWidget.setOnClickListener(v -> OrbitWidgets.requestPin(this,
+                RunRoutineWidgetProvider.class, "Run Routine"));
+        LinearLayout.LayoutParams pinRoutineWidgetLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44));
+        pinRoutineWidgetLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
+        widgetCard.addView(pinRoutineWidget, pinRoutineWidgetLp);
+
+        Button pinQuickWidget = secondaryButton("Add Quick Actions widget");
+        pinQuickWidget.setOnClickListener(v -> OrbitWidgets.requestPin(this,
+                QuickActionsWidgetProvider.class, "Quick Actions"));
+        LinearLayout.LayoutParams pinQuickWidgetLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44));
+        pinQuickWidgetLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
+        widgetCard.addView(pinQuickWidget, pinQuickWidgetLp);
+        page.addView(widgetCard);
+
         TextView remindersSection = sectionTitle("REMINDERS", "data");
         LinearLayout remindersCard = card();
         tagSectionCard(remindersCard, "data");
