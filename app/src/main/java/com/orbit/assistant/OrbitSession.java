@@ -85,6 +85,11 @@ public class OrbitSession extends VoiceInteractionSession {
     private EditText input;
     private ImageButton mic;
     private OrbitListeningHalo listeningHalo;
+    private GradientDrawable sheetBackground;
+    /** Resting and fully-open conversation heights, captured when a drag begins. */
+    private int stretchBaseHeight;
+    private int stretchMaxHeight;
+    private ValueAnimator stretchSettle;
     private LinearLayout attachmentTray;
     private TextView attachmentTrayLabel;
     private ImageView attachmentTrayPreview;
@@ -291,7 +296,10 @@ public class OrbitSession extends VoiceInteractionSession {
         // Keep the top of the sheet compact: enough breathing room for the drag
         // affordance, without reserving an empty strip above the Orbit header.
         sheet.setPadding(UiKit.dp(c, 18), UiKit.dp(c, 8), UiKit.dp(c, 18), UiKit.dp(c, 18));
-        sheet.setBackground(UiKit.gradientSheet(c));
+        // One drawable for the sheet's whole life. The drag and the commit both mutate its corner
+        // radius rather than building a new gradient, which is what keeps the gesture smooth.
+        sheetBackground = UiKit.gradientSheet(c, OverlayStretch.SHEET_CORNER_DP);
+        sheet.setBackground(sheetBackground);
         sheet.setElevation(UiKit.dp(c, 16));
         sheet.setOnClickListener(v -> {});
 
@@ -2818,18 +2826,28 @@ public class OrbitSession extends VoiceInteractionSession {
                     dragging[0] = false;
                     sheet.animate().cancel();
                     if (scrim != null) scrim.animate().cancel();
+                    captureStretchBounds();
                     return true;
                 case MotionEvent.ACTION_MOVE:
                     float dy = rawY - startY[0];
                     if (Math.abs(dy) > UiKit.dp(getContext(), 6)) dragging[0] = true;
                     if (!dragging[0]) return true;
-                    float translated = dy >= 0
-                            ? dy * 0.78f
-                            : Math.max(dy * 0.42f, -UiKit.dp(getContext(), 92));
-                    sheet.setTranslationY(translated);
-                    if (scrim != null && dy > 0) {
-                        float fade = 1f - Math.min(0.72f, dy / Math.max(1f, sheet.getHeight() * 0.75f));
-                        scrim.setAlpha(Math.max(0.25f, fade));
+                    if (dy < 0f) {
+                        // Pulling open: the conversation gains exactly the height the finger has
+                        // travelled, so the sheet's top edge stays under the fingertip while its
+                        // bottom stays anchored. No translation, so nothing slides off its base.
+                        applyStretch(OverlayStretch.stretchedHeight(
+                                stretchBaseHeight, stretchMaxHeight, dy));
+                        sheet.setTranslationY(0f);
+                    } else {
+                        // Downward is still the existing dismiss drag, and it first undoes any
+                        // stretch so an up-then-down gesture contracts continuously.
+                        applyStretch(stretchBaseHeight);
+                        sheet.setTranslationY(dy * 0.78f);
+                        if (scrim != null) {
+                            float fade = 1f - Math.min(0.72f, dy / Math.max(1f, sheet.getHeight() * 0.75f));
+                            scrim.setAlpha(Math.max(0.25f, fade));
+                        }
                     }
                     return true;
                 case MotionEvent.ACTION_UP:
@@ -2852,6 +2870,49 @@ public class OrbitSession extends VoiceInteractionSession {
         });
     }
 
+    /**
+     * Records how tall the conversation is at rest and how tall it could become, so the drag maps
+     * finger movement onto real geometry. Taken when the touch starts, since the sheet's contents
+     * settle between invocations.
+     */
+    private void captureStretchBounds() {
+        if (sheet == null || messageScroll == null || root == null) return;
+        stretchBaseHeight = messageScroll.getHeight();
+        if (stretchBaseHeight <= 0) {
+            ViewGroup.LayoutParams existing = messageScroll.getLayoutParams();
+            stretchBaseHeight = existing == null ? 0 : Math.max(0, existing.height);
+        }
+        int otherHeight = Math.max(0, sheet.getHeight() - stretchBaseHeight);
+        int margins = 0;
+        ViewGroup.LayoutParams sheetParams = sheet.getLayoutParams();
+        if (sheetParams instanceof FrameLayout.LayoutParams) {
+            FrameLayout.LayoutParams fp = (FrameLayout.LayoutParams) sheetParams;
+            margins = fp.topMargin + fp.bottomMargin;
+        }
+        stretchMaxHeight = OverlayStretch.maxConversationHeight(
+                root.getHeight(), otherHeight, margins, stretchBaseHeight);
+    }
+
+    /**
+     * Applies one live drag frame: the conversation's height, and the corner rounding easing
+     * toward the squared geometry of the full chat. Mutates existing layout state and the existing
+     * drawable, so a continuous gesture allocates nothing.
+     */
+    private void applyStretch(int conversationHeight) {
+        if (messageScroll == null) return;
+        ViewGroup.LayoutParams lp = messageScroll.getLayoutParams();
+        if (lp == null || lp.height == conversationHeight) return;
+        lp.height = conversationHeight;
+        messageScroll.requestLayout();
+        if (sheetBackground != null) {
+            float progress = OverlayStretch.progress(
+                    stretchBaseHeight, stretchMaxHeight, conversationHeight);
+            sheetBackground.setCornerRadius(
+                    UiKit.dp(getContext(), OverlayStretch.cornerRadiusDp(progress)));
+        }
+    }
+
+    /** Returns the sheet from wherever the finger left it, without snapping through a middle state. */
     private void settleHandleGesture() {
         if (sheet == null) return;
         sheet.animate().cancel();
@@ -2861,11 +2922,30 @@ public class OrbitSession extends VoiceInteractionSession {
                 .setDuration(190)
                 .setInterpolator(new PathInterpolator(0.20f, 0.00f, 0.00f, 1.00f))
                 .start();
+        settleStretch();
         if (scrim != null) {
             scrim.animate().cancel();
             scrim.animate().alpha(1f).setDuration(160)
                     .setInterpolator(new DecelerateInterpolator()).start();
         }
+    }
+
+    /** Eases the conversation back to its resting height from the exact height it was released at. */
+    private void settleStretch() {
+        if (messageScroll == null || stretchBaseHeight <= 0) return;
+        ViewGroup.LayoutParams lp = messageScroll.getLayoutParams();
+        if (lp == null || lp.height == stretchBaseHeight) return;
+        final int from = lp.height;
+        if (!UiKit.animationsEnabled()) {
+            applyStretch(stretchBaseHeight);
+            return;
+        }
+        if (stretchSettle != null) stretchSettle.cancel();
+        stretchSettle = ValueAnimator.ofInt(from, stretchBaseHeight);
+        stretchSettle.setDuration(190);
+        stretchSettle.setInterpolator(new PathInterpolator(0.20f, 0.00f, 0.00f, 1.00f));
+        stretchSettle.addUpdateListener(a -> applyStretch((int) a.getAnimatedValue()));
+        stretchSettle.start();
     }
 
     private void openCurrentChatAnimated() {
@@ -2876,6 +2956,7 @@ public class OrbitSession extends VoiceInteractionSession {
         stopListening();
         stopSpeaking();
         sheet.animate().cancel();
+        if (stretchSettle != null) stretchSettle.cancel();
         if (scrim != null) scrim.animate().cancel();
 
         final Context c = getContext();
@@ -2887,15 +2968,21 @@ public class OrbitSession extends VoiceInteractionSession {
         final int startBottom = lp.bottomMargin;
         final float startTranslation = sheet.getTranslationY();
 
-        // One drawable, mutated per frame. Rebuilding the gradient on every update allocated a new
-        // drawable ~14 times during the expansion and forced a full background rebuild each time,
-        // which is what made the commit stutter instead of continuing smoothly from the drag.
-        final GradientDrawable sheetBackground = UiKit.gradientSheet(c, 30f);
-        sheet.setBackground(sheetBackground);
-        final float startRadius = UiKit.dp(c, 30);
+        // Continue the conversation's growth from exactly where the finger left it, rather than
+        // restarting the expansion from the compact size.
+        final ViewGroup.LayoutParams scrollLp =
+                messageScroll == null ? null : messageScroll.getLayoutParams();
+        final int startScroll = scrollLp == null ? 0 : scrollLp.height;
+        final int targetScroll = Math.max(startScroll, stretchMaxHeight);
+        // The sheet's own drawable is reused, so the commit adds no allocation either.
+        final float startRadius = sheetBackground == null
+                ? UiKit.dp(c, OverlayStretch.SHEET_CORNER_DP)
+                : sheetBackground.getCornerRadius();
 
         ValueAnimator expand = ValueAnimator.ofFloat(0f, 1f);
-        expand.setDuration(235);
+        // Completion may collapse to immediate with system animations off; the handoff itself
+        // still runs to the end, so nothing depends on the animation playing.
+        expand.setDuration(UiKit.animationsEnabled() ? 235 : 0);
         expand.setInterpolator(new PathInterpolator(0.18f, 0.00f, 0.00f, 1.00f));
         expand.addUpdateListener(animation -> {
             if (sheet == null) return;
@@ -2906,7 +2993,11 @@ public class OrbitSession extends VoiceInteractionSession {
             lp.bottomMargin = Math.round(startBottom * (1f - eased));
             sheet.setLayoutParams(lp);
             sheet.setTranslationY(startTranslation * (1f - eased));
-            sheetBackground.setCornerRadius(startRadius * (1f - eased));
+            if (scrollLp != null && targetScroll > startScroll) {
+                scrollLp.height = Math.round(startScroll + (targetScroll - startScroll) * eased);
+                messageScroll.requestLayout();
+            }
+            if (sheetBackground != null) sheetBackground.setCornerRadius(startRadius * (1f - eased));
         });
         expand.addListener(new android.animation.AnimatorListenerAdapter() {
             @Override public void onAnimationEnd(android.animation.Animator animation) {
