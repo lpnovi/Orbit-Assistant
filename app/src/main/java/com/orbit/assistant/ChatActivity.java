@@ -57,6 +57,10 @@ public class ChatActivity extends Activity {
     private VoiceInputController voiceController;
     private Button modeChip;
     private LinearLayout thinkingRow;
+    private OrbitThinkingView thinkingView;
+    private boolean followBottom = true;
+    /** Set when the next render adds content the user just caused, so only that bubble animates. */
+    private boolean animateNewestOnRender;
     private TextView streamingBubble;
     private String currentMode;
 
@@ -170,6 +174,9 @@ public class ChatActivity extends Activity {
 
         scroll = new ScrollView(this);
         scroll.setFillViewport(true);
+        // Follow new content only while the user is already reading the latest messages. Once they
+        // scroll up to read back, streaming updates and refreshes stop yanking them to the bottom.
+        scroll.setOnScrollChangeListener((v, x, y, oldX, oldY) -> followBottom = nearBottom());
         messages = new LinearLayout(this);
         messages.setOrientation(LinearLayout.VERTICAL);
         messages.setPadding(0, UiKit.dp(this, 16), 0, UiKit.dp(this, 18));
@@ -279,8 +286,12 @@ public class ChatActivity extends Activity {
     }
 
     private void render() {
+        boolean animateNewest = animateNewestOnRender;
+        animateNewestOnRender = false;
+        // removeAllViews detaches any running indicator, which stops its frames.
         messages.removeAllViews();
         thinkingRow = null;
+        thinkingView = null;
         streamingBubble = null;
         if (history.isEmpty()) {
             TextView welcome = UiKit.text(this, "What can I help with?",
@@ -290,10 +301,15 @@ public class ChatActivity extends Activity {
             messages.addView(welcome, bubbleLp(Gravity.START, UiKit.dp(this, 240)));
         } else {
             for (int i = 0; i < history.size(); i++) addHistoryBubble(history.get(i), i);
+            // Only the message that just arrived animates in; reopening a chat never replays
+            // motion for the whole conversation.
+            if (animateNewest && messages.getChildCount() > 0) {
+                UiKit.enterContent(messages.getChildAt(messages.getChildCount() - 1));
+            }
         }
         if (PendingRequestStore.hasActiveForConversation(this, conversationId)) addThinkingRow();
         else addFailureStateIfNeeded();
-        scrollBottom();
+        scrollBottomIfFollowing();
     }
 
     private void addHistoryBubble(AssistantClient.History h, int index) {
@@ -595,6 +611,7 @@ public class ChatActivity extends Activity {
         String requestContext = hasAttachment ? attached.contextText : "";
         Bitmap requestImage = hasAttachment ? attached.image : null;
         clearPendingAttachment();
+        animateNewestOnRender = true;
         render();
 
         OrbitRequestManager.Listener listener = createRequestListener(voiceRequest);
@@ -639,14 +656,18 @@ public class ChatActivity extends Activity {
                         streamingBubble.setPadding(UiKit.dp(ChatActivity.this, 15), UiKit.dp(ChatActivity.this, 12), UiKit.dp(ChatActivity.this, 15), UiKit.dp(ChatActivity.this, 12));
                         streamingBubble.setBackground(UiKit.rounded(fill, 18, ChatActivity.this));
                         messages.addView(streamingBubble, bubbleLp(Gravity.START, UiKit.dp(ChatActivity.this, 310)));
+                        // First content of the answer arrives as the orbital state resolves.
+                        UiKit.enterContent(streamingBubble);
                     }
                     streamingBubble.setText(delta == null ? "" : delta.replace("—", "-"));
-                    scrollBottom();
+                    scrollBottomIfFollowing();
                 });
             }
             @Override public void onSuccess(String requestId, AssistantReply reply) {
                 runOnUiThread(() -> {
                     listeners.remove(requestId);
+                    // The answer settles in as the thinking state resolves, rather than popping.
+                    animateNewestOnRender = true;
                     reloadConversation();
                     executeActions(reply.actions);
                     if (voiceRequest && Prefs.speak(ChatActivity.this) &&
@@ -830,20 +851,50 @@ public class ChatActivity extends Activity {
         if (thinkingRow != null && thinkingRow.getParent() != null) return;
         thinkingRow = new LinearLayout(this);
         thinkingRow.setGravity(Gravity.CENTER_VERTICAL);
-        thinkingRow.setPadding(UiKit.dp(this, 14), UiKit.dp(this, 11), UiKit.dp(this, 14), UiKit.dp(this, 11));
+        thinkingRow.setPadding(UiKit.dp(this, 13), UiKit.dp(this, 10), UiKit.dp(this, 15), UiKit.dp(this, 10));
         int thinkingFill = UiKit.assistantBubbleFill(this, UiKit.SURFACE);
         thinkingRow.setBackground(UiKit.rounded(thinkingFill, 18, this));
-        TextView dots = UiKit.text(this, "●  ●  ●", 12, UiKit.onBubble(thinkingFill), true);
-        thinkingRow.addView(dots);
-        messages.addView(thinkingRow, bubbleLp(Gravity.START, UiKit.dp(this, 110)));
+        thinkingRow.setContentDescription("Orbit is thinking");
+
+        thinkingView = new OrbitThinkingView(this);
+        thinkingRow.addView(thinkingView, new LinearLayout.LayoutParams(
+                UiKit.dp(this, 30), UiKit.dp(this, 30)));
+        thinkingView.start();
+
+        messages.addView(thinkingRow, bubbleLp(Gravity.START, UiKit.dp(this, 78)));
+        UiKit.enterContent(thinkingRow);
     }
 
 
+    /**
+     * Resolves the thinking state into the answer. The particles collapse and the row fades while
+     * the response is added in the same moment, so the two read as one transition and nothing
+     * waits on the animation.
+     */
     private void removeThinkingRow() {
-        if (thinkingRow != null && thinkingRow.getParent() == messages) {
-            try { messages.removeView(thinkingRow); } catch (Exception ignored) {}
-        }
+        final LinearLayout row = thinkingRow;
+        final OrbitThinkingView view = thinkingView;
         thinkingRow = null;
+        thinkingView = null;
+        if (row == null) return;
+        if (view != null) view.settle();
+        if (!UiKit.animationsEnabled()) {
+            detachThinkingRow(row, view);
+            return;
+        }
+        row.animate().cancel();
+        row.animate().alpha(0f).scaleX(0.9f).scaleY(0.9f)
+                .setDuration(UiKit.MOTION_STANDARD)
+                .setInterpolator(UiKit.motionEasing())
+                .withEndAction(() -> detachThinkingRow(row, view))
+                .start();
+    }
+
+    private void detachThinkingRow(LinearLayout row, OrbitThinkingView view) {
+        if (view != null) view.stop();
+        if (row != null && row.getParent() == messages) {
+            try { messages.removeView(row); } catch (Exception ignored) {}
+        }
     }
 
     private void restoreComposerInteraction() {
@@ -1446,7 +1497,22 @@ public class ChatActivity extends Activity {
     }
 
     private void scrollBottom() {
+        followBottom = true;
         if (scroll != null) scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
+    }
+
+    /** True when the latest messages are already on screen, within a small tolerance. */
+    private boolean nearBottom() {
+        if (scroll == null || scroll.getChildCount() == 0) return true;
+        int content = scroll.getChildAt(0).getHeight();
+        int viewport = scroll.getHeight();
+        if (content <= viewport) return true;
+        return content - (scroll.getScrollY() + viewport) <= UiKit.dp(this, 96);
+    }
+
+    /** Keeps up with new content without pulling the user away from older messages they opened. */
+    private void scrollBottomIfFollowing() {
+        if (followBottom) scrollBottom();
     }
     @Override protected void onDestroy() {
         attachmentExecutor.shutdownNow();

@@ -32,6 +32,8 @@ import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.animation.OvershootInterpolator;
 import android.view.animation.AccelerateInterpolator;
+import android.view.animation.DecelerateInterpolator;
+import android.view.animation.Interpolator;
 import android.widget.TextView;
 import android.widget.Button;
 import android.widget.CompoundButton;
@@ -1061,6 +1063,58 @@ public final class UiKit {
     public static boolean animationsEnabled() {
         try { return android.animation.ValueAnimator.areAnimatorsEnabled(); }
         catch (Exception ignored) { return true; }
+    }
+
+    // Orbit's shared motion timings. Keep new UI on these rather than inventing durations, so the
+    // whole app accelerates and settles at the same rate.
+    /** Immediate feedback: press states, small swaps. */
+    public static final long MOTION_FAST = 120L;
+    /** Standard transition: reordering, state changes. */
+    public static final long MOTION_STANDARD = 190L;
+    /** Content arriving on screen. */
+    public static final long MOTION_ENTER = 240L;
+
+    /** Orbit's standard easing for content that arrives and settles. */
+    public static Interpolator motionEasing() {
+        return new DecelerateInterpolator(1.6f);
+    }
+
+    /**
+     * Subtle arrival for newly added content: a short fade with a small upward settle. Applies
+     * only to the view given, so existing content is never re-animated, and becomes a no-op when
+     * the system has animations turned off.
+     */
+    public static void enterContent(View v) {
+        if (v == null) return;
+        if (!animationsEnabled()) {
+            v.setAlpha(1f);
+            v.setTranslationY(0f);
+            return;
+        }
+        v.setAlpha(0f);
+        v.setTranslationY(dp(v.getContext(), 6));
+        v.animate().cancel();
+        v.animate().alpha(1f).translationY(0f)
+                .setDuration(MOTION_ENTER)
+                .setInterpolator(motionEasing())
+                .start();
+    }
+
+    /** Cross-fades a status label so state changes read as a transition rather than a flicker. */
+    public static void swapText(TextView label, String text) {
+        if (label == null) return;
+        String next = text == null ? "" : text;
+        if (next.contentEquals(label.getText()) ) return;
+        if (!animationsEnabled()) {
+            label.setText(next);
+            return;
+        }
+        label.animate().cancel();
+        label.animate().alpha(0f).setDuration(MOTION_FAST / 2).withEndAction(() -> {
+            label.setText(next);
+            label.animate().alpha(1f).setDuration(MOTION_FAST / 2)
+                    .setInterpolator(motionEasing()).start();
+        }).start();
     }
 
     /**

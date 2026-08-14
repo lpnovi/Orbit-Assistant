@@ -92,7 +92,7 @@ public class OrbitSession extends VoiceInteractionSession {
     private Button screenButton;
     private Button selectScreenButton;
     private LinearLayout thinkingIndicator;
-    private final List<ObjectAnimator> thinkingAnimators = new ArrayList<>();
+    private OrbitThinkingView thinkingOrbital;
 
     private String screenText = "";
     private String foregroundPackage = "";
@@ -1494,7 +1494,13 @@ public class OrbitSession extends VoiceInteractionSession {
     }
 
     private void showThinkingIndicator() {
-        stopThinkingIndicator();
+        // Remove any previous indicator outright rather than fading it, so one request can never
+        // leave two orbital indicators on screen at once.
+        if (thinkingIndicator != null) {
+            detachThinkingIndicator(thinkingIndicator, thinkingOrbital);
+            thinkingIndicator = null;
+            thinkingOrbital = null;
+        }
         if (messages == null) return;
         Context c = getContext();
         thinkingIndicator = new LinearLayout(c);
@@ -1503,40 +1509,47 @@ public class OrbitSession extends VoiceInteractionSession {
         thinkingIndicator.setPadding(UiKit.dp(c, 14), UiKit.dp(c, 11), UiKit.dp(c, 14), UiKit.dp(c, 11));
         int thinkingFill = UiKit.assistantBubbleFill(c, UiKit.SURFACE);
         thinkingIndicator.setBackground(UiKit.rounded(thinkingFill, 18, c));
+        thinkingIndicator.setContentDescription("Orbit is thinking");
 
-        for (int i = 0; i < 3; i++) {
-            View dot = new View(c);
-            dot.setBackground(UiKit.rounded(UiKit.onBubble(thinkingFill), 99, c));
-            LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(UiKit.dp(c, 7), UiKit.dp(c, 7));
-            if (i > 0) dotLp.setMargins(UiKit.dp(c, 6), 0, 0, 0);
-            thinkingIndicator.addView(dot, dotLp);
+        // Same Orbit thinking identity as full chat, sized for the overlay sheet.
+        thinkingOrbital = new OrbitThinkingView(c);
+        thinkingIndicator.addView(thinkingOrbital, new LinearLayout.LayoutParams(
+                UiKit.dp(c, 26), UiKit.dp(c, 26)));
+        thinkingOrbital.start();
 
-            ObjectAnimator bounce = ObjectAnimator.ofFloat(dot, View.TRANSLATION_Y,
-                    0f, -UiKit.dp(c, 4), 0f);
-            bounce.setDuration(720);
-            bounce.setStartDelay(i * 120L);
-            bounce.setRepeatCount(ValueAnimator.INFINITE);
-            bounce.setRepeatMode(ValueAnimator.RESTART);
-            bounce.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
-            bounce.start();
-            thinkingAnimators.add(bounce);
-        }
-
-        messages.addView(thinkingIndicator, bubbleLp(Gravity.START, UiKit.dp(c, 90)));
-        thinkingIndicator.setAlpha(0f);
-        thinkingIndicator.animate().alpha(1f).setDuration(120).start();
+        messages.addView(thinkingIndicator, bubbleLp(Gravity.START, UiKit.dp(c, 72)));
+        UiKit.enterContent(thinkingIndicator);
         scrollBottom();
     }
 
+    /**
+     * Resolves the thinking state into the answer: the particles collapse inward and the row
+     * fades while the response is placed in the same moment, so nothing waits on the animation.
+     */
     private void stopThinkingIndicator() {
-        for (ObjectAnimator animator : thinkingAnimators) {
-            try { animator.cancel(); } catch (Exception ignored) {}
-        }
-        thinkingAnimators.clear();
-        if (thinkingIndicator != null && messages != null) {
-            try { messages.removeView(thinkingIndicator); } catch (Exception ignored) {}
-        }
+        final LinearLayout row = thinkingIndicator;
+        final OrbitThinkingView orbital = thinkingOrbital;
         thinkingIndicator = null;
+        thinkingOrbital = null;
+        if (row == null) return;
+        if (orbital != null) orbital.settle();
+        if (!UiKit.animationsEnabled()) {
+            detachThinkingIndicator(row, orbital);
+            return;
+        }
+        row.animate().cancel();
+        row.animate().alpha(0f).scaleX(0.9f).scaleY(0.9f)
+                .setDuration(UiKit.MOTION_STANDARD)
+                .setInterpolator(UiKit.motionEasing())
+                .withEndAction(() -> detachThinkingIndicator(row, orbital))
+                .start();
+    }
+
+    private void detachThinkingIndicator(LinearLayout row, OrbitThinkingView orbital) {
+        if (orbital != null) orbital.stop();
+        if (row != null && messages != null) {
+            try { messages.removeView(row); } catch (Exception ignored) {}
+        }
     }
 
     private void updateStreamingBubble(String text) {
@@ -1544,6 +1557,8 @@ public class OrbitSession extends VoiceInteractionSession {
         if (streamingBubble == null) {
             streamingBubble = makeBubbleText("", false, false);
             messages.addView(streamingBubble, bubbleLp(Gravity.START, UiKit.dp(getContext(), 330)));
+            // First content of the answer arrives as the orbital state resolves.
+            UiKit.enterContent(streamingBubble);
         }
         streamingBubble.setText(text + " ▍");
         scrollBottom();
@@ -2718,7 +2733,8 @@ public class OrbitSession extends VoiceInteractionSession {
 
     private void stateTextSafe(String s) {
         main.post(() -> {
-            if (stateText != null) stateText.setText(s);
+            // Cross-faded so Listening → Thinking → Ready reads as a transition, not a flicker.
+            if (stateText != null) UiKit.swapText(stateText, s);
         });
     }
 
