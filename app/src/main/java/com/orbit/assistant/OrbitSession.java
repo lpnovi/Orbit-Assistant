@@ -834,6 +834,11 @@ public class OrbitSession extends VoiceInteractionSession {
         freshExternalShowAtElapsedMs = internalResume
                 ? 0L : SystemClock.elapsedRealtime();
         sessionVisible = true;
+        // A picker flow that never reported back would otherwise leave this set for the life of
+        // the session, and every later + would answer with "Attachment picker is opening" instead
+        // of a chooser. Being visible again with no callback outstanding means nothing is in
+        // flight, so the guard is cleared.
+        if (attachmentOpening && attachmentCallbackToken.isEmpty()) attachmentOpening = false;
         UiPresence.enter(this);
         // Conversation selection/reset is intentionally done in onPrepareShow(),
         // before the sheet is rendered. onShow() only exposes/animates that state.
@@ -1217,9 +1222,9 @@ public class OrbitSession extends VoiceInteractionSession {
             return;
         }
         String[] labels = {"Camera", "Gallery", "File", "Screen", "Clipboard"};
-        // Opened from the composer. Hiding the keyboard here would also reshape the whole sheet,
-        // so the menu keeps the overlay at exactly its current keyboard-constrained geometry.
-        UiKit.showOrbitMenuOverKeyboard(getContext(), anchor, labels, -1, (index, label) -> {
+        // Drawn inside the session's own root. A popup window would take focus from the composer,
+        // which hides the keyboard and therefore reshapes the whole sheet; this cannot.
+        OrbitAttachmentMenu.show(root, anchor, labels, (index, label) -> {
             if (index == 0) openAttachmentPicker(AttachmentPickerActivity.KIND_CAMERA);
             else if (index == 1) openAttachmentPicker(AttachmentPickerActivity.KIND_GALLERY);
             else if (index == 2) openAttachmentPicker(AttachmentPickerActivity.KIND_FILE);
@@ -1230,7 +1235,7 @@ public class OrbitSession extends VoiceInteractionSession {
 
     private void showScreenAttachmentMenu(View anchor) {
         String[] options = {"Use full screen", "Select or mark area"};
-        UiKit.showOrbitMenuOverKeyboard(getContext(), anchor, options, -1, (index, label) -> {
+        OrbitAttachmentMenu.show(root, anchor, options, (index, label) -> {
             if (index == 0) {
                 clearGenericAttachment();
                 if (!screenAttached) toggleScreenAttachment();
@@ -3158,6 +3163,8 @@ public class OrbitSession extends VoiceInteractionSession {
 
     @Override
     public void onBackPressed() {
+        // Back closes the attachment chooser first, leaving the sheet and keyboard untouched.
+        if (OrbitAttachmentMenu.dismiss(root)) return;
         dismissAnimated();
     }
 

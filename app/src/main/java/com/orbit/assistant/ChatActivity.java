@@ -161,6 +161,12 @@ public class ChatActivity extends Activity {
         intent.removeExtra(EXTRA_FOCUS_COMPOSER);
     }
 
+    @Override public void onBackPressed() {
+        // Back closes the chooser first, leaving the draft and keyboard as they were.
+        if (OrbitAttachmentMenu.dismiss(menuHost())) return;
+        super.onBackPressed();
+    }
+
     @Override protected void onPause() {
         UiPresence.leave(this);
         detachListeners();
@@ -1031,8 +1037,9 @@ public class ChatActivity extends Activity {
 
     private void showAttachmentMenu(View anchor) {
         String[] labels = {"Camera", "Gallery", "File", "Screen", "Clipboard"};
-        // Opened from the composer, so it must not disturb a keyboard the user is typing on.
-        UiKit.showOrbitMenuOverKeyboard(this, anchor, labels, -1, (index, label) -> {
+        // Drawn inside this Activity's own content frame, so the composer keeps input focus and
+        // the keyboard is left exactly as the user had it.
+        OrbitAttachmentMenu.show(menuHost(), anchor, labels, (index, label) -> {
             if (index == 0) openCamera();
             else if (index == 1) openGallery();
             else if (index == 2) openFile();
@@ -1041,9 +1048,14 @@ public class ChatActivity extends Activity {
         });
     }
 
+    /** The frame the attachment chooser draws into, so it never needs a window of its own. */
+    private ViewGroup menuHost() {
+        return findViewById(android.R.id.content);
+    }
+
     private void showScreenAttachmentMenu(View anchor) {
         String[] options = {"Use full screen", "Select or mark area"};
-        UiKit.showOrbitMenuOverKeyboard(this, anchor, options, -1, (index, label) -> {
+        OrbitAttachmentMenu.show(menuHost(), anchor, options, (index, label) -> {
             if (index == 0) attachCurrentScreen();
             else openScreenSelection();
         });
