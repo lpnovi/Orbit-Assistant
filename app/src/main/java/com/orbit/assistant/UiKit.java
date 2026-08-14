@@ -122,6 +122,20 @@ public final class UiKit {
                 "|assistantBubble=" + Prefs.assistantBubbleColor(c);
     }
 
+    /**
+     * The part of the appearance that is baked into views when they are built.
+     *
+     * <p>Accent and AMOLED both change {@code UiKit}'s shared colour constants and the drawables
+     * created from them, so a surface has to rebuild to pick them up. App font and conversation
+     * bubble colours are deliberately excluded: the font can be re-applied to the views already on
+     * screen, and bubble colours do not appear in Settings at all. Keeping them out of this
+     * signature is what stops routine appearance changes from replacing the whole screen.
+     */
+    public static String structuralAppearanceSignature(Context c) {
+        if (c == null) return "";
+        return "resolved=" + Integer.toHexString(accent(c)) + "|amoled=" + Prefs.amoledMode(c);
+    }
+
     /** Shared appearance/provider presentation catalogs used by Settings and onboarding. */
     public static String[] accentKeys() { return ACCENT_KEYS.clone(); }
     public static String[] accentLabels() { return ACCENT_LABELS.clone(); }

@@ -10,6 +10,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -18,6 +19,7 @@ import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -64,6 +66,8 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     private LinearLayout providerDetails;
     private ScrollView settingsScroll;
     private String appliedAppearance = "";
+    /** Accent/AMOLED only — the appearance that forces a rebuild. */
+    private String appliedStructuralAppearance = "";
     private boolean rebuildingAppearance;
     private int leloTapCount = 0;
     private long lastLeloTapMs = 0L;
@@ -95,10 +99,14 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         Window w = getWindow();
         w.setStatusBarColor(UiKit.BG);
         w.setNavigationBarColor(UiKit.BG);
+        // Paint the window itself in Orbit's surface colour. If a rebuild ever exposes the window
+        // for a frame it shows Orbit's background rather than the default decor or a black frame.
+        w.setBackgroundDrawable(new ColorDrawable(UiKit.BG));
         View content = buildContent();
         setContentView(content);
         UiKit.applyActivityInsets(this, content, true);
         appliedAppearance = UiKit.appearanceSignature(this);
+        appliedStructuralAppearance = UiKit.structuralAppearanceSignature(this);
     }
 
     @Override
@@ -117,7 +125,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     protected void onResume() {
         super.onResume();
         UiPresence.enter(this);
-        if (!refreshAppearanceIfNeeded()) applyFontInPlace();
+        applyAppearanceChange();
         updateAssistantStatus();
         refreshQuickRoutineSelection();
         updateChatGptStatus();
@@ -1480,32 +1488,72 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
 
     @Override
     public void onOrbitAppearanceChanged() {
-        refreshAppearanceIfNeeded();
+        applyAppearanceChange();
     }
 
-    private boolean refreshAppearanceIfNeeded() {
+    /**
+     * Applies an appearance change to the screen already on display.
+     *
+     * <p>Only accent and AMOLED are baked into built views, so only those rebuild. App font is
+     * re-applied to the existing hierarchy, and conversation bubble colours change nothing that
+     * Settings draws — their selectors already update their own labels. Replacing the content view
+     * for those was what briefly emptied the content frame and flashed the window through.
+     */
+    private void applyAppearanceChange() {
+        if (rebuildingAppearance) return;
+        if (refreshAppearanceIfNeeded()) return;
         String desired = UiKit.appearanceSignature(this);
-        if (rebuildingAppearance || desired.equals(appliedAppearance)) return false;
+        if (desired.equals(appliedAppearance)) return;
+        // Font or bubble colours changed: update in place, no rebuild and no flash.
+        UiKit.syncTheme(this);
+        applyFontInPlace();
+        appliedAppearance = desired;
+    }
+
+    /** Rebuilds only for appearance the built views cannot pick up any other way. */
+    private boolean refreshAppearanceIfNeeded() {
+        String desiredStructural = UiKit.structuralAppearanceSignature(this);
+        if (rebuildingAppearance || desiredStructural.equals(appliedStructuralAppearance)) return false;
         rebuildingAppearance = true;
-        int oldScrollY = settingsScroll == null ? 0 : settingsScroll.getScrollY();
+        final int oldScrollY = settingsScroll == null ? 0 : settingsScroll.getScrollY();
         try {
             UiKit.syncTheme(this);
-            View content = buildContent();
-            setContentView(content);
-            UiKit.applyActivityInsets(this, content, true);
-            appliedAppearance = desired;
             Window window = getWindow();
             window.setStatusBarColor(UiKit.BG);
             window.setNavigationBarColor(UiKit.BG);
+            window.setBackgroundDrawable(new ColorDrawable(UiKit.BG));
+            View content = buildContent();
+            setContentView(content);
+            UiKit.applyActivityInsets(this, content, true);
+            appliedAppearance = UiKit.appearanceSignature(this);
+            appliedStructuralAppearance = desiredStructural;
             updateAssistantStatus();
             updateChatGptStatus();
-            if (settingsScroll != null) {
-                settingsScroll.post(() -> settingsScroll.scrollTo(0, oldScrollY));
-            }
+            restoreScrollBeforeFirstDraw(oldScrollY);
             return true;
         } finally {
             rebuildingAppearance = false;
         }
+    }
+
+    /**
+     * Puts the rebuilt page back at its previous offset before it is ever drawn, so the new
+     * hierarchy never appears at the top and then jumps.
+     */
+    private void restoreScrollBeforeFirstDraw(int scrollY) {
+        final ScrollView target = settingsScroll;
+        if (target == null || scrollY <= 0) return;
+        target.getViewTreeObserver().addOnPreDrawListener(
+                new ViewTreeObserver.OnPreDrawListener() {
+                    @Override public boolean onPreDraw() {
+                        ViewTreeObserver observer = target.getViewTreeObserver();
+                        if (observer.isAlive()) observer.removeOnPreDrawListener(this);
+                        int maximum = Math.max(0, (target.getChildCount() == 0 ? 0
+                                : target.getChildAt(0).getHeight()) - target.getHeight());
+                        target.scrollTo(0, Math.min(scrollY, maximum));
+                        return true;
+                    }
+                });
     }
 
     private EditText field(String hint, String value, boolean secret) {
