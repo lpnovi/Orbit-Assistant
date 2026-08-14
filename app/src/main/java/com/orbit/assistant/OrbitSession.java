@@ -1266,6 +1266,10 @@ public class OrbitSession extends VoiceInteractionSession {
         Intent intent = new Intent(getContext(), AttachmentPickerActivity.class)
                 .putExtra(AttachmentPickerActivity.EXTRA_TOKEN, token)
                 .putExtra(AttachmentPickerActivity.EXTRA_KIND, pickerKind)
+                // Resolved here, from the same preference the full chat reads, so the overlay and
+                // the chat always open the same picker.
+                .putExtra(AttachmentPickerActivity.EXTRA_GALLERY_PACKAGE,
+                        GalleryAppPreference.preferredPackage(getContext()))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
             startAssistantActivity(intent);

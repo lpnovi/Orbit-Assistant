@@ -1066,7 +1066,7 @@ public class ChatActivity extends Activity {
         try {
             startActivityForResult(intent, REQ_GALLERY);
         } catch (Exception first) {
-            GalleryAppPreference.clear(this);
+            // A launch failure is not evidence the chosen app is gone, so the preference stays.
             try {
                 startActivityForResult(GalleryAppPreference.systemPickerIntent(), REQ_GALLERY);
                 Toast.makeText(this, "Preferred gallery unavailable; using System picker",

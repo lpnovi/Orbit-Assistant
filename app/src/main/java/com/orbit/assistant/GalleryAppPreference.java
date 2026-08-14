@@ -43,12 +43,34 @@ public final class GalleryAppPreference {
         return result;
     }
 
+    /**
+     * The picker Orbit should open, or {@link #SYSTEM_PACKAGE} when the choice is the system
+     * picker or the chosen app cannot currently be resolved.
+     *
+     * <p>Reading the preference never rewrites it. It used to clear the stored choice whenever
+     * resolution came back empty, which meant a single failed lookup permanently erased the user's
+     * selection for every surface. A chosen app that is temporarily unresolvable simply falls back
+     * for that one launch and is used again as soon as it resolves.
+     */
     public static String preferredPackage(Context context) {
-        String stored = Prefs.get(context).getString(Prefs.GALLERY_APP_PACKAGE, "").trim();
+        String stored = storedPackage(context);
         if (stored.isEmpty()) return SYSTEM_PACKAGE;
-        if (preferredIntent(context, stored) != null) return stored;
-        clear(context);
-        return SYSTEM_PACKAGE;
+        return preferredIntent(context, stored) != null ? stored : SYSTEM_PACKAGE;
+    }
+
+    /** The raw stored choice, whether or not it currently resolves. */
+    public static String storedPackage(Context context) {
+        if (context == null) return SYSTEM_PACKAGE;
+        return Prefs.get(context).getString(Prefs.GALLERY_APP_PACKAGE, "").trim();
+    }
+
+    /**
+     * Intent for one specific picker package, or null when that package cannot be resolved.
+     * Lets a caller launch exactly the target another surface already resolved.
+     */
+    public static Intent intentForPackage(Context context, String packageName) {
+        if (packageName == null || packageName.trim().isEmpty()) return null;
+        return preferredIntent(context, packageName.trim());
     }
 
     public static void setPreferredPackage(Context context, String packageName) {
