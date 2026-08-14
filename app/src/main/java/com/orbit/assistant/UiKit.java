@@ -512,7 +512,8 @@ public final class UiKit {
         }
     }
 
-    private static double contrastRatio(int foreground, int background) {
+    /** WCAG-style contrast ratio between two opaque colors, 1.0 when identical. */
+    public static double contrastRatio(int foreground, int background) {
         double lighter = Math.max(relativeLuminance(foreground), relativeLuminance(background));
         double darker = Math.min(relativeLuminance(foreground), relativeLuminance(background));
         return (lighter + 0.05d) / (darker + 0.05d);
@@ -799,7 +800,20 @@ public final class UiKit {
      */
     public static void showOrbitMenu(Context c, View anchor, String[] labels,
                                      int selectedIndex, OrbitMenuChoice choice) {
-        showOrbitMenuInternal(c, anchor, labels, null, selectedIndex, -1, choice);
+        showOrbitMenuInternal(c, anchor, labels, null, selectedIndex, -1, choice, false);
+    }
+
+    /**
+     * Menu for a composer control, which may be tapped while the user is still typing.
+     *
+     * <p>A focusable popup takes input focus from the text field, and Android responds by hiding
+     * the keyboard, which in the Side-button overlay also reshapes the whole sheet. Declaring that
+     * this popup needs the input method keeps the keyboard exactly as the user left it, without
+     * hiding and re-showing it. Opt-in, so every other Orbit menu behaves precisely as before.
+     */
+    public static void showOrbitMenuOverKeyboard(Context c, View anchor, String[] labels,
+                                                 int selectedIndex, OrbitMenuChoice choice) {
+        showOrbitMenuInternal(c, anchor, labels, null, selectedIndex, -1, choice, true);
     }
 
     /**
@@ -825,6 +839,14 @@ public final class UiKit {
     private static void showOrbitMenuInternal(Context c, View anchor, String[] labels,
                                               String[] previewFontKeys, int selectedIndex,
                                               int dialogHandoffIndex, OrbitMenuChoice choice) {
+        showOrbitMenuInternal(c, anchor, labels, previewFontKeys, selectedIndex,
+                dialogHandoffIndex, choice, false);
+    }
+
+    private static void showOrbitMenuInternal(Context c, View anchor, String[] labels,
+                                              String[] previewFontKeys, int selectedIndex,
+                                              int dialogHandoffIndex, OrbitMenuChoice choice,
+                                              boolean keepKeyboard) {
         if (c == null || anchor == null || labels == null || labels.length == 0) return;
 
         LinearLayout box = new LinearLayout(c);
@@ -847,6 +869,10 @@ public final class UiKit {
         popup.setClippingEnabled(true);
         popup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         popup.setAnimationStyle(R.style.OrbitPopupAnimation);
+        // Tells the window manager this popup expects the keyboard, so opening it neither hides
+        // the IME nor reshapes the layout behind it. Outside-touch and Back dismissal are
+        // unchanged, and the keyboard is never hidden and re-shown.
+        if (keepKeyboard) popup.setInputMethodMode(PopupWindow.INPUT_METHOD_NEEDED);
         if (Build.VERSION.SDK_INT >= 21) popup.setElevation(dp(c, 12));
 
         for (int i = 0; i < labels.length; i++) {

@@ -1217,7 +1217,9 @@ public class OrbitSession extends VoiceInteractionSession {
             return;
         }
         String[] labels = {"Camera", "Gallery", "File", "Screen", "Clipboard"};
-        UiKit.showOrbitMenu(getContext(), anchor, labels, -1, (index, label) -> {
+        // Opened from the composer. Hiding the keyboard here would also reshape the whole sheet,
+        // so the menu keeps the overlay at exactly its current keyboard-constrained geometry.
+        UiKit.showOrbitMenuOverKeyboard(getContext(), anchor, labels, -1, (index, label) -> {
             if (index == 0) openAttachmentPicker(AttachmentPickerActivity.KIND_CAMERA);
             else if (index == 1) openAttachmentPicker(AttachmentPickerActivity.KIND_GALLERY);
             else if (index == 2) openAttachmentPicker(AttachmentPickerActivity.KIND_FILE);
@@ -1228,7 +1230,7 @@ public class OrbitSession extends VoiceInteractionSession {
 
     private void showScreenAttachmentMenu(View anchor) {
         String[] options = {"Use full screen", "Select or mark area"};
-        UiKit.showOrbitMenu(getContext(), anchor, options, -1, (index, label) -> {
+        UiKit.showOrbitMenuOverKeyboard(getContext(), anchor, options, -1, (index, label) -> {
             if (index == 0) {
                 clearGenericAttachment();
                 if (!screenAttached) toggleScreenAttachment();
@@ -1526,6 +1528,8 @@ public class OrbitSession extends VoiceInteractionSession {
 
         // Same Orbit thinking identity as full chat, sized for the overlay sheet.
         thinkingOrbital = new OrbitThinkingView(c);
+        // The bubble can itself be set to Accent, so the indicator is told what it sits on.
+        thinkingOrbital.applyAccent(thinkingFill);
         thinkingIndicator.addView(thinkingOrbital, new LinearLayout.LayoutParams(
                 UiKit.dp(c, 26), UiKit.dp(c, 26)));
         thinkingOrbital.start();

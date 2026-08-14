@@ -283,7 +283,14 @@ public class ChatActivity extends Activity {
         input.setFocusable(true);
         input.setFocusableInTouchMode(true);
         input.setShowSoftInputOnFocus(true);
-        input.setPadding(UiKit.dp(this, 10), UiKit.dp(this, 8), UiKit.dp(this, 8), UiKit.dp(this, 8));
+        input.setPadding(UiKit.dp(this, 10), UiKit.dp(this, 6), UiKit.dp(this, 8), UiKit.dp(this, 6));
+        // The row is bottom-aligned so the controls stay level with the last line of a tall
+        // field, but an empty or single-line field is shorter than the 44dp controls, which left
+        // its text sitting below their centres. Giving the field the same minimum height and
+        // centring its text inside it lines the first line up with the buttons optically, for any
+        // font or text size, while taller content still grows downward from the same baseline.
+        input.setMinHeight(UiKit.dp(this, 44));
+        input.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
         input.setOnClickListener(v -> showComposerKeyboard());
         input.setOnFocusChangeListener((v, hasFocus) -> {
             if (hasFocus) input.postDelayed(this::showComposerKeyboard, 50);
@@ -903,6 +910,8 @@ public class ChatActivity extends Activity {
         thinkingRow.setContentDescription("Orbit is thinking");
 
         thinkingView = new OrbitThinkingView(this);
+        // The bubble can itself be set to Accent, so the indicator is told what it sits on.
+        thinkingView.applyAccent(thinkingFill);
         thinkingRow.addView(thinkingView, new LinearLayout.LayoutParams(
                 UiKit.dp(this, 30), UiKit.dp(this, 30)));
         thinkingView.start();
@@ -1022,7 +1031,8 @@ public class ChatActivity extends Activity {
 
     private void showAttachmentMenu(View anchor) {
         String[] labels = {"Camera", "Gallery", "File", "Screen", "Clipboard"};
-        UiKit.showOrbitMenu(this, anchor, labels, -1, (index, label) -> {
+        // Opened from the composer, so it must not disturb a keyboard the user is typing on.
+        UiKit.showOrbitMenuOverKeyboard(this, anchor, labels, -1, (index, label) -> {
             if (index == 0) openCamera();
             else if (index == 1) openGallery();
             else if (index == 2) openFile();
@@ -1033,7 +1043,7 @@ public class ChatActivity extends Activity {
 
     private void showScreenAttachmentMenu(View anchor) {
         String[] options = {"Use full screen", "Select or mark area"};
-        UiKit.showOrbitMenu(this, anchor, options, -1, (index, label) -> {
+        UiKit.showOrbitMenuOverKeyboard(this, anchor, options, -1, (index, label) -> {
             if (index == 0) attachCurrentScreen();
             else openScreenSelection();
         });

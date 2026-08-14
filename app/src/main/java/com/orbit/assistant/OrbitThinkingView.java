@@ -32,6 +32,15 @@ public class OrbitThinkingView extends View {
     private static final float OUTER_FLATTEN = 0.42f;
     private static final float INNER_FLATTEN = 0.60f;
     private static final long SETTLE_MS = 220L;
+    /**
+     * Below this contrast the accent is lost against the bubble behind it, which is exactly what
+     * happens when the Orbit bubble is itself set to Accent.
+     */
+    private static final double MIN_BACKGROUND_CONTRAST = 1.55d;
+    /** How much accent survives in the fallback tone, so the indicator still reads as Orbit. */
+    private static final float FALLBACK_ACCENT_MIX = 0.30f;
+    /** Sentinel for "the colour behind this view is unknown". */
+    private static final int UNKNOWN_BACKGROUND = 0;
 
     private final Paint corePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint haloPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -54,7 +63,25 @@ public class OrbitThinkingView extends View {
 
     /** Re-reads the current accent. Cached because reading preferences per frame would be wasteful. */
     public void applyAccent() {
-        accent = UiKit.accent(getContext());
+        applyAccent(UNKNOWN_BACKGROUND);
+    }
+
+    /**
+     * Re-reads the accent for a known bubble colour.
+     *
+     * <p>The indicator is normally drawn in the current accent, but the Orbit bubble can itself be
+     * set to Accent, which would leave the core and particles invisible against their own bubble.
+     * When the bubble is too close to the accent, the tone shifts onto the readable foreground
+     * Orbit already uses for text on that bubble, keeping enough accent mixed in that it still
+     * reads as Orbit rather than as a plain light or dark shape.
+     */
+    public void applyAccent(int backgroundColor) {
+        int base = UiKit.accent(getContext());
+        if (backgroundColor != UNKNOWN_BACKGROUND
+                && UiKit.contrastRatio(base, backgroundColor) < MIN_BACKGROUND_CONTRAST) {
+            base = UiKit.blend(base, UiKit.onBubble(backgroundColor), FALLBACK_ACCENT_MIX);
+        }
+        accent = base;
         corePaint.setColor(accent);
         haloPaint.setColor(UiKit.withAlpha(accent, 46));
         pathPaint.setColor(UiKit.withAlpha(accent, 38));
