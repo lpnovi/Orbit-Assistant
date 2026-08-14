@@ -778,6 +778,18 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
                 "Changes conversation content only, including rich Markdown in full chat and the Side-button assistant.",
                 12, UiKit.MUTED, false);
         styleCard.addView(chatSizeNote);
+
+        TextView advancedLabel = label("Advanced");
+        advancedLabel.setPadding(UiKit.dp(this, 2), UiKit.dp(this, 20), 0, UiKit.dp(this, 6));
+        styleCard.addView(advancedLabel);
+        styleCard.addView(label("Page transitions"));
+        styleCard.addView(pageTransitionSelector());
+        TextView transitionNote = UiKit.text(this,
+                "How full-screen Orbit pages move when you open and leave them. Slide brings a page in from the right and sends it back out on the way back. Fade & settle uses a short fade with a small upward settle. None changes pages immediately. Android's own animation settings still apply.",
+                12, UiKit.MUTED, false);
+        transitionNote.setPadding(0, UiKit.dp(this, 8), 0, 0);
+        styleCard.addView(transitionNote);
+
         page.addView(styleCard);
 
         TextView footer = UiKit.text(this, "Orbit " + BuildConfig.VERSION_NAME + " • Power Assistant", 12, UiKit.MUTED, false);
@@ -1368,6 +1380,22 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         String[] labels = UiKit.bubbleColorLabels();
         String selected = Prefs.get(this).getString(prefKey, "classic");
         return colorMenuSelector(keys, labels, selected, assistant, false, prefKey);
+    }
+
+    private View pageTransitionSelector() {
+        String[] keys = new String[]{Prefs.PAGE_TRANSITION_SLIDE, Prefs.PAGE_TRANSITION_FADE,
+                Prefs.PAGE_TRANSITION_NONE};
+        String[] labels = new String[]{"Slide", "Fade & settle", "None"};
+        int selected = indexOf(keys, Prefs.pageTransition(this));
+        LinearLayout selector = menuSelector(labels, selected, (position, label) -> {
+            String key = keys[Math.max(0, Math.min(keys.length - 1, position))];
+            Prefs.get(this).edit().putString(Prefs.PAGE_TRANSITION, key).apply();
+            // Retarget this window straight away so leaving Settings already uses the new style.
+            // Nothing on the page is rebuilt, so there is no flash and no scroll movement.
+            UiKit.applyPageTransition(this);
+        });
+        selector.setLayoutParams(selectorLp());
+        return selector;
     }
 
     private View chatTextSizeSelector() {

@@ -637,6 +637,7 @@ public final class UiKit {
     public static void applyActivityInsets(Activity activity, View root, boolean imeAware) {
         if (activity == null || root == null) return;
         syncTheme(activity);
+        applyPageTransition(activity);
         watchTypography(root);
         Window window = activity.getWindow();
         window.setStatusBarColor(BG);
@@ -1061,6 +1062,28 @@ public final class UiKit {
         t.setFontFeatureSettings("kern");
         applyTypography(t, bold ? Typeface.BOLD : Typeface.NORMAL);
         return t;
+    }
+
+    /** Window animation style backing the current Page transitions preference. */
+    public static int pageTransitionStyle(Context c) {
+        String choice = Prefs.pageTransition(c);
+        if (Prefs.PAGE_TRANSITION_FADE.equals(choice)) return R.style.OrbitWindowAnimation_Fade;
+        if (Prefs.PAGE_TRANSITION_NONE.equals(choice)) return R.style.OrbitWindowAnimation_None;
+        return R.style.OrbitWindowAnimation_Slide;
+    }
+
+    /**
+     * Applies the selected page transition to one Orbit page window.
+     *
+     * <p>Called from {@link #applyActivityInsets} so every full-screen Orbit page picks it up from
+     * one place and none can drift onto a different style. Invisible bridge activities do not go
+     * through that path and stay instant. Setting it per window rather than on the theme is what
+     * lets a new selection take effect on the very next navigation without restarting Orbit.
+     */
+    public static void applyPageTransition(Activity activity) {
+        if (activity == null || activity.getWindow() == null) return;
+        try { activity.getWindow().setWindowAnimations(pageTransitionStyle(activity)); }
+        catch (Exception ignored) {}
     }
 
     /**

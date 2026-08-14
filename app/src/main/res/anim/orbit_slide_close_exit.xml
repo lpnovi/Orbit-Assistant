@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The page being dismissed leaves toward the right, back the way it came in.
+-->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:interpolator/accelerate_quad"
+    android:shareInterpolator="true">
+    <translate
+        android:fromXDelta="0"
+        android:toXDelta="100%p"
+        android:duration="200" />
+    <alpha
+        android:fromAlpha="1.0"
+        android:toAlpha="0.85"
+        android:duration="200" />
+</set>

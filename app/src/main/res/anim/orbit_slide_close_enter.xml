@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Coming back: the previous page returns from its parked position on the left. Exact inverse of
+  orbit_slide_open_exit, so left to right always reads as going back.
+-->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:interpolator/decelerate_quad"
+    android:shareInterpolator="true">
+    <translate
+        android:fromXDelta="-22%p"
+        android:toXDelta="0"
+        android:duration="200" />
+</set>

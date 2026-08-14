@@ -49,6 +49,7 @@ public final class Prefs {
     public static final String APP_FONT = "app_font";
     public static final String QUICK_SETTINGS_ROUTINE_ID = "quick_settings_routine_id";
     public static final String UPDATE_NOTIFICATIONS = "update_notifications";
+    public static final String PAGE_TRANSITION = "page_transition";
     // Onboarding keys intentionally remain outside Backup & Restore. A backup cannot
     // restore account credentials, Android permissions, or default-assistant state.
 
@@ -70,12 +71,17 @@ public final class Prefs {
     public static final String WEATHER_UNITS_FAHRENHEIT = "fahrenheit";
     public static final String WEATHER_UNITS_CELSIUS = "celsius";
 
+    /** Page-transition styles. Slide is Orbit's default for fresh installs and existing users. */
+    public static final String PAGE_TRANSITION_SLIDE = "slide";
+    public static final String PAGE_TRANSITION_FADE = "fade";
+    public static final String PAGE_TRANSITION_NONE = "none";
+
     private Prefs() {}
 
     private static final Set<String> BACKUP_STRING_KEYS = new HashSet<>(Arrays.asList(
             MODEL, REASONING, INTELLIGENCE_MODE, ACCENT, USER_BUBBLE_COLOR,
             ASSISTANT_BUBBLE_COLOR, CHAT_TEXT_SIZE, WEATHER_LOCATION, WEATHER_UNITS, APP_FONT,
-            QUICK_SETTINGS_ROUTINE_ID));
+            QUICK_SETTINGS_ROUTINE_ID, PAGE_TRANSITION));
     private static final Set<String> BACKUP_BOOLEAN_KEYS = new HashSet<>(Arrays.asList(
             SCREEN_CONTEXT, SCREENSHOT, CONTEXT_CHIPS, ATTACH_SCREEN_BY_DEFAULT,
             SPEAK, HAPTICS, AUTO_LISTEN, VOICE_PAUSE_FRIENDLY, NEW_CHAT_ON_OPEN,
@@ -187,6 +193,16 @@ public final class Prefs {
     public static boolean backgroundNotifications(Context c) { return get(c).getBoolean(BACKGROUND_NOTIFICATIONS, false); }
     public static String weatherLocation(Context c) { return get(c).getString(WEATHER_LOCATION, "").trim(); }
     public static boolean weatherUseDeviceLocation(Context c) { return get(c).getBoolean(WEATHER_USE_DEVICE_LOCATION, false); }
+    /**
+     * Selected page-transition style, falling back to Slide for anyone who has never chosen one
+     * and for any unrecognised stored value.
+     */
+    public static String pageTransition(Context c) {
+        String value = get(c).getString(PAGE_TRANSITION, PAGE_TRANSITION_SLIDE);
+        if (PAGE_TRANSITION_FADE.equals(value) || PAGE_TRANSITION_NONE.equals(value)) return value;
+        return PAGE_TRANSITION_SLIDE;
+    }
+
     public static String weatherUnits(Context c) {
         String value = get(c).getString(WEATHER_UNITS, WEATHER_UNITS_SYSTEM);
         if (WEATHER_UNITS_FAHRENHEIT.equals(value) || WEATHER_UNITS_CELSIUS.equals(value))

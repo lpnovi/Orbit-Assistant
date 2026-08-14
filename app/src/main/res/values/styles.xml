@@ -12,19 +12,44 @@
           rebuild - shows white behind Orbit's dark UI.
         -->
         <item name="android:windowBackground">#0A0C11</item>
-        <item name="android:windowAnimationStyle">@style/OrbitWindowAnimation</item>
+        <!--
+          Slide is Orbit's default page transition. Declaring it on the theme means the very
+          first navigation matches the default before any preference has been read.
+        -->
+        <item name="android:windowAnimationStyle">@style/OrbitWindowAnimation.Slide</item>
     </style>
 
     <!--
-      One restrained transition for every Orbit screen, so opening a Settings category, a
-      subpage, and pressing Back all move the same way. Android skips these entirely when the
-      system animation scale is off, so reduced-motion needs no special handling.
+      Page transitions, selectable in Settings > Look & Feel > Advanced and applied per window at
+      runtime. Android skips window animations entirely when the system animation scale is off,
+      so every style below degrades to an immediate navigation with no extra handling.
     -->
-    <style name="OrbitWindowAnimation">
+
+    <!-- Shared parent for the selectable page-transition styles below. -->
+    <style name="OrbitWindowAnimation" />
+
+    <!-- Slide: destination enters from the right, Back sends it back out to the right. -->
+    <style name="OrbitWindowAnimation.Slide">
+        <item name="android:activityOpenEnterAnimation">@anim/orbit_slide_open_enter</item>
+        <item name="android:activityOpenExitAnimation">@anim/orbit_slide_open_exit</item>
+        <item name="android:activityCloseEnterAnimation">@anim/orbit_slide_close_enter</item>
+        <item name="android:activityCloseExitAnimation">@anim/orbit_slide_close_exit</item>
+    </style>
+
+    <!-- Fade and settle: the transition introduced in v0.7.2.5, kept intact as an option. -->
+    <style name="OrbitWindowAnimation.Fade">
         <item name="android:activityOpenEnterAnimation">@anim/orbit_activity_open_enter</item>
         <item name="android:activityOpenExitAnimation">@anim/orbit_activity_open_exit</item>
         <item name="android:activityCloseEnterAnimation">@anim/orbit_activity_close_enter</item>
         <item name="android:activityCloseExitAnimation">@anim/orbit_activity_close_exit</item>
+    </style>
+
+    <!-- None: no Orbit transition at all; navigation completes immediately. -->
+    <style name="OrbitWindowAnimation.None">
+        <item name="android:activityOpenEnterAnimation">@null</item>
+        <item name="android:activityOpenExitAnimation">@null</item>
+        <item name="android:activityCloseEnterAnimation">@null</item>
+        <item name="android:activityCloseExitAnimation">@null</item>
     </style>
 
     <style name="Theme.Orbit.Bridge" parent="android:style/Theme.Material.Light.NoActionBar">
