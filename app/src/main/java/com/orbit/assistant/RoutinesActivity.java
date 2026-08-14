@@ -14,6 +14,7 @@ import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.widget.Button;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -230,6 +231,20 @@ public class RoutinesActivity extends Activity {
         text.addView(steps);
         top.addView(text, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
+        // Status only, and only on pinned cards, so an unpinned routine card looks
+        // exactly as it did before. Pinning itself lives in the existing options menu.
+        if (routine.pinned) {
+            ImageView pinned = new ImageView(this);
+            pinned.setImageResource(R.drawable.ic_pin);
+            pinned.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            pinned.setColorFilter(UiKit.accent(this));
+            pinned.setContentDescription("Pinned routine");
+            LinearLayout.LayoutParams pinnedLp = new LinearLayout.LayoutParams(
+                    UiKit.dp(this, 18), UiKit.dp(this, 18));
+            pinnedLp.rightMargin = UiKit.dp(this, 6);
+            top.addView(pinned, pinnedLp);
+        }
+
         ImageButton more = iconButton(R.drawable.ic_more, "Routine options");
         more.setOnClickListener(v -> showRoutineMenu(more, routine));
         top.addView(more, new LinearLayout.LayoutParams(UiKit.dp(this, 44), UiKit.dp(this, 44)));
@@ -263,18 +278,31 @@ public class RoutinesActivity extends Activity {
     }
 
     private void showRoutineMenu(View anchor, RoutineStore.Routine routine) {
-        String[] labels = {"Edit", "Automatic triggers", "Duplicate", "Delete"};
-        UiKit.showOrbitMenuWithDialogHandoff(this, anchor, labels, 3, (index, label) -> {
+        String[] labels = {routine.pinned ? "Unpin" : "Pin", "Edit", "Automatic triggers",
+                "Duplicate", "Delete"};
+        UiKit.showOrbitMenuWithDialogHandoff(this, anchor, labels, 4, (index, label) -> {
             if (index == 0) {
-                openEditor(routine.id);
+                togglePinned(routine);
             } else if (index == 1) {
-                openTriggers(routine.id);
+                openEditor(routine.id);
             } else if (index == 2) {
+                openTriggers(routine.id);
+            } else if (index == 3) {
                 duplicateRoutine(routine);
             } else {
                 confirmDelete(routine);
             }
         });
+    }
+
+    private void togglePinned(RoutineStore.Routine routine) {
+        boolean pin = !routine.pinned;
+        if (!RoutineStore.setPinned(this, routine.id, pin)) {
+            Toast.makeText(this, "Could not update this routine.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        refresh();
+        Toast.makeText(this, (pin ? "Pinned " : "Unpinned ") + routine.name, Toast.LENGTH_SHORT).show();
     }
 
     private void duplicateRoutine(RoutineStore.Routine source) {

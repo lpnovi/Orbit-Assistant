@@ -14,7 +14,7 @@ Orbit is built for Android 10 and newer. Development is active, and releases are
 - **Consistent composers:** Camera, Gallery, File, Screen, and Clipboard attachment access plus Voice Beta are available from the same Attach / text / mic / Send layout across both chat surfaces.
 - **Inline response images:** Orbit can natively display a valid public HTTPS image source included in a response; it does not independently search for or invent image URLs.
 - **Local Android actions:** Control supported device settings and actions through Orbit's existing confirmation and capability checks.
-- **Routines and automation:** Build saved action chains with IF conditions, time and location triggers, Routine Templates, Custom Commands, and configurable Quick Settings tiles.
+- **Routines and automation:** Build saved action chains with IF conditions, time and location triggers, Routine Templates, Custom Commands, and configurable Quick Settings tiles. Pin the routines you use most to keep them at the top of the list.
 - **Orbit Extensions:** Add reviewed configurable Routine actions—including securely configured Discord Webhook and ntfy integrations—without loading executable plugin code or exposing Orbit personal data.
 - **Home-screen widgets:** Open a ready-to-type chat, run one selected saved Routine, or configure a small set of safe Quick Actions directly from the launcher.
 - **Personal context:** Use Orbit Memory, local reminders, Saved Places, per-app behavior, and Notification Intelligence.

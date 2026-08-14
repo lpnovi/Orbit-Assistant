@@ -907,8 +907,8 @@ public class RoutineEditorActivity extends Activity {
         if (existing == null) {
             routine = RoutineStore.create(name, workingActions);
         } else {
-            routine = new RoutineStore.Routine(existing.id, name, workingActions,
-                    existing.createdAt, System.currentTimeMillis(), existing.lastRunAt);
+            // Rebuilds name/actions while carrying createdAt, run history, and pinned state.
+            routine = existing.withNameAndActions(name, workingActions);
         }
         if (!RoutineStore.upsert(this, routine)) {
             Toast.makeText(this, "Orbit could not save this routine.", Toast.LENGTH_SHORT).show();

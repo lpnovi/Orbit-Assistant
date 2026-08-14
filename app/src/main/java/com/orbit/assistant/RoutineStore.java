@@ -26,19 +26,31 @@ public final class RoutineStore {
         public final long createdAt;
         public final long updatedAt;
         public final long lastRunAt;
+        public final boolean pinned;
 
         public Routine(String id, String name, List<AssistantReply.Action> actions,
                        long createdAt, long updatedAt, long lastRunAt) {
+            this(id, name, actions, createdAt, updatedAt, lastRunAt, false);
+        }
+
+        public Routine(String id, String name, List<AssistantReply.Action> actions,
+                       long createdAt, long updatedAt, long lastRunAt, boolean pinned) {
             this.id = cleanId(id);
             this.name = sanitizeName(name);
             this.actions = copyActions(actions);
             this.createdAt = createdAt <= 0 ? System.currentTimeMillis() : createdAt;
             this.updatedAt = updatedAt <= 0 ? this.createdAt : updatedAt;
             this.lastRunAt = Math.max(0L, lastRunAt);
+            this.pinned = pinned;
         }
 
         public Routine withNameAndActions(String newName, List<AssistantReply.Action> newActions) {
-            return new Routine(id, newName, newActions, createdAt, System.currentTimeMillis(), lastRunAt);
+            return new Routine(id, newName, newActions, createdAt, System.currentTimeMillis(),
+                    lastRunAt, pinned);
+        }
+
+        public Routine withPinned(boolean newPinned) {
+            return new Routine(id, name, actions, createdAt, updatedAt, lastRunAt, newPinned);
         }
     }
 
@@ -48,7 +60,11 @@ public final class RoutineStore {
         return c.getSharedPreferences(FILE, Context.MODE_PRIVATE);
     }
 
-    public static synchronized List<Routine> list(Context c) {
+    /**
+     * Saved routines in the order they are stored. Mutations work from this so the underlying
+     * order is never disturbed by how the list happens to be displayed.
+     */
+    private static List<Routine> stored(Context c) {
         if (c == null) return Collections.emptyList();
         String raw = prefs(c).getString(KEY, "[]");
         List<Routine> out = new ArrayList<>();
@@ -62,16 +78,44 @@ public final class RoutineStore {
         return out;
     }
 
+    /**
+     * Saved routines with pinned ones first. The partition is stable, so each group keeps its
+     * stored relative order and pinning only lifts a routine above the unpinned ones. Ordering
+     * lives here rather than in the Routines screen so every surface that lists routines agrees,
+     * and so pinning never has to touch a routine's actions or its stored position.
+     */
+    public static synchronized List<Routine> list(Context c) {
+        List<Routine> routines = stored(c);
+        List<Routine> out = new ArrayList<>(routines.size());
+        for (Routine routine : routines) if (routine.pinned) out.add(routine);
+        for (Routine routine : routines) if (!routine.pinned) out.add(routine);
+        return out;
+    }
+
+    /** Pins or unpins one routine without touching its actions, triggers, or run history. */
+    public static synchronized boolean setPinned(Context c, String id, boolean pinned) {
+        if (c == null || id == null || id.trim().isEmpty()) return false;
+        List<Routine> routines = new ArrayList<>(stored(c));
+        for (int i = 0; i < routines.size(); i++) {
+            Routine routine = routines.get(i);
+            if (!id.equals(routine.id)) continue;
+            if (routine.pinned == pinned) return true;
+            routines.set(i, routine.withPinned(pinned));
+            return write(c, routines);
+        }
+        return false;
+    }
+
     public static synchronized Routine findById(Context c, String id) {
         if (id == null || id.trim().isEmpty()) return null;
-        for (Routine routine : list(c)) if (routine.id.equals(id)) return routine;
+        for (Routine routine : stored(c)) if (routine.id.equals(id)) return routine;
         return null;
     }
 
     public static synchronized Routine findByName(Context c, String name) {
         String wanted = normalizeName(name);
         if (wanted.isEmpty()) return null;
-        for (Routine routine : list(c)) {
+        for (Routine routine : stored(c)) {
             if (normalizeName(routine.name).equals(wanted)) return routine;
         }
         return null;
@@ -80,7 +124,7 @@ public final class RoutineStore {
     public static synchronized boolean nameExists(Context c, String name, String exceptId) {
         String wanted = normalizeName(name);
         if (wanted.isEmpty()) return false;
-        for (Routine routine : list(c)) {
+        for (Routine routine : stored(c)) {
             if (exceptId != null && exceptId.equals(routine.id)) continue;
             if (normalizeName(routine.name).equals(wanted)) return true;
         }
@@ -98,7 +142,7 @@ public final class RoutineStore {
      */
     public static synchronized boolean upsert(Context c, Routine routine) {
         if (c == null || !validRoutine(routine)) return false;
-        List<Routine> routines = new ArrayList<>(list(c));
+        List<Routine> routines = new ArrayList<>(stored(c));
         int replace = -1;
         for (int i = 0; i < routines.size(); i++) {
             if (routines.get(i).id.equals(routine.id)) {
@@ -117,7 +161,7 @@ public final class RoutineStore {
 
     public static synchronized boolean delete(Context c, String id) {
         if (c == null || id == null) return false;
-        List<Routine> routines = new ArrayList<>(list(c));
+        List<Routine> routines = new ArrayList<>(stored(c));
         boolean removed = false;
         for (int i = routines.size() - 1; i >= 0; i--) {
             if (id.equals(routines.get(i).id)) {
@@ -139,13 +183,13 @@ public final class RoutineStore {
 
     public static synchronized void markRun(Context c, String id) {
         if (c == null || id == null) return;
-        List<Routine> routines = new ArrayList<>(list(c));
+        List<Routine> routines = new ArrayList<>(stored(c));
         boolean changed = false;
         for (int i = 0; i < routines.size(); i++) {
             Routine r = routines.get(i);
             if (!id.equals(r.id)) continue;
             routines.set(i, new Routine(r.id, r.name, r.actions, r.createdAt, r.updatedAt,
-                    System.currentTimeMillis()));
+                    System.currentTimeMillis(), r.pinned));
             changed = true;
             break;
         }
@@ -220,6 +264,9 @@ public final class RoutineStore {
             obj.put("createdAt", routine.createdAt);
             obj.put("updatedAt", routine.updatedAt);
             obj.put("lastRunAt", routine.lastRunAt);
+            // Only written when set, so routine data from before pinning existed and
+            // backups taken from it stay byte-identical until something is pinned.
+            if (routine.pinned) obj.put("pinned", true);
             JSONArray actions = new JSONArray();
             for (AssistantReply.Action action : routine.actions) {
                 JSONObject a = new JSONObject();
@@ -258,7 +305,8 @@ public final class RoutineStore {
             return new Routine(id, name, actions,
                     obj.optLong("createdAt", System.currentTimeMillis()),
                     obj.optLong("updatedAt", System.currentTimeMillis()),
-                    obj.optLong("lastRunAt", 0L));
+                    obj.optLong("lastRunAt", 0L),
+                    obj.optBoolean("pinned", false));
         } catch (Exception ignored) {
             return null;
         }
