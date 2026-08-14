@@ -62,6 +62,8 @@ public final class UiKit {
     public static final int PASTEL_PINK = Color.rgb(255, 209, 220); // #FFD1DC
     public static final int PASTEL_BLUE = Color.rgb(203, 229, 242); // #CBE5F2
     public static final int SUCCESS = Color.rgb(87, 214, 146);
+    /** Restrained failure/destructive tone, matching Orbit's destructive dialog action. */
+    public static final int DANGER = Color.rgb(239, 105, 105);
 
     private static final String[] ACCENT_KEYS = {
             "dynamic", "blurple", "violet", "blue", "mint", "rose", "nova",

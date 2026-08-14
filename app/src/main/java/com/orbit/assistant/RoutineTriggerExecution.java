@@ -116,6 +116,13 @@ public final class RoutineTriggerExecution {
 
             @Override public void onFinished(boolean completedAllSteps, int completedSteps, int totalSteps) {
                 try {
+                    RoutineRunHistoryStore.record(c, routine.id, routine.name,
+                            RoutineRunHistoryStore.SOURCE_TRIGGER, completedAllSteps,
+                            completedSteps, routine.actions.size(),
+                            completedAllSteps ? -1 : lastFailureIndex,
+                            completedAllSteps || lastFailureIndex >= allowed.size()
+                                    ? null : allowed.get(lastFailureIndex),
+                            lastFailure);
                     if (!completedAllSteps) {
                         String reason = lastFailure == null || lastFailure.trim().isEmpty()
                                 ? "Stopped at step " + completedSteps

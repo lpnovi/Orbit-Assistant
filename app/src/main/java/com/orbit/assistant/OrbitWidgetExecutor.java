@@ -63,6 +63,14 @@ final class OrbitWidgetExecutor {
                                                      int totalSteps) {
                         try {
                             DeviceActionExecutor.Result failure = failedResult[0];
+                            RoutineRunHistoryStore.record(context, routine.id, routine.name,
+                                    RoutineRunHistoryStore.SOURCE_WIDGET, completedAllSteps,
+                                    completedSteps, totalSteps,
+                                    completedAllSteps ? -1 : failedIndex[0],
+                                    completedAllSteps || failedIndex[0] < 0
+                                            || failedIndex[0] >= actions.size()
+                                            ? null : actions.get(failedIndex[0]),
+                                    failure == null ? "" : failure.message);
                             if (failure != null && DeviceActionExecutor.STATUS_PERMISSION.equals(failure.status)) {
                                 try {
                                     openRoutineUi(context, routine.id, Math.max(0, failedIndex[0]));

@@ -133,6 +133,14 @@ public class RoutinesActivity extends Activity {
         customLp.setMargins(0, UiKit.dp(this, 8), 0, 0);
         page.addView(customCommands, customLp);
 
+        Button runHistory = secondaryButton("Run history");
+        runHistory.setOnClickListener(v ->
+                startActivity(new Intent(this, RoutineRunHistoryActivity.class)));
+        LinearLayout.LayoutParams historyLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44));
+        historyLp.setMargins(0, UiKit.dp(this, 8), 0, 0);
+        page.addView(runHistory, historyLp);
+
         runPanel = card();
         runPanel.setVisibility(View.GONE);
         runTitle = UiKit.text(this, "Running routine", 15, UiKit.TEXT, true);
@@ -383,6 +391,13 @@ public class RoutinesActivity extends Activity {
 
                     @Override public void onFinished(boolean completedAllSteps, int completedSteps, int totalSteps) {
                         int shownCompleted = offset + completedSteps;
+                        RoutineRunHistoryStore.record(RoutinesActivity.this, routine.id, routine.name,
+                                scheduledContinuation ? RoutineRunHistoryStore.SOURCE_TRIGGER
+                                        : RoutineRunHistoryStore.SOURCE_MANUAL,
+                                completedAllSteps, shownCompleted, originalTotal,
+                                completedAllSteps ? -1 : retryFromIndex,
+                                completedAllSteps ? null : actionAt(routine, retryFromIndex),
+                                lastFailure);
                         if (completedAllSteps) {
                             runSubtitle.setText("Completed " + originalTotal + (originalTotal == 1 ? " step" : " steps"));
                             updateScheduledContinuationStatus(scheduledContinuation, scheduledTriggerId,
@@ -403,6 +418,11 @@ public class RoutinesActivity extends Activity {
                         }
                     }
                 });
+    }
+
+    private static AssistantReply.Action actionAt(RoutineStore.Routine routine, int index) {
+        if (routine == null || index < 0 || index >= routine.actions.size()) return null;
+        return routine.actions.get(index);
     }
 
     private void addRunResult(AssistantReply.Action action, DeviceActionExecutor.Result result, int index, int total) {
