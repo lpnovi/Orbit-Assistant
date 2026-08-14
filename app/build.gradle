@@ -32,8 +32,8 @@ android {
         applicationId 'com.orbit.assistant'
         minSdk 29
         targetSdk 35
-        versionCode 696
-        versionName "0.7.2.13"
+        versionCode 697
+        versionName "0.7.2.14"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 

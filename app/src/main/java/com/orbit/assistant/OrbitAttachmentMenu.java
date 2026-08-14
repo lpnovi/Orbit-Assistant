@@ -20,7 +20,10 @@ import android.widget.TextView;
  *
  * <p>The same code serves the full chat and the Side-button overlay: both provide a
  * {@link FrameLayout} to host it, so neither needs a window token and neither can be clipped by
- * one.
+ * one. Because sibling views are drawn and hit-tested in Z order rather than insertion order, the
+ * layer raises itself above whatever the host already contains rather than assuming that being
+ * added last puts it on top: the overlay's sheet carries a real elevation, and a fixed elevation
+ * here would leave the chooser drawn behind it and untappable.
  */
 final class OrbitAttachmentMenu {
     interface OnChoice {
@@ -31,6 +34,11 @@ final class OrbitAttachmentMenu {
     private static final String TAG = "orbit_attachment_menu";
     private static final int GAP_DP = 8;
     private static final int EDGE_DP = 12;
+    /** Clearance placed above the host's tallest existing layer, and the card above the scrim. */
+    private static final int SCRIM_LIFT_DP = 8;
+    private static final int CARD_LIFT_DP = 4;
+    /** Enough of the card to keep on screen if the anchor sits very near the top. */
+    private static final int MIN_VISIBLE_DP = 96;
 
     private OrbitAttachmentMenu() {}
 
@@ -59,6 +67,15 @@ final class OrbitAttachmentMenu {
         dismiss(host);
         Context c = host.getContext();
 
+        // Measured from what the host actually contains, so the chooser sits above the overlay's
+        // elevated sheet without hard-coding a number that a later layout change could overtake.
+        float topZ = 0f;
+        for (int i = 0; i < host.getChildCount(); i++) {
+            topZ = Math.max(topZ, host.getChildAt(i).getZ());
+        }
+        float scrimZ = topZ + UiKit.dp(c, SCRIM_LIFT_DP);
+        float cardZ = scrimZ + UiKit.dp(c, CARD_LIFT_DP);
+
         // Catches taps outside the card. Clickable but never focusable, so it cannot become the
         // focused view and displace the composer.
         View scrim = new View(c);
@@ -67,8 +84,10 @@ final class OrbitAttachmentMenu {
         scrim.setFocusable(false);
         scrim.setFocusableInTouchMode(false);
         scrim.setOnClickListener(v -> dismiss(host));
+        scrim.setElevation(scrimZ);
         host.addView(scrim, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        scrim.bringToFront();
 
         LinearLayout card = new LinearLayout(c);
         card.setTag(TAG);
@@ -77,7 +96,7 @@ final class OrbitAttachmentMenu {
         card.setFocusableInTouchMode(false);
         card.setPadding(UiKit.dp(c, 6), UiKit.dp(c, 6), UiKit.dp(c, 6), UiKit.dp(c, 6));
         card.setBackground(UiKit.outlined(UiKit.SURFACE_2, UiKit.withAlpha(UiKit.accent(c), 72), 18, c));
-        card.setElevation(UiKit.dp(c, 12));
+        card.setElevation(cardZ);
 
         int maxChars = 0;
         for (String label : labels) if (label != null) maxChars = Math.max(maxChars, label.length());
@@ -122,12 +141,16 @@ final class OrbitAttachmentMenu {
         int edge = UiKit.dp(c, EDGE_DP);
 
         // Measured from the host's bottom so the card sits above the composer, which already sits
-        // above the keyboard. No separate window means it cannot land behind the IME.
-        lp.bottomMargin = Math.max(edge, host.getHeight() - anchorTop + UiKit.dp(c, GAP_DP));
+        // above the keyboard. No separate window means it cannot land behind the IME. Capped so an
+        // anchor near the top of the host cannot push the card off the top edge.
+        int maxBottom = Math.max(edge, host.getHeight() - UiKit.dp(c, MIN_VISIBLE_DP));
+        int desiredBottom = host.getHeight() - anchorTop + UiKit.dp(c, GAP_DP);
+        lp.bottomMargin = Math.max(edge, Math.min(desiredBottom, maxBottom));
         int maxLeft = Math.max(edge, host.getWidth() - UiKit.dp(c, widthDp) - edge);
         lp.leftMargin = Math.max(edge, Math.min(anchorLeft, maxLeft));
 
         host.addView(card, lp);
+        card.bringToFront();
         UiKit.enterContent(card);
     }
 }

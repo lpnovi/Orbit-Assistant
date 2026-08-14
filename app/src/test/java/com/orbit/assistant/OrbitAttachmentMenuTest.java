@@ -228,4 +228,92 @@ public final class OrbitAttachmentMenuTest {
         assertFalse(OrbitAttachmentMenu.isShowing(null));
         assertFalse(OrbitAttachmentMenu.dismiss(null));
     }
+
+    /** Stands in for the overlay's sheet, which carries a real elevation inside the session root. */
+    private View addElevatedContent(float elevationDp) {
+        View content = new View(activity);
+        content.setElevation(UiKit.dp(activity, elevationDp));
+        host.addView(content, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        return content;
+    }
+
+    private View menuScrim() {
+        for (int i = 0; i < host.getChildCount(); i++) {
+            View child = host.getChildAt(i);
+            if ("orbit_attachment_menu".equals(child.getTag())) return child;
+        }
+        return null;
+    }
+
+    @Test public void theChooserRisesAboveAnElevatedSheet() {
+        // The overlay sheet sits at 16dp. A fixed 12dp card drew behind it and could not be seen
+        // or tapped, which is exactly what happened on the device.
+        View sheet = addElevatedContent(16f);
+
+        OrbitAttachmentMenu.show(host, anchor, LABELS, (i, l) -> {});
+
+        View card = findMenuCard(host);
+        View scrim = menuScrim();
+        assertNotNull(card);
+        assertNotNull(scrim);
+        assertTrue("the chooser must draw above the sheet, not behind it",
+                card.getZ() > sheet.getZ());
+        assertTrue("the outside-tap layer must also clear the sheet",
+                scrim.getZ() > sheet.getZ());
+    }
+
+    @Test public void theCardAlwaysSitsAboveItsOwnScrim() {
+        addElevatedContent(16f);
+        OrbitAttachmentMenu.show(host, anchor, LABELS, (i, l) -> {});
+
+        assertTrue("a scrim above the card would swallow every option tap",
+                findMenuCard(host).getZ() > menuScrim().getZ());
+    }
+
+    @Test public void theChooserClearsWhateverElevationTheHostHappensToUse() {
+        // Derived from the hierarchy, so a later layout change cannot overtake it.
+        for (float elevation : new float[]{0f, 4f, 16f, 32f, 64f}) {
+            OrbitAttachmentMenu.dismiss(host);
+            host.removeAllViews();
+            host.addView(composer);
+            host.addView(anchor);
+            View content = addElevatedContent(elevation);
+
+            OrbitAttachmentMenu.show(host, anchor, LABELS, (i, l) -> {});
+            assertTrue("failed to clear content at " + elevation + "dp",
+                    findMenuCard(host).getZ() > content.getZ());
+        }
+    }
+
+    @Test public void theCardStaysInsideTheHostBounds() {
+        host.layout(0, 0, 1080, 1920);
+        OrbitAttachmentMenu.show(host, anchor, LABELS, (i, l) -> {});
+
+        FrameLayout.LayoutParams lp =
+                (FrameLayout.LayoutParams) findMenuCard(host).getLayoutParams();
+        assertTrue("negative margins would push the card off screen", lp.leftMargin >= 0);
+        assertTrue(lp.bottomMargin >= 0);
+        assertTrue("the card must not be pushed past the top of the host",
+                lp.bottomMargin < host.getHeight());
+    }
+
+    @Test public void anAnchorNearTheTopStillLeavesTheCardOnScreen() {
+        host.layout(0, 0, 1080, 1920);
+        // An anchor at the very top would otherwise produce a bottom margin taller than the host.
+        anchor.layout(0, 0, 100, 100);
+        OrbitAttachmentMenu.show(host, anchor, LABELS, (i, l) -> {});
+
+        FrameLayout.LayoutParams lp =
+                (FrameLayout.LayoutParams) findMenuCard(host).getLayoutParams();
+        assertTrue(lp.bottomMargin < host.getHeight());
+    }
+
+    @Test public void openingTheChooserDoesNotImmediatelyCloseIt() {
+        // The scrim is added during the button's click, which happens on the release of a gesture
+        // the button already owns, so it cannot receive that same touch.
+        OrbitAttachmentMenu.show(host, anchor, LABELS, (i, l) -> {});
+        assertTrue("the chooser must survive the interaction that opened it",
+                OrbitAttachmentMenu.isShowing(host));
+    }
 }
