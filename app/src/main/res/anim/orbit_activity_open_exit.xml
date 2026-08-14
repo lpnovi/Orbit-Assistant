@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The screen being left stays opaque and barely moves. It deliberately does not fade out: the
+  incoming page fades over the top of it, so the window background is never exposed between them.
+-->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:interpolator/decelerate_quad"
+    android:shareInterpolator="true">
+    <alpha
+        android:fromAlpha="1.0"
+        android:toAlpha="0.94"
+        android:duration="190" />
+    <scale
+        android:fromXScale="1.0"
+        android:toXScale="0.995"
+        android:fromYScale="1.0"
+        android:toYScale="0.995"
+        android:pivotX="50%"
+        android:pivotY="50%"
+        android:duration="190" />
+</set>

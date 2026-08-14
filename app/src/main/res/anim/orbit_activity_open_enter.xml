@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Orbit page entry: a short fade with a very small upward settle. Matches the shared
+  UiKit.MOTION_STANDARD timing so navigation and in-page motion feel like one language.
+-->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:interpolator/decelerate_quad"
+    android:shareInterpolator="true">
+    <alpha
+        android:fromAlpha="0.0"
+        android:toAlpha="1.0"
+        android:duration="190" />
+    <translate
+        android:fromYDelta="2.2%p"
+        android:toYDelta="0"
+        android:duration="190" />
+</set>

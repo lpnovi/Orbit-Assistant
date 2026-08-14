@@ -1080,7 +1080,10 @@ public final class UiKit {
     }
 
     // Orbit's shared motion timings. Keep new UI on these rather than inventing durations, so the
-    // whole app accelerates and settles at the same rate.
+    // whole app accelerates and settles at the same rate. Screen-to-screen navigation is the one
+    // piece the framework owns rather than this class: it mirrors MOTION_STANDARD from
+    // res/anim/orbit_activity_*.xml, wired up through Theme.Orbit's windowAnimationStyle. Orbit
+    // dialogs and popup menus share R.style.OrbitPopupAnimation.
     /** Immediate feedback: press states, small swaps. */
     public static final long MOTION_FAST = 120L;
     /** Standard transition: reordering, state changes. */

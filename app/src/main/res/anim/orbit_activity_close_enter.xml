@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Returning: the screen underneath settles back to rest as the page above it leaves. The exact
+  inverse of orbit_activity_open_exit, so Back reads as the reverse of the way in.
+-->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:interpolator/decelerate_quad"
+    android:shareInterpolator="true">
+    <alpha
+        android:fromAlpha="0.94"
+        android:toAlpha="1.0"
+        android:duration="190" />
+    <scale
+        android:fromXScale="0.995"
+        android:toXScale="1.0"
+        android:fromYScale="0.995"
+        android:toYScale="1.0"
+        android:pivotX="50%"
+        android:pivotY="50%"
+        android:duration="190" />
+</set>

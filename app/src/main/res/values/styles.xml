@@ -6,6 +6,25 @@
         <item name="android:statusBarColor">#0B0D12</item>
         <item name="android:colorAccent">#8B7CFF</item>
         <item name="android:windowActionModeOverlay">true</item>
+        <!--
+          Orbit's own surface colour. Without this the window inherits the light Material
+          background, so any frame before a page has drawn - launching, navigating, or a
+          rebuild - shows white behind Orbit's dark UI.
+        -->
+        <item name="android:windowBackground">#0A0C11</item>
+        <item name="android:windowAnimationStyle">@style/OrbitWindowAnimation</item>
+    </style>
+
+    <!--
+      One restrained transition for every Orbit screen, so opening a Settings category, a
+      subpage, and pressing Back all move the same way. Android skips these entirely when the
+      system animation scale is off, so reduced-motion needs no special handling.
+    -->
+    <style name="OrbitWindowAnimation">
+        <item name="android:activityOpenEnterAnimation">@anim/orbit_activity_open_enter</item>
+        <item name="android:activityOpenExitAnimation">@anim/orbit_activity_open_exit</item>
+        <item name="android:activityCloseEnterAnimation">@anim/orbit_activity_close_enter</item>
+        <item name="android:activityCloseExitAnimation">@anim/orbit_activity_close_exit</item>
     </style>
 
     <style name="Theme.Orbit.Bridge" parent="android:style/Theme.Material.Light.NoActionBar">
