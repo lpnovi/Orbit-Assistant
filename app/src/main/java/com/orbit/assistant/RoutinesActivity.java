@@ -10,6 +10,7 @@ import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.widget.Button;
 import android.widget.ImageButton;
@@ -28,6 +29,8 @@ public class RoutinesActivity extends Activity {
     public static final String EXTRA_AUTORUN_TRIGGER_ID = "autorun_trigger_id";
     public static final String EXTRA_AUTORUN_SCHEDULED = "autorun_scheduled";
     private boolean handledAutoRunIntent;
+    private ScrollView pageScroll;
+    private LinearLayout pageContent;
     private LinearLayout routinesList;
     private LinearLayout runPanel;
     private TextView runTitle;
@@ -66,10 +69,12 @@ public class RoutinesActivity extends Activity {
 
     private View buildContent() {
         ScrollView scroll = new ScrollView(this);
+        pageScroll = scroll;
         scroll.setFillViewport(true);
         scroll.setBackgroundColor(UiKit.BG);
 
         LinearLayout page = new LinearLayout(this);
+        pageContent = page;
         page.setOrientation(LinearLayout.VERTICAL);
         int p = UiKit.dp(this, 20);
         page.setPadding(p, UiKit.dp(this, 26), p, UiKit.dp(this, 48));
@@ -158,8 +163,41 @@ public class RoutinesActivity extends Activity {
         return scroll;
     }
 
+    /**
+     * Applies a change that rebuilds the routine cards or resizes the run panel above them, then
+     * restores the scroll offset once layout settles. Rebuilding briefly collapses the list, which
+     * otherwise makes ScrollView clamp the offset to the header, and showing or growing the run
+     * panel shifts every card down. Re-anchoring on the list keeps the visible routines in place.
+     */
+    private void preserveListPosition(Runnable change) {
+        if (change == null) return;
+        if (pageScroll == null || pageContent == null || routinesList == null) {
+            change.run();
+            return;
+        }
+        final ScrollView target = pageScroll;
+        final int previousScroll = target.getScrollY();
+        final int previousAnchor = routinesList.getTop();
+        change.run();
+        if (previousScroll <= 0) return;
+        ViewTreeObserver.OnGlobalLayoutListener listener = new ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override public void onGlobalLayout() {
+                ViewTreeObserver observer = target.getViewTreeObserver();
+                if (observer.isAlive()) observer.removeOnGlobalLayoutListener(this);
+                int maximum = Math.max(0, pageContent.getHeight() - target.getHeight());
+                int desired = previousScroll + (routinesList.getTop() - previousAnchor);
+                target.scrollTo(0, Math.max(0, Math.min(desired, maximum)));
+            }
+        };
+        target.getViewTreeObserver().addOnGlobalLayoutListener(listener);
+    }
+
     private void refresh() {
         if (routinesList == null) return;
+        preserveListPosition(this::rebuildRoutinesList);
+    }
+
+    private void rebuildRoutinesList() {
         routinesList.removeAllViews();
         List<RoutineStore.Routine> routines = RoutineStore.list(this);
         if (routines.isEmpty()) {
@@ -288,11 +326,13 @@ public class RoutinesActivity extends Activity {
         if (routine == null || routine.actions.isEmpty()) return;
         int safeStart = Math.max(0, Math.min(startIndex, routine.actions.size() - 1));
         RoutineStore.markRun(this, routine.id);
-        runPanel.setVisibility(View.VISIBLE);
-        runTitle.setText((scheduledContinuation ? "Finishing " : "Running ") + routine.name);
         int remaining = routine.actions.size() - safeStart;
-        runSubtitle.setText("Starting " + remaining + (remaining == 1 ? " remaining step…" : " remaining steps…"));
-        while (runPanel.getChildCount() > 2) runPanel.removeViewAt(2);
+        preserveListPosition(() -> {
+            runPanel.setVisibility(View.VISIBLE);
+            runTitle.setText((scheduledContinuation ? "Finishing " : "Running ") + routine.name);
+            runSubtitle.setText("Starting " + remaining + (remaining == 1 ? " remaining step…" : " remaining steps…"));
+            while (runPanel.getChildCount() > 2) runPanel.removeViewAt(2);
+        });
 
         List<AssistantReply.Action> actions = RoutineStore.copyActions(routine.actions.subList(safeStart, routine.actions.size()));
         final int offset = safeStart;
@@ -331,7 +371,7 @@ public class RoutinesActivity extends Activity {
                             LinearLayout.LayoutParams retryLp = new LinearLayout.LayoutParams(
                                     ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(RoutinesActivity.this, 42));
                             retryLp.setMargins(0, UiKit.dp(RoutinesActivity.this, 10), 0, 0);
-                            runPanel.addView(retry, retryLp);
+                            preserveListPosition(() -> runPanel.addView(retry, retryLp));
                         }
                     }
                 });
@@ -343,7 +383,7 @@ public class RoutinesActivity extends Activity {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.setMargins(0, UiKit.dp(this, 8), 0, 0);
-        runPanel.addView(row, lp);
+        preserveListPosition(() -> runPanel.addView(row, lp));
     }
 
     private void renderRunResult(LinearLayout row, AssistantReply.Action action,
