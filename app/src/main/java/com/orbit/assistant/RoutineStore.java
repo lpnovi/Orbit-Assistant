@@ -8,8 +8,10 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 /** Local, private persistence for Orbit routines. */
@@ -90,6 +92,34 @@ public final class RoutineStore {
         for (Routine routine : routines) if (routine.pinned) out.add(routine);
         for (Routine routine : routines) if (!routine.pinned) out.add(routine);
         return out;
+    }
+
+    /**
+     * Rewrites the manual routine order from a full list of ids.
+     *
+     * <p>Manual order is simply the stored order, so reordering re-persists the same routine
+     * records and never touches actions, triggers, pinned state, timestamps, or run history, and
+     * needs no change to the backup format. Unknown ids are ignored and any stored routine the
+     * caller omitted keeps its relative order at the end, so a stale list can never drop one.
+     */
+    public static synchronized boolean applyOrder(Context c, List<String> orderedIds) {
+        if (c == null || orderedIds == null) return false;
+        List<Routine> routines = stored(c);
+        if (routines.isEmpty()) return false;
+        List<Routine> out = new ArrayList<>(routines.size());
+        Set<String> placed = new HashSet<>();
+        for (String id : orderedIds) {
+            if (id == null || !placed.add(id)) continue;
+            for (Routine routine : routines) {
+                if (routine.id.equals(id)) {
+                    out.add(routine);
+                    break;
+                }
+            }
+        }
+        for (Routine routine : routines) if (!placed.contains(routine.id)) out.add(routine);
+        if (out.size() != routines.size()) return false;
+        return write(c, out);
     }
 
     /** Pins or unpins one routine without touching its actions, triggers, or run history. */

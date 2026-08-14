@@ -7,11 +7,15 @@ import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.text.TextUtils;
+import android.view.DragEvent;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.Window;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -21,7 +25,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /** Manager and manual runner for saved Orbit action routines. */
 public class RoutinesActivity extends Activity {
@@ -29,7 +35,12 @@ public class RoutinesActivity extends Activity {
     public static final String EXTRA_AUTORUN_START_INDEX = "autorun_start_index";
     public static final String EXTRA_AUTORUN_TRIGGER_ID = "autorun_trigger_id";
     public static final String EXTRA_AUTORUN_SCHEDULED = "autorun_scheduled";
+    /** Marks a drag as Orbit's own routine reorder rather than any other drag entering the window. */
+    private static final String DRAG_TOKEN = "orbit-routine-reorder";
     private boolean handledAutoRunIntent;
+    private View dragCard;
+    private int dragGroupStart;
+    private int dragGroupEnd;
     private ScrollView pageScroll;
     private LinearLayout pageContent;
     private LinearLayout routinesList;
@@ -160,10 +171,12 @@ public class RoutinesActivity extends Activity {
 
         routinesList = new LinearLayout(this);
         routinesList.setOrientation(LinearLayout.VERTICAL);
+        routinesList.setOnDragListener(this::onRoutineDrag);
         page.addView(routinesList);
 
         TextView hint = UiKit.text(this,
-                "Tip: run a routine by name, or open Automatic triggers on its card to schedule it.",
+                "Tip: press and hold a routine to reorder it, run one by name, "
+                        + "or open Automatic triggers on its card to schedule it.",
                 12, UiKit.MUTED, false);
         hint.setGravity(Gravity.CENTER);
         hint.setPadding(UiKit.dp(this, 8), UiKit.dp(this, 12), UiKit.dp(this, 8), 0);
@@ -201,9 +214,201 @@ public class RoutinesActivity extends Activity {
         target.getViewTreeObserver().addOnGlobalLayoutListener(listener);
     }
 
-    private void refresh() {
+    /**
+     * Press-and-hold reorder built on Android's own drag framework rather than a hand-rolled
+     * gesture. The drag is started from the list itself so the card can be moved between children
+     * without the drag source ever leaving the hierarchy, and the card supplies the system drag
+     * shadow, giving the usual platform lift for free.
+     */
+    private boolean beginRoutineDrag(View card, RoutineStore.Routine routine) {
+        if (routinesList == null || dragCard != null) return false;
+        int count = routinesList.getChildCount();
+        if (count < 2) return false;
+
+        // A routine may only be reordered inside its own pinned or unpinned group, so dragging
+        // across the boundary can never imply a pin change. list() is pinned-first, so the group
+        // is a contiguous range and its bounds are simply the pinned count.
+        int pinnedCount = 0;
+        for (RoutineStore.Routine r : RoutineStore.list(this)) if (r.pinned) pinnedCount++;
+        if (pinnedCount > count) pinnedCount = count;
+        dragGroupStart = routine.pinned ? 0 : pinnedCount;
+        dragGroupEnd = routine.pinned ? pinnedCount - 1 : count - 1;
+        if (dragGroupEnd <= dragGroupStart) return false;
+
+        dragCard = card;
+        UiKit.haptic(card, HapticFeedbackConstants.LONG_PRESS);
+        boolean started;
+        try {
+            started = routinesList.startDragAndDrop(null, new View.DragShadowBuilder(card),
+                    DRAG_TOKEN, 0);
+        } catch (Exception ignored) {
+            started = false;
+        }
+        if (!started) {
+            dragCard = null;
+            return false;
+        }
+        card.animate().cancel();
+        card.animate().alpha(0.4f).scaleX(0.98f).scaleY(0.98f).setDuration(110).start();
+        return true;
+    }
+
+    private boolean onRoutineDrag(View unusedTarget, DragEvent event) {
+        if (routinesList == null) return false;
+        switch (event.getAction()) {
+            case DragEvent.ACTION_DRAG_STARTED:
+                return DRAG_TOKEN.equals(event.getLocalState());
+            case DragEvent.ACTION_DRAG_LOCATION:
+                if (dragCard != null) {
+                    autoScrollForDrag(event.getY());
+                    moveDragCardTo(targetIndexFor(event.getY()));
+                }
+                return true;
+            case DragEvent.ACTION_DROP:
+                return true;
+            case DragEvent.ACTION_DRAG_ENDED:
+                finishRoutineDrag();
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    /** Index whose vertical midpoint the pointer has passed, clamped to the dragged card's group. */
+    private int targetIndexFor(float y) {
+        int target = routinesList.getChildCount() - 1;
+        for (int i = 0; i < routinesList.getChildCount(); i++) {
+            View child = routinesList.getChildAt(i);
+            if (y < child.getTop() + child.getHeight() / 2f) {
+                target = i;
+                break;
+            }
+        }
+        return Math.max(dragGroupStart, Math.min(target, dragGroupEnd));
+    }
+
+    private void moveDragCardTo(int target) {
+        int current = routinesList.indexOfChild(dragCard);
+        if (current < 0 || current == target) return;
+        final View moving = dragCard;
+        animateListReorder(() -> {
+            routinesList.removeView(moving);
+            routinesList.addView(moving, target, cardLp());
+        });
+        UiKit.haptic(routinesList, HapticFeedbackConstants.CLOCK_TICK);
+    }
+
+    /** Keeps the drag reachable past the visible area without fighting the user's own scrolling. */
+    private void autoScrollForDrag(float y) {
+        if (pageScroll == null || pageContent == null) return;
+        float absolute = routinesList.getTop() + y;
+        int edge = UiKit.dp(this, 72);
+        int step = UiKit.dp(this, 7);
+        int top = pageScroll.getScrollY();
+        int bottom = top + pageScroll.getHeight();
+        int maximum = Math.max(0, pageContent.getHeight() - pageScroll.getHeight());
+        if (absolute < top + edge && top > 0) {
+            pageScroll.scrollBy(0, -Math.min(step, top));
+        } else if (absolute > bottom - edge && top < maximum) {
+            pageScroll.scrollBy(0, Math.min(step, maximum - top));
+        }
+    }
+
+    private void finishRoutineDrag() {
+        if (dragCard == null) return;
+        View card = dragCard;
+        dragCard = null;
+        card.animate().cancel();
+        card.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(140)
+                .setInterpolator(new DecelerateInterpolator()).start();
+
+        List<String> order = new ArrayList<>();
+        for (int i = 0; i < routinesList.getChildCount(); i++) {
+            Object tag = routinesList.getChildAt(i).getTag();
+            if (tag instanceof String) order.add((String) tag);
+        }
+        // The visible children are already in the new order, so nothing is rebuilt here and the
+        // list neither flashes nor moves after the drop.
+        if (!order.isEmpty()) RoutineStore.applyOrder(this, order);
+    }
+
+    /**
+     * Slides the surrounding cards from where they were to where they now are. Positions are
+     * captured before the change and replayed as a short translation afterwards, so reordering
+     * reads as movement rather than a snap. Skipped when the system has animations turned off.
+     */
+    private void animateListReorder(Runnable change) {
         if (routinesList == null) return;
+        if (!UiKit.animationsEnabled()) {
+            change.run();
+            return;
+        }
+        final Map<View, Integer> before = new HashMap<>();
+        for (int i = 0; i < routinesList.getChildCount(); i++) {
+            View child = routinesList.getChildAt(i);
+            before.put(child, child.getTop());
+        }
+        change.run();
+        routinesList.getViewTreeObserver().addOnPreDrawListener(
+                new ViewTreeObserver.OnPreDrawListener() {
+                    @Override public boolean onPreDraw() {
+                        ViewTreeObserver observer = routinesList.getViewTreeObserver();
+                        if (observer.isAlive()) observer.removeOnPreDrawListener(this);
+                        for (int i = 0; i < routinesList.getChildCount(); i++) {
+                            View child = routinesList.getChildAt(i);
+                            Integer old = before.get(child);
+                            if (old == null) continue;
+                            int delta = old - child.getTop();
+                            if (delta == 0) continue;
+                            child.setTranslationY(delta);
+                            child.animate().translationY(0f).setDuration(190)
+                                    .setInterpolator(new DecelerateInterpolator()).start();
+                        }
+                        return true;
+                    }
+                });
+    }
+
+    private void refresh() {
+        refresh(false);
+    }
+
+    /**
+     * @param animateOrderChange slides cards from their previous positions when the same routines
+     *                           come back in a different order, so pinning and unpinning move the
+     *                           card instead of the list jumping to its new arrangement.
+     */
+    private void refresh(boolean animateOrderChange) {
+        if (routinesList == null) return;
+        if (!animateOrderChange || !UiKit.animationsEnabled()) {
+            preserveListPosition(this::rebuildRoutinesList);
+            return;
+        }
+        final Map<String, Integer> before = new HashMap<>();
+        for (int i = 0; i < routinesList.getChildCount(); i++) {
+            View child = routinesList.getChildAt(i);
+            if (child.getTag() instanceof String) before.put((String) child.getTag(), child.getTop());
+        }
         preserveListPosition(this::rebuildRoutinesList);
+        routinesList.getViewTreeObserver().addOnPreDrawListener(
+                new ViewTreeObserver.OnPreDrawListener() {
+                    @Override public boolean onPreDraw() {
+                        ViewTreeObserver observer = routinesList.getViewTreeObserver();
+                        if (observer.isAlive()) observer.removeOnPreDrawListener(this);
+                        for (int i = 0; i < routinesList.getChildCount(); i++) {
+                            View child = routinesList.getChildAt(i);
+                            if (!(child.getTag() instanceof String)) continue;
+                            Integer old = before.get((String) child.getTag());
+                            if (old == null) continue;
+                            int delta = old - child.getTop();
+                            if (delta == 0) continue;
+                            child.setTranslationY(delta);
+                            child.animate().translationY(0f).setDuration(210)
+                                    .setInterpolator(new DecelerateInterpolator()).start();
+                        }
+                        return true;
+                    }
+                });
     }
 
     private void rebuildRoutinesList() {
@@ -225,6 +430,10 @@ public class RoutinesActivity extends Activity {
 
     private View routineCard(RoutineStore.Routine routine) {
         LinearLayout card = card();
+        card.setTag(routine.id);
+        // Long-press on the card body reorders. Run, Edit, triggers, and the options button are
+        // clickable children that consume their own touches, so none of them can start a drag.
+        card.setOnLongClickListener(v -> beginRoutineDrag(v, routine));
 
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
@@ -232,6 +441,7 @@ public class RoutinesActivity extends Activity {
         text.setOrientation(LinearLayout.VERTICAL);
         TextView name = UiKit.text(this, routine.name, 16, UiKit.TEXT, true);
         name.setMaxLines(1);
+        name.setEllipsize(TextUtils.TruncateAt.END);
         text.addView(name);
         String stepText = routine.actions.size() == 1 ? "1 step" : routine.actions.size() + " steps";
         TextView steps = UiKit.text(this, stepText, 12, UiKit.MUTED, false);
@@ -309,7 +519,7 @@ public class RoutinesActivity extends Activity {
             Toast.makeText(this, "Could not update this routine.", Toast.LENGTH_SHORT).show();
             return;
         }
-        refresh();
+        refresh(true);
         Toast.makeText(this, (pin ? "Pinned " : "Unpinned ") + routine.name, Toast.LENGTH_SHORT).show();
     }
 
@@ -321,11 +531,27 @@ public class RoutinesActivity extends Activity {
         String name = uniqueCopyName(source.name);
         RoutineStore.Routine copy = RoutineStore.create(name, source.actions);
         if (RoutineStore.upsert(this, copy)) {
+            placeDuplicateAfterSource(source.id, copy.id);
             refresh();
             Toast.makeText(this, "Duplicated " + source.name, Toast.LENGTH_SHORT).show();
         } else {
             Toast.makeText(this, "Could not duplicate routine.", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    /**
+     * Puts a duplicate directly after the routine it came from instead of at the very end, without
+     * disturbing the manual order of anything else.
+     */
+    private void placeDuplicateAfterSource(String sourceId, String copyId) {
+        List<String> order = new ArrayList<>();
+        for (RoutineStore.Routine routine : RoutineStore.list(this)) {
+            if (routine.id.equals(copyId)) continue;
+            order.add(routine.id);
+            if (routine.id.equals(sourceId)) order.add(copyId);
+        }
+        if (!order.contains(copyId)) order.add(copyId);
+        RoutineStore.applyOrder(this, order);
     }
 
     private String uniqueCopyName(String source) {

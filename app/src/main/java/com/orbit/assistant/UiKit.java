@@ -1048,6 +1048,22 @@ public final class UiKit {
     }
 
     /**
+     * Subtle system-respecting haptic, honouring Orbit's Haptics preference. Use
+     * {@link HapticFeedbackConstants} so each surface stays consistent with the platform.
+     */
+    public static void haptic(View v, int feedbackConstant) {
+        if (v == null || !Prefs.haptics(v.getContext())) return;
+        try { v.performHapticFeedback(feedbackConstant); }
+        catch (Exception ignored) {}
+    }
+
+    /** True when the system is running with animations enabled (reduced-motion aware). */
+    public static boolean animationsEnabled() {
+        try { return android.animation.ValueAnimator.areAnimatorsEnabled(); }
+        catch (Exception ignored) { return true; }
+    }
+
+    /**
      * Small, tactile interaction used across Orbit. The view compresses on press,
      * springs back on release, and emits a subtle system-respecting haptic tick.
      */
