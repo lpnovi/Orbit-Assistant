@@ -252,10 +252,19 @@
 - Preserve non-secret configuration in Backup & Restore while requiring secret setup again after restore
 - Preserve Extensions screen position after Enable, Disable, Remove, and configuration refreshes
 
+## 0.7.3 series — Natural Routine creation
+
+### 0.7.3.0
+- Create Routines from natural-language descriptions through **Create with Orbit**
+- Convert requests into validated existing Action Engine steps, never new capabilities
+- Review generated drafts in the existing Routine editor before anything is saved
+- Surface unsupported and ambiguous requested actions instead of inventing them
+- Keep automatic trigger and condition creation for later 0.7.3.x expansion
+
 ## Future direction
 
 ### Next up
-- Natural-language Routine creation
+- Natural-language triggers and conditions, expanding 0.7.3.0 Routine creation
 - Richer automation, chained plans, conditions and branching
 
 ### Planned

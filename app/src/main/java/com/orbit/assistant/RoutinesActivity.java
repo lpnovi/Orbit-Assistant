@@ -128,6 +128,14 @@ public class RoutinesActivity extends Activity {
         page.addView(create, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 50)));
 
+        Button createWithOrbit = secondaryButton("Create with Orbit");
+        createWithOrbit.setOnClickListener(v ->
+                startActivity(new Intent(this, RoutineBuilderActivity.class)));
+        LinearLayout.LayoutParams createLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44));
+        createLp.setMargins(0, UiKit.dp(this, 10), 0, 0);
+        page.addView(createWithOrbit, createLp);
+
         Button templates = secondaryButton("Templates");
         templates.setOnClickListener(v ->
                 startActivity(new Intent(this, RoutineTemplatesActivity.class)));

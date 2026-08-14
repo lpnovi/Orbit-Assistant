@@ -39,10 +39,17 @@ import java.util.Map;
 /** Create/edit UI for deterministic saved routines. */
 public class RoutineEditorActivity extends Activity {
     public static final String EXTRA_ROUTINE_ID = "routine_id";
+    /**
+     * A generated but unsaved routine to prefill. No routine exists yet: the name and steps are
+     * seeded, everything remains editable, and only Save writes anything to {@link RoutineStore}.
+     */
+    public static final String EXTRA_ROUTINE_DRAFT = "routine_draft";
 
     private final List<AssistantReply.Action> workingActions = new ArrayList<>();
     private LinearLayout stepsList;
     private EditText nameField;
+    /** Proposed name from a generated draft; empty for a normal new routine. */
+    private String draftName = "";
     private Button addStepButton;
     private RoutineStore.Routine existing;
     private boolean dirty;
@@ -64,6 +71,16 @@ public class RoutineEditorActivity extends Activity {
                 return;
             }
             workingActions.addAll(RoutineStore.copyActions(existing.actions));
+        } else {
+            // Opening from a generated draft. Re-validated here rather than trusted, and left
+            // entirely unsaved until the user presses Save like any other new routine.
+            String payload = getIntent() == null ? null
+                    : getIntent().getStringExtra(EXTRA_ROUTINE_DRAFT);
+            RoutineDraft draft = RoutineDraft.fromPayload(this, payload);
+            if (draft != null) {
+                draftName = draft.name;
+                workingActions.addAll(RoutineStore.copyActions(draft.actions));
+            }
         }
 
         Window w = getWindow();
@@ -135,7 +152,8 @@ public class RoutineEditorActivity extends Activity {
         page.addView(intro, introLp);
 
         page.addView(sectionTitle("NAME"));
-        nameField = inputField("Routine name", existing == null ? "" : existing.name, false);
+        nameField = inputField("Routine name",
+                existing != null ? existing.name : draftName, false);
         nameField.setFilters(new InputFilter[]{new InputFilter.LengthFilter(RoutineStore.MAX_NAME_LENGTH)});
         nameField.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int st, int c, int a) {}

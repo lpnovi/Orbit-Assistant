@@ -177,6 +177,40 @@ public final class AssistantClient {
                 trustedTaskContext, responseCallback);
     }
 
+    /**
+     * One focused planning request that goes straight to the configured provider.
+     *
+     * <p>Deliberately not {@link #send}: that resolves saved routines, device commands, custom
+     * commands, and notification queries first, so a description such as "turn on the flashlight"
+     * would be executed as a command instead of planned, and it also selects Memory to add to the
+     * prompt. This path carries only the planning instruction — no history, screen text,
+     * screenshot, notifications, or memories — and returns the model's raw reply for the caller to
+     * validate.
+     */
+    public static void plan(Context context, String planningPrompt, Callback cb) {
+        if (context == null || cb == null) return;
+        if (planningPrompt == null || planningPrompt.trim().isEmpty()) {
+            cb.onError("Describe the routine you want Orbit to build.");
+            return;
+        }
+        List<History> noHistory = new java.util.ArrayList<>();
+        String mode = Prefs.normalizeMode(Prefs.intelligenceMode(context));
+        if (Prefs.MODE_AUTO.equals(mode)) mode = Prefs.MODE_BALANCED;
+
+        String provider = Prefs.provider(context);
+        if (Prefs.PROVIDER_CHATGPT.equals(provider)) {
+            if (!ChatGptAuth.isSignedIn(context)) {
+                cb.onError("Sign in with ChatGPT in Orbit settings first. No API key is required for ChatGPT-account mode.");
+                return;
+            }
+            ChatGptClient.send(context, planningPrompt, null, null, noHistory,
+                    mode, false, "", "", "", cb);
+            return;
+        }
+        sendViaRelay(context, planningPrompt, null, null, noHistory, mode,
+                false, "", "", "", cb);
+    }
+
     private static Callback decorateMemoryMetadata(Callback downstream,
                                                    MemoryStore.Selection selection,
                                                    MemoryStore.Suggestion suggestion) {

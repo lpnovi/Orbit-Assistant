@@ -78,6 +78,7 @@
         <activity android:name=".CustomCommandsActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".CustomCommandEditorActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".RoutineEditorActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".RoutineBuilderActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".RoutineTriggersActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".RoutineRunHistoryActivity" android:exported="false" />
         <activity android:name=".TimeTriggerEditorActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
