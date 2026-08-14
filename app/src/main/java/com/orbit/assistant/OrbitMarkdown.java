@@ -29,7 +29,131 @@ public final class OrbitMarkdown {
             "|~~([^~\\n]+)~~" +
             "|`([^`\\n]+)`");
 
+    private static final Pattern HRULE = Pattern.compile("^([-*_])\\1{2,}$");
+    /**
+     * Inline markup for compact previews. Deliberately stricter than {@link #INLINE}: emphasis
+     * must not begin or end on whitespace and underscore emphasis must sit on word boundaries, so
+     * ordinary prose such as "2 * 4 = 8 * 2" and identifiers such as "some_var_name" survive
+     * untouched rather than being read as formatting.
+     */
+    private static final Pattern PREVIEW_INLINE = Pattern.compile(
+            "\\[([^\\]]+)]\\((https?://[^\\s)]+)\\)" +
+            "|\\[\\s*]\\((https?://[^\\s)]+)\\)" +
+            "|\\*\\*(?!\\s)([^*\\n]*[^*\\s])\\*\\*" +
+            "|(?<![\\w_])__(?!\\s)([^_\\n]*[^_\\s])__(?![\\w_])" +
+            "|(?<![\\w*])\\*(?!\\s)([^*\\n]*[^*\\s])\\*(?![\\w*])" +
+            "|(?<![\\w_])_(?!\\s)([^_\\n]*[^_\\s])_(?![\\w_])" +
+            "|~~(?!\\s)([^~\\n]*[^~\\s])~~" +
+            "|`([^`\\n]+)`");
+    private static final int PREVIEW_INLINE_PASSES = 3;
+
     private OrbitMarkdown() {}
+
+    /**
+     * Flattens a stored message into one clean line for compact previews such as the Chats list.
+     *
+     * <p>Presentation only: the message itself is never altered, and opening the conversation
+     * still renders the original Markdown in full. Headings, list items, quoted lines, and
+     * paragraphs become readable segments joined by a separator; emphasis, links, and inline code
+     * give up their syntax and keep their words; fenced code is left out entirely, falling back to
+     * a short label only when a message is nothing but code. Normalization happens before the
+     * length limit so the visible characters are spent on words rather than on syntax.
+     */
+    public static String toPreviewText(String source, int maxChars) {
+        if (source == null || source.trim().isEmpty()) return "";
+        String[] lines = source.replace("\r", "").split("\n", -1);
+        StringBuilder out = new StringBuilder();
+        boolean codeBlock = false;
+        boolean sawCode = false;
+        for (String raw : lines) {
+            String line = raw.trim();
+            if (line.startsWith("```")) {
+                codeBlock = !codeBlock;
+                sawCode = true;
+                continue;
+            }
+            if (codeBlock) {
+                sawCode = true;
+                continue;
+            }
+            if (line.isEmpty() || HRULE.matcher(line).matches()) continue;
+
+            while (line.startsWith(">")) line = line.substring(1).trim();
+            if (line.isEmpty()) continue;
+
+            Matcher heading = HEADING.matcher(line);
+            if (heading.matches()) {
+                line = heading.group(2);
+            } else {
+                Matcher bullet = BULLET.matcher(line);
+                Matcher numbered = NUMBERED.matcher(line);
+                if (bullet.matches()) line = bullet.group(1);
+                else if (numbered.matches()) line = numbered.group(2);
+            }
+
+            line = flattenTableRow(line);
+            if (line.isEmpty()) continue;
+
+            String cleaned = stripPreviewInline(line).trim();
+            if (cleaned.isEmpty()) continue;
+            if (out.length() > 0) out.append(" · ");
+            out.append(cleaned);
+            // Plenty of material for any sensible limit; no need to walk a long response.
+            if (maxChars > 0 && out.length() > maxChars * 2) break;
+        }
+
+        String text = out.toString().replaceAll("\\s+", " ").trim();
+        if (text.isEmpty()) return sawCode ? "Code snippet" : "";
+        if (maxChars > 0 && text.length() > maxChars) {
+            text = text.substring(0, Math.max(0, maxChars - 1)).trim() + "…";
+        }
+        return text;
+    }
+
+    /** Turns a table row into its cell text, and drops the dashed separator rows entirely. */
+    private static String flattenTableRow(String line) {
+        if (!line.startsWith("|")) return line;
+        String body = line.substring(1);
+        if (body.endsWith("|")) body = body.substring(0, body.length() - 1);
+        String[] cells = body.split("\\|", -1);
+        StringBuilder joined = new StringBuilder();
+        for (String cell : cells) {
+            String value = cell.trim();
+            if (value.isEmpty() || value.matches("^:?-{1,}:?$")) continue;
+            if (joined.length() > 0) joined.append(' ');
+            joined.append(value);
+        }
+        return joined.toString();
+    }
+
+    /** Replaces inline markup with the words it was decorating, including one level of nesting. */
+    private static String stripPreviewInline(String line) {
+        String current = line;
+        for (int pass = 0; pass < PREVIEW_INLINE_PASSES; pass++) {
+            Matcher matcher = PREVIEW_INLINE.matcher(current);
+            if (!matcher.find()) return current;
+            matcher.reset();
+            StringBuilder out = new StringBuilder();
+            int cursor = 0;
+            while (matcher.find()) {
+                out.append(current, cursor, matcher.start());
+                String replacement = "";
+                for (int group = 1; group <= matcher.groupCount(); group++) {
+                    // The first populated group is the visible text; a link's URL only wins when
+                    // the link carried no text of its own.
+                    if (matcher.group(group) != null) {
+                        replacement = matcher.group(group);
+                        break;
+                    }
+                }
+                out.append(replacement);
+                cursor = matcher.end();
+            }
+            out.append(current, cursor, current.length());
+            current = out.toString();
+        }
+        return current;
+    }
 
     /** Headings, emphasis, lists, inline/code blocks, and safe HTTP(S) links. */
     public static CharSequence render(Context context, String source) {

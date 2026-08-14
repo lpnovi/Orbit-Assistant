@@ -482,7 +482,11 @@ public class MainActivity extends Activity {
     private String preview(ConversationStore.Conversation chat) {
         if (chat.messages.isEmpty()) return "Empty chat";
         AssistantClient.History h = chat.messages.get(chat.messages.size()-1);
-        return compact(h.content, 100) + (h.screenAttached ? "  •  Screen attached" : "");
+        // Display only. The stored message keeps its Markdown and still renders in full when the
+        // conversation is opened; this just spends the card's characters on words, not syntax.
+        String body = OrbitMarkdown.toPreviewText(h.content, 100);
+        if (body.isEmpty()) body = compact(h.content, 100);
+        return body + (h.screenAttached ? "  •  Screen attached" : "");
     }
 
     private String compact(String text, int max) {
