@@ -19,6 +19,7 @@ import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
@@ -43,6 +44,13 @@ import java.util.concurrent.Executors;
 /** Full-screen local Orbit chat. */
 public class ChatActivity extends Activity {
     public static final String EXTRA_CONVERSATION_ID = "conversation_id";
+    /**
+     * Marks the Side-button overlay expanding into the conversation it is already showing. That
+     * expansion is the transition, so this one launch plays no page animation and tells the
+     * overlay when it is safe to blank. Per-Intent and consumed on arrival, so it can never
+     * affect any later navigation.
+     */
+    public static final String EXTRA_ASSISTANT_HANDOFF = "assistant_handoff";
     public static final String EXTRA_FOCUS_COMPOSER = "focus_composer";
     public static final String EXTRA_INITIAL_DRAFT = "initial_draft";
 
@@ -107,6 +115,25 @@ public class ChatActivity extends Activity {
         View content = buildContent();
         setContentView(content);
         UiKit.applyActivityInsets(this, content, true);
+
+        boolean assistantHandoff = getIntent() != null
+                && getIntent().getBooleanExtra(EXTRA_ASSISTANT_HANDOFF, false);
+        if (assistantHandoff) {
+            getIntent().removeExtra(EXTRA_ASSISTANT_HANDOFF);
+            // Applied after applyActivityInsets has set the preferred style and still before the
+            // window is added, so the chat is never animated and then corrected.
+            UiKit.suppressPageTransition(this);
+            // Release the overlay only once this conversation is genuinely on screen.
+            content.getViewTreeObserver().addOnPreDrawListener(
+                    new ViewTreeObserver.OnPreDrawListener() {
+                        @Override public boolean onPreDraw() {
+                            ViewTreeObserver observer = content.getViewTreeObserver();
+                            if (observer.isAlive()) observer.removeOnPreDrawListener(this);
+                            content.post(OrbitHandoff::destinationDrawn);
+                            return true;
+                        }
+                    });
+        }
     }
 
     @Override protected void onResume() {

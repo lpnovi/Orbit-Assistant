@@ -14,6 +14,7 @@ import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -2886,34 +2887,49 @@ public class OrbitSession extends VoiceInteractionSession {
         final int startBottom = lp.bottomMargin;
         final float startTranslation = sheet.getTranslationY();
 
+        // One drawable, mutated per frame. Rebuilding the gradient on every update allocated a new
+        // drawable ~14 times during the expansion and forced a full background rebuild each time,
+        // which is what made the commit stutter instead of continuing smoothly from the drag.
+        final GradientDrawable sheetBackground = UiKit.gradientSheet(c, 30f);
+        sheet.setBackground(sheetBackground);
+        final float startRadius = UiKit.dp(c, 30);
+
         ValueAnimator expand = ValueAnimator.ofFloat(0f, 1f);
         expand.setDuration(235);
         expand.setInterpolator(new PathInterpolator(0.18f, 0.00f, 0.00f, 1.00f));
         expand.addUpdateListener(animation -> {
             if (sheet == null) return;
-            float f = (float) animation.getAnimatedValue();
-            float eased = f;
+            float eased = (float) animation.getAnimatedValue();
             lp.height = Math.round(startHeight + (targetHeight - startHeight) * eased);
             lp.leftMargin = Math.round(startLeft * (1f - eased));
             lp.rightMargin = Math.round(startRight * (1f - eased));
             lp.bottomMargin = Math.round(startBottom * (1f - eased));
             sheet.setLayoutParams(lp);
             sheet.setTranslationY(startTranslation * (1f - eased));
-            sheet.setBackground(UiKit.gradientSheet(c, 30f * (1f - eased)));
+            sheetBackground.setCornerRadius(startRadius * (1f - eased));
         });
         expand.addListener(new android.animation.AnimatorListenerAdapter() {
             @Override public void onAnimationEnd(android.animation.Animator animation) {
-                Intent open = new Intent(c, MainActivity.class)
-                        .putExtra(MainActivity.EXTRA_OPEN_CONVERSATION_ID, conversationId)
-                        // The overlay's own expansion is the transition for this handoff, so the
-                        // chat must not also play the selected page animation on top of it.
-                        .putExtra(MainActivity.EXTRA_ASSISTANT_HANDOFF, true)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                try { c.startActivity(open); } catch (Exception ignored) {}
-                main.postDelayed(() -> {
+                // Straight to the conversation the overlay is already showing. Routing through
+                // MainActivity meant its Chats list was built and drawn first, and the chat was
+                // then reached by a second, ordinary navigation that played its own transition.
+                Intent open = new Intent(c, ChatActivity.class)
+                        .putExtra(ChatActivity.EXTRA_CONVERSATION_ID, conversationId)
+                        // The overlay's expansion is the transition, so this launch plays none.
+                        .putExtra(ChatActivity.EXTRA_ASSISTANT_HANDOFF, true)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                // Hold the overlay until the chat has actually drawn, so there is no uncovered
+                // frame between the two. The rendezvous releases it on its own if that never
+                // arrives, so the overlay can never be left on screen.
+                OrbitHandoff.expectDestination(() -> {
                     dismissAnimating = false;
                     hide();
-                }, 45);
+                });
+                try {
+                    c.startActivity(open);
+                } catch (Exception ignored) {
+                    OrbitHandoff.destinationDrawn();
+                }
             }
         });
         expand.start();

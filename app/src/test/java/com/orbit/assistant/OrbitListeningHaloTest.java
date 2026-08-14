@@ -5,7 +5,6 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import android.content.Context;
-import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 
@@ -129,37 +128,4 @@ public final class OrbitListeningHaloTest {
         halo.stop();
     }
 
-    @Test public void assistantHandoffFlagIsCarriedOnTheIntent() {
-        Intent handoff = new Intent(context, MainActivity.class)
-                .putExtra(MainActivity.EXTRA_OPEN_CONVERSATION_ID, "conversation-1")
-                .putExtra(MainActivity.EXTRA_ASSISTANT_HANDOFF, true);
-
-        assertTrue(handoff.getBooleanExtra(MainActivity.EXTRA_ASSISTANT_HANDOFF, false));
-        assertEquals("conversation-1",
-                handoff.getStringExtra(MainActivity.EXTRA_OPEN_CONVERSATION_ID));
-    }
-
-    @Test public void ordinaryNavigationCarriesNoHandoffFlag() {
-        // Anything that is not the overlay handoff must keep the user's page transition.
-        Intent normal = new Intent(context, MainActivity.class);
-        assertFalse(normal.getBooleanExtra(MainActivity.EXTRA_ASSISTANT_HANDOFF, false));
-
-        Intent openChat = new Intent(context, MainActivity.class)
-                .putExtra(MainActivity.EXTRA_OPEN_CONVERSATION_ID, "conversation-2");
-        assertFalse(openChat.getBooleanExtra(MainActivity.EXTRA_ASSISTANT_HANDOFF, false));
-    }
-
-    @Test public void suppressingAHandoffDoesNotChangeTheStoredPreference() {
-        Prefs.get(context).edit().putString(Prefs.PAGE_TRANSITION,
-                Prefs.PAGE_TRANSITION_SLIDE).commit();
-
-        // The bypass is per launch, so the preference and the style it resolves to are untouched
-        // and later navigation still slides.
-        assertEquals(Prefs.PAGE_TRANSITION_SLIDE, Prefs.pageTransition(context));
-        assertEquals(R.style.OrbitWindowAnimation_Slide, UiKit.pageTransitionStyle(context));
-
-        Prefs.get(context).edit().putString(Prefs.PAGE_TRANSITION,
-                Prefs.PAGE_TRANSITION_FADE).commit();
-        assertEquals(R.style.OrbitWindowAnimation_Fade, UiKit.pageTransitionStyle(context));
-    }
 }

@@ -28,12 +28,6 @@ import java.util.List;
 /** Full Orbit companion app introduced in 0.4. */
 public class MainActivity extends Activity {
     public static final String EXTRA_OPEN_CONVERSATION_ID = "open_conversation_id";
-    /**
-     * Marks the Side-button overlay expanding into the conversation already on screen. That
-     * expansion is the transition, so this one launch skips the selected page animation. It is a
-     * per-Intent flag, consumed on arrival, so it can never affect any later navigation.
-     */
-    public static final String EXTRA_ASSISTANT_HANDOFF = "assistant_handoff";
     private LinearLayout chatList;
     private LinearLayout pendingList;
     private TextView pendingHeader;
@@ -62,9 +56,6 @@ public class MainActivity extends Activity {
         View content = buildContent();
         setContentView(content);
         UiKit.applyActivityInsets(this, content, true);
-        // Applied after applyActivityInsets has set the preferred style, and still before the
-        // window is added, so the chat is never briefly animated and then corrected.
-        if (consumeAssistantHandoff(getIntent())) UiKit.suppressPageTransition(this);
         appliedAccentName = currentAccentName();
         maybeOpenConversation(getIntent());
         if (launchOnboarding) {
@@ -78,20 +69,7 @@ public class MainActivity extends Activity {
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        // Same handoff arriving at an existing instance. Consume the flag here too so it is never
-        // left on the Intent to suppress a later transition after a recreation.
-        consumeAssistantHandoff(intent);
         maybeOpenConversation(intent);
-    }
-
-    /**
-     * Reports whether this launch is the assistant overlay's expand-into-current-chat handoff,
-     * clearing the flag so it applies exactly once.
-     */
-    private boolean consumeAssistantHandoff(Intent intent) {
-        if (intent == null || !intent.getBooleanExtra(EXTRA_ASSISTANT_HANDOFF, false)) return false;
-        intent.removeExtra(EXTRA_ASSISTANT_HANDOFF);
-        return true;
     }
 
     private void maybeOpenConversation(Intent intent) {
