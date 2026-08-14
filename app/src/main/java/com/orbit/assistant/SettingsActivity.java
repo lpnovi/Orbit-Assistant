@@ -1427,7 +1427,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
 
     private View galleryAppSelector() {
         List<GalleryAppPreference.Option> options = GalleryAppPreference.options(this);
-        String preferred = GalleryAppPreference.preferredPackage(this);
+        String preferred = GalleryAppPreference.storedPackage(this);
         String[] labels = new String[options.size()];
         int selected = 0;
         for (int i = 0; i < options.size(); i++) {
@@ -1437,7 +1437,9 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         }
         LinearLayout selector = menuSelector(labels, selected, (position, label) -> {
             int safe = Math.max(0, Math.min(options.size() - 1, position));
-            GalleryAppPreference.setPreferredPackage(this, options.get(safe).packageName);
+            // Saves the exact Activity and action discovered here, so every surface can launch it
+            // later without resolving anything again.
+            GalleryAppPreference.setPreferredOption(this, options.get(safe));
         });
         selector.setLayoutParams(selectorLp());
         return selector;

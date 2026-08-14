@@ -1,6 +1,7 @@
 package com.orbit.assistant;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -20,14 +21,17 @@ import org.robolectric.Shadows;
 import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowPackageManager;
 
+import java.util.List;
+
 /**
- * One Gallery preference has to produce one picker choice for both the full chat and the overlay
- * bridge, and reading it must never rewrite it.
+ * The Gallery choice is stored as an exact picker Activity so every surface, including the
+ * Side-button bridge on a cold process, launches the same component.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {29, 31, 35})
 public final class GalleryPreferenceTest {
     private static final String GALLERY = "com.sec.android.gallery3d";
+    private static final String GALLERY_ACTIVITY = GALLERY + ".app.PickerActivity";
 
     private Context context;
     private ShadowPackageManager packageManager;
@@ -38,14 +42,9 @@ public final class GalleryPreferenceTest {
         packageManager = Shadows.shadowOf(context.getPackageManager());
     }
 
-    /**
-     * Makes a package answer ACTION_PICK for images, the way a real gallery app does. Registered
-     * both with and without an explicit package, because resolution compares the package and the
-     * discovery query does not set one.
-     */
-    private void installGallery(String packageName) {
-        packageManager.addResolveInfoForIntent(imagePick(null), resolveInfo(packageName));
-        packageManager.addResolveInfoForIntent(imagePick(packageName), resolveInfo(packageName));
+    private void installGallery(String packageName, String activityName) {
+        packageManager.addResolveInfoForIntent(imagePick(null), resolveInfo(packageName, activityName));
+        packageManager.addResolveInfoForIntent(imagePick(packageName), resolveInfo(packageName, activityName));
     }
 
     private static Intent imagePick(String packageName) {
@@ -55,143 +54,204 @@ public final class GalleryPreferenceTest {
         return pick;
     }
 
-    private static ResolveInfo resolveInfo(String packageName) {
+    private static ResolveInfo resolveInfo(String packageName, String activityName) {
         ResolveInfo info = new ResolveInfo();
         info.activityInfo = new ActivityInfo();
         info.activityInfo.packageName = packageName;
-        info.activityInfo.name = packageName + ".PickerActivity";
+        info.activityInfo.name = activityName;
         return info;
     }
 
-    @Test public void noStoredChoiceMeansTheSystemPicker() {
-        assertEquals(GalleryAppPreference.SYSTEM_PACKAGE,
-                GalleryAppPreference.preferredPackage(context));
+    private GalleryAppPreference.Option optionFor(String packageName) {
+        for (GalleryAppPreference.Option option : GalleryAppPreference.options(context)) {
+            if (option.packageName.equals(packageName)) return option;
+        }
+        return null;
+    }
+
+    @Test public void noChoiceMeansTheSystemPicker() {
+        assertTrue(GalleryAppPreference.storedTarget(context).isSystem());
         assertEquals(Intent.ACTION_OPEN_DOCUMENT,
                 GalleryAppPreference.createIntent(context).getAction());
     }
 
-    @Test public void explicitlyChoosingTheSystemPickerIsHonoured() {
-        installGallery(GALLERY);
-        GalleryAppPreference.setPreferredPackage(context, GalleryAppPreference.SYSTEM_PACKAGE);
+    @Test public void discoveryExposesTheExactPickerActivity() {
+        installGallery(GALLERY, GALLERY_ACTIVITY);
+        GalleryAppPreference.Option option = optionFor(GALLERY);
 
-        assertEquals(GalleryAppPreference.SYSTEM_PACKAGE,
-                GalleryAppPreference.preferredPackage(context));
-        assertEquals(Intent.ACTION_OPEN_DOCUMENT,
-                GalleryAppPreference.createIntent(context).getAction());
+        assertNotNull("the gallery must be discoverable", option);
+        assertEquals(GALLERY, option.packageName);
+        assertEquals("the exact Activity is what makes the choice durable",
+                GALLERY_ACTIVITY, option.className);
+        assertEquals(Intent.ACTION_PICK, option.action);
     }
 
-    @Test public void aChosenInstalledAppResolvesToThatPackage() {
-        installGallery(GALLERY);
-        GalleryAppPreference.setPreferredPackage(context, GALLERY);
+    @Test public void selectingAnAppPersistsPackageComponentAndAction() {
+        installGallery(GALLERY, GALLERY_ACTIVITY);
+        GalleryAppPreference.setPreferredOption(context, optionFor(GALLERY));
 
-        assertEquals(GALLERY, GalleryAppPreference.preferredPackage(context));
-        Intent intent = GalleryAppPreference.createIntent(context);
-        assertEquals("the chosen gallery must be launched, not the system picker",
-                GALLERY, intent.getPackage());
-        assertEquals(Intent.ACTION_PICK, intent.getAction());
+        GalleryAppPreference.Target target = GalleryAppPreference.storedTarget(context);
+        assertFalse(target.isSystem());
+        assertFalse(target.needsResolution());
+        assertEquals(GALLERY, target.packageName);
+        assertEquals(GALLERY_ACTIVITY, target.className);
+        assertEquals(Intent.ACTION_PICK, target.action);
     }
 
-    @Test public void changingTheChoiceTakesEffectOnTheVeryNextRead() {
-        installGallery(GALLERY);
+    @Test public void theChoiceSurvivesWithoutAnyPackageLookup() {
+        installGallery(GALLERY, GALLERY_ACTIVITY);
+        GalleryAppPreference.setPreferredOption(context, optionFor(GALLERY));
 
-        GalleryAppPreference.setPreferredPackage(context, GalleryAppPreference.SYSTEM_PACKAGE);
-        assertEquals(Intent.ACTION_OPEN_DOCUMENT,
-                GalleryAppPreference.createIntent(context).getAction());
+        // A cold process where resolution answers differently must still reach the same target,
+        // because nothing is resolved again - the component was already stored.
+        ShadowPackageManager empty = Shadows.shadowOf(context.getPackageManager());
+        empty.removeResolveInfosForIntent(imagePick(GALLERY), GALLERY);
+        empty.removeResolveInfosForIntent(imagePick(null), GALLERY);
 
-        // No restart, no session recreation: the next resolution already uses the new choice.
-        GalleryAppPreference.setPreferredPackage(context, GALLERY);
-        assertEquals(GALLERY, GalleryAppPreference.createIntent(context).getPackage());
+        GalleryAppPreference.Target target = GalleryAppPreference.storedTarget(context);
+        assertEquals(GALLERY, target.packageName);
+        assertEquals(GALLERY_ACTIVITY, target.className);
 
-        GalleryAppPreference.setPreferredPackage(context, GalleryAppPreference.SYSTEM_PACKAGE);
-        assertEquals(Intent.ACTION_OPEN_DOCUMENT,
-                GalleryAppPreference.createIntent(context).getAction());
+        Intent intent = GalleryAppPreference.intentForTarget(target);
+        assertNotNull(intent);
+        assertNotNull("the launch must name the exact component", intent.getComponent());
+        assertEquals(GALLERY, intent.getComponent().getPackageName());
+        assertEquals(GALLERY_ACTIVITY, intent.getComponent().getClassName());
     }
 
-    @Test public void readingTheChoiceNeverRewritesIt() {
-        installGallery(GALLERY);
-        GalleryAppPreference.setPreferredPackage(context, GALLERY);
+    @Test public void anOlderPackageOnlyChoiceMigratesToAnExactTarget() {
+        installGallery(GALLERY, GALLERY_ACTIVITY);
+        // Exactly what earlier Orbit versions stored.
+        Prefs.get(context).edit().putString(Prefs.GALLERY_APP_PACKAGE, GALLERY).commit();
 
+        GalleryAppPreference.Target target = GalleryAppPreference.storedTarget(context);
+        assertEquals(GALLERY, target.packageName);
+        assertEquals("the old choice must be upgraded, not discarded",
+                GALLERY_ACTIVITY, target.className);
+
+        // And the migration is persisted, so it only happens once.
+        assertEquals(GALLERY_ACTIVITY,
+                GalleryAppPreference.storedTarget(context).className);
+    }
+
+    @Test public void anUnresolvableOlderChoiceIsKeptRatherThanErased() {
+        Prefs.get(context).edit().putString(Prefs.GALLERY_APP_PACKAGE, "com.example.absent").commit();
+
+        GalleryAppPreference.Target target = GalleryAppPreference.storedTarget(context);
+        assertFalse("it must not silently become the system picker", target.isSystem());
+        assertTrue(target.needsResolution());
+        assertEquals("com.example.absent", GalleryAppPreference.storedPackage(context));
+        // Nothing can be launched for it, which the caller reports rather than papering over.
+        assertNull(GalleryAppPreference.intentForTarget(target));
+    }
+
+    @Test public void anUnresolvedChoiceRecoversOnceItsAppAppears() {
+        Prefs.get(context).edit().putString(Prefs.GALLERY_APP_PACKAGE, GALLERY).commit();
+        assertTrue(GalleryAppPreference.storedTarget(context).needsResolution());
+
+        installGallery(GALLERY, GALLERY_ACTIVITY);
+        assertEquals(GALLERY_ACTIVITY, GalleryAppPreference.storedTarget(context).className);
+    }
+
+    @Test public void switchingChoicesNeverLeavesMixedFields() {
+        installGallery(GALLERY, GALLERY_ACTIVITY);
+        installGallery("com.other.gallery", "com.other.gallery.Pick");
+
+        GalleryAppPreference.setPreferredOption(context, optionFor(GALLERY));
+        GalleryAppPreference.setPreferredOption(context, optionFor("com.other.gallery"));
+        GalleryAppPreference.Target target = GalleryAppPreference.storedTarget(context);
+        assertEquals("com.other.gallery", target.packageName);
+        assertEquals("the component must never belong to the previous app",
+                "com.other.gallery.Pick", target.className);
+
+        GalleryAppPreference.setPreferredOption(context, null);
+        assertTrue(GalleryAppPreference.storedTarget(context).isSystem());
+        assertEquals("", GalleryAppPreference.storedPackage(context));
+    }
+
+    @Test public void bothSurfacesLaunchTheSameComponent() {
+        installGallery(GALLERY, GALLERY_ACTIVITY);
+        GalleryAppPreference.setPreferredOption(context, optionFor(GALLERY));
+
+        Intent fullChat = GalleryAppPreference.createIntent(context);
+        // What the overlay puts on the bridge Intent, rebuilt on the far side.
+        GalleryAppPreference.Target passed = GalleryAppPreference.storedTarget(context);
+        Intent bridge = GalleryAppPreference.intentForTarget(
+                new GalleryAppPreference.Target(passed.packageName, passed.className, passed.action));
+
+        assertNotNull(bridge);
+        assertEquals(fullChat.getComponent(), bridge.getComponent());
+        assertEquals(fullChat.getAction(), bridge.getAction());
+    }
+
+    @Test public void systemModeIsCarriedAcrossExplicitly() {
+        installGallery(GALLERY, GALLERY_ACTIVITY);
+        GalleryAppPreference.setPreferredOption(context, null);
+
+        GalleryAppPreference.Target target = GalleryAppPreference.storedTarget(context);
+        assertTrue(target.isSystem());
+        assertNull("system mode must not produce a component intent",
+                GalleryAppPreference.intentForTarget(target));
+        assertEquals(Intent.ACTION_OPEN_DOCUMENT,
+                GalleryAppPreference.systemPickerIntent().getAction());
+    }
+
+    @Test public void anExplicitChoiceNeverResolvesToTheSystemPicker() {
+        Prefs.get(context).edit().putString(Prefs.GALLERY_APP_PACKAGE, "com.example.absent").commit();
+        GalleryAppPreference.Target target = GalleryAppPreference.storedTarget(context);
+
+        // The bridge reports this as a failure instead of quietly opening the system picker.
+        assertFalse(target.isSystem());
+        assertNull(GalleryAppPreference.intentForTarget(target));
+        assertEquals("com.example.absent", GalleryAppPreference.storedPackage(context));
+    }
+
+    @Test public void theOptionsListAlwaysOffersTheSystemPickerFirst() {
+        List<GalleryAppPreference.Option> options = GalleryAppPreference.options(context);
+        assertTrue(options.size() >= 1);
+        assertEquals(GalleryAppPreference.SYSTEM_PACKAGE, options.get(0).packageName);
+        assertEquals("System picker", options.get(0).label);
+    }
+
+    @Test public void aTokenIsPendingOnlyUntilItsResultArrives() {
+        final int[] calls = {0};
+        String token = AttachmentBridge.register((attachment, error) -> calls[0]++);
+        assertTrue(AttachmentBridge.isPending(token));
+
+        AttachmentBridge.deliver(token, null, "");
+        assertEquals(1, calls[0]);
+        assertFalse("a delivered token must not look in flight", AttachmentBridge.isPending(token));
+
+        // A later lifecycle fallback cannot deliver a second time.
+        AttachmentBridge.deliver(token, null, "");
+        assertEquals(1, calls[0]);
+    }
+
+    @Test public void cancellingATokenAlsoEndsItsPendingState() {
+        final int[] calls = {0};
+        String token = AttachmentBridge.register((attachment, error) -> calls[0]++);
+        AttachmentBridge.cancel(token);
+
+        assertFalse(AttachmentBridge.isPending(token));
+        AttachmentBridge.deliver(token, null, "");
+        assertEquals("a cancelled token must never fire", 0, calls[0]);
+    }
+
+    @Test public void repeatedPickerFlowsEachCompleteCleanly() {
+        // Gallery, cancel, Gallery again: no flow may leave the next one blocked.
         for (int i = 0; i < 5; i++) {
-            GalleryAppPreference.preferredPackage(context);
-            GalleryAppPreference.createIntent(context);
-        }
-        assertEquals("resolving must not mutate the stored choice",
-                GALLERY, GalleryAppPreference.storedPackage(context));
-    }
-
-    @Test public void anUnresolvableChoiceFallsBackWithoutErasingTheSelection() {
-        // Nothing is installed for this package in this test's package manager.
-        GalleryAppPreference.setPreferredPackage(context, "com.example.absent");
-
-        assertEquals(GalleryAppPreference.SYSTEM_PACKAGE,
-                GalleryAppPreference.preferredPackage(context));
-        assertEquals(Intent.ACTION_OPEN_DOCUMENT,
-                GalleryAppPreference.createIntent(context).getAction());
-        // A single unresolvable lookup previously wiped the choice for every surface.
-        assertEquals("the user's selection must survive a failed lookup",
-                "com.example.absent", GalleryAppPreference.storedPackage(context));
-    }
-
-    @Test public void aChoiceRecoversOnceItsAppResolvesAgain() {
-        GalleryAppPreference.setPreferredPackage(context, GALLERY);
-        assertEquals(GalleryAppPreference.SYSTEM_PACKAGE,
-                GalleryAppPreference.preferredPackage(context));
-
-        // Because the selection was kept, it starts working again by itself.
-        installGallery(GALLERY);
-        assertEquals(GALLERY, GalleryAppPreference.preferredPackage(context));
-    }
-
-    @Test public void theBridgeLaunchesExactlyTheTargetTheCallerResolved() {
-        installGallery(GALLERY);
-        GalleryAppPreference.setPreferredPackage(context, GALLERY);
-
-        // What OrbitSession puts on the bridge Intent.
-        String handedToBridge = GalleryAppPreference.preferredPackage(context);
-        assertEquals(GALLERY, handedToBridge);
-
-        // What the bridge then launches, without resolving the preference again.
-        Intent bridgeIntent = GalleryAppPreference.intentForPackage(context, handedToBridge);
-        assertNotNull(bridgeIntent);
-        assertEquals(GALLERY, bridgeIntent.getPackage());
-    }
-
-    @Test public void bothSurfacesResolveToTheSameTarget() {
-        installGallery(GALLERY);
-        for (String choice : new String[]{GalleryAppPreference.SYSTEM_PACKAGE, GALLERY}) {
-            GalleryAppPreference.setPreferredPackage(context, choice);
-
-            Intent fullChat = GalleryAppPreference.createIntent(context);
-            String resolved = GalleryAppPreference.preferredPackage(context);
-            Intent overlay = resolved.isEmpty()
-                    ? GalleryAppPreference.systemPickerIntent()
-                    : GalleryAppPreference.intentForPackage(context, resolved);
-
-            assertNotNull(overlay);
-            assertEquals("the two surfaces disagreed for choice '" + choice + "'",
-                    fullChat.getPackage(), overlay.getPackage());
-            assertEquals(fullChat.getAction(), overlay.getAction());
+            final int[] calls = {0};
+            String token = AttachmentBridge.register((attachment, error) -> calls[0]++);
+            assertTrue(AttachmentBridge.isPending(token));
+            AttachmentBridge.deliver(token, null, "");
+            assertEquals(1, calls[0]);
+            assertFalse(AttachmentBridge.isPending(token));
         }
     }
 
-    @Test public void aBridgeTargetThatCannotResolveYieldsNoIntentRatherThanAWrongOne() {
-        // The bridge treats this as "fall back for this launch only", never as a reason to clear.
-        assertNull(GalleryAppPreference.intentForPackage(context, "com.example.absent"));
-        assertNull(GalleryAppPreference.intentForPackage(context, ""));
-        assertNull(GalleryAppPreference.intentForPackage(context, null));
-    }
-
-    @Test public void theSystemPickerIntentIsAlwaysUsable() {
-        Intent intent = GalleryAppPreference.systemPickerIntent();
-        assertEquals(Intent.ACTION_OPEN_DOCUMENT, intent.getAction());
-        assertEquals("image/*", intent.getType());
-        assertTrue(intent.hasCategory(Intent.CATEGORY_OPENABLE));
-        assertNull("the system picker must not be pinned to a package", intent.getPackage());
-    }
-
-    @Test public void theOptionsListAlwaysOffersTheSystemPicker() {
-        assertTrue(GalleryAppPreference.options(context).size() >= 1);
-        assertEquals(GalleryAppPreference.SYSTEM_PACKAGE,
-                GalleryAppPreference.options(context).get(0).packageName);
+    @Test public void anUnknownTokenIsNeverPending() {
+        assertFalse(AttachmentBridge.isPending(null));
+        assertFalse(AttachmentBridge.isPending(""));
+        assertFalse(AttachmentBridge.isPending("never-registered"));
     }
 }

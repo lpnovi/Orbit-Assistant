@@ -58,6 +58,8 @@ public final class OrbitUpdater {
             "orbit_update_last_foreground_check_ms";
     private static final String PREF_NOTIFIED_CODE = "orbit_update_notified_code";
     private static final String PREF_PENDING_INSTALL_CODE = "orbit_update_pending_install_code";
+    /** Version an Orbit-verified update reached, awaiting one acknowledgement in the main app. */
+    private static final String PREF_POST_UPDATE_VERSION = "orbit_post_update_version";
     private static final String PREF_PENDING_INSTALL_FILE = "orbit_update_pending_install_file";
 
     private OrbitUpdater() {}
@@ -329,6 +331,13 @@ public final class OrbitUpdater {
         File directory = updateDirectory(context);
         File installer = new File(directory, fileName);
         if (BuildConfig.VERSION_CODE >= targetCode) {
+            // Reaching the version an Orbit-verified install was aiming for is the authoritative
+            // proof that update actually happened. Recorded before the pending state is cleared so
+            // the companion app can acknowledge it once; a cancelled or failed install never gets
+            // here, and neither does a fresh install.
+            Prefs.get(context).edit()
+                    .putString(PREF_POST_UPDATE_VERSION, BuildConfig.VERSION_NAME)
+                    .commit();
             safeDelete(installer);
             safeDelete(new File(directory, fileName + ".part"));
             clearPendingInstall(context);
@@ -336,6 +345,21 @@ public final class OrbitUpdater {
         }
         cleanupAbandonedDownloads(context, null);
         if (!installer.exists()) clearPendingInstall(context);
+    }
+
+    /**
+     * Version installed by a verified Orbit update that has not been acknowledged yet, or "".
+     * Only the companion app consumes this; the Side-button overlay leaves it pending.
+     */
+    public static String pendingPostUpdateVersion(Context context) {
+        if (context == null) return "";
+        return Prefs.get(context).getString(PREF_POST_UPDATE_VERSION, "").trim();
+    }
+
+    /** Acknowledges the update once, so the prompt cannot appear again for that version. */
+    public static void clearPostUpdateVersion(Context context) {
+        if (context == null) return;
+        Prefs.get(context).edit().remove(PREF_POST_UPDATE_VERSION).commit();
     }
 
     private static void clearPendingInstall(Context context) {

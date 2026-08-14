@@ -22,8 +22,12 @@ import java.util.regex.Pattern;
 
 /** Public GitHub stable-release notes with a private, last-known-good offline cache. */
 public final class ReleaseNotesRepository {
-    private static final String API =
-            "https://api.github.com/repos/lpnovi/Orbit-Assistant/releases?per_page=10";
+    private static final String REPO = "https://api.github.com/repos/lpnovi/Orbit-Assistant";
+    private static final String API_LATEST = REPO + "/releases/latest";
+    private static final String API_TAGS = REPO + "/tags?per_page=15";
+    private static final String API_BY_TAG = REPO + "/releases/tags/";
+    /** Bounded so this stays a small lookup rather than a crawl of the repository. */
+    private static final int MAX_CANDIDATE_TAGS = 7;
     private static final String FILE = "orbit_release_notes_cache";
     private static final String KEY_RELEASES = "stable_releases_v1";
     private static final String KEY_FETCHED_AT = "fetched_at";
@@ -83,8 +87,88 @@ public final class ReleaseNotesRepository {
         return false;
     }
 
+    /**
+     * Builds the list from the authoritative latest release plus recent tags, then orders it here.
+     *
+     * <p>The collection endpoint cannot be trusted for ordering: it returns Orbit's tags
+     * lexicographically, so v0.7.2.15 sorts below v0.7.2.2 and taking the first few entries pinned
+     * this screen at v0.7.2.9 indefinitely. Each candidate tag is confirmed to be a genuine
+     * published Release, and Orbit sorts the result by version rather than trusting array order.
+     */
     private static List<ReleaseNote> fetch() throws Exception {
-        HttpURLConnection connection = (HttpURLConnection) new URL(API).openConnection();
+        List<String> candidates = new ArrayList<>();
+        Set<String> seenTags = new HashSet<>();
+
+        String latest = latestReleaseTag();
+        if (latest != null && seenTags.add(latest)) candidates.add(latest);
+        for (String tag : recentTags()) {
+            if (candidates.size() >= MAX_CANDIDATE_TAGS) break;
+            if (seenTags.add(tag)) candidates.add(tag);
+        }
+        // Newest first, so a bounded lookup always covers the most recent releases.
+        candidates.sort((a, b) -> compareTags(b, a));
+
+        List<ReleaseNote> found = new ArrayList<>();
+        for (String tag : candidates) {
+            if (found.size() >= MAX_RELEASES) break;
+            ReleaseNote note = releaseForTag(tag);
+            // One unavailable candidate must not discard the others that did resolve.
+            if (note != null) found.add(note);
+        }
+        found.sort((a, b) -> compareVersions(b.versionName, a.versionName));
+        return found;
+    }
+
+    private static String latestReleaseTag() {
+        try {
+            JSONObject object = new JSONObject(getJson(API_LATEST));
+            if (object.optBoolean("draft", true) || object.optBoolean("prerelease", true)) return null;
+            String tag = object.optString("tag_name", "").trim();
+            return TAG.matcher(tag).matches() ? tag : null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static List<String> recentTags() {
+        List<String> out = new ArrayList<>();
+        try {
+            JSONArray array = new JSONArray(getJson(API_TAGS));
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject object = array.optJSONObject(i);
+                if (object == null) continue;
+                String tag = object.optString("name", "").trim();
+                if (TAG.matcher(tag).matches()) out.add(tag);
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    /** A published, non-draft, non-prerelease Release for this tag, or null. */
+    private static ReleaseNote releaseForTag(String tag) {
+        try {
+            JSONObject object = new JSONObject(getJson(API_BY_TAG + tag));
+            return parseRelease(object);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    static ReleaseNote parseRelease(JSONObject object) {
+        if (object == null) return null;
+        if (object.optBoolean("draft", true) || object.optBoolean("prerelease", true)) return null;
+        String tag = object.optString("tag_name", "").trim();
+        Matcher matcher = TAG.matcher(tag);
+        if (!matcher.matches()) return null;
+        String body = object.optString("body", "");
+        if (body.length() > MAX_BODY_LENGTH) body = body.substring(0, MAX_BODY_LENGTH);
+        // Title, date, and notes all come from the real Release rather than from a tag.
+        return new ReleaseNote(tag, matcher.group(1), object.optString("name", ""), body,
+                object.optString("published_at", ""));
+    }
+
+    private static String getJson(String url) throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
         connection.setConnectTimeout(12_000);
         connection.setReadTimeout(15_000);
         connection.setInstanceFollowRedirects(false);
@@ -93,32 +177,34 @@ public final class ReleaseNotesRepository {
         try {
             if (connection.getResponseCode() != 200)
                 throw new IllegalStateException("GitHub returned HTTP " + connection.getResponseCode());
-            byte[] bytes;
             try (InputStream input = connection.getInputStream()) {
-                bytes = readLimited(input, MAX_RESPONSE_BYTES);
+                return new String(readLimited(input, MAX_RESPONSE_BYTES), StandardCharsets.UTF_8);
             }
-            return parse(new JSONArray(new String(bytes, StandardCharsets.UTF_8)));
         } finally {
             connection.disconnect();
         }
     }
 
-    private static List<ReleaseNote> parse(JSONArray array) {
-        List<ReleaseNote> out = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
-        for (int i = 0; i < array.length() && out.size() < MAX_RELEASES; i++) {
-            JSONObject object = array.optJSONObject(i);
-            if (object == null || object.optBoolean("draft", true) ||
-                    object.optBoolean("prerelease", true)) continue;
-            String tag = object.optString("tag_name", "").trim();
-            Matcher matcher = TAG.matcher(tag);
-            if (!matcher.matches() || !seen.add(tag)) continue;
-            String body = object.optString("body", "");
-            if (body.length() > MAX_BODY_LENGTH) body = body.substring(0, MAX_BODY_LENGTH);
-            out.add(new ReleaseNote(tag, matcher.group(1), object.optString("name", ""), body,
-                    object.optString("published_at", "")));
+    private static int compareTags(String a, String b) {
+        return compareVersions(versionOfTag(a), versionOfTag(b));
+    }
+
+    private static String versionOfTag(String tag) {
+        Matcher matcher = TAG.matcher(tag == null ? "" : tag);
+        return matcher.matches() ? matcher.group(1) : "";
+    }
+
+    /** Four-part numeric comparison, so 0.7.2.10 correctly ranks above 0.7.2.9. */
+    static int compareVersions(String left, String right) {
+        int[] a = parseVersion(left);
+        int[] b = parseVersion(right);
+        if (a == null && b == null) return 0;
+        if (a == null) return -1;
+        if (b == null) return 1;
+        for (int i = 0; i < 4; i++) {
+            if (a[i] != b[i]) return Integer.compare(a[i], b[i]);
         }
-        return out;
+        return 0;
     }
 
     private static void save(Context context, List<ReleaseNote> releases) {

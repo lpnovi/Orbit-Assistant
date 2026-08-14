@@ -23,11 +23,12 @@ public final class AttachmentPickerActivity extends Activity {
     public static final String EXTRA_TOKEN = "orbit_attachment_callback_token";
     public static final String EXTRA_KIND = "orbit_attachment_picker_kind";
     /**
-     * Gallery package the caller already resolved from the shared preference, so this bridge
-     * launches exactly the picker the full chat would have, rather than resolving it again from a
-     * different task where the answer can differ.
+     * The exact picker the caller read from the stored selection, so this bridge launches that
+     * component rather than resolving a package again in a task where the answer can differ.
      */
     public static final String EXTRA_GALLERY_PACKAGE = "orbit_attachment_gallery_package";
+    public static final String EXTRA_GALLERY_COMPONENT = "orbit_attachment_gallery_component";
+    public static final String EXTRA_GALLERY_ACTION = "orbit_attachment_gallery_action";
     public static final String KIND_CAMERA = "camera";
     public static final String KIND_GALLERY = "gallery";
     public static final String KIND_FILE = "file";
@@ -84,24 +85,40 @@ public final class AttachmentPickerActivity extends Activity {
     }
 
     private void launchGallery() {
-        // Prefer the package the caller resolved. Falling back to resolving here keeps any older
-        // caller working, but the overlay always supplies it so both surfaces agree.
-        String requested = getIntent().getStringExtra(EXTRA_GALLERY_PACKAGE);
-        Intent preferred = requested == null
-                ? GalleryAppPreference.createIntent(this)
-                : GalleryAppPreference.intentForPackage(this, requested);
-        if (preferred != null) {
-            try {
-                startActivityForResult(preferred, REQ_PICK);
-                return;
-            } catch (Exception ignored) {
-                // Could not be launched from this bridge task. That says nothing about whether the
-                // app is installed, so the user's choice is deliberately left untouched and only
-                // this one attachment falls back.
-            }
+        String requestedPackage = getIntent().getStringExtra(EXTRA_GALLERY_PACKAGE);
+        GalleryAppPreference.Target target;
+        if (requestedPackage == null) {
+            // No caller-supplied target, so read the selection here instead.
+            target = GalleryAppPreference.storedTarget(this);
+        } else if (requestedPackage.trim().isEmpty()) {
+            target = GalleryAppPreference.Target.system();
+        } else {
+            target = new GalleryAppPreference.Target(requestedPackage,
+                    getIntent().getStringExtra(EXTRA_GALLERY_COMPONENT),
+                    getIntent().getStringExtra(EXTRA_GALLERY_ACTION));
         }
-        try { startActivityForResult(GalleryAppPreference.systemPickerIntent(), REQ_PICK); }
-        catch (Exception second) { finishWith(null, "No compatible gallery picker is available"); }
+
+        if (target.isSystem()) {
+            try { startActivityForResult(GalleryAppPreference.systemPickerIntent(), REQ_PICK); }
+            catch (Exception e) { finishWith(null, "No compatible gallery picker is available"); }
+            return;
+        }
+
+        // An explicit choice is launched as an explicit component and never quietly replaced by
+        // the system picker; a silent fallback is what made earlier failures look like successes.
+        Intent explicit = GalleryAppPreference.intentForTarget(target);
+        if (explicit == null) {
+            finishWith(null, "Selected Gallery app could not be opened");
+            return;
+        }
+        try {
+            startActivityForResult(explicit, REQ_PICK);
+        } catch (Exception failure) {
+            // The choice itself is left untouched; only this attachment ends.
+            DiagnosticStore.recordError(this,
+                    "gallery_component_launch_failed: " + target.packageName);
+            finishWith(null, "Selected Gallery app could not be opened");
+        }
     }
 
     private void launchCamera() {
@@ -183,12 +200,21 @@ public final class AttachmentPickerActivity extends Activity {
         });
     }
 
+    /**
+     * Publishes a definitive result and then closes.
+     *
+     * <p>Delivery used to wait for onStop or onDestroy, and a cancelled picker could return to
+     * Orbit without those ever running the delivery, leaving the session convinced an attachment
+     * was still in flight and refusing every later attempt. The result is now handed over before
+     * this Activity finishes; the lifecycle hooks remain only as a guarded fallback.
+     */
     private void finishWith(ComposerAttachment attachment, String error) {
-        if (isFinishing()) return;
+        if (delivered && isFinishing()) return;
         if (attachment == null && cameraFile != null) cameraFile.delete();
         pendingResult = attachment;
         pendingError = error == null ? "" : error;
-        finishAndRemoveTask();
+        deliver();
+        if (!isFinishing()) finishAndRemoveTask();
     }
 
     @Override public void onBackPressed() { finishWith(null, ""); }

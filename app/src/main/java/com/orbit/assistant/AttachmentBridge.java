@@ -33,4 +33,12 @@ public final class AttachmentBridge {
     public static synchronized void cancel(String token) {
         if (token != null) CALLBACKS.remove(token);
     }
+
+    /**
+     * Whether a token is still awaiting a result. Delivering or cancelling removes it, so a token
+     * that is no longer registered proves its picker flow has already finished.
+     */
+    public static synchronized boolean isPending(String token) {
+        return token != null && !token.isEmpty() && CALLBACKS.containsKey(token);
+    }
 }

@@ -36,6 +36,7 @@ public class MainActivity extends Activity {
     private String appliedAccentName;
     private boolean rebuildingTheme;
     private boolean foregroundActive;
+    private boolean postUpdatePromptShown;
     private OrbitUpdater.Release pendingForegroundRelease;
     private AlertDialog foregroundUpdateDialog;
 
@@ -94,7 +95,34 @@ public class MainActivity extends Activity {
         super.onPause();
     }
 
+    /**
+     * Acknowledges a completed Orbit update once, before any newer-release prompt, so the two can
+     * never stack. Returns true when it took over this launch's startup prompt.
+     */
+    private boolean maybeShowPostUpdatePrompt() {
+        if (postUpdatePromptShown || isFinishing() || isDestroyed()) return false;
+        String version = OrbitUpdater.pendingPostUpdateVersion(this);
+        if (version.isEmpty()) return false;
+        // Marked immediately, so a recreation or a background/foreground cycle cannot show it
+        // twice, and consumed from storage so it never returns for this version.
+        postUpdatePromptShown = true;
+        OrbitUpdater.clearPostUpdateVersion(this);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Orbit updated")
+                .setMessage("You're now on Orbit v" + version + ".")
+                .setNegativeButton("Done", null)
+                .setPositiveButton("What's New", (d, w) ->
+                        startActivity(new Intent(this, WhatsNewActivity.class)))
+                .create();
+        UiKit.styleOrbitDialog(dialog, this, false);
+        dialog.show();
+        return true;
+    }
+
     private void checkForForegroundUpdate() {
+        // A completed update is acknowledged first; the newer-release check resumes next launch.
+        if (maybeShowPostUpdatePrompt()) return;
         if (!Prefs.updateNotifications(this) || isFinishing() || isDestroyed()) return;
         OrbitUpdater.Release cached = OrbitUpdater.loadCachedAvailable(this);
         if (cached != null && !OrbitUpdater.wasNotified(this, cached.versionCode)) {

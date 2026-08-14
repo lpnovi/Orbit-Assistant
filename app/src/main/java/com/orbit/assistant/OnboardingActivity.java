@@ -975,7 +975,7 @@ public final class OnboardingActivity extends Activity {
 
     private View galleryAppSelector() {
         List<GalleryAppPreference.Option> options = GalleryAppPreference.options(this);
-        String preferred = GalleryAppPreference.preferredPackage(this);
+        String preferred = GalleryAppPreference.storedPackage(this);
         String[] labels = new String[options.size()];
         int selected = 0;
         for (int i = 0; i < options.size(); i++) {
@@ -987,7 +987,8 @@ public final class OnboardingActivity extends Activity {
         Button selector = secondaryButton(labels[selectedIndex] + "  ▾");
         selector.setOnClickListener(v -> UiKit.showOrbitMenu(this, selector, labels,
                 selectedIndex, (index, label) -> {
-                    GalleryAppPreference.setPreferredPackage(this, options.get(index).packageName);
+                    // Saves the exact discovered picker, matching Settings.
+                    GalleryAppPreference.setPreferredOption(this, options.get(index));
                     render();
                 }));
         selector.setLayoutParams(new LinearLayout.LayoutParams(-1, UiKit.dp(this, 46)));

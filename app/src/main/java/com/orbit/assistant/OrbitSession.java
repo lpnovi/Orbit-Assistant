@@ -834,11 +834,19 @@ public class OrbitSession extends VoiceInteractionSession {
         freshExternalShowAtElapsedMs = internalResume
                 ? 0L : SystemClock.elapsedRealtime();
         sessionVisible = true;
-        // A picker flow that never reported back would otherwise leave this set for the life of
-        // the session, and every later + would answer with "Attachment picker is opening" instead
-        // of a chooser. Being visible again with no callback outstanding means nothing is in
-        // flight, so the guard is cleared.
-        if (attachmentOpening && attachmentCallbackToken.isEmpty()) attachmentOpening = false;
+        // Orbit is on screen again, so no external picker can still be running. If the bridge no
+        // longer holds this token the result already arrived; if it does, that flow ended without
+        // delivering. Either way nothing is in flight, so the guard is released rather than being
+        // left to block every later + for the rest of the session.
+        if (attachmentOpening) {
+            if (AttachmentBridge.isPending(attachmentCallbackToken)) {
+                AttachmentBridge.cancel(attachmentCallbackToken);
+                DiagnosticStore.recordError(getContext(),
+                        "attachment_bridge_stale_recovered");
+            }
+            attachmentCallbackToken = "";
+            attachmentOpening = false;
+        }
         UiPresence.enter(this);
         // Conversation selection/reset is intentionally done in onPrepareShow(),
         // before the sheet is rendered. onShow() only exposes/animates that state.
@@ -1263,13 +1271,16 @@ public class OrbitSession extends VoiceInteractionSession {
             resumeFromScreenSelection(status);
         }));
         attachmentCallbackToken = token;
+        GalleryAppPreference.Target galleryTarget =
+                GalleryAppPreference.storedTarget(getContext());
         Intent intent = new Intent(getContext(), AttachmentPickerActivity.class)
                 .putExtra(AttachmentPickerActivity.EXTRA_TOKEN, token)
                 .putExtra(AttachmentPickerActivity.EXTRA_KIND, pickerKind)
-                // Resolved here, from the same preference the full chat reads, so the overlay and
-                // the chat always open the same picker.
-                .putExtra(AttachmentPickerActivity.EXTRA_GALLERY_PACKAGE,
-                        GalleryAppPreference.preferredPackage(getContext()))
+                // The exact stored target, read here from durable preferences, so the overlay and
+                // the chat always open the same component even on a cold Orbit process.
+                .putExtra(AttachmentPickerActivity.EXTRA_GALLERY_PACKAGE, galleryTarget.packageName)
+                .putExtra(AttachmentPickerActivity.EXTRA_GALLERY_COMPONENT, galleryTarget.className)
+                .putExtra(AttachmentPickerActivity.EXTRA_GALLERY_ACTION, galleryTarget.action)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
             startAssistantActivity(intent);
