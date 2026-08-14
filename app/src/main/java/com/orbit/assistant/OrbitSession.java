@@ -12,6 +12,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.os.Build;
@@ -31,6 +32,7 @@ import android.text.InputType;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.MotionEvent;
+import android.view.TouchDelegate;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -81,6 +83,7 @@ public class OrbitSession extends VoiceInteractionSession {
     private LinearLayout suggestionRow;
     private EditText input;
     private ImageButton mic;
+    private OrbitListeningHalo listeningHalo;
     private LinearLayout attachmentTray;
     private TextView attachmentTrayLabel;
     private ImageView attachmentTrayPreview;
@@ -311,6 +314,7 @@ public class OrbitSession extends VoiceInteractionSession {
         // to the handle. Negative margins only reclaim dead vertical space.
         handleLp.setMargins(0, UiKit.dp(c, -4), 0, UiKit.dp(c, -2));
         sheet.addView(handleZone, handleLp);
+        installHandleTouchDelegate(sheet, handleZone);
 
         LinearLayout top = new LinearLayout(c);
         top.setGravity(Gravity.CENTER_VERTICAL);
@@ -2172,7 +2176,12 @@ public class OrbitSession extends VoiceInteractionSession {
                         if (Prefs.voicePauseFriendly(getContext())) cancelVoiceFinalize();
                         voiceComposerStatusSafe(listeningHint());
                     }
-                    public void onRmsChanged(float rmsdB) {}
+                    public void onRmsChanged(float rmsdB) {
+                        // Real microphone level, recorded as a target only. The halo eases toward
+                        // it on its own frames, so this never starts an animator or allocates.
+                        OrbitListeningHalo halo = listeningHalo;
+                        if (halo != null && listening) halo.setLevel(rmsdB);
+                    }
                     public void onBufferReceived(byte[] buffer) {}
                     public void onEndOfSpeech() {
                         voiceComposerStatusSafe(Prefs.voicePauseFriendly(getContext())
@@ -2412,9 +2421,14 @@ public class OrbitSession extends VoiceInteractionSession {
         main.post(() -> {
             if (mic == null) return;
             mic.setImageResource(com.orbit.assistant.R.drawable.ic_mic);
+            if (!listening) stopListeningHalo();
             if (listening) {
-                mic.setImageTintList(ColorStateList.valueOf(Color.rgb(255, 112, 112)));
+                // Listening keeps a warm cue for clarity, but pulled toward the current accent
+                // rather than a disconnected fixed red.
+                mic.setImageTintList(ColorStateList.valueOf(
+                        UiKit.blend(UiKit.accent(getContext()), Color.rgb(255, 112, 112), 0.58f)));
                 mic.setContentDescription("Stop listening");
+                startListeningHalo();
             } else if (speaking) {
                 mic.setImageTintList(ColorStateList.valueOf(UiKit.accent(getContext())));
                 mic.setContentDescription("Interrupt and speak");
@@ -2423,6 +2437,28 @@ public class OrbitSession extends VoiceInteractionSession {
                 mic.setContentDescription("Voice input");
             }
         });
+    }
+
+    /** Swaps the mic onto its audio-reactive listening background. */
+    private void startListeningHalo() {
+        if (mic == null) return;
+        if (listeningHalo == null) listeningHalo = new OrbitListeningHalo(getContext());
+        listeningHalo.applyAccent(getContext());
+        if (mic.getBackground() != listeningHalo) mic.setBackground(listeningHalo);
+        listeningHalo.start();
+    }
+
+    /**
+     * Returns the mic to its ordinary rippled background and ends the animation. Called from every
+     * path that leaves the listening state, so a pulsing mic can never be left behind.
+     */
+    private void stopListeningHalo() {
+        if (listeningHalo != null) listeningHalo.stop();
+        if (mic == null) return;
+        if (listeningHalo != null && mic.getBackground() == listeningHalo) {
+            Context c = getContext();
+            mic.setBackground(UiKit.ripple(UiKit.SURFACE, UiKit.accent(c), 18, c));
+        }
     }
 
     private void initTts() {
@@ -2738,6 +2774,36 @@ public class OrbitSession extends VoiceInteractionSession {
         });
     }
 
+    /**
+     * Widens only the <em>touch</em> area around the drag handle, leaving the visible handle and
+     * every layout bound exactly as they are.
+     *
+     * <p>The handle row stays 22dp tall; a {@link TouchDelegate} on the sheet forwards touches
+     * from roughly 10dp above and 14dp below it, giving about a 46dp grab area without reserving
+     * any extra space or pushing the header down. The delegate is only consulted after the sheet's
+     * own children decline a touch, so header controls keep taking their taps first, and the
+     * gesture listener works from raw screen coordinates so forwarded events need no remapping.
+     */
+    private void installHandleTouchDelegate(View sheetView, View handleZone) {
+        if (sheetView == null || handleZone == null) return;
+        final Context c = getContext();
+        final int extraAbove = UiKit.dp(c, 10);
+        final int extraBelow = UiKit.dp(c, 14);
+        Runnable refresh = () -> {
+            if (handleZone.getWidth() == 0 && handleZone.getHeight() == 0) return;
+            Rect bounds = new Rect();
+            handleZone.getHitRect(bounds);
+            bounds.top -= extraAbove;
+            bounds.bottom += extraBelow;
+            sheetView.setTouchDelegate(new TouchDelegate(bounds, handleZone));
+        };
+        // Recomputed whenever the sheet grows or shrinks, so the target never drifts off the
+        // handle as the conversation changes height.
+        handleZone.addOnLayoutChangeListener(
+                (v, l, t, r, b, ol, ot, or2, ob) -> refresh.run());
+        handleZone.post(refresh);
+    }
+
     private void installHandleGestures(View handleZone) {
         if (handleZone == null) return;
         final float[] startY = new float[1];
@@ -2839,6 +2905,9 @@ public class OrbitSession extends VoiceInteractionSession {
             @Override public void onAnimationEnd(android.animation.Animator animation) {
                 Intent open = new Intent(c, MainActivity.class)
                         .putExtra(MainActivity.EXTRA_OPEN_CONVERSATION_ID, conversationId)
+                        // The overlay's own expansion is the transition for this handoff, so the
+                        // chat must not also play the selected page animation on top of it.
+                        .putExtra(MainActivity.EXTRA_ASSISTANT_HANDOFF, true)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
                 try { c.startActivity(open); } catch (Exception ignored) {}
                 main.postDelayed(() -> {
@@ -3005,6 +3074,9 @@ public class OrbitSession extends VoiceInteractionSession {
         saveCurrentConversation();
         stopListening();
         stopSpeaking();
+        // stopListening already retires the halo through updateMic, but that hop goes through the
+        // main handler. Ending it here too means a dismissal can never leave frames scheduled.
+        if (listeningHalo != null) listeningHalo.stop();
         hideKeyboard();
         if (input != null) input.clearFocus();
         // Do not reset translation/visibility here. HOME can call onHide while the
@@ -3021,6 +3093,7 @@ public class OrbitSession extends VoiceInteractionSession {
         AttachmentBridge.cancel(attachmentCallbackToken);
         attachmentCallbackToken = "";
         saveCurrentConversation();
+        if (listeningHalo != null) listeningHalo.stop();
         super.onDestroy();
         if (recognizer != null) try { recognizer.destroy(); } catch (Exception ignored) {}
         if (tts != null) try { tts.shutdown(); } catch (Exception ignored) {}

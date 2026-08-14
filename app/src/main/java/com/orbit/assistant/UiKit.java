@@ -1087,6 +1087,18 @@ public final class UiKit {
     }
 
     /**
+     * Suppresses the page transition for one specific launch, for a handoff where another surface
+     * has already played the movement. Applies to this window only and reads no preference, so the
+     * user's Page transitions choice is neither changed nor consulted and every other navigation
+     * is unaffected. Call before the window is added, i.e. during {@code onCreate}.
+     */
+    public static void suppressPageTransition(Activity activity) {
+        if (activity == null || activity.getWindow() == null) return;
+        try { activity.getWindow().setWindowAnimations(R.style.OrbitWindowAnimation_None); }
+        catch (Exception ignored) {}
+    }
+
+    /**
      * Subtle system-respecting haptic, honouring Orbit's Haptics preference. Use
      * {@link HapticFeedbackConstants} so each surface stays consistent with the platform.
      */
