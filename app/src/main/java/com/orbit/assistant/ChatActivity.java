@@ -61,6 +61,8 @@ public class ChatActivity extends Activity {
     private ScrollView scroll;
     private EditText input;
     private ImageButton mic;
+    private ImageButton send;
+    private OrbitListeningHalo listeningHalo;
     private TextView voiceStatus;
     private VoiceInputController voiceController;
     private Button modeChip;
@@ -163,6 +165,8 @@ public class ChatActivity extends Activity {
         UiPresence.leave(this);
         detachListeners();
         if (voiceController != null) voiceController.stop(false);
+        // Navigating away ends listening, so the microphone must not be left animating.
+        stopListeningHalo();
         super.onPause();
     }
 
@@ -249,22 +253,30 @@ public class ChatActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         LinearLayout composer = new LinearLayout(this);
-        composer.setGravity(Gravity.CENTER_VERTICAL);
-        composer.setPadding(UiKit.dp(this, 5), UiKit.dp(this, 5), UiKit.dp(this, 5), UiKit.dp(this, 5));
-        composer.setBackground(UiKit.outlined(UiKit.SURFACE, Color.rgb(48,53,67), 22, this));
+        // Bottom-aligned so the controls stay level with the last line as the field grows,
+        // instead of drifting to the middle of a tall multiline box.
+        composer.setGravity(Gravity.BOTTOM);
+        composer.setPadding(UiKit.dp(this, 6), UiKit.dp(this, 6), UiKit.dp(this, 6), UiKit.dp(this, 6));
+        // Accent-derived outline rather than a fixed slate, so the composer follows every accent,
+        // Dynamic accent, and AMOLED like the rest of Orbit.
+        composer.setBackground(UiKit.outlined(UiKit.SURFACE,
+                UiKit.withAlpha(UiKit.accent(this), 46), 22, this));
 
         ImageButton attach = iconButton(com.orbit.assistant.R.drawable.ic_add, "Attach");
         attach.setOnClickListener(v -> showAttachmentMenu(attach));
         composer.addView(attach,
-                new LinearLayout.LayoutParams(UiKit.dp(this, 42), UiKit.dp(this, 42)));
+                new LinearLayout.LayoutParams(UiKit.dp(this, 44), UiKit.dp(this, 44)));
 
         input = new EditText(this);
         input.setHint("Ask anything...");
-        input.setHintTextColor(Color.rgb(117,123,139));
+        input.setHintTextColor(UiKit.MUTED);
         input.setTextColor(UiKit.TEXT);
         input.setTextSize(15);
         input.setMaxLines(5);
         input.setMinLines(1);
+        // Past five lines the field scrolls internally rather than letting the composer grow on
+        // and take over the conversation.
+        input.setVerticalScrollBarEnabled(true);
         input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEND);
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         input.setBackgroundColor(Color.TRANSPARENT);
@@ -284,17 +296,24 @@ public class ChatActivity extends Activity {
             if (voiceController != null) voiceController.toggle();
         });
         composer.addView(mic,
-                new LinearLayout.LayoutParams(UiKit.dp(this, 42), UiKit.dp(this, 42)));
+                new LinearLayout.LayoutParams(UiKit.dp(this, 44), UiKit.dp(this, 44)));
 
-        ImageButton send = iconButton(com.orbit.assistant.R.drawable.ic_send, "Send");
+        send = iconButton(com.orbit.assistant.R.drawable.ic_send, "Send");
         send.setImageTintList(ColorStateList.valueOf(UiKit.onAccent(this)));
         send.setBackground(UiKit.ripple(UiKit.accent(this), UiKit.onAccent(this), 18, this));
         send.setOnClickListener(v -> submit(false));
-        composer.addView(send, new LinearLayout.LayoutParams(UiKit.dp(this, 46), UiKit.dp(this, 46)));
+        composer.addView(send, new LinearLayout.LayoutParams(UiKit.dp(this, 44), UiKit.dp(this, 44)));
         input.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND) { submit(false); return true; }
             return false;
         });
+        // Send reads as available only when there is actually something to send.
+        input.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(android.text.Editable s) { updateSendState(); }
+        });
+        updateSendState();
         root.addView(composer);
         initVoiceController();
         UiKit.watchTypography(root);
@@ -974,11 +993,21 @@ public class ChatActivity extends Activity {
                 voiceStatus.setText(value);
                 voiceStatus.setVisibility(value.isEmpty() ? View.GONE : View.VISIBLE);
             }
+            @Override public void onAudioLevel(float rmsdB) {
+                OrbitListeningHalo halo = listeningHalo;
+                if (halo != null) halo.setLevel(rmsdB);
+            }
             @Override public void onStateChanged(boolean listening, boolean finalizing,
                                                  boolean speaking) {
                 if (mic == null) return;
+                // Same language as the Side-button overlay: the audio-reactive halo while
+                // listening, and a warm cue pulled toward the current accent rather than a
+                // disconnected fixed red.
+                if (listening) startListeningHalo();
+                else stopListeningHalo();
                 mic.setImageTintList(ColorStateList.valueOf(listening || finalizing
-                        ? Color.rgb(255, 112, 112) : UiKit.accent(ChatActivity.this)));
+                        ? UiKit.blend(UiKit.accent(ChatActivity.this), Color.rgb(255, 112, 112), 0.58f)
+                        : UiKit.accent(ChatActivity.this)));
                 mic.setContentDescription(listening ? "Stop listening" : finalizing
                         ? "Finalizing voice input" : speaking
                         ? "Interrupt and speak" : "Voice input");
@@ -1221,6 +1250,8 @@ public class ChatActivity extends Activity {
     }
 
     private void refreshAttachmentTray() {
+        // Adding or removing an attachment changes whether there is anything to send.
+        updateSendState();
         if (attachmentTray == null) return;
         if (pendingAttachment == null) {
             attachmentTray.setVisibility(View.GONE);
@@ -1523,6 +1554,40 @@ public class ChatActivity extends Activity {
         return b;
     }
 
+    /**
+     * Dims Send while there is nothing to send. An attachment alone is a valid message, so the
+     * control stays available for that too.
+     */
+    private void updateSendState() {
+        if (send == null) return;
+        boolean hasText = input != null && input.getText().toString().trim().length() > 0;
+        boolean ready = hasText || pendingAttachment != null;
+        send.setEnabled(true);
+        send.setAlpha(ready ? 1f : 0.45f);
+        send.setContentDescription(ready ? "Send message" : "Send");
+    }
+
+    /** Puts the microphone on Orbit's shared audio-reactive listening background. */
+    private void startListeningHalo() {
+        if (mic == null) return;
+        if (listeningHalo == null) listeningHalo = new OrbitListeningHalo(this);
+        listeningHalo.applyAccent(this);
+        if (mic.getBackground() != listeningHalo) mic.setBackground(listeningHalo);
+        listeningHalo.start();
+    }
+
+    /**
+     * Returns the microphone to its ordinary rippled background. Called from every path that
+     * leaves listening, so a pulsing mic can never be left behind.
+     */
+    private void stopListeningHalo() {
+        if (listeningHalo != null) listeningHalo.stop();
+        if (mic == null) return;
+        if (listeningHalo != null && mic.getBackground() == listeningHalo) {
+            mic.setBackground(UiKit.ripple(UiKit.SURFACE, UiKit.accent(this), 18, this));
+        }
+    }
+
     private void scrollBottom() {
         followBottom = true;
         if (scroll != null) scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
@@ -1544,6 +1609,7 @@ public class ChatActivity extends Activity {
     @Override protected void onDestroy() {
         attachmentExecutor.shutdownNow();
         if (voiceController != null) voiceController.destroy();
+        if (listeningHalo != null) listeningHalo.stop();
         super.onDestroy();
     }
 

@@ -27,6 +27,12 @@ public final class VoiceInputController {
         void onStatus(String status);
         void onStateChanged(boolean listening, boolean finalizing, boolean speaking);
         void onPermissionNeeded();
+
+        /**
+         * Current microphone level in dB while listening, for presentation only. Optional, so a
+         * surface that shows no audio-reactive feedback simply ignores it.
+         */
+        default void onAudioLevel(float rmsdB) {}
     }
 
     private final Context context;
@@ -146,7 +152,10 @@ public final class VoiceInputController {
                     cancelFinalize();
                     statusListening();
                 }
-                @Override public void onRmsChanged(float rmsdB) {}
+                @Override public void onRmsChanged(float rmsdB) {
+                    // Presentation only; recognition is untouched by whether anyone listens.
+                    if (callback != null) callback.onAudioLevel(rmsdB);
+                }
                 @Override public void onBufferReceived(byte[] buffer) {}
                 @Override public void onEndOfSpeech() {
                     callback.onStatus(Prefs.voicePauseFriendly(context)
