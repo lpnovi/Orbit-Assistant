@@ -94,17 +94,16 @@ public final class RoutineDraftTest {
         assertTrue(draft.warnings.contains("start my coffee maker"));
     }
 
-    @Test public void conditionsAreNotGeneratedInThisRelease() {
+    @Test public void aValidConditionIsKeptAheadOfTheStepsItGuards() {
+        // Allowed from v0.7.3.1, and only through the same catalog validation as any other step.
         RoutineDraft draft = parse("{\"name\":\"Nightly\",\"steps\":["
                 + "{\"type\":\"IF_CONDITION\",\"params\":{\"mode\":\"time\",\"startMinute\":1320,"
                 + "\"endMinute\":1380,\"nextSteps\":1}},"
                 + "{\"type\":\"SET_DND\",\"params\":{\"enabled\":true}}]}");
         assertNotNull(draft);
-        for (AssistantReply.Action action : draft.actions) {
-            assertFalse("v0.7.3.0 does not generate conditions",
-                    RoutineActionCatalog.IF_CONDITION.equals(action.type));
-        }
-        assertEquals(1, draft.actions.size());
+        assertEquals(2, draft.actions.size());
+        assertEquals(RoutineActionCatalog.IF_CONDITION, draft.actions.get(0).type);
+        assertEquals(RoutineActionCatalog.SET_DND, draft.actions.get(1).type);
     }
 
     @Test public void anExtensionActionIsRejectedWhenNoExtensionIsEnabled() {

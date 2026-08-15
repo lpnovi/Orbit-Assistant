@@ -251,6 +251,30 @@ public class RoutineBuilderActivity extends Activity {
 
         LinearLayout card = card();
         card.addView(UiKit.text(this, draft.name, 17, UiKit.TEXT, true));
+
+        if (draft.hasTrigger()) {
+            TextView automaticLabel = UiKit.text(this, "AUTOMATIC", 11, UiKit.MUTED, true);
+            automaticLabel.setLetterSpacing(0.14f);
+            automaticLabel.setPadding(0, UiKit.dp(this, 10), 0, UiKit.dp(this, 3));
+            card.addView(automaticLabel);
+            card.addView(UiKit.text(this, draft.trigger.summary(this), 13, UiKit.TEXT, false));
+            String readiness = draft.trigger.readiness(this);
+            if (!readiness.isEmpty() && !"Ready".equals(readiness)) {
+                TextView state = UiKit.text(this, readiness, 12, UiKit.DANGER, false);
+                state.setPadding(0, UiKit.dp(this, 3), 0, 0);
+                card.addView(state);
+            }
+            TextView inactive = UiKit.text(this,
+                    "Nothing is scheduled until you review and save the routine.",
+                    12, UiKit.MUTED, false);
+            inactive.setPadding(0, UiKit.dp(this, 4), 0, 0);
+            card.addView(inactive);
+            TextView stepsLabel = UiKit.text(this, "STEPS", 11, UiKit.MUTED, true);
+            stepsLabel.setLetterSpacing(0.14f);
+            stepsLabel.setPadding(0, UiKit.dp(this, 12), 0, UiKit.dp(this, 3));
+            card.addView(stepsLabel);
+        }
+
         TextView steps = UiKit.text(this,
                 draft.actions.size() == 1 ? "1 step" : draft.actions.size() + " steps",
                 12, UiKit.MUTED, false);
@@ -268,7 +292,7 @@ public class RoutineBuilderActivity extends Activity {
 
         if (!draft.warnings.isEmpty()) {
             LinearLayout warn = card();
-            warn.addView(UiKit.text(this, "Couldn't add", 15, UiKit.DANGER, true));
+            warn.addView(UiKit.text(this, "Needs attention", 15, UiKit.DANGER, true));
             for (String warning : draft.warnings) {
                 TextView line = UiKit.text(this, "•  " + warning, 13, UiKit.MUTED, false);
                 line.setPadding(0, UiKit.dp(this, 5), 0, 0);

@@ -49,8 +49,7 @@ public final class RoutinePlanner {
             callback.onError("Describe the routine you want Orbit to build.");
             return;
         }
-        final String automationNotice =
-                mentionsAutomation(description) ? automationNotice() : "";
+        final boolean askedForAutomation = mentionsAutomation(description);
 
         AssistantClient.plan(context, prompt(context, description), new AssistantClient.Callback() {
             @Override public void onSuccess(AssistantReply reply) {
@@ -62,7 +61,10 @@ public final class RoutinePlanner {
                             + "and set brightness to 30%\".");
                     return;
                 }
-                callback.onDraft(draft, automationNotice);
+                // Only when automation was clearly requested but nothing could be drafted from it,
+                // so the user is never left thinking the timing was silently ignored.
+                String notice = askedForAutomation && !draft.hasTrigger() ? automationNotice() : "";
+                callback.onDraft(draft, notice);
             }
 
             @Override public void onError(String message) {
@@ -82,9 +84,30 @@ public final class RoutinePlanner {
                 .append("  \"name\": \"short routine name, at most ")
                 .append(RoutineStore.MAX_NAME_LENGTH).append(" characters\",\n")
                 .append("  \"steps\": [{\"type\": \"ACTION_TYPE\", \"params\": {…}}],\n")
+                .append("  \"trigger\": null or a trigger object described below,\n")
+                .append("  \"elseRequested\": true only if the user asked for an otherwise/else branch,\n")
                 .append("  \"unsupported\": [\"short description of anything requested that no ")
                 .append("supported action can do\"]\n")
                 .append("}\n\n")
+                .append("Triggers (optional, at most one):\n")
+                .append("- Time: {\"type\": \"time\", \"recurrence\": \"once|daily|weekdays|weekends|weekly|custom\", ")
+                .append("\"hour\": 0-23, \"minute\": 0-59, \"weekdayMask\": bitmask with Monday=1, Tuesday=2, ")
+                .append("Wednesday=4, Thursday=8, Friday=16, Saturday=32, Sunday=64 (weekly only)}\n")
+                .append("- Location: {\"type\": \"location\", \"transition\": \"arrive|leave\", ")
+                .append("\"place\": \"saved place label\", \"radiusMeters\": 50-5000 optional}\n")
+                .append(savedPlaces(context))
+                .append("\nTrigger rules:\n")
+                .append("- Only add a trigger if the user clearly asked for one.\n")
+                .append("- Never guess a clock time. If the time is vague, such as \"in the morning\" ")
+                .append("or \"before bed\", omit the trigger and say so in \"unsupported\".\n")
+                .append("- Never guess a place. Use only a saved place label listed above; if the user ")
+                .append("named somewhere else, still use their words in \"place\" so Orbit can ask.\n")
+                .append("- Only use arrive or leave when the wording is clear.\n\n")
+                .append("Conditions: to run steps only in certain circumstances, add an ")
+                .append("IF_CONDITION step immediately before the steps it guards, with params ")
+                .append("{\"mode\": \"time|location|time_and_location\", \"nextSteps\": 1-5, ")
+                .append("\"startMinute\": 0-1439, \"endMinute\": 0-1439 for time, ")
+                .append("\"locationName\": \"saved place label\" for location}.\n\n")
                 .append("Rules:\n")
                 .append("- Use at most ").append(RoutineActionCatalog.MAX_STEPS).append(" steps, in the order they should run.\n")
                 .append("- Use only the action types listed below. Never invent a type or a parameter.\n")
@@ -92,8 +115,8 @@ public final class RoutinePlanner {
                 .append("describe it in \"unsupported\". Never approximate it with a different action.\n")
                 .append("- If a required value is not stated and cannot be reasonably inferred, leave ")
                 .append("that step out and say so in \"unsupported\".\n")
-                .append("- Do not create schedules, times, locations, or conditions. If the user asks ")
-                .append("for them, put that in \"unsupported\".\n")
+                .append("- Do not invent an \"otherwise\" or \"else\" branch. If the user asks for one, ")
+                .append("set \"elseRequested\": true and plan only the supported part.\n")
                 .append("- Give the routine a short name such as Bedtime or Focus mode, not a sentence.\n\n")
                 .append("Supported actions:\n")
                 .append(capabilities(context))
@@ -134,6 +157,23 @@ public final class RoutinePlanner {
                     .append(safe(choice.extension.name)).append('\n');
         }
         return out.toString();
+    }
+
+    /**
+     * Saved place labels only. Coordinates stay on the device: the planner returns a label and
+     * Orbit resolves it locally against the saved place list.
+     */
+    static String savedPlaces(Context context) {
+        if (context == null) return "";
+        StringBuilder out = new StringBuilder();
+        for (SavedPlaceStore.Place place : SavedPlaceStore.list(context)) {
+            if (place == null || place.name == null || place.name.trim().isEmpty()) continue;
+            if (out.length() == 0) out.append("Saved places you may use as \"place\": ");
+            else out.append(", ");
+            out.append(safe(place.name));
+        }
+        if (out.length() == 0) return "No saved places are set up yet.\n";
+        return out.append('\n').toString();
     }
 
     private static String safe(String value) {

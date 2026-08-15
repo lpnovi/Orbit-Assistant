@@ -261,11 +261,17 @@
 - Surface unsupported and ambiguous requested actions instead of inventing them
 - Keep automatic trigger and condition creation for later 0.7.3.x expansion
 
+### 0.7.3.1
+- Draft automatic time and location triggers from the same natural-language description
+- Draft IF conditions using only Orbit's existing time and location condition model
+- Never schedule anything automatically; propose triggers for review after the routine is saved
+- Report vague timing, unknown places, and unsupported branching instead of guessing
+- Keep concise, user-facing GitHub release notes generated from the changelog entry
+
 ## Future direction
 
 ### Next up
-- Natural-language triggers and conditions, expanding 0.7.3.0 Routine creation
-- Richer automation, chained plans, conditions and branching
+- Richer automation, chained plans, and branching beyond a single condition
 
 ### Planned
 - Deeper Android actions

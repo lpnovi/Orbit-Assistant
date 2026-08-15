@@ -66,6 +66,21 @@ four `ORBIT_RELEASE_*` values are present.
 - `ROADMAP.md` and `README.md` are updated when a release changes product direction or features.
 - The git tag is `v<versionName>`; `release.yml` verifies the tag matches the tagged source version.
 
+## Release notes — keep them short
+
+The GitHub Release body is built by `release.yml` **from the `CHANGELOG.md` entry**, never from the
+commit message. That entry is user-facing, so write it that way:
+
+- One short summary sentence on the `- **v<versionName>**:` line.
+- Then 3–6 bullets indented two spaces (`  - …`), one sentence each, roughly 8–25 words.
+- Target 60–150 words total; `release.yml` fails the release above 200 words.
+- Say what the user gets. Keep class names, method names, root-cause history, previous failed
+  attempts, internal flags, test names, and architecture out of it.
+
+That detail belongs in the commit message, code comments, tests, and the report back to the user —
+all of which may stay as technical as they need to be. Commit message length never affects the
+release body.
+
 ## Signing and update compatibility — do not break
 
 - Application ID is `com.orbit.assistant`. Never change it.

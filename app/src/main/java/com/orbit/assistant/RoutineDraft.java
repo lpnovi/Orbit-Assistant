@@ -27,6 +27,7 @@ public final class RoutineDraft {
     private static final String KEY_TYPE = "type";
     private static final String KEY_PARAMS = "params";
     private static final String KEY_WARNINGS = "warnings";
+    private static final String KEY_TRIGGER = "trigger";
     private static final int MAX_WARNINGS = 8;
     private static final int MAX_WARNING_LENGTH = 120;
 
@@ -34,11 +35,23 @@ public final class RoutineDraft {
     public final List<AssistantReply.Action> actions;
     /** Requests Orbit could not represent, shown to the user instead of being invented. */
     public final List<String> warnings;
+    /** Proposed automatic trigger. Never scheduled; applied only after an explicit save. */
+    public final RoutineTriggerDraft trigger;
 
     RoutineDraft(String name, List<AssistantReply.Action> actions, List<String> warnings) {
+        this(name, actions, warnings, null);
+    }
+
+    RoutineDraft(String name, List<AssistantReply.Action> actions, List<String> warnings,
+                 RoutineTriggerDraft trigger) {
         this.name = RoutineStore.sanitizeName(name);
         this.actions = actions == null ? new ArrayList<>() : new ArrayList<>(actions);
         this.warnings = warnings == null ? new ArrayList<>() : new ArrayList<>(warnings);
+        this.trigger = trigger;
+    }
+
+    public boolean hasTrigger() {
+        return trigger != null;
     }
 
     public boolean hasSteps() {
@@ -96,18 +109,32 @@ public final class RoutineDraft {
         }
 
         if (actions.isEmpty()) return null;
+
+        // Validated locally, including resolving any saved-place label. Nothing is scheduled.
+        RoutineTriggerDraft trigger =
+                RoutineTriggerDraft.fromJson(context, root.optJSONObject("trigger"), warnings);
+        JSONArray extraTriggers = root.optJSONArray("additionalTriggers");
+        if (extraTriggers != null && extraTriggers.length() > 0) {
+            // One trigger is drafted in this release; a second is reported rather than dropped.
+            addWarning(warnings, "Only the first automatic trigger was drafted. Add the others in "
+                    + "Automatic triggers.");
+        }
+        if (root.optBoolean("elseRequested", false)) {
+            addWarning(warnings, "\"Otherwise\" branching isn't supported in this builder yet");
+        }
+
         String name = root.optString(KEY_NAME, "").trim();
         if (name.isEmpty()) name = "New routine";
-        return new RoutineDraft(name, actions, warnings);
+        return new RoutineDraft(name, actions, warnings, trigger);
     }
 
     /**
-     * Types a draft may contain. Conditions are excluded for now: recognising scheduling and
-     * condition wording is handled as a warning in this release rather than being generated.
+     * Types a draft may contain. IF conditions are allowed from v0.7.3.1 and go through exactly
+     * the same catalog validation as any other step, so the planner cannot express a condition the
+     * editor could not already store and the engine could not already run.
      */
     private static boolean isAllowedType(Context context, AssistantReply.Action action) {
         String type = action.type == null ? "" : action.type.toUpperCase(java.util.Locale.US);
-        if (RoutineActionCatalog.IF_CONDITION.equals(type)) return false;
         if (RoutineActionCatalog.EXTENSION_ACTION.equals(type)) {
             // Only an extension action the normal editor would currently offer.
             return context != null && OrbitExtensionStore.resolveEnabledAction(context,
@@ -157,12 +184,13 @@ public final class RoutineDraft {
             }
             JSONArray warned = new JSONArray();
             for (String warning : warnings) warned.put(warning);
-            return new JSONObject()
+            JSONObject root = new JSONObject()
                     .put(KEY_SCHEMA, SCHEMA)
                     .put(KEY_NAME, name)
                     .put(KEY_STEPS, steps)
-                    .put(KEY_WARNINGS, warned)
-                    .toString();
+                    .put(KEY_WARNINGS, warned);
+            if (trigger != null) root.put(KEY_TRIGGER, trigger.toJson());
+            return root.toString();
         } catch (Exception ignored) {
             return "";
         }
@@ -194,7 +222,9 @@ public final class RoutineDraft {
                     if (!value.isEmpty()) warnings.add(value);
                 }
             }
-            return new RoutineDraft(root.optString(KEY_NAME, ""), actions, warnings);
+            RoutineTriggerDraft trigger =
+                    RoutineTriggerDraft.fromPayload(context, root.optJSONObject(KEY_TRIGGER));
+            return new RoutineDraft(root.optString(KEY_NAME, ""), actions, warnings, trigger);
         } catch (Exception ignored) {
             return null;
         }

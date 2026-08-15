@@ -50,6 +50,8 @@ public class RoutineEditorActivity extends Activity {
     private EditText nameField;
     /** Proposed name from a generated draft; empty for a normal new routine. */
     private String draftName = "";
+    /** Proposed automation from a generated draft; never scheduled by this screen. */
+    private RoutineTriggerDraft draftTrigger;
     private Button addStepButton;
     private RoutineStore.Routine existing;
     private boolean dirty;
@@ -80,6 +82,9 @@ public class RoutineEditorActivity extends Activity {
             if (draft != null) {
                 draftName = draft.name;
                 workingActions.addAll(RoutineStore.copyActions(draft.actions));
+                // Held only in memory. Nothing is scheduled unless the routine is saved and the
+                // user then chooses to set the automation up.
+                draftTrigger = draft.trigger;
             }
         }
 
@@ -934,7 +939,39 @@ public class RoutineEditorActivity extends Activity {
         }
         dirty = false;
         Toast.makeText(this, "Saved " + name, Toast.LENGTH_SHORT).show();
+        // Only now, with a real saved routine, is a proposed trigger offered. It is still not
+        // created here: the existing Automatic triggers screen stays the authority.
+        if (draftTrigger != null) {
+            String pendingRoutineId = routine.id;
+            RoutineTriggerDraft proposed = draftTrigger;
+            draftTrigger = null;
+            offerProposedTrigger(pendingRoutineId, proposed);
+            return;
+        }
         finish();
+    }
+
+    /**
+     * Asks whether to set up the automation the builder proposed. Declining leaves a perfectly
+     * normal manual routine; accepting opens the existing trigger screen, which remains the only
+     * thing that can actually schedule anything.
+     */
+    private void offerProposedTrigger(String routineId, RoutineTriggerDraft proposed) {
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Set up automation?")
+                .setMessage("Orbit suggested running this routine automatically:\n\n"
+                        + proposed.summary(this)
+                        + "\n\nIt is not scheduled yet. Open Automatic triggers to set it up.")
+                .setNegativeButton("Not now", (d, w) -> finish())
+                .setPositiveButton("Automatic triggers", (d, w) -> {
+                    startActivity(new Intent(this, RoutineTriggersActivity.class)
+                            .putExtra(RoutineTriggersActivity.EXTRA_ROUTINE_ID, routineId));
+                    finish();
+                })
+                .create();
+        dialog.setOnCancelListener(d -> finish());
+        UiKit.styleOrbitDialog(dialog, this, false);
+        dialog.show();
     }
 
     private void handleBack() {

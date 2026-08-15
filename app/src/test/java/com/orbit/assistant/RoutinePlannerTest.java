@@ -111,9 +111,14 @@ public final class RoutinePlannerTest {
                 notice.toLowerCase(java.util.Locale.US).contains("steps were created"));
     }
 
-    @Test public void thePlannerIsToldNotToInventSchedules() {
+    @Test public void thePlannerMayScheduleButMayNotGuess() {
         String prompt = RoutinePlanner.prompt(context, "every morning at 7 set brightness to 60%");
-        assertTrue(prompt.contains("Do not create schedules"));
+        // Triggers are drafted from v0.7.3.1, but only from wording that is actually concrete.
+        assertTrue(prompt.contains("\"trigger\""));
+        assertTrue(prompt.contains("Never guess a clock time"));
+        assertTrue(prompt.contains("Never guess a place"));
+        assertTrue("an else branch must still be reported, not invented",
+                prompt.contains("Do not invent an \"otherwise\""));
     }
 
     @Test public void anEmptyDescriptionIsRejectedBeforeAnyRequest() {

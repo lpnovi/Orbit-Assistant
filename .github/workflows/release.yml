@@ -215,21 +215,43 @@ jobs:
 
           version = os.environ['EXPECTED_VERSION_NAME']
           marker = f'- **v{version}**:'
-          entry = next(
-              (line.strip() for line in Path('CHANGELOG.md').read_text(encoding='utf-8').splitlines()
-               if line.startswith(marker)),
-              None,
-          )
-          if entry is None:
+          lines = Path('CHANGELOG.md').read_text(encoding='utf-8').splitlines()
+
+          index = next((i for i, line in enumerate(lines) if line.startswith(marker)), None)
+          if index is None:
               raise SystemExit(f'No CHANGELOG.md entry found for v{version}')
 
-          summary = entry[len(marker):].strip()
-          notes = (
-              f'## Orbit Assistant v{version}\n\n'
-              f'{summary}\n\n'
+          summary = lines[index][len(marker):].strip()
+
+          # Indented "  - " lines directly beneath the entry become the What's new bullets, so a
+          # release body stays a short summary plus a few bullets rather than one long paragraph.
+          bullets = []
+          for line in lines[index + 1:]:
+              stripped = line.strip()
+              if line.startswith('  - ') or line.startswith('    - '):
+                  bullets.append(stripped[2:].strip())
+                  continue
+              if not stripped:
+                  continue
+              break
+
+          notes = f'## Orbit Assistant v{version}\n\n{summary}\n\n'
+          if bullets:
+              notes += "### What's new\n\n"
+              notes += ''.join(f'- {bullet}\n' for bullet in bullets)
+              notes += '\n'
+          notes += (
               'This APK is signed with Orbit Assistant\'s permanent release certificate. '
               'The attached `.sha256` file can be used to verify the APK download.\n'
           )
+
+          # User-facing notes stay short. The commit message is never used as the release body.
+          body_words = len(summary.split()) + sum(len(b.split()) for b in bullets)
+          if body_words > 200:
+              raise SystemExit(
+                  f'Release notes for v{version} are {body_words} words. Keep the CHANGELOG entry '
+                  'under 200 words: a short summary plus 3-6 concise bullets.'
+              )
           Path('release-assets/release-notes.md').write_text(notes, encoding='utf-8')
           PY
           echo "notes_path=${GITHUB_WORKSPACE}/release-assets/release-notes.md" >> "${GITHUB_OUTPUT}"
