@@ -121,7 +121,7 @@ public final class RoutineTriggerDraft {
         return null;
     }
 
-    private static SavedPlaceStore.Place findPlace(Context context, String label) {
+    static SavedPlaceStore.Place findPlace(Context context, String label) {
         if (context == null || label == null || label.trim().isEmpty()) return null;
         String wanted = label.trim().toLowerCase(Locale.US);
         for (SavedPlaceStore.Place place : SavedPlaceStore.list(context)) {

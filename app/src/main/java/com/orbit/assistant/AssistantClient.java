@@ -187,28 +187,106 @@ public final class AssistantClient {
      * screenshot, notifications, or memories — and returns the model's raw reply for the caller to
      * validate.
      */
-    public static void plan(Context context, String planningPrompt, Callback cb) {
+    /**
+     * Receives a planning response as raw provider text.
+     *
+     * <p>Deliberately not {@link Callback}: the chat path parses a reply into Orbit's
+     * {@code {"text","actions"}} envelope, which discards any other JSON shape. A planner returns
+     * its own schema, so the planning path must hand back the complete response untouched and let
+     * {@link RoutinePlanResponse} decide what it is.
+     */
+    public interface PlanCallback {
+        void onText(String rawResponse, String providerLabel);
+        void onError(String message);
+    }
+
+    /** The mode planning runs in. Auto is resolved locally so planning never re-routes itself. */
+    static String planMode(Context context) {
+        String mode = Prefs.normalizeMode(Prefs.intelligenceMode(context));
+        return Prefs.MODE_AUTO.equals(mode) ? Prefs.MODE_BALANCED : mode;
+    }
+
+    public static void plan(Context context, String planningPrompt, PlanCallback cb) {
         if (context == null || cb == null) return;
         if (planningPrompt == null || planningPrompt.trim().isEmpty()) {
             cb.onError("Describe the routine you want Orbit to build.");
             return;
         }
-        List<History> noHistory = new java.util.ArrayList<>();
-        String mode = Prefs.normalizeMode(Prefs.intelligenceMode(context));
-        if (Prefs.MODE_AUTO.equals(mode)) mode = Prefs.MODE_BALANCED;
-
+        String mode = planMode(context);
         String provider = Prefs.provider(context);
         if (Prefs.PROVIDER_CHATGPT.equals(provider)) {
             if (!ChatGptAuth.isSignedIn(context)) {
                 cb.onError("Sign in with ChatGPT in Orbit settings first. No API key is required for ChatGPT-account mode.");
                 return;
             }
-            ChatGptClient.send(context, planningPrompt, null, null, noHistory,
-                    mode, false, "", "", "", cb);
+            ChatGptClient.plan(context, planningPrompt, mode, cb);
             return;
         }
-        sendViaRelay(context, planningPrompt, null, null, noHistory, mode,
-                false, "", "", "", cb);
+        planViaRelay(context, planningPrompt, mode, cb);
+    }
+
+    /**
+     * The relay applies its own response format server-side, so its body is returned whole rather
+     * than parsed here. {@link RoutinePlanResponse} unwraps whichever shape actually arrived.
+     */
+    private static void planViaRelay(Context context, String planningPrompt, String mode,
+                                     PlanCallback cb) {
+        String backend = Prefs.backendUrl(context);
+        if (backend.isEmpty()) {
+            cb.onError("API-relay mode is selected, but no relay is configured. Add your HTTPS relay URL or switch Provider to ChatGPT account.");
+            return;
+        }
+        if (!backend.startsWith("https://")) {
+            cb.onError("For security, Orbit only connects to HTTPS relay URLs.");
+            return;
+        }
+        EXEC.execute(() -> {
+            HttpURLConnection conn = null;
+            try {
+                URL url = new URL(backend.endsWith("/") ? backend + "assistant" : backend + "/assistant");
+                conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(90000);
+                conn.setDoOutput(true);
+                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                conn.setRequestProperty("Accept", "application/json");
+                String token = Prefs.token(context);
+                if (!token.isEmpty()) conn.setRequestProperty("Authorization", "Bearer " + token);
+
+                // Planning carries the description and safe action metadata only: no history,
+                // screen text, screenshot, notifications, or memory context.
+                JSONObject payload = new JSONObject();
+                payload.put("prompt", planningPrompt);
+                payload.put("model", Prefs.effectiveModelForMode(context, mode, planningPrompt));
+                payload.put("reasoning", Prefs.effectiveReasoningForMode(context, mode, planningPrompt));
+                payload.put("clientTime", OffsetDateTime.now().toString());
+                payload.put("timezone", TimeZone.getDefault().getID());
+                payload.put("locale", java.util.Locale.getDefault().toLanguageTag());
+                payload.put("history", new JSONArray());
+                payload.put("screenText", "");
+                payload.put("notificationContext", "");
+                payload.put("memoryContext", "");
+                payload.put("trustedTaskContext", "");
+
+                byte[] bytes = payload.toString().getBytes(StandardCharsets.UTF_8);
+                conn.setFixedLengthStreamingMode(bytes.length);
+                try (OutputStream out = conn.getOutputStream()) { out.write(bytes); }
+
+                int code = conn.getResponseCode();
+                InputStream input = code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream();
+                String body = readAll(input);
+                if (code < 200 || code >= 300) {
+                    cb.onError("Relay error " + code + (body.isEmpty() ? "" : ": " + safe(body, 700)));
+                    return;
+                }
+                cb.onText(body, "Relay · " + Prefs.modeLabel(mode));
+            } catch (Exception e) {
+                cb.onError("Could not reach the Orbit relay: " + e.getMessage());
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+        });
     }
 
     private static Callback decorateMemoryMetadata(Callback downstream,

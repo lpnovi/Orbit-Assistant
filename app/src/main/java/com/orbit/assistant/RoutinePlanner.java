@@ -43,6 +43,28 @@ public final class RoutinePlanner {
                 + "be set up in Automatic triggers after you save the routine.";
     }
 
+    /**
+     * How a planning request is sent. Exists so the planning, repair, and failure paths can be
+     * exercised against real provider response text in tests; production always uses
+     * {@link AssistantClient#plan}.
+     */
+    interface Transport {
+        void plan(Context context, String planningPrompt, AssistantClient.PlanCallback callback);
+    }
+
+    private static Transport transport = AssistantClient::plan;
+
+    static void setTransport(Transport replacement) {
+        transport = replacement == null ? AssistantClient::plan : replacement;
+    }
+
+    /** The response could not be read as a plan at all, even after one repair attempt. */
+    static final String UNREADABLE_MESSAGE =
+            "Orbit couldn't get a usable planning response. Try again.";
+    /** The plan was read perfectly well, but nothing in it is something Orbit can do. */
+    static final String UNSUPPORTED_MESSAGE =
+            "Orbit understood the request but couldn't map it to supported Routine actions.";
+
     public static void build(Context context, String description, Callback callback) {
         if (callback == null) return;
         if (context == null || description == null || description.trim().isEmpty()) {
@@ -51,27 +73,86 @@ public final class RoutinePlanner {
         }
         final boolean askedForAutomation = mentionsAutomation(description);
 
-        AssistantClient.plan(context, prompt(context, description), new AssistantClient.Callback() {
-            @Override public void onSuccess(AssistantReply reply) {
-                String text = reply == null ? "" : reply.text;
-                RoutineDraft draft = RoutineDraft.fromPlannerJson(context, text);
-                if (draft == null || !draft.hasSteps()) {
-                    callback.onError("Orbit couldn't turn that into routine steps. Try naming the "
-                            + "specific settings you want changed, such as \"turn on Do Not Disturb "
-                            + "and set brightness to 30%\".");
+        transport.plan(context, prompt(context, description), new AssistantClient.PlanCallback() {
+            @Override public void onText(String raw, String providerLabel) {
+                RoutineDraft.Outcome outcome = RoutineDraft.parse(context, raw);
+                if (outcome.draft != null) {
+                    record(context, providerLabel, raw, outcome, false, "");
+                    deliver(callback, outcome.draft, askedForAutomation);
                     return;
                 }
-                // Only when automation was clearly requested but nothing could be drafted from it,
-                // so the user is never left thinking the timing was silently ignored.
-                String notice = askedForAutomation && !draft.hasTrigger() ? automationNotice() : "";
-                callback.onDraft(draft, notice);
+                // A response Orbit could not read is worth exactly one focused repair. A response
+                // it read fine that asked for unsupported things is a real answer, not a format
+                // problem, so repeating the request would only waste a call.
+                if (!outcome.isUnreadable()) {
+                    record(context, providerLabel, raw, outcome, false, UNSUPPORTED_MESSAGE);
+                    callback.onError(UNSUPPORTED_MESSAGE);
+                    return;
+                }
+                repair(context, description, raw, outcome, providerLabel, askedForAutomation, callback);
             }
 
             @Override public void onError(String message) {
-                callback.onError(message == null || message.trim().isEmpty()
-                        ? "Orbit could not build the routine." : message);
+                String error = message == null || message.trim().isEmpty()
+                        ? "Orbit could not build the routine." : message;
+                record(context, "", "", null, false, error);
+                callback.onError(error);
             }
         });
+    }
+
+    /** At most one repair request. Its own failure is final. */
+    private static void repair(Context context, String description, String firstResponse,
+                               RoutineDraft.Outcome firstOutcome, String providerLabel,
+                               boolean askedForAutomation, Callback callback) {
+        transport.plan(context, repairPrompt(context, description, firstResponse),
+                new AssistantClient.PlanCallback() {
+            @Override public void onText(String raw, String repairProvider) {
+                RoutineDraft.Outcome repaired = RoutineDraft.parse(context, raw);
+                if (repaired.draft != null) {
+                    record(context, repairProvider, raw, repaired, true, "");
+                    deliver(callback, repaired.draft, askedForAutomation);
+                    return;
+                }
+                String error = repaired.isUnreadable() ? UNREADABLE_MESSAGE : UNSUPPORTED_MESSAGE;
+                record(context, repairProvider, raw, repaired, true, error);
+                callback.onError(error);
+            }
+
+            @Override public void onError(String message) {
+                record(context, providerLabel, firstResponse, firstOutcome, true,
+                        message == null || message.trim().isEmpty() ? UNREADABLE_MESSAGE : message);
+                callback.onError(message == null || message.trim().isEmpty()
+                        ? UNREADABLE_MESSAGE : message);
+            }
+        });
+    }
+
+    private static void deliver(Callback callback, RoutineDraft draft, boolean askedForAutomation) {
+        // Only when automation was clearly requested but nothing could be drafted from it,
+        // so the user is never left thinking the timing was silently ignored.
+        String notice = askedForAutomation && !draft.hasTrigger() ? automationNotice() : "";
+        callback.onDraft(draft, notice);
+    }
+
+    private static void record(Context context, String providerLabel, String raw,
+                               RoutineDraft.Outcome outcome, boolean repairAttempted, String failure) {
+        DiagnosticStore.recordRoutinePlan(context, providerLabel, raw, outcome, repairAttempted, failure);
+    }
+
+    /**
+     * One focused correction request. It carries the invalid response and the schema, and nothing
+     * else that was not already sent: no conversation, screen context, memories, or secrets.
+     */
+    static String repairPrompt(Context context, String description, String invalidResponse) {
+        String previous = invalidResponse == null ? "" : invalidResponse.trim();
+        if (previous.length() > 4000) previous = previous.substring(0, 4000);
+        return "Your previous reply could not be read as an Orbit routine plan.\n\n"
+                + "Previous reply:\n" + previous + "\n\n"
+                + "Return the same intended routine as a single raw JSON object and nothing else. "
+                + "No prose, no explanation, no code fence. Keep the steps the user actually asked "
+                + "for; do not add, remove, or substitute any of them.\n\n"
+                + prompt(context, description);
     }
 
     /** The full planning instruction, including the generated capability list. */

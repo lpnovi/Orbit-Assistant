@@ -217,3 +217,9 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Routines can now include an IF condition, drafted only with Orbit's existing time and location condition model.
   - Vague timing, unknown places, and unsupported "otherwise" branches are listed under Needs attention instead of guessed.
   - Saved-place names are matched on your phone; no coordinates or personal data are sent for planning.
+- **v0.7.3.2**: Create with Orbit now works reliably for ordinary everyday wording.
+  - Fixed supported requests such as "turn on do not disturb and set brightness to 30%" failing to produce any draft.
+  - Planning now uses its own request path, so a routine plan is no longer read as if it were a chat reply.
+  - Common formatting differences in the AI response are handled before validation, which is unchanged.
+  - An unusable planning response is retried once; the builder now says which kind of failure happened.
+  - Time, location, and IF-condition drafting from v0.7.3.1 is preserved, and a location condition now resolves your saved place.

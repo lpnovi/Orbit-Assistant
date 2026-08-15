@@ -59,18 +59,71 @@ public final class RoutineDraft {
     }
 
     /**
+     * What a planner response turned into. The planner needs to tell a response it could not read
+     * from one it read perfectly well that asked for things Orbit cannot do, because only the
+     * first is worth a repair attempt and they deserve different messages.
+     */
+    public static final class Outcome {
+        /** The usable draft, or null when nothing survived validation. */
+        public final RoutineDraft draft;
+        /** Description of the response shape, for diagnostics. */
+        public final String shape;
+        /** True when a plan object was found at all. */
+        public final boolean planFound;
+        /** True when that plan object actually carried a steps array. */
+        public final boolean stepsArrayFound;
+        public final int stepsReturned;
+        public final int stepsAccepted;
+        /** Action types as returned, after normalisation. */
+        public final List<String> returnedTypes;
+        /** "TYPE — reason" for each step that did not survive validation. */
+        public final List<String> rejected;
+
+        Outcome(RoutineDraft draft, String shape, boolean planFound, boolean stepsArrayFound,
+                int stepsReturned, int stepsAccepted, List<String> returnedTypes,
+                List<String> rejected) {
+            this.draft = draft;
+            this.shape = shape == null ? "" : shape;
+            this.planFound = planFound;
+            this.stepsArrayFound = stepsArrayFound;
+            this.stepsReturned = stepsReturned;
+            this.stepsAccepted = stepsAccepted;
+            this.returnedTypes = returnedTypes == null ? new ArrayList<>() : returnedTypes;
+            this.rejected = rejected == null ? new ArrayList<>() : rejected;
+        }
+
+        /**
+         * True when the response could not be read as a plan at all. Only this is worth one
+         * repair attempt; a plan Orbit understood but cannot perform is a real answer.
+         */
+        public boolean isUnreadable() {
+            return !planFound || !stepsArrayFound;
+        }
+    }
+
+    /**
      * Validates untrusted planner output into a draft, or returns null when nothing usable
      * remains. Unknown action types and out-of-range parameters are dropped with a warning so a
      * partly understood request still produces the steps that were valid.
      */
     public static RoutineDraft fromPlannerJson(Context context, String json) {
-        if (json == null || json.trim().isEmpty()) return null;
-        JSONObject root;
-        try {
-            root = new JSONObject(extractObject(json));
-        } catch (Exception ignored) {
-            return null;
+        return parse(context, json).draft;
+    }
+
+    /**
+     * Reads a raw planner response. Provider formatting variations are unwrapped and normalised by
+     * {@link RoutinePlanResponse} first; every resulting step then passes exactly the same
+     * {@link RoutineActionCatalog} gate a hand-added step passes, so normalisation can only change
+     * how a step is spelled, never whether Orbit is willing to run it.
+     */
+    public static Outcome parse(Context context, String raw) {
+        RoutinePlanResponse response = RoutinePlanResponse.read(raw);
+        if (!response.hasPlan()) {
+            return new Outcome(null, response.shape, false, false, 0, 0, null, null);
         }
+        JSONObject root = response.plan;
+        List<String> returnedTypes = new ArrayList<>();
+        List<String> rejected = new ArrayList<>();
 
         List<String> warnings = new ArrayList<>();
         JSONArray unsupported = root.optJSONArray("unsupported");
@@ -95,11 +148,18 @@ public final class RoutineDraft {
                 String type = step.optString(KEY_TYPE, "").trim().toUpperCase(java.util.Locale.US);
                 JSONObject params = step.optJSONObject(KEY_PARAMS);
                 if (params == null) params = new JSONObject();
+                returnedTypes.add(type.isEmpty() ? "(none)" : type);
+                if (RoutineActionCatalog.IF_CONDITION.equals(type)) {
+                    params = resolveConditionPlace(context, params, warnings);
+                }
 
                 AssistantReply.Action action = new AssistantReply.Action(type, params, false);
                 // The same gate a hand-added step passes. Nothing reaches a draft on the strength
                 // of the planner having named it.
                 if (!RoutineActionCatalog.isValid(action) || !isAllowedType(context, action)) {
+                    rejected.add((type.isEmpty() ? "(none)" : type) + " — "
+                            + (RoutineActionCatalog.isSupported(type)
+                                    ? "parameters failed validation" : "unsupported action type"));
                     addWarning(warnings, "Orbit couldn't add: "
                             + describeRejected(step.optString("describe", ""), type));
                     continue;
@@ -108,7 +168,10 @@ public final class RoutineDraft {
             }
         }
 
-        if (actions.isEmpty()) return null;
+        if (actions.isEmpty()) {
+            return new Outcome(null, response.shape, true, response.hasStepsArray(),
+                    returnedTypes.size(), 0, returnedTypes, rejected);
+        }
 
         // Validated locally, including resolving any saved-place label. Nothing is scheduled.
         RoutineTriggerDraft trigger =
@@ -125,7 +188,9 @@ public final class RoutineDraft {
 
         String name = root.optString(KEY_NAME, "").trim();
         if (name.isEmpty()) name = "New routine";
-        return new RoutineDraft(name, actions, warnings, trigger);
+        return new Outcome(new RoutineDraft(name, actions, warnings, trigger), response.shape,
+                true, response.hasStepsArray(), returnedTypes.size(), actions.size(),
+                returnedTypes, rejected);
     }
 
     /**
@@ -144,6 +209,42 @@ public final class RoutineDraft {
         return RoutineActionCatalog.isSupported(type);
     }
 
+    /**
+     * Turns a saved-place label on a location condition into the coordinates the condition model
+     * stores. The planner is only ever told place labels, never coordinates, so this lookup has to
+     * happen here on the device. A label Orbit does not recognise is left unresolved, which means
+     * the condition fails validation and is reported rather than pointed at a guessed location.
+     */
+    private static JSONObject resolveConditionPlace(Context context, JSONObject params,
+                                                    List<String> warnings) {
+        String mode = params.optString("mode", "").trim().toLowerCase(java.util.Locale.US);
+        boolean needsPlace = RoutineConditionEvaluator.MODE_LOCATION.equals(mode)
+                || RoutineConditionEvaluator.MODE_TIME_AND_LOCATION.equals(mode);
+        if (!needsPlace || params.has("latitude") || params.has("longitude")) return params;
+
+        String label = params.optString("locationName", "").trim();
+        SavedPlaceStore.Place place = RoutineTriggerDraft.findPlace(context, label);
+        if (place == null) {
+            if (!label.isEmpty()) {
+                addWarning(warnings, "Choose a location for \"" + label + "\" before saving");
+            }
+            return params;
+        }
+        try {
+            JSONObject resolved = new JSONObject(params.toString());
+            resolved.put("locationName", place.name);
+            resolved.put("latitude", place.latitude);
+            resolved.put("longitude", place.longitude);
+            if (!resolved.has("radiusMeters")) resolved.put("radiusMeters", CONDITION_RADIUS_METERS);
+            return resolved;
+        } catch (Exception ignored) {
+            return params;
+        }
+    }
+
+    /** Matches the default a hand-built location condition gets in the editor. */
+    private static final int CONDITION_RADIUS_METERS = 150;
+
     private static String describeRejected(String described, String type) {
         String value = clip(described);
         if (!value.isEmpty()) return value;
@@ -161,15 +262,6 @@ public final class RoutineDraft {
         String out = value == null ? "" : value.trim().replaceAll("\\s+", " ");
         if (out.length() > MAX_WARNING_LENGTH) out = out.substring(0, MAX_WARNING_LENGTH).trim() + "…";
         return out;
-    }
-
-    /** Tolerates a model that wraps its JSON in prose or a code fence. */
-    private static String extractObject(String raw) {
-        String text = raw.trim();
-        int start = text.indexOf('{');
-        int end = text.lastIndexOf('}');
-        if (start < 0 || end <= start) return text;
-        return text.substring(start, end + 1);
     }
 
     /** Compact payload for handing an unsaved draft to the editor. */

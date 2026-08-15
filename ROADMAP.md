@@ -268,6 +268,14 @@
 - Report vague timing, unknown places, and unsupported branching instead of guessing
 - Keep concise, user-facing GitHub release notes generated from the changelog entry
 
+### 0.7.3.2
+- Reliability patch for natural-language Routine drafting
+- Give planning its own request path instead of the chat response format
+- Accept ordinary provider formatting variations before, never instead of, action validation
+- Retry an unreadable planning response once, and never for an unsupported request
+- Distinguish planner, mapping, and provider failures in the builder
+- Record a local Routine planning trace in Diagnostics
+
 ## Future direction
 
 ### Next up

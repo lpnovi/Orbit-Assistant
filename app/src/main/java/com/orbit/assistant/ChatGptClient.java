@@ -69,7 +69,110 @@ public final class ChatGptClient {
     private static final String LELO_SYSTEM =
             " Lelo mode is enabled. Use a casual, playful, friend-like conversational style inspired by texting: mostly lowercase when natural, short relaxed phrasing, contractions, slang such as yeah/nah/lmao when fitting, and occasional expressive emoji such as 😭. Avoid corporate, formal, or therapist-like phrasing unless the task genuinely requires formality. Be warm without pretending to be a real human friend or making relational promises. Keep facts, safety, and device-action accuracy unchanged. Never use an em dash.";
 
+    /**
+     * Planning instructions. Deliberately not {@link #SYSTEM}: the chat instructions require the
+     * {@code {"text","actions"}} envelope, which is a different schema from the one the planning
+     * prompt asks for. Sending both told the model to satisfy two incompatible shapes at once.
+     */
+    private static final String PLANNING_SYSTEM =
+            "You are Orbit's routine planner. You convert a description of a phone routine into a " +
+            "routine definition. Reply with a single raw JSON object and nothing else: no prose " +
+            "before or after it, no explanation, and no code fence. Use exactly the schema and the " +
+            "supported action list given in the user message, and never invent an action type or a " +
+            "parameter that is not listed there.";
+
     private ChatGptClient() {}
+
+    /**
+     * A planning request. The complete response text is handed back unparsed, because a planner
+     * returns its own schema rather than a chat reply.
+     */
+    public static void plan(Context context, String planningPrompt, String intelligenceMode,
+                            AssistantClient.PlanCallback cb) {
+        ChatGptAuth.getValidTokens(context, false, new ChatGptAuth.TokenCallback() {
+            @Override public void onSuccess(SecureStore.ChatGptTokens tokens) {
+                EXEC.execute(() -> doPlan(context, planningPrompt, intelligenceMode, tokens, false, cb));
+            }
+            @Override public void onError(String message) { cb.onError(message); }
+        });
+    }
+
+    private static void doPlan(Context context, String planningPrompt, String intelligenceMode,
+                               SecureStore.ChatGptTokens tokens, boolean alreadyRefreshed,
+                               AssistantClient.PlanCallback cb) {
+        HttpURLConnection conn = null;
+        String model = Prefs.effectiveModelForMode(context, intelligenceMode, planningPrompt);
+        try {
+            JSONObject body = new JSONObject();
+            body.put("model", model);
+            body.put("instructions", PLANNING_SYSTEM);
+            body.put("store", false);
+            body.put("stream", true);
+            body.put("parallel_tool_calls", false);
+            String effort = Prefs.effectiveReasoningForMode(context, intelligenceMode, planningPrompt);
+            if (effort != null && !effort.isEmpty() && !"none".equals(effort)) {
+                body.put("reasoning", new JSONObject().put("effort", effort));
+            }
+            // Only the planning prompt: no history, screen text, screenshot, notifications,
+            // memories, or extension secrets. No tools are offered either.
+            JSONArray content = new JSONArray().put(new JSONObject()
+                    .put("type", "input_text").put("text", planningPrompt));
+            body.put("input", new JSONArray().put(new JSONObject()
+                    .put("role", "user").put("content", content)));
+
+            conn = (HttpURLConnection) new URL(RESPONSES_URL).openConnection();
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(180000);
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Authorization", "Bearer " + tokens.accessToken);
+            if (tokens.accountId != null && !tokens.accountId.isEmpty()) {
+                conn.setRequestProperty("ChatGPT-Account-ID", tokens.accountId);
+            }
+            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            conn.setRequestProperty("Accept", "text/event-stream");
+            conn.setRequestProperty("Originator", "orbit-assistant");
+            conn.setRequestProperty("User-Agent", "OrbitAssistant/" + BuildConfig.VERSION_NAME + " (Android)");
+            conn.setRequestProperty("session_id", UUID.randomUUID().toString());
+
+            byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
+            conn.setFixedLengthStreamingMode(bytes.length);
+            try (OutputStream out = conn.getOutputStream()) { out.write(bytes); }
+
+            int code = conn.getResponseCode();
+            if (code == 401 && !alreadyRefreshed) {
+                conn.disconnect();
+                ChatGptAuth.getValidTokens(context, true, new ChatGptAuth.TokenCallback() {
+                    @Override public void onSuccess(SecureStore.ChatGptTokens fresh) {
+                        EXEC.execute(() -> doPlan(context, planningPrompt, intelligenceMode,
+                                fresh, true, cb));
+                    }
+                    @Override public void onError(String message) { cb.onError(message); }
+                });
+                return;
+            }
+            if (code < 200 || code >= 300) {
+                cb.onError(friendlyHttpError(code, ChatGptAuth.readAll(conn.getErrorStream()), model));
+                return;
+            }
+
+            // No delta forwarding: partial planner JSON is never shown anywhere.
+            SseResult stream = readSse(conn.getInputStream(), new AssistantClient.Callback() {
+                @Override public void onSuccess(AssistantReply reply) {}
+                @Override public void onError(String message) {}
+            });
+            if (stream.output == null || stream.output.trim().isEmpty()) {
+                cb.onError("ChatGPT connected but returned no planning response. Try again.");
+                return;
+            }
+            cb.onText(stream.output, "ChatGPT · " + model);
+        } catch (Exception e) {
+            cb.onError("ChatGPT request failed: "
+                    + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
 
     public static void send(Context context, String prompt, String screenText, Bitmap screenshot,
                             List<AssistantClient.History> history, String intelligenceMode, AssistantClient.Callback cb) {

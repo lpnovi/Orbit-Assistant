@@ -55,6 +55,51 @@ public final class DiagnosticStore {
                 .apply();
     }
 
+    /**
+     * The last Create with Orbit planning attempt, for the hidden diagnostics screen.
+     *
+     * <p>Records only the planning exchange: which provider answered, what shape the response had,
+     * how many steps survived validation, and a bounded copy of the planner response itself. The
+     * routine description was already sent to the planner by the user's own request. Nothing else
+     * about the device is recorded here: no memories, notifications, screen context, attachments,
+     * saved-place coordinates, or extension secrets ever reach the planning path in the first
+     * place, so none of them can appear in this trace.
+     */
+    public static void recordRoutinePlan(Context c, String provider, String rawResponse,
+                                         RoutineDraft.Outcome outcome, boolean repairAttempted,
+                                         String failure) {
+        if (c == null) return;
+        String raw = safe(rawResponse).trim();
+        if (raw.length() > MAX_PLAN_TRACE) raw = raw.substring(0, MAX_PLAN_TRACE) + "… (truncated)";
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+                .putString("plan_provider", safe(provider))
+                .putString("plan_shape", outcome == null ? "no response" : outcome.shape)
+                .putBoolean("plan_parsed", outcome != null && outcome.planFound)
+                .putInt("plan_steps_returned", outcome == null ? 0 : outcome.stepsReturned)
+                .putInt("plan_steps_accepted", outcome == null ? 0 : outcome.stepsAccepted)
+                .putString("plan_types", outcome == null ? "" : join(outcome.returnedTypes))
+                .putString("plan_rejected", outcome == null ? "" : join(outcome.rejected))
+                .putBoolean("plan_trigger", outcome != null && outcome.draft != null
+                        && outcome.draft.hasTrigger())
+                .putBoolean("plan_repair", repairAttempted)
+                .putString("plan_failure", safe(failure))
+                .putString("plan_raw", raw)
+                .putLong("plan_updated", System.currentTimeMillis())
+                .apply();
+    }
+
+    private static final int MAX_PLAN_TRACE = 1200;
+
+    private static String join(java.util.List<String> values) {
+        if (values == null || values.isEmpty()) return "";
+        StringBuilder out = new StringBuilder();
+        for (String value : values) {
+            if (out.length() > 0) out.append(", ");
+            out.append(safe(value));
+        }
+        return out.toString();
+    }
+
     public static void recordError(Context c, String error) {
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
                 .putString("last_error", safe(error))

@@ -150,7 +150,30 @@ public final class DiagnosticsActivity extends Activity {
                 "\nHands-free voice follow-ups: " + Prefs.autoListen(this) +
                 "\n0.6 capabilities dashboard: available" +
                 "\nLelo mode: " + Prefs.leloMode(this) +
-                "\nLast error: " + error;
+                "\nLast error: " + error +
+                lastRoutinePlan(d);
+    }
+
+    /** Compact trace of the last Create with Orbit planning attempt. */
+    private String lastRoutinePlan(SharedPreferences d) {
+        long updated = d.getLong("plan_updated", 0L);
+        if (updated == 0L) return "\n\nLast Routine plan: none yet";
+        String rejected = d.getString("plan_rejected", "");
+        String failure = d.getString("plan_failure", "");
+        String raw = d.getString("plan_raw", "");
+        return "\n\nLast Routine plan" +
+                "\n  Provider: " + d.getString("plan_provider", "") +
+                "\n  Parse: " + (d.getBoolean("plan_parsed", false) ? "succeeded" : "failed") +
+                " (" + d.getString("plan_shape", "") + ")" +
+                "\n  Steps returned: " + d.getInt("plan_steps_returned", 0) +
+                "\n  Steps accepted: " + d.getInt("plan_steps_accepted", 0) +
+                "\n  Types: " + d.getString("plan_types", "") +
+                (rejected.isEmpty() ? "" : "\n  Rejected: " + rejected) +
+                "\n  Trigger drafted: " + d.getBoolean("plan_trigger", false) +
+                "\n  Repair attempted: " + d.getBoolean("plan_repair", false) +
+                (failure.isEmpty() ? "" : "\n  Failure: " + failure) +
+                "\n  Planned at: " + DateFormat.getDateTimeInstance().format(new Date(updated)) +
+                (raw.isEmpty() ? "" : "\n  Raw planner response:\n" + raw);
     }
 
     private Button button(String text) {

@@ -121,6 +121,14 @@ public final class RoutinePlannerTest {
                 prompt.contains("Do not invent an \"otherwise\""));
     }
 
+    @Test public void thePlanningPromptIsNotTheChatPrompt() {
+        // The chat instructions demand {"text","actions"}; asking for a plan in the same request
+        // asked the model for two incompatible shapes and destroyed the answer either way.
+        String prompt = RoutinePlanner.prompt(context, "turn on do not disturb");
+        assertFalse(prompt.contains("\"text\":\"natural-language response\""));
+        assertTrue(prompt.contains("\"steps\""));
+    }
+
     @Test public void anEmptyDescriptionIsRejectedBeforeAnyRequest() {
         final String[] error = {null};
         RoutinePlanner.build(context, "   ", new RoutinePlanner.Callback() {
