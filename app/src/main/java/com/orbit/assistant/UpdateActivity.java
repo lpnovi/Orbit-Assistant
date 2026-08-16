@@ -11,7 +11,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -157,22 +156,14 @@ public final class UpdateActivity extends Activity {
         whatsNewLp.setMargins(0, UiKit.dp(this, 10), 0, 0);
         card.addView(whatsNew, whatsNewLp);
 
-        CheckBox updateNotifications = new CheckBox(this);
-        updateNotifications.setText("Update notifications");
-        updateNotifications.setTextColor(UiKit.TEXT);
-        updateNotifications.setTextSize(14);
-        updateNotifications.setButtonTintList(UiKit.accentControlTint(this));
-        updateNotifications.setChecked(Prefs.updateNotifications(this));
-        updateNotifications.setPadding(0, UiKit.dp(this, 14), 0, 0);
+        OrbitSwitch updateNotifications = new OrbitSwitch(this);
+        updateNotifications.setChecked(Prefs.updateNotifications(this), false);
         updateNotifications.setOnCheckedChangeListener((button, checked) -> {
             Prefs.get(this).edit().putBoolean(Prefs.UPDATE_NOTIFICATIONS, checked).apply();
             if (!checked) OrbitUpdateNotifier.cancel(this);
         });
-        card.addView(updateNotifications);
-        TextView updateNotificationDescription = UiKit.text(this,
-                "Notify me when a new Orbit version is available", 12, UiKit.MUTED, false);
-        updateNotificationDescription.setPadding(UiKit.dp(this, 4), 0, 0, 0);
-        card.addView(updateNotificationDescription);
+        card.addView(UiKit.switchRow(this, "Update notifications",
+                "Notify me when a new Orbit version is available", updateNotifications));
         page.addView(card);
 
         TextView roadmapSection = UiKit.text(this, "ROADMAP", 12, UiKit.MUTED, true);

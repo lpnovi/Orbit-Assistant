@@ -297,9 +297,17 @@ public class ChatActivity extends Activity {
         // font or text size, while taller content still grows downward from the same baseline.
         input.setMinHeight(UiKit.dp(this, 44));
         input.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-        input.setOnClickListener(v -> showComposerKeyboard());
+        input.setOnClickListener(v -> {
+            // Same handover as the Side-button overlay: reaching for the keyboard ends the
+            // current voice turn instead of letting both drive the composer.
+            if (voiceController != null) voiceController.handOffToTyping();
+            showComposerKeyboard();
+        });
         input.setOnFocusChangeListener((v, hasFocus) -> {
-            if (hasFocus) input.postDelayed(this::showComposerKeyboard, 50);
+            if (hasFocus) {
+                if (voiceController != null) voiceController.handOffToTyping();
+                input.postDelayed(this::showComposerKeyboard, 50);
+            }
         });
         composer.addView(input, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 

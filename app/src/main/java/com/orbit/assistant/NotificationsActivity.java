@@ -11,7 +11,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -125,17 +124,11 @@ public class NotificationsActivity extends Activity {
         page.addView(sectionTitle("PRIVACY & RETENTION"));
         LinearLayout card = card();
 
-        CheckBox ai = new CheckBox(this);
-        ai.setText("Use relevant notification history in AI answers");
-        ai.setTextColor(UiKit.TEXT);
-        ai.setTextSize(14);
-        ai.setButtonTintList(new ColorStateList(
-                new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
-                new int[]{UiKit.accent(this), Color.rgb(90,94,105)}));
-        ai.setChecked(Prefs.notificationAiEnabled(this));
+        OrbitSwitch ai = new OrbitSwitch(this);
+        ai.setChecked(Prefs.notificationAiEnabled(this), false);
         ai.setOnCheckedChangeListener((button, checked) ->
                 Prefs.get(this).edit().putBoolean(Prefs.NOTIFICATION_AI_ENABLED, checked).apply());
-        card.addView(ai);
+        card.addView(UiKit.switchRow(this, "Use relevant notification history in AI answers", null, ai));
 
         TextView help = UiKit.text(this,
                 "Orbit stores notification history locally. It only supplies that history to the AI when your prompt is clearly asking about notifications, missed messages, or what you missed.",

@@ -282,6 +282,13 @@
 - Keep the setting independent from Hands-free voice follow-ups so each voice stage is controlled separately
 - Start the first turn only for a genuinely fresh assistant invocation, never on an internal overlay resume
 
+### 0.7.3.4
+- Hand control straight to typing when the composer is tapped while Orbit is listening
+- Disown the abandoned voice turn so a late recognition result cannot overwrite typing, submit, or reopen the microphone
+- Keep the words already recognised in the composer for editing, without sending them
+- Replace checkbox-style binary preferences with a shared animated `OrbitSwitch` that follows Accent and AMOLED
+- Keep real checkboxes where a control selects or edits rather than switching a stored setting
+
 ## Future direction
 
 ### Next up

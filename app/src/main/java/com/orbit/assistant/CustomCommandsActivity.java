@@ -11,7 +11,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -157,17 +156,14 @@ public final class CustomCommandsActivity extends Activity {
         labels.addView(runs);
         top.addView(labels, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
-        CheckBox enabled = new CheckBox(this);
-        enabled.setText(command.enabled ? "On" : "Off");
-        enabled.setTextColor(UiKit.TEXT);
-        enabled.setTextSize(12);
-        enabled.setButtonTintList(UiKit.accentControlTint(this));
-        enabled.setChecked(command.enabled);
+        OrbitSwitch enabled = new OrbitSwitch(this);
+        enabled.setChecked(command.enabled, false);
+        enabled.setContentDescription(command.enabled ? "Disable command" : "Enable command");
         enabled.setOnCheckedChangeListener((button, checked) -> {
             CustomCommandStore.Command changed = command.withEnabled(checked);
             CustomCommandStore.Validation validation = CustomCommandStore.validate(this, changed, command.id);
             if (!validation.valid || !CustomCommandStore.upsert(this, changed)) {
-                button.setOnCheckedChangeListener(null);
+                // A programmatic correction does not re-enter this listener.
                 button.setChecked(command.enabled);
                 Toast.makeText(this, validation.valid ? "Could not update this command." : validation.message,
                         Toast.LENGTH_LONG).show();

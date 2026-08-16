@@ -26,7 +26,6 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.view.animation.PathInterpolator;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -494,19 +493,14 @@ public final class OnboardingActivity extends Activity {
         addCardDescription(accentCard, "Choose one of Orbit's existing presets.");
         accentCard.addView(appearanceColorSelector(UiKit.accentKeys(), UiKit.accentLabels(),
                 Prefs.ACCENT, false, true));
-        CheckBox amoled = new CheckBox(this);
-        amoled.setText("Use true black AMOLED backgrounds");
-        amoled.setTextColor(UiKit.TEXT);
-        amoled.setTextSize(14);
-        amoled.setButtonTintList(UiKit.accentControlTint(this));
-        amoled.setChecked(Prefs.amoledMode(this));
-        amoled.setPadding(0, UiKit.dp(this, 11), 0, 0);
+        OrbitSwitch amoled = new OrbitSwitch(this);
+        amoled.setChecked(Prefs.amoledMode(this), false);
         amoled.setOnCheckedChangeListener((button, checked) -> {
             Prefs.get(this).edit().putBoolean(Prefs.AMOLED_MODE, checked).apply();
             UiKit.notifyAppearanceChanged(this);
             render();
         });
-        accentCard.addView(amoled);
+        accentCard.addView(UiKit.switchRow(this, "Use true black AMOLED backgrounds", null, amoled));
         page.addView(accentCard, cardLp());
 
         LinearLayout fontCard = card();
@@ -846,17 +840,11 @@ public final class OnboardingActivity extends Activity {
     }
 
     private View capabilityToggle(String label, String prefKey, boolean checked) {
-        CheckBox toggle = new CheckBox(this);
-        toggle.setText(label);
-        toggle.setTextColor(UiKit.TEXT);
-        toggle.setTextSize(13);
-        toggle.setButtonTintList(UiKit.accentControlTint(this));
-        toggle.setChecked(checked);
-        toggle.setMinHeight(UiKit.dp(this, 52));
-        toggle.setPadding(0, UiKit.dp(this, 4), 0, UiKit.dp(this, 4));
+        OrbitSwitch toggle = new OrbitSwitch(this);
+        toggle.setChecked(checked, false);
         toggle.setOnCheckedChangeListener((button, enabled) ->
                 Prefs.get(this).edit().putBoolean(prefKey, enabled).apply());
-        return toggle;
+        return UiKit.switchRow(this, label, null, toggle);
     }
 
     private void addCardDescription(LinearLayout card, String description) {

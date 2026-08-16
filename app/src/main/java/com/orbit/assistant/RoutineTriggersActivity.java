@@ -13,7 +13,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -313,9 +312,8 @@ public class RoutineTriggersActivity extends Activity {
         text.addView(next);
         top.addView(text, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
-        CheckBox enabled = new CheckBox(this);
-        enabled.setButtonTintList(ColorStateList.valueOf(UiKit.accent(this)));
-        enabled.setChecked(trigger.enabled);
+        OrbitSwitch enabled = new OrbitSwitch(this);
+        enabled.setChecked(trigger.enabled, false);
         enabled.setContentDescription(trigger.enabled ? "Disable trigger" : "Enable trigger");
         enabled.setOnCheckedChangeListener((button, checked) -> {
             RoutineTriggerStore.Trigger latest = RoutineTriggerStore.findById(this, trigger.id);
@@ -345,8 +343,10 @@ public class RoutineTriggersActivity extends Activity {
                 refresh();
             }
         });
-        UiKit.pressScale(enabled);
-        top.addView(enabled, new LinearLayout.LayoutParams(UiKit.dp(this, 46), UiKit.dp(this, 46)));
+        // No press-scale here: the thumb and track already carry the interaction, and stacking a
+        // second animation on top of them reads as busy.
+        top.addView(enabled, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         ImageButton more = iconButton(R.drawable.ic_more, "Trigger options");
         more.setOnClickListener(v -> showTriggerMenu(more, trigger));

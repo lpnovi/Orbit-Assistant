@@ -22,7 +22,6 @@ import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
@@ -571,27 +570,18 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         cameraLp.setMargins(0, UiKit.dp(this, 8), 0, 0);
         voiceCard.addView(cameraPermission, cameraLp);
         voiceCard.addView(toggle("Allow Orbit to read current-screen text", Prefs.SCREEN_CONTEXT, true));
-        voiceCard.addView(toggle("Allow Orbit to receive screenshots", Prefs.SCREENSHOT, true));
-        TextView screenshotNote = UiKit.text(this,
+        voiceCard.addView(toggle("Allow Orbit to receive screenshots",
                 "Visual context, previews, and screen-region selection.",
-                12, UiKit.MUTED, false);
-        screenshotNote.setPadding(UiKit.dp(this, 4), 0, 0, UiKit.dp(this, 4));
-        voiceCard.addView(screenshotNote);
+                Prefs.SCREENSHOT, true));
         voiceCard.addView(toggle("Attach current screen by default", Prefs.ATTACH_SCREEN_BY_DEFAULT, false));
         voiceCard.addView(toggle("Show contextual screen-action chips when attached", Prefs.CONTEXT_CHIPS, true));
         voiceCard.addView(toggle("Speak replies to voice requests", Prefs.SPEAK, true));
-        voiceCard.addView(toggle("Allow longer pauses while speaking", Prefs.VOICE_PAUSE_FRIENDLY, true));
-        TextView pauseNote = UiKit.text(this,
+        voiceCard.addView(toggle("Allow longer pauses while speaking",
                 "Voice Beta gives you more time to pause and think before Orbit decides you are finished. Tap the mic again if you want to finish sooner.",
-                12, UiKit.MUTED, false);
-        pauseNote.setPadding(UiKit.dp(this, 4), UiKit.dp(this, 1), 0, UiKit.dp(this, 6));
-        voiceCard.addView(pauseNote);
-        voiceCard.addView(toggle("Start listening when overlay opens", Prefs.AUTO_LISTEN_ON_OPEN, false));
-        TextView startListeningNote = UiKit.text(this,
+                Prefs.VOICE_PAUSE_FRIENDLY, true));
+        voiceCard.addView(toggle("Start listening when overlay opens",
                 "Automatically activate the microphone when the assistant overlay appears.",
-                12, UiKit.MUTED, false);
-        startListeningNote.setPadding(UiKit.dp(this, 4), UiKit.dp(this, 1), 0, UiKit.dp(this, 6));
-        voiceCard.addView(startListeningNote);
+                Prefs.AUTO_LISTEN_ON_OPEN, false));
         voiceCard.addView(toggle("Hands-free voice follow-ups", Prefs.AUTO_LISTEN, false));
         voiceCard.addView(toggle("Keyboard-aware assistant invocation", Prefs.KEYBOARD_AWARE_ASSISTANT, true));
 
@@ -1273,15 +1263,14 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         return b;
     }
 
-    private CheckBox toggle(String label, String key, boolean def) {
-        CheckBox cb = new CheckBox(this);
-        cb.setText(label);
-        cb.setTextColor(UiKit.TEXT);
-        cb.setTextSize(14);
-        cb.setButtonTintList(UiKit.accentControlTint(this));
-        cb.setChecked(Prefs.get(this).getBoolean(key, def));
-        cb.setPadding(0, UiKit.dp(this, 7), 0, UiKit.dp(this, 2));
-        cb.setOnCheckedChangeListener((button, checked) -> {
+    private View toggle(String label, String key, boolean def) {
+        return toggle(label, null, key, def);
+    }
+
+    private View toggle(String label, String description, String key, boolean def) {
+        OrbitSwitch control = new OrbitSwitch(this);
+        control.setChecked(Prefs.get(this).getBoolean(key, def), false);
+        control.setOnCheckedChangeListener((button, checked) -> {
             boolean wasHapticsEnabled = Prefs.haptics(this);
             if (Prefs.HAPTICS.equals(key) && !checked && wasHapticsEnabled) {
                 performSettingsHaptic(button);
@@ -1291,55 +1280,41 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
             Prefs.get(this).edit().putBoolean(key, checked).apply();
             if (Prefs.HAPTICS.equals(key) && checked) performSettingsHaptic(button);
         });
-        return cb;
+        return UiKit.switchRow(this, label, description, control);
     }
 
-    private CheckBox weatherLocationToggle() {
-        CheckBox cb = new CheckBox(this);
-        cb.setText("Use approximate device location for local weather");
-        cb.setTextColor(UiKit.TEXT);
-        cb.setTextSize(14);
-        cb.setButtonTintList(UiKit.accentControlTint(this));
+    private View weatherLocationToggle() {
+        OrbitSwitch control = new OrbitSwitch(this);
         boolean granted = checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
                 checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
-        cb.setChecked(Prefs.weatherUseDeviceLocation(this) && granted);
-        cb.setPadding(0, UiKit.dp(this, 7), 0, UiKit.dp(this, 8));
-        cb.setOnCheckedChangeListener((button, checked) -> {
+        control.setChecked(Prefs.weatherUseDeviceLocation(this) && granted, false);
+        control.setOnCheckedChangeListener((button, checked) -> {
             if (checked && !granted) {
+                // setChecked never re-enters this listener, so the rollback is a plain correction.
                 button.setChecked(false);
                 requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_LOCATION);
                 return;
             }
             Prefs.get(this).edit().putBoolean(Prefs.WEATHER_USE_DEVICE_LOCATION, checked).apply();
         });
-        return cb;
+        return UiKit.switchRow(this, "Use approximate device location for local weather", null, control);
     }
 
-    private CheckBox amoledToggle() {
-        CheckBox cb = new CheckBox(this);
-        cb.setText("Use true black AMOLED backgrounds");
-        cb.setTextColor(UiKit.TEXT);
-        cb.setTextSize(14);
-        cb.setButtonTintList(UiKit.accentControlTint(this));
-        cb.setChecked(Prefs.amoledMode(this));
-        cb.setPadding(0, UiKit.dp(this, 4), 0, UiKit.dp(this, 2));
-        cb.setOnCheckedChangeListener((button, checked) -> {
+    private View amoledToggle() {
+        OrbitSwitch control = new OrbitSwitch(this);
+        control.setChecked(Prefs.amoledMode(this), false);
+        control.setOnCheckedChangeListener((button, checked) -> {
             performSettingsHaptic(button);
             Prefs.get(this).edit().putBoolean(Prefs.AMOLED_MODE, checked).apply();
             UiKit.notifyAppearanceChanged(this);
         });
-        return cb;
+        return UiKit.switchRow(this, "Use true black AMOLED backgrounds", null, control);
     }
 
-    private CheckBox notificationToggle() {
-        CheckBox cb = new CheckBox(this);
-        cb.setText("Notify me when a background response finishes");
-        cb.setTextColor(UiKit.TEXT);
-        cb.setTextSize(14);
-        cb.setButtonTintList(UiKit.accentControlTint(this));
-        cb.setChecked(Prefs.backgroundNotifications(this));
-        cb.setPadding(0, UiKit.dp(this, 7), 0, UiKit.dp(this, 2));
-        cb.setOnCheckedChangeListener((button, checked) -> {
+    private View notificationToggle() {
+        OrbitSwitch control = new OrbitSwitch(this);
+        control.setChecked(Prefs.backgroundNotifications(this), false);
+        control.setOnCheckedChangeListener((button, checked) -> {
             if (checked && Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 Prefs.get(this).edit().putBoolean(Prefs.BACKGROUND_NOTIFICATIONS, false).apply();
                 button.setChecked(false);
@@ -1349,7 +1324,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
             Prefs.get(this).edit().putBoolean(Prefs.BACKGROUND_NOTIFICATIONS, checked).apply();
             if (checked) NotificationHelper.ensureChannel(this);
         });
-        return cb;
+        return UiKit.switchRow(this, "Notify me when a background response finishes", null, control);
     }
 
     private void performSettingsHaptic(View view) {

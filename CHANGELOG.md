@@ -229,3 +229,9 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - It is separate from Hands-free voice follow-ups, so each part of the voice flow is controlled on its own.
   - Listening looks and behaves exactly as it does when you tap the mic yourself, and you can still type instead.
   - The setting is off by default, and full-screen chat is unchanged.
+- **v0.7.3.4**: Voice and Settings interactions now feel more natural and finished.
+  - Tapping the text box while Orbit is listening now hands control straight to typing.
+  - Words already recognised stay in the box so you can edit them, and nothing is sent behind you.
+  - Your voice settings are untouched, so the next time you open Orbit it still starts listening if you asked it to.
+  - On/off settings now use animated Orbit switches instead of small checkboxes.
+  - Switches follow your accent and AMOLED choices, and every setting behaves exactly as before.

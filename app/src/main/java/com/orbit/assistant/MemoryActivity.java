@@ -88,23 +88,12 @@ public class MemoryActivity extends Activity {
 
         LinearLayout toggleCard = card();
 
-        CheckBox enabled = orbitCheckBox("Use Orbit Memory in AI responses");
-        enabled.setChecked(Prefs.memoryEnabled(this));
-        enabled.setOnCheckedChangeListener((b, checked) ->
-                Prefs.get(this).edit().putBoolean(Prefs.MEMORY_ENABLED, checked).apply());
-        toggleCard.addView(enabled);
-
-        CheckBox suggestions = orbitCheckBox("Suggest useful memories");
-        suggestions.setChecked(Prefs.memorySuggestions(this));
-        suggestions.setOnCheckedChangeListener((b, checked) ->
-                Prefs.get(this).edit().putBoolean(Prefs.MEMORY_SUGGESTIONS, checked).apply());
-        toggleCard.addView(suggestions);
-
-        CheckBox usage = orbitCheckBox("Show used-memory indicator in chats");
-        usage.setChecked(Prefs.memoryUsageIndicator(this));
-        usage.setOnCheckedChangeListener((b, checked) ->
-                Prefs.get(this).edit().putBoolean(Prefs.MEMORY_USAGE_INDICATOR, checked).apply());
-        toggleCard.addView(usage);
+        toggleCard.addView(memorySettingRow("Use Orbit Memory in AI responses",
+                Prefs.MEMORY_ENABLED, Prefs.memoryEnabled(this)));
+        toggleCard.addView(memorySettingRow("Suggest useful memories",
+                Prefs.MEMORY_SUGGESTIONS, Prefs.memorySuggestions(this)));
+        toggleCard.addView(memorySettingRow("Show used-memory indicator in chats",
+                Prefs.MEMORY_USAGE_INDICATOR, Prefs.memoryUsageIndicator(this)));
 
         TextView note = UiKit.text(this,
                 "Suggested memories are never saved automatically. Disabled memories stay on this device but are not supplied to the AI.",
@@ -431,6 +420,18 @@ public class MemoryActivity extends Activity {
                 tintDialogText(group.getChildAt(i));
             }
         }
+    }
+
+    /**
+     * A Memory preference row. The checkboxes kept elsewhere in this screen are fields inside the
+     * add/edit form, where nothing takes effect until the memory is saved.
+     */
+    private View memorySettingRow(String label, String key, boolean current) {
+        OrbitSwitch control = new OrbitSwitch(this);
+        control.setChecked(current, false);
+        control.setOnCheckedChangeListener((button, checked) ->
+                Prefs.get(this).edit().putBoolean(key, checked).apply());
+        return UiKit.switchRow(this, label, null, control);
     }
 
     private CheckBox orbitCheckBox(String text) {

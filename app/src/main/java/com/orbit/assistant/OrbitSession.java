@@ -115,6 +115,8 @@ public class OrbitSession extends VoiceInteractionSession {
     private SpeechRecognizer recognizer;
     private TextToSpeech tts;
     private boolean listening = false;
+    /** Owns the current voice turn so an abandoned one cannot act through late callbacks. */
+    private final VoiceHandoff voiceTurn = new VoiceHandoff();
     private String voiceAccumulated = "";
     private String voicePartial = "";
     private Runnable voiceFinalizeRunnable;
@@ -533,7 +535,12 @@ public class OrbitSession extends VoiceInteractionSession {
         input.setFocusable(true);
         input.setFocusableInTouchMode(true);
         input.setShowSoftInputOnFocus(true);
-        input.setOnClickListener(v -> connectOrbitToIme());
+        input.setOnClickListener(v -> {
+            // Reaching for the keyboard is a decision to type, so voice yields before the IME
+            // arrives rather than the two competing for the same composer.
+            handOffVoiceToTyping();
+            connectOrbitToIme();
+        });
         composer.addView(input, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
         mic = tinyIconButton(com.orbit.assistant.R.drawable.ic_mic);
@@ -554,7 +561,12 @@ public class OrbitSession extends VoiceInteractionSession {
         input.setOnFocusChangeListener((v, hasFocus) -> {
             int stroke = hasFocus ? UiKit.withAlpha(UiKit.accent(c), 170) : Color.rgb(48, 53, 67);
             composer.setBackground(UiKit.outlined(UiKit.SURFACE, stroke, 22, c));
-            if (hasFocus) connectOrbitToIme();
+            if (hasFocus) {
+                // Covers focus arriving without a tap on the field itself. A no-op unless a
+                // voice turn is actually running.
+                handOffVoiceToTyping();
+                connectOrbitToIme();
+            }
         });
 
         input.setOnEditorActionListener((v, actionId, event) -> {
@@ -2219,9 +2231,11 @@ public class OrbitSession extends VoiceInteractionSession {
                 recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
                 recognizer.setRecognitionListener(new RecognitionListener() {
                     public void onReadyForSpeech(Bundle params) {
+                        if (!voiceTurn.hasLiveTurn()) return;
                         voiceComposerStatusSafe(listeningHint());
                     }
                     public void onBeginningOfSpeech() {
+                        if (!voiceTurn.hasLiveTurn()) return;
                         if (Prefs.voicePauseFriendly(getContext())) cancelVoiceFinalize();
                         voiceComposerStatusSafe(listeningHint());
                     }
@@ -2229,14 +2243,17 @@ public class OrbitSession extends VoiceInteractionSession {
                         // Real microphone level, recorded as a target only. The halo eases toward
                         // it on its own frames, so this never starts an animator or allocates.
                         OrbitListeningHalo halo = listeningHalo;
-                        if (halo != null && listening) halo.setLevel(rmsdB);
+                        if (halo != null && listening && voiceTurn.hasLiveTurn()) halo.setLevel(rmsdB);
                     }
                     public void onBufferReceived(byte[] buffer) {}
                     public void onEndOfSpeech() {
+                        if (!voiceTurn.hasLiveTurn()) return;
                         voiceComposerStatusSafe(Prefs.voicePauseFriendly(getContext())
                                 ? listeningHint() : "Finishing voice…");
                     }
                     public void onError(int error) {
+                        // The user has already moved on; this turn no longer owns the composer.
+                        if (!voiceTurn.hasLiveTurn()) return;
                         listening = false;
                         updateMic();
                         if (voiceFinishing) return;
@@ -2259,6 +2276,9 @@ public class OrbitSession extends VoiceInteractionSession {
                         }
                     }
                     public void onResults(Bundle results) {
+                        // A result belonging to a turn the user abandoned must never reach the
+                        // composer or submitPrompt.
+                        if (!voiceTurn.hasLiveTurn()) return;
                         listening = false;
                         updateMic();
                         if (voiceFinishing) return;
@@ -2289,6 +2309,7 @@ public class OrbitSession extends VoiceInteractionSession {
                         }
                     }
                     public void onPartialResults(Bundle partialResults) {
+                        if (!voiceTurn.hasLiveTurn()) return;
                         ArrayList<String> values = partialResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                         if (values != null && !values.isEmpty() && input != null) {
                             if (Prefs.voicePauseFriendly(getContext())) {
@@ -2332,7 +2353,41 @@ public class OrbitSession extends VoiceInteractionSession {
         voiceManualFinishRequested = false;
         voiceFinishing = false;
         cancelVoiceFinalize();
+        voiceTurn.begin();
         startRecognizerSegment(true);
+    }
+
+    /**
+     * Hands the turn from voice to the keyboard because the user deliberately tapped the composer.
+     *
+     * <p>Only a running turn is taken over, so tapping an idle composer behaves exactly as it
+     * always has. The turn is disowned first: cancelling the recognizer is not enough on its own,
+     * because a result already in flight would otherwise still rewrite the field, submit the
+     * abandoned utterance, or start the next pause-friendly segment.
+     *
+     * <p>Whatever had been recognised stays in the composer to be edited or deleted. Nothing is
+     * sent, and neither voice preference is touched, so the next fresh invocation still
+     * auto-listens and follow-ups still happen if they are switched on.
+     */
+    private void handOffVoiceToTyping() {
+        if (!VoiceHandoff.shouldTakeOver(listening, voiceFinishing)) return;
+        voiceTurn.abandon();
+        cancelVoiceFinalize();
+        voiceManualFinishRequested = false;
+        if (recognizer != null) {
+            try { recognizer.cancel(); } catch (Exception ignored) {}
+        }
+        listening = false;
+        String preserved = VoiceHandoff.preservedDraft(voiceAccumulated, voicePartial);
+        voiceAccumulated = "";
+        voicePartial = "";
+        if (input != null && !preserved.isEmpty()) {
+            input.setText(preserved);
+            input.setSelection(input.length());
+        }
+        updateMic();
+        restoreComposerHintSafe();
+        stateTextSafe(readyState());
     }
 
     private void startRecognizerSegment(boolean initialSegment) {
@@ -2385,7 +2440,11 @@ public class OrbitSession extends VoiceInteractionSession {
     private void restartPauseFriendlyRecognizer() {
         if (!Prefs.voicePauseFriendly(getContext()) || voiceManualFinishRequested ||
                 voiceFinishing || busy || !sessionVisible) return;
+        // Captured now and rechecked on arrival, so a restart queued before the user reached for
+        // the keyboard cannot reopen the microphone behind them.
+        final int turn = voiceTurn.liveTurn();
         main.postDelayed(() -> {
+            if (!voiceTurn.accepts(turn)) return;
             if (!listening && !voiceManualFinishRequested && !voiceFinishing &&
                     !busy && sessionVisible) startRecognizerSegment(false);
         }, 180);
@@ -2399,11 +2458,7 @@ public class OrbitSession extends VoiceInteractionSession {
     }
 
     private String currentVoiceDraft() {
-        String base = voiceAccumulated == null ? "" : voiceAccumulated.trim();
-        String partial = voicePartial == null ? "" : voicePartial.trim();
-        if (base.isEmpty()) return partial;
-        if (partial.isEmpty()) return base;
-        return base + " " + partial;
+        return VoiceHandoff.preservedDraft(voiceAccumulated, voicePartial);
     }
 
     private boolean hasVoiceDraft() {
@@ -2420,7 +2475,13 @@ public class OrbitSession extends VoiceInteractionSession {
     private void scheduleVoiceFinalize() {
         cancelVoiceFinalize();
         if (!hasVoiceDraft() || voiceManualFinishRequested || voiceFinishing) return;
-        voiceFinalizeRunnable = this::finishPauseFriendlyVoice;
+        // Pending finalization belongs to this turn only. Handing over to typing disowns the
+        // turn, so a timer that survives the removeCallbacks race still cannot submit.
+        final int turn = voiceTurn.liveTurn();
+        voiceFinalizeRunnable = () -> {
+            if (!voiceTurn.accepts(turn)) return;
+            finishPauseFriendlyVoice();
+        };
         main.postDelayed(voiceFinalizeRunnable, 5200L);
     }
 
@@ -2442,6 +2503,8 @@ public class OrbitSession extends VoiceInteractionSession {
         cancelVoiceFinalize();
         voiceFinishing = true;
         voiceManualFinishRequested = false;
+        // The turn has produced its message; anything still in flight belongs to no one.
+        voiceTurn.abandon();
         if (recognizer != null && listening) {
             try { recognizer.cancel(); } catch (Exception ignored) {}
         }
@@ -2458,6 +2521,7 @@ public class OrbitSession extends VoiceInteractionSession {
     private void stopListening() {
         cancelVoiceFinalize();
         voiceManualFinishRequested = false;
+        voiceTurn.abandon();
         if (recognizer != null && listening) {
             try { recognizer.cancel(); } catch (Exception ignored) {}
         }

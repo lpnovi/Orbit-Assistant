@@ -1065,6 +1065,49 @@ public final class UiKit {
         return t;
     }
 
+    /**
+     * A binary setting presented Orbit's way: the label, an optional supporting line, and an
+     * {@link OrbitSwitch} on the trailing edge.
+     *
+     * <p>The whole row is the target, so the label toggles the setting as readily as the switch
+     * does. The row forwards to {@link OrbitSwitch#toggle()} rather than setting state directly,
+     * which keeps one path for reporting a user change.
+     *
+     * @param description optional; pass null or empty for a label-only row.
+     */
+    public static LinearLayout switchRow(Context c, String label, String description, OrbitSwitch control) {
+        LinearLayout row = new LinearLayout(c);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(c, 2), dp(c, 6), dp(c, 2), dp(c, 6));
+        row.setMinimumHeight(dp(c, 48));
+        row.setBackground(ripple(Color.TRANSPARENT, accent(c), 14, c));
+
+        LinearLayout labels = new LinearLayout(c);
+        labels.setOrientation(LinearLayout.VERTICAL);
+        labels.addView(text(c, label, 14, TEXT, false));
+        if (description != null && !description.trim().isEmpty()) {
+            TextView note = text(c, description, 12, MUTED, false);
+            note.setPadding(0, dp(c, 2), 0, 0);
+            labels.addView(note);
+        }
+        LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
+                0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        labelLp.rightMargin = dp(c, 12);
+        row.addView(labels, labelLp);
+
+        row.addView(control, new LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // The label is decoration for the control, so the row itself is not a second
+        // announced target competing with the switch.
+        labels.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        control.setContentDescription(label);
+        row.setOnClickListener(v -> control.toggle());
+        return row;
+    }
+
     /** Window animation style backing the current Page transitions preference. */
     public static int pageTransitionStyle(Context c) {
         String choice = Prefs.pageTransition(c);

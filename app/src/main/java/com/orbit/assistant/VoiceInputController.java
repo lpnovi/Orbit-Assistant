@@ -46,6 +46,8 @@ public final class VoiceInputController {
     private boolean speaking;
     private boolean manualFinish;
     private boolean active;
+    /** Owns the current voice turn so an abandoned one cannot act through late callbacks. */
+    private final VoiceHandoff voiceTurn = new VoiceHandoff();
     private String originalText = "";
     private String accumulated = "";
     private String partial = "";
@@ -95,6 +97,7 @@ public final class VoiceInputController {
         finalizing = false;
         active = true;
         cancelFinalize();
+        voiceTurn.begin();
         if (Prefs.haptics(context)) {
             try {
                 Vibrator vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
@@ -110,6 +113,7 @@ public final class VoiceInputController {
         manualFinish = false;
         active = false;
         finalizing = false;
+        voiceTurn.abandon();
         if (recognizer != null) {
             try { recognizer.cancel(); } catch (Exception ignored) {}
         }
@@ -117,6 +121,34 @@ public final class VoiceInputController {
         if (!keepDraft && !currentVoiceText().isEmpty()) callback.onDraft(combinedDraft());
         callback.onStatus("");
         notifyState();
+    }
+
+    /**
+     * Hands the turn from voice to the keyboard because the user tapped the composer, matching
+     * the Side-button overlay so both surfaces behave the same way.
+     *
+     * <p>Returns false when nothing was running, which is the common case: an ordinary tap on an
+     * idle composer keeps its existing behaviour untouched. Recognised words stay in the composer
+     * for editing, nothing is submitted, and no preference is changed.
+     */
+    public boolean handOffToTyping() {
+        if (!VoiceHandoff.shouldTakeOver(listening || active, finalizing)) return false;
+        String preserved = combinedDraft();
+        cancelFinalize();
+        manualFinish = false;
+        active = false;
+        finalizing = false;
+        voiceTurn.abandon();
+        if (recognizer != null) {
+            try { recognizer.cancel(); } catch (Exception ignored) {}
+        }
+        listening = false;
+        accumulated = "";
+        partial = "";
+        if (!preserved.trim().isEmpty()) callback.onDraft(preserved);
+        callback.onStatus("");
+        notifyState();
+        return true;
     }
 
     public void speak(String text) {
@@ -147,21 +179,28 @@ public final class VoiceInputController {
             if (!SpeechRecognizer.isRecognitionAvailable(context)) return;
             recognizer = SpeechRecognizer.createSpeechRecognizer(context);
             recognizer.setRecognitionListener(new RecognitionListener() {
-                @Override public void onReadyForSpeech(Bundle params) { statusListening(); }
+                @Override public void onReadyForSpeech(Bundle params) {
+                    if (!voiceTurn.hasLiveTurn()) return;
+                    statusListening();
+                }
                 @Override public void onBeginningOfSpeech() {
+                    if (!voiceTurn.hasLiveTurn()) return;
                     cancelFinalize();
                     statusListening();
                 }
                 @Override public void onRmsChanged(float rmsdB) {
                     // Presentation only; recognition is untouched by whether anyone listens.
-                    if (callback != null) callback.onAudioLevel(rmsdB);
+                    if (callback != null && voiceTurn.hasLiveTurn()) callback.onAudioLevel(rmsdB);
                 }
                 @Override public void onBufferReceived(byte[] buffer) {}
                 @Override public void onEndOfSpeech() {
+                    if (!voiceTurn.hasLiveTurn()) return;
                     callback.onStatus(Prefs.voicePauseFriendly(context)
                             ? "Listening · pause when you need" : "Finishing voice…");
                 }
                 @Override public void onError(int error) {
+                    // Belongs to a turn the user has left; the composer is theirs now.
+                    if (!voiceTurn.hasLiveTurn()) return;
                     listening = false;
                     notifyState();
                     if (!active || finalizing) return;
@@ -184,6 +223,8 @@ public final class VoiceInputController {
                     }
                 }
                 @Override public void onResults(Bundle results) {
+                    // An abandoned turn must not reach onDraft or onSubmit.
+                    if (!voiceTurn.hasLiveTurn()) return;
                     listening = false;
                     notifyState();
                     if (!active || finalizing) return;
@@ -206,6 +247,7 @@ public final class VoiceInputController {
                     }
                 }
                 @Override public void onPartialResults(Bundle results) {
+                    if (!voiceTurn.hasLiveTurn()) return;
                     ArrayList<String> values = results.getStringArrayList(
                             SpeechRecognizer.RESULTS_RECOGNITION);
                     if (values == null || values.isEmpty()) return;
@@ -253,7 +295,11 @@ public final class VoiceInputController {
 
     private void restartSegment() {
         if (!active || manualFinish || finalizing) return;
+        // Rechecked on arrival so a queued restart cannot reopen the microphone after the user
+        // has taken the composer for typing.
+        final int turn = voiceTurn.liveTurn();
         main.postDelayed(() -> {
+            if (!voiceTurn.accepts(turn)) return;
             if (active && !listening && !manualFinish && !finalizing) startSegment(false);
         }, 180L);
     }
@@ -265,9 +311,7 @@ public final class VoiceInputController {
     }
 
     private String currentVoiceText() {
-        if (accumulated.isEmpty()) return partial;
-        if (partial.isEmpty()) return accumulated;
-        return accumulated + " " + partial;
+        return VoiceHandoff.preservedDraft(accumulated, partial);
     }
 
     private String combinedDraft() { return withOriginal(currentVoiceText()); }
@@ -284,7 +328,11 @@ public final class VoiceInputController {
     private void scheduleFinalize() {
         cancelFinalize();
         if (!hasDraft() || manualFinish || finalizing) return;
-        finalizeRunnable = this::finishVoice;
+        final int turn = voiceTurn.liveTurn();
+        finalizeRunnable = () -> {
+            if (!voiceTurn.accepts(turn)) return;
+            finishVoice();
+        };
         main.postDelayed(finalizeRunnable, 5200L);
     }
 
@@ -302,6 +350,8 @@ public final class VoiceInputController {
         cancelFinalize();
         finalizing = true;
         active = false;
+        // The turn has produced its message; anything still in flight belongs to no one.
+        voiceTurn.abandon();
         if (recognizer != null) try { recognizer.cancel(); } catch (Exception ignored) {}
         listening = false;
         callback.onStatus("");
