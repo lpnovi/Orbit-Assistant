@@ -840,6 +840,11 @@ public class OrbitSession extends VoiceInteractionSession {
             imeVisible = imeBottom > UiKit.dp(getContext(), 120);
         }
 
+        // The only reliable signal that the user put the keyboard away themselves. Orbit's own
+        // hideKeyboard clears typing intent first, so this never mistakes Orbit's action for
+        // theirs, and a dismissal here stops the response from reopening the keyboard later.
+        composerIme.onKeyboardVisibilityChanged(imeVisible);
+
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) sheet.getLayoutParams();
         int baseMargin = UiKit.dp(getContext(), 8);
         if (imeVisible) {
@@ -1429,6 +1434,11 @@ public class OrbitSession extends VoiceInteractionSession {
         if (q.isEmpty() && genericAttachment == null) return;
         if (q.isEmpty()) q = defaultAttachmentPrompt(genericAttachment);
         input.setText("");
+        // Clearing the composer programmatically leaves the IME holding a connection, and
+        // possibly a composing region, against text that no longer exists. Nothing else tells it
+        // otherwise, which is how the keyboard ended up animating keys that never arrived.
+        composerIme.beginTurn();
+        revalidateComposerConnection();
         submitPrompt(q, false);
     }
 
@@ -1578,6 +1588,8 @@ public class OrbitSession extends VoiceInteractionSession {
                         addErrorBubble(friendly);
                         addFailureRetryAction(PendingRequestStore.load(getContext(), requestId));
                     }
+                    // A failed turn still ends the turn, so the composer is made ready again.
+                    revalidateComposerConnection();
                 });
             }
         };
@@ -2080,13 +2092,19 @@ public class OrbitSession extends VoiceInteractionSession {
                     busy = false; uiRequestConversationId = null; stopThinkingIndicator(); stateTextSafe("Needs attention");
                     history.add(new AssistantClient.History("assistant", friendly));
                     if (sessionVisible) { addErrorBubble(friendly); addFailureRetryAction(PendingRequestStore.load(getContext(), requestId)); }
+                    // A failed turn still ends the turn, so the composer is made ready again.
+                    revalidateComposerConnection();
                 });
             }
         };
     }
 
     private void executeActions(List<AssistantReply.Action> actions, int index) {
-        if (actions == null || actions.isEmpty() || index > 0) return;
+        if (actions == null || actions.isEmpty() || index > 0) {
+            // A reply with no actions is finished the moment it is rendered.
+            main.post(this::revalidateComposerConnection);
+            return;
+        }
         final int assistantIndex = Math.max(0, history.size() - 1);
         OrbitActionEngine.execute(getContext(), actions,
                 (action, onAllow, onCancel) -> showActionConfirmation(action, onAllow, onCancel),
@@ -2101,6 +2119,10 @@ public class OrbitSession extends VoiceInteractionSession {
                         if (!completedAllSteps && totalSteps > 1) {
                             main.post(() -> stateTextSafe("Action chain stopped after step " + completedSteps));
                         }
+                        // The device action ran and its cards have been posted. This is the last
+                        // point in the turn that touches the sheet, and the "turn on flashlight"
+                        // reproduction ended exactly here with a dead composer.
+                        main.post(OrbitSession.this::revalidateComposerConnection);
                     }
                 });
     }
@@ -2878,6 +2900,21 @@ public class OrbitSession extends VoiceInteractionSession {
         try {
             composerFocus.onEditorTapped();
         } catch (Exception ignored) {}
+    }
+
+    /**
+     * Rebuilds the composer's input connection in place at a lifecycle boundary, while the user
+     * is still typing and the editor still holds focus.
+     *
+     * <p>Focus is never moved, so this cannot re-enter the focus listener the way v0.7.3.5 did,
+     * and {@link ComposerImeState#shouldRevalidate()} caps it at two per turn, so it can never
+     * become a restart loop. A dismissed keyboard is never reopened, because dismissal clears
+     * typing intent and the allowance with it.
+     */
+    private void revalidateComposerConnection() {
+        if (composerFocus == null || input == null) return;
+        if (!composerIme.shouldRevalidate()) return;
+        composerFocus.revalidateWithoutMovingFocus();
     }
 
     /** Lets Orbit's window take the input method. Never moves focus. */

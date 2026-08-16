@@ -72,6 +72,22 @@ public final class ComposerFocusCoordinator {
     }
 
     /**
+     * Rebuilds the input connection for an editor that is already focused and already the user's
+     * typing target, at a lifecycle boundary where the IME may have been left holding a stale one.
+     *
+     * <p>This is the safe half of what v0.7.3.5 tried to do by clearing and re-requesting focus.
+     * Focus is never touched here, so it cannot re-enter the focus listener, and the caller owns
+     * the allowance that stops it repeating.
+     *
+     * @return true when a refresh was actually issued.
+     */
+    public boolean revalidateWithoutMovingFocus() {
+        if (editor == null || !editor.hasFocus()) return false;
+        bridge.refreshInputConnection();
+        return true;
+    }
+
+    /**
      * Parks focus away from the editor when Orbit puts the keyboard away, so that the next tap is
      * a real focus change rather than a no-op on an already-focused view.
      */

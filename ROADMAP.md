@@ -308,6 +308,12 @@
 - Accept more everyday phrasing for existing timers, alarms, Do Not Disturb, and app launches
 - Keep topic questions, ambiguous pronouns, and unrepresentable alarm dates out of the deterministic action path
 
+### 0.7.3.8
+- Track typing intent separately from editor focus, since a focused editor proved to be no evidence of a working keyboard
+- Rebuild the composer's input connection in place after clearing it on send and when a turn ends, including device-action replies
+- Bound that refresh per turn and never move focus, so the v0.7.3.5 focus recursion cannot return
+- Treat an unexplained keyboard dismissal as the user ending the typing session
+
 ## Future direction
 
 ### Next up

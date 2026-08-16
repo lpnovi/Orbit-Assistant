@@ -251,3 +251,9 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Timers, alarms, Do Not Disturb, and app launches accept more ordinary phrasing.
   - Questions about how notifications or timers work still get a normal answer instead of an action.
   - Routines, Custom Commands, typing, and voice behaviour are unchanged.
+- **v0.7.3.8**: A focused reliability update for continuous text conversations.
+  - Side-button chats stay genuinely connected to your keyboard across consecutive messages.
+  - Full chat stays ready for your next message the moment Orbit finishes responding.
+  - Replies that run a device action no longer leave the text box unable to accept typing.
+  - Dismissing the keyboard yourself still ends typing, and Orbit will not reopen it.
+  - Voice, notification, Memory, and device-command behaviour are unchanged.
