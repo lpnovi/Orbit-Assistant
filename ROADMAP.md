@@ -296,6 +296,11 @@
 - Understand qualitative relative brightness and media-volume requests locally, without asking for a percentage
 - Preserve explicit percentages, saved Routines, and the established Hands-free voice follow-up behaviour
 
+### 0.7.3.6
+- Fix the Side-button composer crashing on tap, caused by a focus-gained callback that moved focus again
+- Separate observing focus from acquiring it, and refresh an existing input connection through the input method rather than through focus
+- Keep multi-turn overlay typing, the full-chat typing session, voice handover, and relative level commands exactly as released
+
 ## Future direction
 
 ### Next up

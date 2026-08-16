@@ -240,3 +240,8 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Full chat keeps your typing session ready when Orbit finishes responding, with no extra tap.
   - Brightness and media volume now understand natural requests like "lower it", "a little", and "way down".
   - Saying an exact percentage still sets exactly that percentage.
+- **v0.7.3.6**: A focused reliability hotfix for text input.
+  - Fixed a crash that could happen as soon as you tapped the text box in the Side-button assistant.
+  - Side-button chats stay ready for consecutive typed messages.
+  - Full chat still keeps your typing session ready between responses.
+  - Voice behaviour and relative brightness and volume commands are unchanged.

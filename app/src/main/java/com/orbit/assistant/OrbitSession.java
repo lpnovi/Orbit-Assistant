@@ -131,6 +131,8 @@ public class OrbitSession extends VoiceInteractionSession {
     /** Who owns the composer and the IME for this invocation. */
     private final ComposerImeState composerIme = new ComposerImeState();
     private View composerFocusHolder;
+    /** Keeps composer focus and IME attachment from re-entering each other. */
+    private ComposerFocusCoordinator composerFocus;
     private String screenSelectionComposerText = "";
     private boolean screenSelectionRestoreFocus = false;
     private boolean screenSelectionRestoreKeyboard = false;
@@ -551,12 +553,23 @@ public class OrbitSession extends VoiceInteractionSession {
         input.setFocusable(true);
         input.setFocusableInTouchMode(true);
         input.setShowSoftInputOnFocus(true);
-        input.setOnClickListener(v -> {
-            // Reaching for the keyboard is a decision to type, so voice yields before the IME
-            // arrives rather than the two competing for the same composer.
-            handOffVoiceToTyping();
-            connectOrbitToIme();
-        });
+        composerFocus = new ComposerFocusCoordinator(input, composerFocusHolder,
+                new ComposerFocusCoordinator.ImeBridge() {
+                    @Override public void allowWindowToTakeIme() {
+                        OrbitSession.this.allowWindowToTakeIme();
+                    }
+                    @Override public void refreshInputConnection() {
+                        refreshComposerInputConnection();
+                    }
+                    @Override public void onTypingClaimed() {
+                        // Reaching for the keyboard is a decision to type, so voice yields
+                        // before the IME arrives rather than the two competing for the composer.
+                        handOffVoiceToTyping();
+                        orbitOwnsIme = true;
+                        composerIme.attach();
+                    }
+                });
+        input.setOnClickListener(v -> connectOrbitToIme());
         composer.addView(input, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
         mic = tinyIconButton(com.orbit.assistant.R.drawable.ic_mic);
@@ -577,12 +590,9 @@ public class OrbitSession extends VoiceInteractionSession {
         input.setOnFocusChangeListener((v, hasFocus) -> {
             int stroke = hasFocus ? UiKit.withAlpha(UiKit.accent(c), 170) : Color.rgb(48, 53, 67);
             composer.setBackground(UiKit.outlined(UiKit.SURFACE, stroke, 22, c));
-            if (hasFocus) {
-                // Covers focus arriving without a tap on the field itself. A no-op unless a
-                // voice turn is actually running.
-                handOffVoiceToTyping();
-                connectOrbitToIme();
-            }
+            // Focus has already arrived; this only observes it. Moving focus from here is what
+            // made the composer recurse into itself and crash in v0.7.3.5.
+            if (composerFocus != null) composerFocus.onFocusChanged(hasFocus);
         });
 
         input.setOnEditorActionListener((v, actionId, event) -> {
@@ -2842,7 +2852,8 @@ public class OrbitSession extends VoiceInteractionSession {
         // Park focus on the holder rather than merely clearing it, so the editor genuinely
         // gives up input focus and the next tap is a real focus change that rebuilds the
         // input connection.
-        if (composerFocusHolder != null) composerFocusHolder.requestFocus();
+        if (composerFocus != null) composerFocus.release();
+        else if (composerFocusHolder != null) composerFocusHolder.requestFocus();
         else input.clearFocus();
         composerIme.release();
     }
@@ -2857,11 +2868,21 @@ public class OrbitSession extends VoiceInteractionSession {
         } catch (Exception ignored) {}
     }
 
+    /**
+     * The user has chosen to type. Focus and the input method are coordinated by
+     * {@link ComposerFocusCoordinator}, which settles in one step rather than forcing a focus
+     * transition from inside the focus callback.
+     */
     private void connectOrbitToIme() {
-        if (input == null) return;
+        if (composerFocus == null || input == null) return;
         try {
-            orbitOwnsIme = true;
-            composerIme.attach();
+            composerFocus.onEditorTapped();
+        } catch (Exception ignored) {}
+    }
+
+    /** Lets Orbit's window take the input method. Never moves focus. */
+    private void allowWindowToTakeIme() {
+        try {
             Dialog d = getWindow();
             if (d != null && d.getWindow() != null) {
                 // Cleared unconditionally. The flag is only ever added when keyboard-aware
@@ -2869,22 +2890,28 @@ public class OrbitSession extends VoiceInteractionSession {
                 // on the preference left one path where the window stayed unable to take the IME.
                 d.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM);
             }
-            // requestFocus() on an already-focused editor is a no-op and produces no focus
-            // change, so no fresh input connection is built. Releasing focus first makes the
-            // re-attach a real transition on every turn, not just the first.
-            if (input.hasFocus()) input.clearFocus();
-            input.requestFocus();
-            input.postDelayed(() -> {
-                try {
-                    InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
-                    if (imm != null) {
-                        imm.restartInput(input);
-                        imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT);
-                    }
-                    if (root != null) root.requestApplyInsets();
-                } catch (Exception ignored) {}
-            }, 50);
         } catch (Exception ignored) {}
+    }
+
+    /**
+     * Rebuilds the input connection for the editor that already holds focus.
+     *
+     * <p>restartInput is the supported way to refresh a connection in place. The previous release
+     * did this by clearing and re-requesting focus instead, which re-entered the focus callback
+     * and crashed the overlay.
+     */
+    private void refreshComposerInputConnection() {
+        if (input == null) return;
+        input.postDelayed(() -> {
+            try {
+                InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null) {
+                    imm.restartInput(input);
+                    imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT);
+                }
+                if (root != null) root.requestApplyInsets();
+            } catch (Exception ignored) {}
+        }, 50);
     }
 
     private static String removeEmDashes(String s) {
