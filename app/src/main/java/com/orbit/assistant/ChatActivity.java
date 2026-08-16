@@ -65,8 +65,6 @@ public class ChatActivity extends Activity {
     private OrbitListeningHalo listeningHalo;
     private TextView voiceStatus;
     private VoiceInputController voiceController;
-    /** Typing intent and connection-revalidation allowance, shared model with the overlay. */
-    private final ComposerImeState composerIme = new ComposerImeState();
     private Button modeChip;
     private LinearLayout thinkingRow;
     private OrbitThinkingView thinkingView;
@@ -119,7 +117,6 @@ public class ChatActivity extends Activity {
         View content = buildContent();
         setContentView(content);
         UiKit.applyActivityInsets(this, content, true);
-        observeKeyboardVisibility(content);
 
         boolean assistantHandoff = getIntent() != null
                 && getIntent().getBooleanExtra(EXTRA_ASSISTANT_HANDOFF, false);
@@ -663,10 +660,6 @@ public class ChatActivity extends Activity {
         if (q.isEmpty()) q = defaultAttachmentPrompt(attached);
 
         input.setText("");
-        // Clearing the editor programmatically is what leaves the IME holding a stale
-        // connection, so the turn starts by refreshing it rather than waiting for a tap.
-        composerIme.beginTurn();
-        revalidateComposerConnection();
 
         boolean hasAttachment = attached != null;
         String historyPath = hasAttachment && attached.image != null
@@ -983,10 +976,6 @@ public class ChatActivity extends Activity {
      * typing session survives response finalization untouched.
      */
     private void restoreComposerInteraction() {
-        // A turn has ended. If the user is still in a typing session, the connection is refreshed
-        // in place; conditional window writes alone were not enough, because the problem was
-        // never the window flags.
-        revalidateComposerConnection();
         Window window = getWindow();
         WindowManager.LayoutParams attrs = window.getAttributes();
         int blocking = WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
@@ -1006,7 +995,6 @@ public class ChatActivity extends Activity {
     private void showComposerKeyboard() {
         restoreComposerInteraction();
         if (input == null) return;
-        composerIme.attach();
         input.requestFocus();
         input.post(() -> {
             InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
@@ -1016,53 +1004,9 @@ public class ChatActivity extends Activity {
 
     private void hideComposerKeyboard() {
         if (input == null) return;
-        composerIme.release();
         InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
         if (imm != null) imm.hideSoftInputFromWindow(input.getWindowToken(), 0);
         input.clearFocus();
-    }
-
-    /**
-     * Rebuilds the composer's input connection in place after a turn ends.
-     *
-     * <p>Same cause as the Side-button overlay: {@link #submit} clears the editor with
-     * {@code setText("")} while the IME still holds a connection against the old text, so the
-     * next keystrokes had nowhere to land and the user had to tap the composer to force a new
-     * one. Focus is never moved, and the allowance in {@link ComposerImeState} caps this at two
-     * refreshes per turn, so it cannot loop or reopen a keyboard the user dismissed.
-     */
-    /**
-     * Watches keyboard visibility so a dismissal the user performed themselves ends the typing
-     * session, and Orbit does not helpfully reopen the keyboard when the reply lands.
-     *
-     * <p>Wrapped around whatever inset handling is already installed, so the existing layout
-     * behaviour is untouched.
-     */
-    private void observeKeyboardVisibility(View content) {
-        if (content == null) return;
-        content.setOnApplyWindowInsetsListener((v, insets) -> {
-            boolean visible;
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                int imeBottom = insets.getInsets(android.view.WindowInsets.Type.ime()).bottom;
-                visible = insets.isVisible(android.view.WindowInsets.Type.ime()) && imeBottom > 0;
-            } else {
-                visible = insets.getSystemWindowInsetBottom() > UiKit.dp(this, 120);
-            }
-            composerIme.onKeyboardVisibilityChanged(visible);
-            return v.onApplyWindowInsets(insets);
-        });
-    }
-
-    private void revalidateComposerConnection() {
-        if (input == null) return;
-        if (!composerIme.shouldRevalidate()) return;
-        if (!input.hasFocus()) return;
-        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-        if (imm == null) return;
-        try {
-            imm.restartInput(input);
-            imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT);
-        } catch (Exception ignored) {}
     }
 
     private void initVoiceController() {
