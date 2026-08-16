@@ -29,6 +29,7 @@ import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
+import android.text.Editable;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -1428,8 +1429,28 @@ public class OrbitSession extends VoiceInteractionSession {
         String q = input.getText().toString().trim();
         if (q.isEmpty() && genericAttachment == null) return;
         if (q.isEmpty()) q = defaultAttachmentPrompt(genericAttachment);
-        input.setText("");
+        clearComposerInPlace();
         submitPrompt(q, false);
+    }
+
+    /**
+     * Empties the composer without replacing the editor's text object.
+     *
+     * <p>{@code setText("")} asks the editable factory for a new {@link Editable}, so the editor
+     * the IME is attached to swaps its backing text mid-session. Clearing the existing instance
+     * leaves that relationship alone, which is the least disruptive way to empty a field the user
+     * is still typing in. Whether this is what the Samsung keyboard was reacting to is what the
+     * candidate build is for; the submitted text has already been read out by this point either
+     * way.
+     */
+    private void clearComposerInPlace() {
+        if (input == null) return;
+        Editable editable = input.getText();
+        if (editable == null) {
+            input.setText("");
+            return;
+        }
+        editable.clear();
     }
 
     private String defaultAttachmentPrompt(ComposerAttachment attachment) {
@@ -1450,9 +1471,9 @@ public class OrbitSession extends VoiceInteractionSession {
         if (historyMode) renderConversation();
         stopListening();
         stopSpeaking();
-        // A typed turn keeps its editor and keyboard exactly as the user left them. Tearing the
-        // input connection down on every send is what limited a Side-button chat to one typed
-        // message. A spoken turn, or a send with no typing session, still puts the keyboard away.
+        // A typed turn keeps its editor and keyboard exactly as the user left them, so Orbit is
+        // not the one taking the keyboard away between messages. A spoken turn, or a send with no
+        // typing session, still puts it away.
         if (composerIme.shouldReleaseOnSubmit(voiceRequest)) {
             hideKeyboard();
         }

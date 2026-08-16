@@ -659,7 +659,7 @@ public class ChatActivity extends Activity {
         if (q.isEmpty() && attached == null) return;
         if (q.isEmpty()) q = defaultAttachmentPrompt(attached);
 
-        input.setText("");
+        clearComposerInPlace();
 
         boolean hasAttachment = attached != null;
         String historyPath = hasAttachment && attached.image != null
@@ -990,6 +990,21 @@ public class ChatActivity extends Activity {
         if (!input.isFocusableInTouchMode()) input.setFocusableInTouchMode(true);
         if (!input.isFocusable()) input.setFocusable(true);
         if (!input.getShowSoftInputOnFocus()) input.setShowSoftInputOnFocus(true);
+    }
+
+    /**
+     * Empties the composer without replacing the editor's text object, matching the Side-button
+     * overlay. Keeping the same {@link android.text.Editable} leaves the editor's existing
+     * relationship with the input method untouched while a typed session continues.
+     */
+    private void clearComposerInPlace() {
+        if (input == null) return;
+        android.text.Editable editable = input.getText();
+        if (editable == null) {
+            input.setText("");
+            return;
+        }
+        editable.clear();
     }
 
     private void showComposerKeyboard() {
