@@ -235,3 +235,8 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Your voice settings are untouched, so the next time you open Orbit it still starts listening if you asked it to.
   - On/off settings now use animated Orbit switches instead of small checkboxes.
   - Switches follow your accent and AMOLED choices, and every setting behaves exactly as before.
+- **v0.7.3.5**: Conversation controls are more reliable across typing and quick device adjustments.
+  - Side-button chats stay ready for message after message instead of losing keyboard input after the first one.
+  - Full chat keeps your typing session ready when Orbit finishes responding, with no extra tap.
+  - Brightness and media volume now understand natural requests like "lower it", "a little", and "way down".
+  - Saying an exact percentage still sets exactly that percentage.

@@ -289,9 +289,18 @@
 - Replace checkbox-style binary preferences with a shared animated `OrbitSwitch` that follows Accent and AMOLED
 - Keep real checkboxes where a control selects or edits rather than switching a stored setting
 
+### 0.7.3.5
+- Keep the Side-button composer usable across consecutive typed messages within one invocation
+- Give composer focus somewhere to rest so the editor genuinely re-attaches to the input method
+- Stop response completion in full chat from rewriting window state that a live typing session depends on
+- Understand qualitative relative brightness and media-volume requests locally, without asking for a percentage
+- Preserve explicit percentages, saved Routines, and the established Hands-free voice follow-up behaviour
+
 ## Future direction
 
 ### Next up
+- 0.7.4 conversational Voice maturity pass, including whether reopening the microphone should read
+  the conversation rather than following the Hands-free switch alone
 - Richer automation, chained plans, and branching beyond a single condition
 
 ### Planned

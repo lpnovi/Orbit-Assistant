@@ -966,15 +966,30 @@ public class ChatActivity extends Activity {
         }
     }
 
+    /**
+     * Returns the composer to a usable state after an action or response finishes.
+     *
+     * <p>Every write here is conditional. Rewriting window flags or the soft-input mode forces a
+     * window relayout, and doing that unconditionally on each response completion dropped the live
+     * input connection: the keyboard stayed up but the composer needed another tap before it
+     * would accept text again. Now nothing is touched unless it is genuinely wrong, so a valid
+     * typing session survives response finalization untouched.
+     */
     private void restoreComposerInteraction() {
-        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
-        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-        if (input != null) {
-            input.setEnabled(true);
-            input.setFocusable(true);
-            input.setFocusableInTouchMode(true);
-            input.setShowSoftInputOnFocus(true);
+        Window window = getWindow();
+        WindowManager.LayoutParams attrs = window.getAttributes();
+        int blocking = WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
+                | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+        if ((attrs.flags & blocking) != 0) window.clearFlags(blocking);
+        if ((attrs.softInputMode & WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST)
+                != WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE) {
+            window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         }
+        if (input == null) return;
+        if (!input.isEnabled()) input.setEnabled(true);
+        if (!input.isFocusableInTouchMode()) input.setFocusableInTouchMode(true);
+        if (!input.isFocusable()) input.setFocusable(true);
+        if (!input.getShowSoftInputOnFocus()) input.setShowSoftInputOnFocus(true);
     }
 
     private void showComposerKeyboard() {

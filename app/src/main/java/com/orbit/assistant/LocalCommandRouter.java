@@ -92,6 +92,16 @@ public final class LocalCommandRouter {
                         "Setting media volume to " + percent + "%.",
                         "set media volume to " + percent + "%");
             }
+            // Relative requests are handled after the absolute matchers above, so an explicit
+            // percentage is always taken literally and never reinterpreted as a movement.
+            RelativeLevelCommand relative = RelativeLevelCommand.parse(q);
+            if (relative != null) {
+                JSONObject params = new JSONObject();
+                if (relative.absolute) params.put("percent", relative.percent);
+                else params.put("delta", relative.delta);
+                return new ParsedCommand(action(relative.actionType(), params),
+                        relative.confirmation(), relative.summary());
+            }
             Matcher timer = Pattern.compile("(?:set (?:a )?)?timer(?: for)? (\\d+)\\s*(second|seconds|minute|minutes|hour|hours)").matcher(q);
             if (timer.find()) {
                 long n = Long.parseLong(timer.group(1));

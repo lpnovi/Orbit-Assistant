@@ -128,6 +128,9 @@ public class OrbitSession extends VoiceInteractionSession {
     private boolean dismissAnimating = false;
     private boolean sessionVisible = false;
     private boolean orbitOwnsIme = false;
+    /** Who owns the composer and the IME for this invocation. */
+    private final ComposerImeState composerIme = new ComposerImeState();
+    private View composerFocusHolder;
     private String screenSelectionComposerText = "";
     private boolean screenSelectionRestoreFocus = false;
     private boolean screenSelectionRestoreKeyboard = false;
@@ -188,6 +191,7 @@ public class OrbitSession extends VoiceInteractionSession {
         boolean internalResume = args != null &&
                 args.getBoolean(INTERNAL_SCREEN_SELECTION_RESUME, false);
         orbitOwnsIme = false;
+        composerIme.reset();
         setAssistantAboveExistingIme();
 
         if (internalResume) {
@@ -515,6 +519,18 @@ public class OrbitSession extends VoiceInteractionSession {
         composer.setGravity(Gravity.CENTER_VERTICAL);
         composer.setPadding(UiKit.dp(c, 5), UiKit.dp(c, 5), UiKit.dp(c, 5), UiKit.dp(c, 5));
         composer.setBackground(UiKit.outlined(UiKit.SURFACE, Color.rgb(48, 53, 67), 22, c));
+
+        // Somewhere for input focus to rest when Orbit puts the keyboard away. The editor is the
+        // only view in this sheet that can hold focus in touch mode, so clearFocus() on its own
+        // let the view root hand focus straight back to it. The editor then looked focused while
+        // the IME had already dropped its connection, and the next tap could not produce a focus
+        // change to rebuild one: the keyboard appeared but the keys went nowhere.
+        composerFocusHolder = new View(c);
+        composerFocusHolder.setFocusable(true);
+        composerFocusHolder.setFocusableInTouchMode(true);
+        composerFocusHolder.setContentDescription(null);
+        composerFocusHolder.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        sheet.addView(composerFocusHolder, new LinearLayout.LayoutParams(0, 0));
 
         ImageButton attach = tinyIconButton(com.orbit.assistant.R.drawable.ic_add);
         attach.setContentDescription("Attach to message");
@@ -1424,7 +1440,12 @@ public class OrbitSession extends VoiceInteractionSession {
         if (historyMode) renderConversation();
         stopListening();
         stopSpeaking();
-        hideKeyboard();
+        // A typed turn keeps its editor and keyboard exactly as the user left them. Tearing the
+        // input connection down on every send is what limited a Side-button chat to one typed
+        // message. A spoken turn, or a send with no typing session, still puts the keyboard away.
+        if (composerIme.shouldReleaseOnSubmit(voiceRequest)) {
+            hideKeyboard();
+        }
 
         final ComposerAttachment submittedGeneric = genericAttachment;
         final boolean submittedWithScreen = submittedGeneric == null && screenAttached &&
@@ -2817,7 +2838,13 @@ public class OrbitSession extends VoiceInteractionSession {
         // FLAG_ALT_FOCUSABLE_IM after a send. Re-adding it while the EditText still
         // belonged to Orbit caused every Side-button chat to accept only one typed
         // turn. The flag is only restored at the start of the next invocation.
-        input.clearFocus();
+        //
+        // Park focus on the holder rather than merely clearing it, so the editor genuinely
+        // gives up input focus and the next tap is a real focus change that rebuilds the
+        // input connection.
+        if (composerFocusHolder != null) composerFocusHolder.requestFocus();
+        else input.clearFocus();
+        composerIme.release();
     }
 
     private void setAssistantAboveExistingIme() {
@@ -2834,10 +2861,18 @@ public class OrbitSession extends VoiceInteractionSession {
         if (input == null) return;
         try {
             orbitOwnsIme = true;
+            composerIme.attach();
             Dialog d = getWindow();
-            if (Prefs.keyboardAwareAssistant(getContext()) && d != null && d.getWindow() != null) {
+            if (d != null && d.getWindow() != null) {
+                // Cleared unconditionally. The flag is only ever added when keyboard-aware
+                // invocation is on, so clearing it otherwise is harmless, and gating the clear
+                // on the preference left one path where the window stayed unable to take the IME.
                 d.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM);
             }
+            // requestFocus() on an already-focused editor is a no-op and produces no focus
+            // change, so no fresh input connection is built. Releasing focus first makes the
+            // re-attach a real transition on every turn, not just the first.
+            if (input.hasFocus()) input.clearFocus();
             input.requestFocus();
             input.postDelayed(() -> {
                 try {
@@ -3285,6 +3320,7 @@ public class OrbitSession extends VoiceInteractionSession {
         autoListenHandledForShow = false;
         UiPresence.leave(this);
         orbitOwnsIme = false;
+        composerIme.reset();
         saveCurrentConversation();
         stopListening();
         stopSpeaking();

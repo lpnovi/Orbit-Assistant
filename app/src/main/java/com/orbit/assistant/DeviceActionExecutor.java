@@ -178,14 +178,36 @@ public final class DeviceActionExecutor {
                         break;
                     }
                     int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-                    int percent = clampPercent(p.optInt("percent", 50));
-                    int level = Math.round(max * (percent / 100f));
+                    int current = am.getStreamVolume(AudioManager.STREAM_MUSIC);
+                    int percent;
+                    int level;
+                    if (!p.has("percent") && p.has("delta")) {
+                        // Relative request: move from wherever the stream actually is.
+                        int delta = p.optInt("delta", 0);
+                        int base = max <= 0 ? 0 : Math.round((current / (float) max) * 100f);
+                        percent = clampPercent(base + delta);
+                        level = Math.round(max * (percent / 100f));
+                        // Android's media stream has few coarse steps, so a small percentage
+                        // move can round back onto the current level and do nothing visible.
+                        if (level == current && delta != 0) {
+                            level = delta < 0 ? current - 1 : current + 1;
+                        }
+                        level = Math.max(0, Math.min(max, level));
+                    } else {
+                        percent = clampPercent(p.optInt("percent", 50));
+                        level = Math.round(max * (percent / 100f));
+                    }
                     am.setStreamVolume(AudioManager.STREAM_MUSIC, level, AudioManager.FLAG_SHOW_UI);
                     result = Result.success("Media volume set to " + percent + "%");
                     break;
                 }
                 case "SET_BRIGHTNESS":
-                    result = setBrightness(c, clampPercent(p.optInt("percent", 50)));
+                    if (!p.has("percent") && p.has("delta")) {
+                        result = setBrightness(c, clampPercent(
+                                currentBrightnessPercent(c) + p.optInt("delta", 0)));
+                    } else {
+                        result = setBrightness(c, clampPercent(p.optInt("percent", 50)));
+                    }
                     break;
                 case "SET_DND":
                     result = setDoNotDisturb(c, p.optBoolean("enabled", true));
@@ -321,6 +343,20 @@ public final class DeviceActionExecutor {
             return "OPENED:Reply ready for " + contactName;
         } catch (Exception e) {
             return "Copied instead · your current messaging app did not accept a prefilled reply";
+        }
+    }
+
+    /**
+     * The current screen brightness as a percentage, so a relative request moves from what the
+     * user is actually looking at. Falls back to a mid level when the value cannot be read.
+     */
+    private static int currentBrightnessPercent(Context c) {
+        try {
+            int value = Settings.System.getInt(c.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS, -1);
+            if (value < 0) return 50;
+            return Math.max(0, Math.min(100, Math.round((value / 255f) * 100f)));
+        } catch (Exception e) {
+            return 50;
         }
     }
 
