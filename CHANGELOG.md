@@ -223,3 +223,9 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Common formatting differences in the AI response are handled before validation, which is unchanged.
   - An unusable planning response is retried once; the builder now says which kind of failure happened.
   - Time, location, and IF-condition drafting from v0.7.3.1 is preserved, and a location condition now resolves your saved place.
+- **v0.7.3.3**: Voice access can now be immediate when you open the assistant overlay.
+  - Added an optional **Start listening when overlay opens** setting under Voice, context & permissions.
+  - When it is on, the microphone starts as the overlay appears, so you can speak without tapping the mic.
+  - It is separate from Hands-free voice follow-ups, so each part of the voice flow is controlled on its own.
+  - Listening looks and behaves exactly as it does when you tap the mic yourself, and you can still type instead.
+  - The setting is off by default, and full-screen chat is unchanged.

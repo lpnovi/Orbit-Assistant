@@ -276,6 +276,12 @@
 - Distinguish planner, mapping, and provider failures in the builder
 - Record a local Routine planning trace in Diagnostics
 
+### 0.7.3.3
+- Add an optional **Start listening when overlay opens** setting for the Side-button assistant overlay
+- Reuse the existing microphone path, listening UI, and permission handling rather than a second voice implementation
+- Keep the setting independent from Hands-free voice follow-ups so each voice stage is controlled separately
+- Start the first turn only for a genuinely fresh assistant invocation, never on an internal overlay resume
+
 ## Future direction
 
 ### Next up

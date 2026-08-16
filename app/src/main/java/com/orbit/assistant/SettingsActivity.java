@@ -586,6 +586,12 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
                 12, UiKit.MUTED, false);
         pauseNote.setPadding(UiKit.dp(this, 4), UiKit.dp(this, 1), 0, UiKit.dp(this, 6));
         voiceCard.addView(pauseNote);
+        voiceCard.addView(toggle("Start listening when overlay opens", Prefs.AUTO_LISTEN_ON_OPEN, false));
+        TextView startListeningNote = UiKit.text(this,
+                "Automatically activate the microphone when the assistant overlay appears.",
+                12, UiKit.MUTED, false);
+        startListeningNote.setPadding(UiKit.dp(this, 4), UiKit.dp(this, 1), 0, UiKit.dp(this, 6));
+        voiceCard.addView(startListeningNote);
         voiceCard.addView(toggle("Hands-free voice follow-ups", Prefs.AUTO_LISTEN, false));
         voiceCard.addView(toggle("Keyboard-aware assistant invocation", Prefs.KEYBOARD_AWARE_ASSISTANT, true));
 

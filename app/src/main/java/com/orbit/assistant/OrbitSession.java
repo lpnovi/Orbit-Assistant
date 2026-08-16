@@ -130,6 +130,8 @@ public class OrbitSession extends VoiceInteractionSession {
     private boolean screenSelectionRestoreFocus = false;
     private boolean screenSelectionRestoreKeyboard = false;
     private boolean internalScreenSelectionResume = false;
+    /** Per-invocation guard so one visible sheet can only auto-start the microphone once. */
+    private boolean autoListenHandledForShow = false;
     private long freshExternalShowAtElapsedMs = 0L;
     private String screenSelectionCallbackToken = "";
     private String attachmentCallbackToken = "";
@@ -203,6 +205,8 @@ public class OrbitSession extends VoiceInteractionSession {
             return;
         }
         internalScreenSelectionResume = false;
+        // A genuinely new invocation is being prepared, so this sheet may auto-listen once.
+        autoListenHandledForShow = false;
 
         // Prepare the conversation state BEFORE rebuilding the visible sheet. In
         // v0.3.5 the reset happened in onShow(), after renderConversation() had
@@ -874,9 +878,21 @@ public class OrbitSession extends VoiceInteractionSession {
                 else if (restoreFocus) input.requestFocus();
             }, 120);
         } else {
+            // Fresh external invocation. Voice wins over the editor when the user has asked
+            // for the microphone to open with the sheet, so no keyboard is summoned behind
+            // the listening UI. With the setting off this stays exactly as it was.
+            boolean startVoice = OverlayAutoListen.shouldStartForShow(
+                    Prefs.autoListenOnOpen(getContext()), false, autoListenHandledForShow);
+            if (startVoice) autoListenHandledForShow = true;
+            boolean focusComposer = OverlayAutoListen.shouldFocusComposer(startVoice,
+                    Prefs.autoListen(getContext()), Prefs.keyboardAwareAssistant(getContext()));
             main.postDelayed(() -> {
-                if (input != null && !Prefs.autoListen(getContext()) &&
-                        !Prefs.keyboardAwareAssistant(getContext())) input.requestFocus();
+                if (startVoice) {
+                    // Exactly the microphone button's path, including its permission handling.
+                    if (sessionVisible && !listening) startListening();
+                    return;
+                }
+                if (focusComposer && input != null) input.requestFocus();
             }, 120);
         }
     }
@@ -3202,6 +3218,7 @@ public class OrbitSession extends VoiceInteractionSession {
         super.onHide();
         sessionVisible = false;
         freshExternalShowAtElapsedMs = 0L;
+        autoListenHandledForShow = false;
         UiPresence.leave(this);
         orbitOwnsIme = false;
         saveCurrentConversation();
