@@ -301,6 +301,13 @@
 - Separate observing focus from acquiring it, and refresh an existing input connection through the input method rather than through focus
 - Keep multi-turn overlay typing, the full-chat typing session, voice handover, and relative level commands exactly as released
 
+### 0.7.3.7
+- Share one small deterministic text normalizer across the local language routers
+- Recognise notification shorthand and more conversational catch-up requests without changing notification storage
+- Accept more natural read, save, update, and explicit delete wording for Orbit Memory
+- Accept more everyday phrasing for existing timers, alarms, Do Not Disturb, and app launches
+- Keep topic questions, ambiguous pronouns, and unrepresentable alarm dates out of the deterministic action path
+
 ## Future direction
 
 ### Next up

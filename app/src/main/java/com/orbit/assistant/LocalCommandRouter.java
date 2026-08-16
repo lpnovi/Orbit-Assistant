@@ -52,10 +52,16 @@ public final class LocalCommandRouter {
     }
 
     private static ParsedCommand parseSingleCommand(String raw) {
-        String q = raw == null ? "" : raw.trim().toLowerCase(Locale.US);
+        // Shared tidying, then the polite wrapper people put around a spoken instruction, so the
+        // matchers below see the instruction itself rather than every way of asking for it.
+        String q = LanguageNormalizer.stripPoliteness(LanguageNormalizer.canonical(raw));
         if (q.isEmpty()) return null;
+        // A question about how something works is never a device command.
+        if (LanguageNormalizer.isConceptualQuestion(q)) return null;
         try {
-            if (q.equals("open settings") || q.equals("open my settings")) {
+            if (q.equals("open settings") || q.equals("open my settings")
+                    || q.equals("open my phone settings") || q.equals("open phone settings")
+                    || q.equals("open android settings") || q.equals("open the settings")) {
                 return new ParsedCommand(action("OPEN_SETTINGS", new JSONObject()),
                         "Opening Settings.", "open Settings");
             }
@@ -65,8 +71,11 @@ public final class LocalCommandRouter {
                         on ? "Turning on the flashlight." : "Turning off the flashlight.",
                         on ? "turn on the flashlight" : "turn off the flashlight");
             }
-            if (q.contains("do not disturb") || q.matches(".*\\b(dnd)\\b.*")) {
-                boolean enabled = !(q.contains("off") || q.contains("disable") || q.contains("turn off"));
+            // "dnd" has already been expanded to "do not disturb" by the shared normalizer, so
+            // every spelling of the feature reaches one matcher.
+            if (q.contains("do not disturb")) {
+                boolean off = q.matches(".*\\b(off|disable|disabled|stop|end|cancel|exit)\\b.*");
+                boolean enabled = !off;
                 return new ParsedCommand(action("SET_DND", new JSONObject().put("enabled", enabled)),
                         enabled ? "Turning on Do Not Disturb." : "Turning off Do Not Disturb.",
                         enabled ? "turn on Do Not Disturb" : "turn off Do Not Disturb");
@@ -102,35 +111,126 @@ public final class LocalCommandRouter {
                 return new ParsedCommand(action(relative.actionType(), params),
                         relative.confirmation(), relative.summary());
             }
-            Matcher timer = Pattern.compile("(?:set (?:a )?)?timer(?: for)? (\\d+)\\s*(second|seconds|minute|minutes|hour|hours)").matcher(q);
-            if (timer.find()) {
-                long n = Long.parseLong(timer.group(1));
-                String unit = timer.group(2);
-                long seconds = unit.startsWith("hour") ? n * 3600 : unit.startsWith("minute") ? n * 60 : n;
-                return new ParsedCommand(action("SET_TIMER", new JSONObject().put("seconds", seconds).put("label", "Orbit timer")),
-                        "Setting a " + timer.group(1) + " " + unit + " timer.",
-                        "set a " + timer.group(1) + " " + unit + " timer");
+            if (q.contains("timer")) {
+                ParsedCommand parsedTimer = parseTimer(q);
+                if (parsedTimer != null) return parsedTimer;
             }
-            Matcher alarm = Pattern.compile("(?:set (?:an )?)?alarm(?: for| at)? (\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?").matcher(q);
-            if (alarm.find()) {
-                int hour = Integer.parseInt(alarm.group(1));
-                int minute = alarm.group(2) == null ? 0 : Integer.parseInt(alarm.group(2));
-                String ap = alarm.group(3);
-                if ("pm".equals(ap) && hour < 12) hour += 12;
-                if ("am".equals(ap) && hour == 12) hour = 0;
-                return new ParsedCommand(action("SET_ALARM", new JSONObject().put("hour", hour).put("minute", minute).put("label", "Orbit alarm")),
-                        "Opening your Clock app with that alarm.",
-                        "set an alarm");
-            }
-            Matcher app = Pattern.compile("open (.+)").matcher(q);
-            if (app.matches() && app.group(1).length() < 60) {
-                String name = app.group(1).trim();
-                return new ParsedCommand(action("OPEN_APP", new JSONObject().put("app", name)),
-                        "Opening " + name + ".", "open " + name);
+            ParsedCommand parsedAlarm = parseAlarm(q);
+            if (parsedAlarm != null) return parsedAlarm;
+
+            // Everyday ways of saying "launch this app". Anchored at the start so a sentence that
+            // merely mentions opening something is not treated as an instruction.
+            Matcher app = Pattern.compile(
+                    "^(?:open|launch|start|run|bring up|pull up|fire up|take me to|go to)\\s+(.+)$")
+                    .matcher(q);
+            if (app.matches()) {
+                String name = cleanAppName(app.group(1));
+                if (!name.isEmpty() && name.length() < 60 && !looksLikeSentence(name)) {
+                    return new ParsedCommand(action("OPEN_APP", new JSONObject().put("app", name)),
+                            "Opening " + name + ".", "open " + name);
+                }
             }
         } catch (Exception ignored) {
         }
         return null;
+    }
+
+    /** Words that name a unit Orbit's timer action understands. */
+    private static final Pattern TIMER_AFTER = Pattern.compile(
+            "timer\\s*(?:for|of)?\\s*(\\d+|[a-z ]+?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)\\b");
+    /** "10 minute timer", "30 second timer" — the count said before the word. */
+    private static final Pattern TIMER_BEFORE = Pattern.compile(
+            "\\b(\\d+|[a-z]+)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)\\s+timer\\b");
+
+    private static ParsedCommand parseTimer(String q) throws org.json.JSONException {
+        Matcher m = TIMER_AFTER.matcher(q);
+        String count = null;
+        String unit = null;
+        if (m.find()) {
+            count = m.group(1);
+            unit = m.group(2);
+        } else {
+            m = TIMER_BEFORE.matcher(q);
+            if (m.find()) {
+                count = m.group(1);
+                unit = m.group(2);
+            }
+        }
+        if (count == null || unit == null) return null;
+
+        long n = readCount(count);
+        if (n <= 0) return null;
+
+        long seconds = unit.startsWith("hour") || unit.startsWith("hr") ? n * 3600
+                : unit.startsWith("min") ? n * 60 : n;
+        if (seconds <= 0) return null;
+
+        String spokenUnit = unit.startsWith("hour") || unit.startsWith("hr")
+                ? (n == 1 ? "hour" : "hours")
+                : unit.startsWith("min") ? (n == 1 ? "minute" : "minutes")
+                : (n == 1 ? "second" : "seconds");
+        return new ParsedCommand(
+                action("SET_TIMER", new JSONObject().put("seconds", seconds).put("label", "Orbit timer")),
+                "Setting a " + n + " " + spokenUnit + " timer.",
+                "set a " + n + " " + spokenUnit + " timer");
+    }
+
+    /** Digits, or one of the small written numbers the shared normalizer knows. */
+    private static long readCount(String value) {
+        String v = value == null ? "" : value.trim();
+        if (v.matches("\\d+")) {
+            try { return Long.parseLong(v); } catch (Exception ignored) { return -1; }
+        }
+        return LanguageNormalizer.wordNumber(v);
+    }
+
+    /** Day words Orbit's alarm action cannot represent, so it must not pretend otherwise. */
+    private static final Pattern ALARM_DATE_WORDS = Pattern.compile(
+            "\\b(tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|" +
+            "weekday|weekdays|weekend|every day|everyday|daily|next week|in \\d+ days?)\\b");
+    private static final Pattern ALARM_TIME = Pattern.compile(
+            "(?:alarm|wake me(?: up)?)\\s*(?:for|at)?\\s*(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?\\b");
+
+    private static ParsedCommand parseAlarm(String q) throws org.json.JSONException {
+        if (!q.contains("alarm") && !q.contains("wake me")) return null;
+
+        // The SET_ALARM action carries only an hour and a minute. Silently dropping "tomorrow"
+        // would set an alarm for a different day than the user asked for and then report success,
+        // so a request Orbit cannot represent is left to the normal assistant path instead.
+        if (ALARM_DATE_WORDS.matcher(q).find()) return null;
+
+        Matcher m = ALARM_TIME.matcher(q);
+        if (!m.find()) return null;
+
+        int hour = Integer.parseInt(m.group(1));
+        int minute = m.group(2) == null ? 0 : Integer.parseInt(m.group(2));
+        if (hour > 23 || minute > 59) return null;
+        String ap = m.group(3);
+        if ("pm".equals(ap) && hour < 12) hour += 12;
+        if ("am".equals(ap) && hour == 12) hour = 0;
+        return new ParsedCommand(
+                action("SET_ALARM", new JSONObject().put("hour", hour).put("minute", minute)
+                        .put("label", "Orbit alarm")),
+                "Opening your Clock app with that alarm.", "set an alarm");
+    }
+
+    /** Trims filler that trails an app name in ordinary speech. */
+    private static String cleanAppName(String value) {
+        String name = value == null ? "" : value.trim();
+        name = name.replaceAll("^(?:the|my|up)\\s+", "");
+        name = name.replaceAll("\\s+(?:app|application)$", "");
+        return name.trim();
+    }
+
+    /**
+     * Guards the app matcher against swallowing a sentence. "start a 10 minute timer" and
+     * "open the pod bay doors and explain why" are not app names.
+     */
+    private static boolean looksLikeSentence(String name) {
+        if (name.matches(".*\\b(?:timer|alarm|brightness|volume|flashlight|do not disturb)\\b.*")) {
+            return true;
+        }
+        return name.split("\\s+").length > 4;
     }
 
     private static List<String> splitIntoCommandParts(String raw) {

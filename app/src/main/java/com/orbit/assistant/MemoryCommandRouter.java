@@ -9,28 +9,95 @@ import java.util.Locale;
 public final class MemoryCommandRouter {
     private MemoryCommandRouter() {}
 
-    public static boolean canHandle(String prompt) {
-        String raw = prompt == null ? "" : prompt.trim();
-        String lower = raw.toLowerCase(Locale.US);
+    /**
+     * Read-only phrasings. Flexible, because the worst outcome is listing memories the user
+     * already owns.
+     */
+    private static final String[] LIST_ALL = {
+            "what do you remember about me", "what do you remember", "what do you know about me",
+            "what have you saved about me", "what have you remembered about me",
+            "what have you stored about me", "show my memories", "show me my memories",
+            "show what you remember", "show what you remember about me",
+            "show me what you remember", "show me what you know about me",
+            "list my memories", "what is in my memory", "what's in my memory"
+    };
+    private static final String[] LIST_ABOUT = {
+            "what do you remember about ", "what do you know about ",
+            "what have you saved about ", "what have you remembered about ",
+            "what have you stored about ", "what have i told you about ",
+            "show what you remember about ", "show me what you remember about ",
+            "do you remember my ", "do you remember anything about ",
+            "what do you have on "
+    };
+    /** Explicit save phrasings. Each must read as an instruction, never as reminiscing. */
+    private static final String[] SAVE_PREFIXES = {
+            "remember that ", "remember this about me: ", "remember this about me ",
+            "save that ", "save this about me: ", "save this about me ",
+            "keep in mind that ", "keep in mind ", "add this to memory: ",
+            "add this to memory ", "add to memory: ", "add to my memory: ",
+            "make a note that ", "note that ", "store that ", "remember "
+    };
+    /** Explicit delete phrasings. Destructive, so these stay tightly worded. */
+    private static final String[] DELETE_ABOUT = {
+            "forget everything about ", "forget memories about ",
+            "forget what you know about ", "forget what you remember about ",
+            "remove the memory about ", "delete the memory about ",
+            "remove what you remember about ", "delete what you remember about ",
+            "remove the memory that ", "delete the memory that ",
+            "remove memories about ", "delete memories about "
+    };
+    private static final String[] CLEAR_ALL = {
+            "forget everything you remember about me", "clear all memories", "forget all memories",
+            "delete all saved memories", "delete all memories", "delete all my memories",
+            "clear all my memories", "clear my memories", "forget everything about me",
+            "forget all my memories", "erase all my memories", "erase all memories",
+            "wipe all my memories"
+    };
 
-        return lower.equals("what do you remember about me") ||
-                lower.equals("what do you remember") ||
-                lower.equals("show my memories") ||
-                lower.equals("show me my memories") ||
-                lower.equals("forget everything you remember about me") ||
-                lower.equals("clear all memories") ||
-                lower.equals("forget all memories") ||
-                lower.startsWith("what do you remember about ") ||
-                lower.startsWith("forget everything about ") ||
-                lower.startsWith("forget memories about ") ||
-                lower.startsWith("change what you remember about ") ||
-                lower.startsWith("update what you remember about ") ||
-                lower.startsWith("change memory about ") ||
-                lower.startsWith("update memory about ") ||
-                lower.startsWith("remember that ") ||
-                lower.startsWith("remember ") ||
-                lower.startsWith("forget that ") ||
-                lower.startsWith("forget ");
+    public static boolean canHandle(String prompt) {
+        String lower = canonical(prompt);
+        if (lower.isEmpty()) return false;
+
+        if (equalsAny(lower, LIST_ALL) || equalsAny(lower, CLEAR_ALL)) return true;
+        if (startsWithAny(lower, LIST_ABOUT)) return true;
+        if (startsWithAny(lower, DELETE_ABOUT)) return true;
+        if (parseChangeIntent(lower) != null) return true;
+        if (isExplicitSave(lower)) return true;
+        return isExplicitForget(lower);
+    }
+
+    /**
+     * Whether the sentence instructs Orbit to store something.
+     *
+     * <p>"Remember that my favourite game is GRIS" is an instruction. "Remember when we talked
+     * about that?" and "I remember going there" are not, and a prefix test alone could not tell
+     * them apart — the first word is the same.
+     */
+    static boolean isExplicitSave(String canonical) {
+        if (canonical == null || canonical.isEmpty()) return false;
+        if (!startsWithAny(canonical, SAVE_PREFIXES)) return false;
+        // "remember when …" is reminiscing, and "remember to …" is a reminder, not a fact.
+        if (canonical.matches("^remember\\s+(when|how|why|if|whether|the time)\\b.*")) return false;
+        if (canonical.matches("^remember\\s+to\\b.*")) return false;
+        if (canonical.matches("^(keep in mind|note that|store that)\\s+(when|how|why)\\b.*")) return false;
+        // A question is never a save instruction.
+        return !canonical.matches("^(do|does|did|can|could|would|will|have|has)\\b.*");
+    }
+
+    /**
+     * Whether the sentence instructs Orbit to delete something. Stricter than saving, because a
+     * wrong guess destroys data the user cannot recover from chat.
+     */
+    static boolean isExplicitForget(String canonical) {
+        if (canonical == null || canonical.isEmpty()) return false;
+        if (startsWithAny(canonical, DELETE_ABOUT)) return true;
+        if (!canonical.startsWith("forget ")) return false;
+        // "forget it", "forget about it" are dismissals, not deletions.
+        if (canonical.equals("forget it") || canonical.equals("forget about it")) return false;
+        // Questions and third-person musings never delete: "did you forget what I said",
+        // "why do people forget things", "don't forget to remind me".
+        if (canonical.matches("^forget\\s+(to|about it|it)\\b.*")) return false;
+        return canonical.startsWith("forget that ") || canonical.startsWith("forget ");
     }
 
     public static AssistantReply tryHandle(Context c, String prompt) {
@@ -39,19 +106,16 @@ public final class MemoryCommandRouter {
 
     public static AssistantReply tryHandle(Context c, String prompt,
                                            List<AssistantClient.History> history) {
-        String raw = prompt == null ? "" : prompt.trim();
-        String lower = raw.toLowerCase(Locale.US);
+        String raw = normalizedRaw(prompt);
+        String lower = canonical(prompt);
         if (raw.isEmpty()) return null;
 
-        if (lower.equals("what do you remember about me") ||
-                lower.equals("what do you remember") ||
-                lower.equals("show my memories") ||
-                lower.equals("show me my memories")) {
+        if (equalsAny(lower, LIST_ALL)) {
             return listMemories(c, MemoryStore.list(c), "Here is what Orbit remembers locally:");
         }
 
-        if (lower.startsWith("what do you remember about ")) {
-            String subject = raw.substring("what do you remember about ".length()).trim();
+        String subject = extractAfterAny(raw, lower, LIST_ABOUT);
+        if (subject != null && !subject.isEmpty()) {
             if (subject.equalsIgnoreCase("me")) {
                 return listMemories(c, MemoryStore.list(c), "Here is what Orbit remembers locally:");
             }
@@ -62,14 +126,12 @@ public final class MemoryCommandRouter {
             return listMemories(c, matches, "Here is what Orbit remembers about " + subject + ":");
         }
 
-        if (lower.equals("forget everything you remember about me") ||
-                lower.equals("clear all memories") || lower.equals("forget all memories")) {
+        if (equalsAny(lower, CLEAR_ALL)) {
             MemoryStore.clear(c);
             return new AssistantReply("I cleared all local Orbit memories.");
         }
 
-        String deleteSubject = extractAfterAny(raw, lower,
-                "forget everything about ", "forget memories about ");
+        String deleteSubject = extractAfterAny(raw, lower, DELETE_ABOUT);
         if (deleteSubject != null && !deleteSubject.isEmpty()) {
             int deleted = MemoryStore.deleteMatching(c, deleteSubject);
             if (deleted == 0) {
@@ -118,8 +180,7 @@ public final class MemoryCommandRouter {
                     : new AssistantReply("I will remember that locally in Orbit: " + saved.text);
         }
 
-        String remember = extractAfter(raw, lower, "remember that ");
-        if (remember == null) remember = extractAfter(raw, lower, "remember ");
+        String remember = isExplicitSave(lower) ? extractAfterAny(raw, lower, SAVE_PREFIXES) : null;
         if (remember != null && !remember.isEmpty()) {
             MemoryStore.Memory duplicate = MemoryStore.findDuplicate(c, remember, null);
             if (duplicate != null) {
@@ -131,8 +192,11 @@ public final class MemoryCommandRouter {
                     : new AssistantReply("I will remember that locally in Orbit: " + m.text);
         }
 
-        String forget = extractAfter(raw, lower, "forget that ");
-        if (forget == null) forget = extractAfter(raw, lower, "forget ");
+        String forget = null;
+        if (isExplicitForget(lower)) {
+            forget = extractAfter(raw, lower, "forget that ");
+            if (forget == null) forget = extractAfter(raw, lower, "forget ");
+        }
         if (forget != null && !forget.isEmpty()) {
             MemoryStore.Memory match = MemoryStore.findBest(c, forget);
             if (match == null) {
@@ -205,25 +269,74 @@ public final class MemoryCommandRouter {
         return new AssistantReply(b.toString());
     }
 
+    /** Update phrasings, each pairing a prefix with the separator that splits subject from value. */
+    private static final String[][] CHANGE_FORMS = {
+            {"change what you remember about ", " to "},
+            {"update what you remember about ", " to "},
+            {"change memory about ", " to "},
+            {"update memory about ", " to "},
+            {"update my memory about ", " to "},
+            {"change my memory about ", " to "},
+            {"replace the memory about ", " with "},
+            {"replace what you remember about ", " with "},
+            {"correct the memory about ", " to "}
+    };
+
+    /** Recognition only, used by {@link #canHandle} without touching the store. */
+    private static String parseChangeIntent(String lower) {
+        for (String[] form : CHANGE_FORMS) {
+            if (!lower.startsWith(form[0])) continue;
+            if (lower.indexOf(form[1], form[0].length()) < 0) continue;
+            return form[0];
+        }
+        return null;
+    }
+
     private static Change parseChange(String raw, String lower) {
-        String[] prefixes = {
-                "change what you remember about ",
-                "update what you remember about ",
-                "change memory about ",
-                "update memory about "
-        };
-
-        for (String prefix : prefixes) {
+        for (String[] form : CHANGE_FORMS) {
+            String prefix = form[0];
+            String separator = form[1];
             if (!lower.startsWith(prefix)) continue;
-            int to = lower.indexOf(" to ", prefix.length());
-            if (to < 0) return null;
+            int split = lower.indexOf(separator, prefix.length());
+            // Without a clear separator there is no unambiguous replacement value, so the
+            // request is left alone rather than guessed at.
+            if (split < 0) return null;
 
-            String subject = raw.substring(prefix.length(), to).trim();
-            String replacement = raw.substring(to + 4).trim();
+            String subject = raw.substring(prefix.length(), split).trim();
+            String replacement = raw.substring(split + separator.length()).trim();
             if (subject.isEmpty() || replacement.isEmpty()) return null;
             return new Change(subject, replacement);
         }
         return null;
+    }
+
+    /**
+     * Trimmed, whitespace-collapsed original text with trailing sentence punctuation removed.
+     * {@link #canonical} is derived from this same value, so the two stay the same length and
+     * prefix offsets found in one are valid substring offsets in the other.
+     */
+    private static String normalizedRaw(String prompt) {
+        String value = prompt == null ? "" : prompt.trim().replaceAll("\\s+", " ");
+        while (!value.isEmpty()) {
+            char last = value.charAt(value.length() - 1);
+            if (last != '?' && last != '!' && last != '.') break;
+            value = value.substring(0, value.length() - 1).trim();
+        }
+        return value;
+    }
+
+    private static String canonical(String prompt) {
+        return normalizedRaw(prompt).toLowerCase(Locale.US).replace('’', '\'');
+    }
+
+    private static boolean equalsAny(String value, String[] options) {
+        for (String option : options) if (value.equals(option)) return true;
+        return false;
+    }
+
+    private static boolean startsWithAny(String value, String[] prefixes) {
+        for (String prefix : prefixes) if (value.startsWith(prefix)) return true;
+        return false;
     }
 
     private static String extractAfterAny(String raw, String lower, String... prefixes) {

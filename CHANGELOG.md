@@ -245,3 +245,9 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Side-button chats stay ready for consecutive typed messages.
   - Full chat still keeps your typing session ready between responses.
   - Voice behaviour and relative brightness and volume commands are unchanged.
+- **v0.7.3.7**: Orbit understands more of the everyday ways you ask for things it already does.
+  - Notification questions now understand shorthand like "notif" and "notifs", plus more catch-up wording.
+  - Orbit Memory recognises more natural ways to view, save, update, and explicitly remove memories.
+  - Timers, alarms, Do Not Disturb, and app launches accept more ordinary phrasing.
+  - Questions about how notifications or timers work still get a normal answer instead of an action.
+  - Routines, Custom Commands, typing, and voice behaviour are unchanged.
