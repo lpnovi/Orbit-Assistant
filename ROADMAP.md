@@ -314,6 +314,17 @@
 - Bound that refresh per turn and never move focus, so the v0.7.3.5 focus recursion cannot return
 - Treat an unexplained keyboard dismissal as the user ending the typing session
 
+### 0.7.3.9
+- Restore the pre-v0.7.3.8 window and insets behaviour, including the full-chat inset listener that
+  v0.7.3.8 had displaced, and withdraw that release's input-connection revalidation approach
+- Add an on-device composer trace and an input-connection-recording editor, retrievable from
+  Diagnostics, which showed Android creating connections correctly while focus was lost 39-42 ms
+  after each response and inset event
+- Replace `fullScroll` focus-navigation auto-scrolling with focus-safe position scrolling in both
+  surfaces, since scrolling to a new reply was handing focus to the response controls beside it
+- Physically verify consecutive typed turns in the Side-button overlay and in full chat before
+  releasing, through a signed candidate build
+
 ## Future direction
 
 ### Next up

@@ -257,3 +257,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Replies that run a device action no longer leave the text box unable to accept typing.
   - Dismissing the keyboard yourself still ends typing, and Orbit will not reopen it.
   - Voice, notification, Memory, and device-command behaviour are unchanged.
+  - Superseded by v0.7.3.9, which found the real cause and reversed this release's approach.
+- **v0.7.3.9**: Typing now works across consecutive messages, verified on real hardware.
+  - Side-button chats accept message after message without tapping the text box again.
+  - Full chat is ready for your next message as soon as Orbit finishes replying.
+  - Automatic scrolling to a new reply no longer takes focus away from the text box.
+  - Removes the keyboard problem introduced in v0.7.3.8.
+  - Adds a signed test-build path so hardware-specific fixes are proven on a phone before release.
