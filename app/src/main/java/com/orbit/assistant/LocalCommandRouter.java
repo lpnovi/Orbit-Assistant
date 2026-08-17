@@ -80,6 +80,24 @@ public final class LocalCommandRouter {
                         enabled ? "Turning on Do Not Disturb." : "Turning off Do Not Disturb.",
                         enabled ? "turn on Do Not Disturb" : "turn off Do Not Disturb");
             }
+            // A bare follow-up borrows the target Orbit last acted on, when there is exactly one
+            // and the phrase names none of its own. Resolved before anything else so the rest of
+            // the parsing sees an ordinary, fully-specified command.
+            ParsedCommand followUp = parseRecentActionFollowUp(q);
+            if (followUp != null) return followUp;
+
+            // Relative requests are resolved first so clear relative grammar - "lower brightness
+            // by 10%" - can never be read by the absolute matchers below as a level of 10%.
+            // RelativeLevelCommand refuses anything naming a level with "to"/"at", so an
+            // absolute command still falls straight through to them.
+            RelativeLevelCommand relative = RelativeLevelCommand.parse(q);
+            if (relative != null) {
+                JSONObject params = new JSONObject();
+                if (relative.absolute) params.put("percent", relative.percent);
+                else params.put("delta", relative.delta);
+                return new ParsedCommand(action(relative.actionType(), params),
+                        relative.confirmation(), relative.summary());
+            }
             Matcher brightness = Pattern.compile("(?:set|change|make|put|lower|raise|increase|decrease)?\\s*(?:my\\s+)?brightness(?:\\s*(?:to|at))?\\s*(\\d{1,3})\\s*%?").matcher(q);
             if (brightness.find()) {
                 int percent = clampPercent(Integer.parseInt(brightness.group(1)));
@@ -100,16 +118,6 @@ public final class LocalCommandRouter {
                 return new ParsedCommand(action("SET_VOLUME", new JSONObject().put("percent", percent)),
                         "Setting media volume to " + percent + "%.",
                         "set media volume to " + percent + "%");
-            }
-            // Relative requests are handled after the absolute matchers above, so an explicit
-            // percentage is always taken literally and never reinterpreted as a movement.
-            RelativeLevelCommand relative = RelativeLevelCommand.parse(q);
-            if (relative != null) {
-                JSONObject params = new JSONObject();
-                if (relative.absolute) params.put("percent", relative.percent);
-                else params.put("delta", relative.delta);
-                return new ParsedCommand(action(relative.actionType(), params),
-                        relative.confirmation(), relative.summary());
             }
             if (q.contains("timer")) {
                 ParsedCommand parsedTimer = parseTimer(q);
@@ -133,6 +141,75 @@ public final class LocalCommandRouter {
         } catch (Exception ignored) {
         }
         return null;
+    }
+
+    /**
+     * Resolves a short follow-up against the device target Orbit last acted on.
+     *
+     * <p>Only fires when the phrase names no target itself and something was acted on recently.
+     * The operation still has to be one the remembered target supports, and "put it back" only
+     * works when Orbit holds a real previous reading — it never guesses a level it did not
+     * observe.
+     */
+    private static ParsedCommand parseRecentActionFollowUp(String q) throws org.json.JSONException {
+        RecentActionContext.Target target = RecentActionContext.current();
+        if (target == null) return null;
+        if (!RecentActionContext.isBareFollowUp(q)) return null;
+
+        boolean restore = q.matches("^(?:put|set|turn|change)\\s+(?:it|that)\\s+back$")
+                || q.equals("put it back") || q.equals("undo that") || q.equals("revert that");
+        if (restore) {
+            if (target == RecentActionContext.Target.FLASHLIGHT) {
+                boolean previous = RecentActionContext.previousFlashlightOn();
+                return new ParsedCommand(
+                        action("FLASHLIGHT", new JSONObject().put("on", previous)),
+                        previous ? "Turning the flashlight back on." : "Turning the flashlight back off.",
+                        previous ? "turn on the flashlight" : "turn off the flashlight");
+            }
+            int previous = RecentActionContext.previousPercent();
+            // Orbit does not know where it was, so it does not pretend to.
+            if (previous < 0) return null;
+            String type = target == RecentActionContext.Target.BRIGHTNESS
+                    ? "SET_BRIGHTNESS" : "SET_VOLUME";
+            String noun = target == RecentActionContext.Target.BRIGHTNESS
+                    ? "brightness" : "media volume";
+            return new ParsedCommand(action(type, new JSONObject().put("percent", previous)),
+                    "Putting " + noun + " back to " + previous + "%.",
+                    "set " + noun + " back to " + previous + "%");
+        }
+
+        if (target == RecentActionContext.Target.FLASHLIGHT) {
+            // Only an explicit on/off follow-up applies to a flashlight.
+            if (q.matches("^(?:turn|switch)\\s+(?:it|that)\\s+off$") || q.equals("off")) {
+                return new ParsedCommand(action("FLASHLIGHT", new JSONObject().put("on", false)),
+                        "Turning off the flashlight.", "turn off the flashlight");
+            }
+            if (q.matches("^(?:turn|switch)\\s+(?:it|that)\\s+on$") || q.equals("on")) {
+                return new ParsedCommand(action("FLASHLIGHT", new JSONObject().put("on", true)),
+                        "Turning on the flashlight.", "turn on the flashlight");
+            }
+            return null;
+        }
+
+        // A level follow-up: reuse the ordinary relative grammar by naming the remembered target,
+        // so magnitudes, extremes and exact deltas all behave exactly as they do when spoken in
+        // full.
+        String noun = target == RecentActionContext.Target.BRIGHTNESS ? "brightness" : "volume";
+        RelativeLevelCommand resolved = RelativeLevelCommand.parse(q + " " + noun);
+        if (resolved == null) {
+            // "a little more" / "a bit less" carry a direction only in relation to what came
+            // before, so they are mapped onto the same relative grammar explicitly.
+            String direction = q.matches(".*\\b(more|higher|louder|brighter|up)\\b.*") ? "raise"
+                    : q.matches(".*\\b(less|lower|quieter|dimmer|down)\\b.*") ? "lower" : null;
+            if (direction == null) return null;
+            resolved = RelativeLevelCommand.parse(direction + " " + noun + " " + q);
+            if (resolved == null) return null;
+        }
+        JSONObject params = new JSONObject();
+        if (resolved.absolute) params.put("percent", resolved.percent);
+        else params.put("delta", resolved.delta);
+        return new ParsedCommand(action(resolved.actionType(), params),
+                resolved.confirmation(), resolved.summary());
     }
 
     /** Words that name a unit Orbit's timer action understands. */

@@ -197,18 +197,26 @@ public final class DeviceActionExecutor {
                         percent = clampPercent(p.optInt("percent", 50));
                         level = Math.round(max * (percent / 100f));
                     }
+                    int previousPercent = max <= 0 ? -1 : Math.round((current / (float) max) * 100f);
                     am.setStreamVolume(AudioManager.STREAM_MUSIC, level, AudioManager.FLAG_SHOW_UI);
                     result = Result.success("Media volume set to " + percent + "%");
+                    // The level before the change is a real reading, which is what makes
+                    // "put it back" possible without inventing history.
+                    RecentActionContext.recordLevel(RecentActionContext.Target.VOLUME, previousPercent);
                     break;
                 }
-                case "SET_BRIGHTNESS":
+                case "SET_BRIGHTNESS": {
+                    int before = currentBrightnessPercent(c);
                     if (!p.has("percent") && p.has("delta")) {
-                        result = setBrightness(c, clampPercent(
-                                currentBrightnessPercent(c) + p.optInt("delta", 0)));
+                        result = setBrightness(c, clampPercent(before + p.optInt("delta", 0)));
                     } else {
                         result = setBrightness(c, clampPercent(p.optInt("percent", 50)));
                     }
+                    if (result.success) {
+                        RecentActionContext.recordLevel(RecentActionContext.Target.BRIGHTNESS, before);
+                    }
                     break;
+                }
                 case "SET_DND":
                     result = setDoNotDisturb(c, p.optBoolean("enabled", true));
                     break;
@@ -244,9 +252,14 @@ public final class DeviceActionExecutor {
                     result = Result.success("Copied to clipboard");
                     break;
                 }
-                case "FLASHLIGHT":
-                    result = torch(c, p.optBoolean("on", true));
+                case "FLASHLIGHT": {
+                    boolean on = p.optBoolean("on", true);
+                    result = torch(c, on);
+                    // Remembered only when the change actually happened, so a follow-up can
+                    // never act on a device state Orbit did not reach.
+                    if (result.success) RecentActionContext.recordFlashlight(on);
                     break;
+                }
                 default:
                     result = Result.unavailable("Unsupported action: " + action.type);
                     break;

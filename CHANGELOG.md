@@ -264,3 +264,12 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Automatic scrolling to a new reply no longer takes focus away from the text box.
   - Removes the keyboard problem introduced in v0.7.3.8.
   - Adds a signed test-build path so hardware-specific fixes are proven on a phone before release.
+
+## 0.7.4 series
+
+- **v0.7.4.0**: A conversational Voice and interaction polish update.
+  - Voice conversations handle follow-ups and interruptions more reliably, so an interrupted reply no longer reopens the microphone behind you.
+  - Brightness and media volume understand exact changes such as "lower brightness by 10%".
+  - A short follow-up like "a little more" can continue the last device action when the target is unmistakable.
+  - Orbit's animated switches now give one light tap of feedback whenever haptics are on.
+  - The typing and focus behaviour verified in v0.7.3.9 is unchanged.

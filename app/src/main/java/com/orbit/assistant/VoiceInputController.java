@@ -48,6 +48,9 @@ public final class VoiceInputController {
     private boolean active;
     /** Owns the current voice turn so an abandoned one cannot act through late callbacks. */
     private final VoiceHandoff voiceTurn = new VoiceHandoff();
+    /** Identifies the utterance currently being spoken, so an interrupted one cannot act. */
+    private int utteranceGeneration;
+    private String liveUtteranceId = "";
     private String originalText = "";
     private String accumulated = "";
     private String partial = "";
@@ -154,12 +157,20 @@ public final class VoiceInputController {
     public void speak(String text) {
         if (!ttsReady || tts == null || text == null || text.trim().isEmpty()) return;
         try {
-            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null,
-                    "orbit_chat_reply_" + System.currentTimeMillis());
+            liveUtteranceId = "orbit_chat_reply_" + (++utteranceGeneration);
+            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, liveUtteranceId);
         } catch (Exception ignored) {}
     }
 
+    /**
+     * Stops speaking and disowns the utterance.
+     *
+     * <p>Clearing the live id matters as much as stopping the engine: an interrupted utterance
+     * can still deliver its completion callback, and that callback is what would otherwise open
+     * the microphone a second time behind a turn the user has already moved on from.
+     */
     public void stopSpeaking() {
+        liveUtteranceId = "";
         if (tts != null) try { tts.stop(); } catch (Exception ignored) {}
         speaking = false;
         notifyState();
@@ -363,6 +374,12 @@ public final class VoiceInputController {
         }, 300L);
     }
 
+    /** True when a completion callback belongs to the utterance Orbit is still speaking. */
+    boolean isLiveUtterance(String utteranceId) {
+        return utteranceId != null && !liveUtteranceId.isEmpty()
+                && liveUtteranceId.equals(utteranceId);
+    }
+
     private void statusListening() { callback.onStatus("Listening · pause when you need"); }
 
     private void notifyState() { callback.onStateChanged(listening, finalizing, speaking); }
@@ -383,6 +400,12 @@ public final class VoiceInputController {
                     @Override public void onDone(String utteranceId) {
                         speaking = false;
                         main.post(() -> {
+                            // An utterance the user interrupted must not open the microphone.
+                            if (!isLiveUtterance(utteranceId)) {
+                                notifyState();
+                                return;
+                            }
+                            liveUtteranceId = "";
                             callback.onStatus("");
                             notifyState();
                             if (Prefs.autoListen(context)) main.postDelayed(

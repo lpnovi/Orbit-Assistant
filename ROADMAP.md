@@ -325,11 +325,23 @@
 - Physically verify consecutive typed turns in the Side-button overlay and in full chat before
   releasing, through a signed candidate build
 
+## 0.7.4 conversational Voice
+
+### 0.7.4.0
+- Tag each spoken reply so an interrupted utterance cannot open the microphone again, on either surface
+- Keep Start listening when overlay opens and Hands-free voice follow-ups separate, with their defaults unchanged
+- Understand exact relative level changes such as "lower brightness by 10%", while an explicit
+  percentage still names a level
+- Resolve a bare follow-up against the single device target Orbit last acted on, and restore a
+  previous level only when Orbit actually observed it
+- Give every OrbitSwitch one light confirmation tick from the shared component, so no screen has to
+  add its own and no tap can produce two
+
 ## Future direction
 
 ### Next up
-- 0.7.4 conversational Voice maturity pass, including whether reopening the microphone should read
-  the conversation rather than following the Hands-free switch alone
+- Whether reopening the microphone should read the conversation rather than following the
+  Hands-free switch alone
 - Richer automation, chained plans, and branching beyond a single condition
 
 ### Planned

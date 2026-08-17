@@ -1,6 +1,7 @@
 package com.orbit.assistant;
 
 import java.util.Locale;
+import java.util.regex.Matcher;
 
 /**
  * Natural relative brightness and media-volume requests.
@@ -30,12 +31,20 @@ public final class RelativeLevelCommand {
     public final int percent;
     /** Signed percentage-point movement when relative; otherwise unused. */
     public final int delta;
+    /** True when the user named the exact size of the movement, as in "by 10%". */
+    public final boolean exact;
 
     private RelativeLevelCommand(Target target, boolean absolute, int percent, int delta) {
+        this(target, absolute, percent, delta, false);
+    }
+
+    private RelativeLevelCommand(Target target, boolean absolute, int percent, int delta,
+                                 boolean exact) {
         this.target = target;
         this.absolute = absolute;
         this.percent = percent;
         this.delta = delta;
+        this.exact = exact;
     }
 
     /** The action type this request maps onto. */
@@ -56,6 +65,10 @@ public final class RelativeLevelCommand {
             }
             return "Setting " + noun() + " to " + percent + "%.";
         }
+        if (exact) {
+            return (delta < 0 ? "Lowering " : "Raising ") + noun() + " by "
+                    + Math.abs(delta) + "%.";
+        }
         return (delta < 0 ? "Lowering " : "Raising ") + noun() + ".";
     }
 
@@ -65,6 +78,9 @@ public final class RelativeLevelCommand {
             if (percent >= 100) return "set " + noun() + " to maximum";
             if (percent <= 0) return target == Target.VOLUME ? "mute media volume" : "set brightness to minimum";
             return "set " + noun() + " to " + percent + "%";
+        }
+        if (exact) {
+            return (delta < 0 ? "lower " : "raise ") + noun() + " by " + Math.abs(delta) + "%";
         }
         return (delta < 0 ? "lower " : "raise ") + noun();
     }
@@ -79,8 +95,11 @@ public final class RelativeLevelCommand {
         if (raw == null) return null;
         String q = raw.toLowerCase(Locale.US).trim();
         if (q.isEmpty()) return null;
-        // An explicit number means the user already said the level they want.
-        if (q.matches(".*\\d.*")) return null;
+
+        // A number can mean two different things. "set brightness to 30%" names a level and
+        // belongs to the absolute matchers; "lower brightness by 10%" names a movement and is
+        // handled here. Only clearly relative grammar claims the number.
+        if (q.matches(".*\\d.*")) return parseExactDelta(q);
 
         // A question about the device is not an instruction to change it.
         if (q.matches("^(what|how|why|when|where|who|whose|which)\\b.*")) return null;
@@ -106,6 +125,41 @@ public final class RelativeLevelCommand {
         if (direction == 0) return null;
         return new RelativeLevelCommand(target, false, 0, direction * magnitudeOf(q));
     }
+
+    /**
+     * Exact relative changes: "lower brightness by 10%", "turn the volume up by 5",
+     * "make the screen 15 percent brighter".
+     *
+     * <p>The grammar has to be unmistakably relative before the number is read as a movement.
+     * "by N", "N percent <comparative>", and "up/down N" qualify; "set brightness to 30%" does
+     * not, and falls through to the absolute matchers untouched.
+     */
+    private static RelativeLevelCommand parseExactDelta(String q) {
+        Target target = targetOf(q);
+        if (target == null) return null;
+        // "to N" is an absolute level, never a movement, even alongside a direction word.
+        if (q.matches(".*\\b(?:to|at)\\s+\\d{1,3}\\s*%?.*")) return null;
+
+        int direction = directionOf(q);
+        if (direction == 0) return null;
+
+        Matcher m = EXACT_DELTA.matcher(q);
+        if (!m.find()) return null;
+        int amount;
+        try { amount = Integer.parseInt(m.group(1)); }
+        catch (Exception ignored) { return null; }
+        if (amount <= 0 || amount > 100) return null;
+
+        return new RelativeLevelCommand(target, false, 0, direction * amount, true);
+    }
+
+    /**
+     * "by 10", "by 10%", "by 10 percent", "up 5", "down 20%", "15 percent brighter".
+     * The "by" form is the unambiguous one; the others still require a direction word, which
+     * {@link #parseExactDelta} has already established.
+     */
+    private static final java.util.regex.Pattern EXACT_DELTA = java.util.regex.Pattern.compile(
+            "(?:\\bby\\s+|\\b(?:up|down)\\s+|\\b)(\\d{1,3})\\s*(?:%|percent|percentage points?|points?)?\\b");
 
     private static Target targetOf(String q) {
         // Orbit's "volume" has always meant the media stream. Naming another stream is left to
@@ -139,7 +193,7 @@ public final class RelativeLevelCommand {
         boolean down = word(q, "lower") || word(q, "decrease") || word(q, "reduce")
                 || word(q, "dim") || word(q, "quieter") || word(q, "softer")
                 || word(q, "down") || word(q, "darker") || word(q, "dimmer")
-                || word(q, "mute") || word(q, "quiet");
+                || word(q, "mute") || word(q, "quiet") || word(q, "drop");
         boolean up = word(q, "raise") || word(q, "increase") || word(q, "brighten")
                 || word(q, "louder") || word(q, "brighter") || word(q, "up")
                 || word(q, "boost");

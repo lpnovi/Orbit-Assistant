@@ -1270,16 +1270,10 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     private View toggle(String label, String description, String key, boolean def) {
         OrbitSwitch control = new OrbitSwitch(this);
         control.setChecked(Prefs.get(this).getBoolean(key, def), false);
-        control.setOnCheckedChangeListener((button, checked) -> {
-            boolean wasHapticsEnabled = Prefs.haptics(this);
-            if (Prefs.HAPTICS.equals(key) && !checked && wasHapticsEnabled) {
-                performSettingsHaptic(button);
-            } else if (!Prefs.HAPTICS.equals(key) && wasHapticsEnabled) {
-                performSettingsHaptic(button);
-            }
-            Prefs.get(this).edit().putBoolean(key, checked).apply();
-            if (Prefs.HAPTICS.equals(key) && checked) performSettingsHaptic(button);
-        });
+        // The confirmation tick lives in OrbitSwitch now, so every switch in the app feels the
+        // same and one tap can only produce one tick.
+        control.setOnCheckedChangeListener((button, checked) ->
+                Prefs.get(this).edit().putBoolean(key, checked).apply());
         return UiKit.switchRow(this, label, description, control);
     }
 
@@ -1304,7 +1298,6 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         OrbitSwitch control = new OrbitSwitch(this);
         control.setChecked(Prefs.amoledMode(this), false);
         control.setOnCheckedChangeListener((button, checked) -> {
-            performSettingsHaptic(button);
             Prefs.get(this).edit().putBoolean(Prefs.AMOLED_MODE, checked).apply();
             UiKit.notifyAppearanceChanged(this);
         });

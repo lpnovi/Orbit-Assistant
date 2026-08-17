@@ -124,6 +124,9 @@ public class OrbitSession extends VoiceInteractionSession {
     private boolean voiceManualFinishRequested = false;
     private boolean voiceFinishing = false;
     private boolean speaking = false;
+    /** Identifies the utterance currently being spoken, so an interrupted one cannot act. */
+    private int utteranceGeneration;
+    private String liveUtteranceId = "";
     private boolean ttsReady = false;
     private boolean busy = false;
     private boolean dismissAnimating = false;
@@ -2669,6 +2672,12 @@ public class OrbitSession extends VoiceInteractionSession {
                         public void onDone(String utteranceId) {
                             speaking = false;
                             main.post(() -> {
+                                // An interrupted utterance must not reopen the microphone.
+                                if (!isLiveUtterance(utteranceId)) {
+                                    updateMic();
+                                    return;
+                                }
+                                liveUtteranceId = "";
                                 updateMic();
                                 restoreComposerHintSafe();
                                 stateTextSafe(readyState());
@@ -2692,11 +2701,17 @@ public class OrbitSession extends VoiceInteractionSession {
     private void speak(String text) {
         if (!ttsReady || tts == null || text == null || text.isEmpty()) return;
         try {
-            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "orbit_reply_" + System.currentTimeMillis());
+            liveUtteranceId = "orbit_reply_" + (++utteranceGeneration);
+            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, liveUtteranceId);
         } catch (Exception ignored) {}
     }
 
+    /**
+     * Stops speaking and disowns the utterance, so an interrupted reply's completion callback
+     * cannot open the microphone again behind whatever the user did instead.
+     */
     private void stopSpeaking() {
+        liveUtteranceId = "";
         if (tts != null) {
             try { tts.stop(); } catch (Exception ignored) {}
         }
@@ -2961,6 +2976,12 @@ public class OrbitSession extends VoiceInteractionSession {
                 if (root != null) root.requestApplyInsets();
             } catch (Exception ignored) {}
         }, 50);
+    }
+
+    /** True when a completion callback belongs to the utterance Orbit is still speaking. */
+    private boolean isLiveUtterance(String utteranceId) {
+        return utteranceId != null && !liveUtteranceId.isEmpty()
+                && liveUtteranceId.equals(utteranceId);
     }
 
     private static String removeEmDashes(String s) {

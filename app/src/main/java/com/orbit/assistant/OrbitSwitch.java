@@ -7,6 +7,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.os.Build;
+import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -97,13 +98,42 @@ public class OrbitSwitch extends View {
         announceState();
     }
 
-    /** Flips state as a user gesture would, notifying the listener once. */
+    /**
+     * Flips state as a user gesture would, notifying the listener once and giving one light
+     * confirmation tick.
+     *
+     * <p>This is the only path that produces haptic feedback, which is what keeps it to exactly
+     * one tick per user tap however the tap arrived — on the switch itself, or on the row that
+     * forwards here. Programmatic {@link #setChecked} never ticks, so binding a screen, resuming
+     * an Activity, or rolling a refused setting back stays silent.
+     */
     public void toggle() {
         if (!isEnabled()) return;
+        // Read before the listener runs, because for the Haptic feedback switch itself the
+        // listener is what changes the preference this decision depends on.
+        boolean hapticsBefore = Prefs.haptics(getContext());
         checked = !checked;
         moveTo(checked ? 1f : 0f, true);
         announceState();
         if (listener != null) listener.onCheckedChanged(this, checked);
+        if (shouldTick(hapticsBefore, Prefs.haptics(getContext()))) tick();
+    }
+
+    /**
+     * Whether a user-initiated transition should tick, given the haptics preference either side
+     * of the change.
+     *
+     * <p>For every ordinary switch both values are the same, so this is simply "are haptics on".
+     * It also handles the Haptic feedback switch without special-casing it: turning haptics off
+     * still gives one final confirmation, and turning them on gives one, and neither gives two.
+     */
+    public static boolean shouldTick(boolean hapticsBefore, boolean hapticsAfter) {
+        return hapticsBefore || hapticsAfter;
+    }
+
+    private void tick() {
+        try { performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK); }
+        catch (Exception ignored) {}
     }
 
     public void setOnCheckedChangeListener(OnCheckedChangeListener value) {
