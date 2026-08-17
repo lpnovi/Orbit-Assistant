@@ -2872,16 +2872,21 @@ public class OrbitSession extends VoiceInteractionSession {
         return b;
     }
 
+    /**
+     * Scrolls the conversation to the newest message.
+     *
+     * <p>Position only. This used {@code fullScroll(View.FOCUS_DOWN)}, which searches for a
+     * focusable view in the scroll direction and focuses it; because Orbit appends Copy,
+     * Regenerate, source and action controls just before scrolling, that call was taking focus
+     * off the composer roughly 40 ms after every response and every inset change. See
+     * {@link FocusSafeScroll}.
+     */
     private void scrollBottom() {
-        main.postDelayed(() -> {
-            if (messageScroll != null) messageScroll.fullScroll(View.FOCUS_DOWN);
-        }, 40);
+        main.postDelayed(() -> FocusSafeScroll.toBottom(messageScroll, false), 40);
     }
 
     private void scrollBottomTop() {
-        main.postDelayed(() -> {
-            if (messageScroll != null) messageScroll.fullScroll(View.FOCUS_UP);
-        }, 40);
+        main.postDelayed(() -> FocusSafeScroll.toTop(messageScroll, false), 40);
     }
 
     private void hideKeyboard() {

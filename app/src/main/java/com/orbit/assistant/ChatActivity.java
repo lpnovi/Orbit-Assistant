@@ -1662,9 +1662,17 @@ public class ChatActivity extends Activity {
         }
     }
 
+    /**
+     * Scrolls the conversation to the newest message.
+     *
+     * <p>Position only, for the same reason as the Side-button overlay: {@code fullScroll} is a
+     * focus-navigation call, and the response controls appended just before this ran were taking
+     * focus off the composer. That is the older "tap the composer again after every reply"
+     * behaviour. See {@link FocusSafeScroll}.
+     */
     private void scrollBottom() {
         followBottom = true;
-        if (scroll != null) scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
+        if (scroll != null) scroll.post(() -> FocusSafeScroll.toBottom(scroll, false));
     }
 
     /** True when the latest messages are already on screen, within a small tolerance. */
