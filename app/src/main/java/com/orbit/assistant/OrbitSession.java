@@ -195,6 +195,8 @@ public class OrbitSession extends VoiceInteractionSession {
                 args.getBoolean(INTERNAL_SCREEN_SELECTION_RESUME, false);
         orbitOwnsIme = false;
         composerIme.reset();
+        if (!internalResume) ComposerTrace.begin("side-button overlay");
+        ComposerTrace.event("session.onPrepareShow internalResume=" + internalResume);
         setAssistantAboveExistingIme();
 
         if (internalResume) {
@@ -540,7 +542,9 @@ public class OrbitSession extends VoiceInteractionSession {
         attach.setOnClickListener(v -> showAttachmentMenu(attach));
         composer.addView(attach, new LinearLayout.LayoutParams(UiKit.dp(c, 42), UiKit.dp(c, 42)));
 
-        input = new EditText(c);
+        // Behaves as an ordinary EditText; it additionally records when Android asks it for an
+        // input connection, which is the one thing no previous investigation could observe.
+        input = new TracingEditText(c);
         input.setHint("Ask anything…");
         input.setHintTextColor(Color.rgb(117, 123, 139));
         input.setTextColor(UiKit.TEXT);
@@ -568,6 +572,7 @@ public class OrbitSession extends VoiceInteractionSession {
                         handOffVoiceToTyping();
                         orbitOwnsIme = true;
                         composerIme.attach();
+                        traceComposer("ime.typingClaimed");
                     }
                 });
         input.setOnClickListener(v -> connectOrbitToIme());
@@ -865,6 +870,10 @@ public class OrbitSession extends VoiceInteractionSession {
             }
         }
         sheet.setLayoutParams(lp);
+        // Layout mutation while the IME is up is one of the few things Orbit does during a turn
+        // that could plausibly disturb the input target, so it is recorded rather than assumed
+        // innocent.
+        ComposerTrace.event("insets.applied imeVisible=" + imeVisible + " imeBottom=" + imeBottom);
         if (imeVisible) scrollBottom();
     }
 
@@ -1429,8 +1438,17 @@ public class OrbitSession extends VoiceInteractionSession {
         String q = input.getText().toString().trim();
         if (q.isEmpty() && genericAttachment == null) return;
         if (q.isEmpty()) q = defaultAttachmentPrompt(genericAttachment);
+        traceComposer("submit.before-clear");
         clearComposerInPlace();
+        traceComposer("submit.after-clear");
         submitPrompt(q, false);
+    }
+
+    /** Records composer and window state at a lifecycle boundary. State transitions only. */
+    private void traceComposer(String label) {
+        Dialog d = getWindow();
+        ComposerTrace.snapshot(label, input, getContext(),
+                d == null ? null : d.getWindow(), orbitOwnsIme, composerIme.isTyping());
     }
 
     /**
@@ -1577,6 +1595,8 @@ public class OrbitSession extends VoiceInteractionSession {
                         if (voiceRequest && Prefs.speak(getContext())) speak(OrbitMarkdown.toSpeechText(
                                 SourceLinkUtil.displayText(storedText)));
                     }
+                    traceComposer("response.rendered actions="
+                            + (reply.actions == null ? 0 : reply.actions.size()));
                 });
             }
 
@@ -2101,6 +2121,7 @@ public class OrbitSession extends VoiceInteractionSession {
                     busy = false; uiRequestConversationId = null; stopThinkingIndicator(); stateTextSafe("Needs attention");
                     history.add(new AssistantClient.History("assistant", friendly));
                     if (sessionVisible) { addErrorBubble(friendly); addFailureRetryAction(PendingRequestStore.load(getContext(), requestId)); }
+                    traceComposer("response.error-rendered");
                 });
             }
         };
@@ -2122,6 +2143,8 @@ public class OrbitSession extends VoiceInteractionSession {
                         if (!completedAllSteps && totalSteps > 1) {
                             main.post(() -> stateTextSafe("Action chain stopped after step " + completedSteps));
                         }
+                        main.post(() -> traceComposer("action.finished steps=" + completedSteps
+                                + "/" + totalSteps));
                     }
                 });
     }

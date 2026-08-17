@@ -140,6 +140,7 @@ public class ChatActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        ComposerTrace.event("chat.onResume");
         UiPresence.enter(this);
         reloadConversation();
         attachToPending();
@@ -273,7 +274,8 @@ public class ChatActivity extends Activity {
         composer.addView(attach,
                 new LinearLayout.LayoutParams(UiKit.dp(this, 44), UiKit.dp(this, 44)));
 
-        input = new EditText(this);
+        // Ordinary EditText behaviour plus input-connection tracing; see TracingEditText.
+        input = new TracingEditText(this);
         input.setHint("Ask anything...");
         input.setHintTextColor(UiKit.MUTED);
         input.setTextColor(UiKit.TEXT);
@@ -659,7 +661,9 @@ public class ChatActivity extends Activity {
         if (q.isEmpty() && attached == null) return;
         if (q.isEmpty()) q = defaultAttachmentPrompt(attached);
 
+        traceComposer("submit.before-clear");
         clearComposerInPlace();
+        traceComposer("submit.after-clear");
 
         boolean hasAttachment = attached != null;
         String historyPath = hasAttachment && attached.image != null
@@ -768,6 +772,7 @@ public class ChatActivity extends Activity {
     private void executeActions(List<AssistantReply.Action> actions) {
         if (actions == null || actions.isEmpty()) {
             restoreComposerInteraction();
+            traceComposer("response.rendered actions=0");
             return;
         }
         final int assistantIndex = Math.max(0, history.size() - 1);
@@ -790,7 +795,10 @@ public class ChatActivity extends Activity {
                     }
 
                     @Override public void onFinished(boolean completedAllSteps, int completedSteps, int totalSteps) {
-                        runOnUiThread(() -> restoreComposerInteraction());
+                        runOnUiThread(() -> {
+                            restoreComposerInteraction();
+                            traceComposer("action.finished steps=" + completedSteps + "/" + totalSteps);
+                        });
                     }
                 });
     }
@@ -997,6 +1005,12 @@ public class ChatActivity extends Activity {
      * overlay. Keeping the same {@link android.text.Editable} leaves the editor's existing
      * relationship with the input method untouched while a typed session continues.
      */
+    /** Records composer and window state at a lifecycle boundary. State transitions only. */
+    private void traceComposer(String label) {
+        ComposerTrace.snapshot(label, input, this, getWindow(), true,
+                input != null && input.hasFocus());
+    }
+
     private void clearComposerInPlace() {
         if (input == null) return;
         android.text.Editable editable = input.getText();

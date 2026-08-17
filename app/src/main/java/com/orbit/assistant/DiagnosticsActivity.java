@@ -72,6 +72,20 @@ public final class DiagnosticsActivity extends Activity {
             Toast.makeText(this, "Diagnostic report copied", Toast.LENGTH_SHORT).show();
         });
         page.addView(copy, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48)));
+
+        // Composer/input-method trace for diagnosing typing failures on real hardware. Records
+        // state transitions only, never message content. Reproduce the problem, then copy this.
+        Button copyTyping = button("Copy typing diagnostics");
+        copyTyping.setOnClickListener(v -> {
+            String trace = ComposerTrace.report();
+            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Orbit typing diagnostics", trace));
+            Toast.makeText(this, "Typing diagnostics copied", Toast.LENGTH_SHORT).show();
+        });
+        LinearLayout.LayoutParams typingLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
+        typingLp.setMargins(0, UiKit.dp(this, 10), 0, 0);
+        page.addView(copyTyping, typingLp);
         return scroll;
     }
 
