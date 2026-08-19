@@ -271,7 +271,7 @@ public final class UpdateActivity extends Activity {
         content.addView(title);
         TextView body = UiKit.text(this, "", 14, UiKit.TEXT, false);
         body.setText(OrbitMarkdown.render(this, notes));
-        body.setLinkTextColor(UiKit.accent(this));
+        body.setLinkTextColor(UiKit.linkColorOn(this, UiKit.SURFACE));
         body.setMovementMethod(LinkMovementMethod.getInstance());
         body.setLinksClickable(true);
         body.setLineSpacing(0, 1.12f);

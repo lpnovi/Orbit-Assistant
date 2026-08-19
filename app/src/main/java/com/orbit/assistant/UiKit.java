@@ -738,6 +738,51 @@ public final class UiKit {
         return luminance > 0.62 ? Color.rgb(24, 27, 34) : TEXT;
     }
 
+
+    /**
+     * Minimum contrast a link must reach against the surface it sits on. Matches the threshold
+     * {@link #syncTheme} already uses when correcting inherited OEM colours.
+     */
+    private static final double LINK_MIN_CONTRAST = 3.0d;
+
+    /**
+     * A readable link colour for text drawn on {@code background}.
+     *
+     * <p>Links used to be painted with the raw accent regardless of what was behind them. With a
+     * purple accent and a purple assistant bubble that is accent-on-accent, and the link becomes
+     * effectively invisible. The accent is still preferred whenever it actually reads; only when
+     * it does not is the colour moved, and then it is moved as little as possible so a link still
+     * looks like part of Orbit rather than a generic fallback.
+     *
+     * <p>Colour is never the only cue: inline links keep their underline, so a link remains
+     * identifiable even where hue alone would not carry it.
+     */
+    public static int linkColorOn(Context c, int background) {
+        int accent = accent(c);
+        if (contrastRatio(accent, background) >= LINK_MIN_CONTRAST) return accent;
+
+        // Walk from mostly-accent toward the readable foreground for this surface, stopping at
+        // the first mix that reads clearly. This keeps some accent character where it can.
+        int readable = bestInkOn(background);
+        for (float accentShare = 0.75f; accentShare >= 0.15f; accentShare -= 0.15f) {
+            int mixed = blend(accent, readable, accentShare);
+            if (contrastRatio(mixed, background) >= LINK_MIN_CONTRAST) return mixed;
+        }
+        return readable;
+    }
+
+    /**
+     * Whichever of Orbit's dark or light ink actually contrasts more with this surface.
+     * {@link #onBubble} picks by a single luminance cutoff, which leaves mid-luminance colours
+     * such as the rose accent with the weaker of the two.
+     */
+    private static int bestInkOn(int background) {
+        int darkInk = Color.rgb(18, 20, 26);
+        int lightInk = Color.rgb(240, 243, 250);
+        return contrastRatio(darkInk, background) >= contrastRatio(lightInk, background)
+                ? darkInk : lightInk;
+    }
+
     public static int blend(int a, int b, float amountA) {
         float t = Math.max(0, Math.min(1, amountA));
         int r = Math.round(Color.red(a) * t + Color.red(b) * (1 - t));

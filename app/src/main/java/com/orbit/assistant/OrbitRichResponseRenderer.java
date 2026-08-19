@@ -107,7 +107,7 @@ public final class OrbitRichResponseRenderer {
                 i += 2;
                 while (i < lines.length && lines[i].contains("|") &&
                         !lines[i].trim().isEmpty()) rows.add(splitTableRow(lines[i++]));
-                addBlock(out, table(c, rows, foreground), c, 7);
+                addBlock(out, table(c, rows, foreground, fill), c, 7);
                 continue;
             }
 
@@ -115,7 +115,7 @@ public final class OrbitRichResponseRenderer {
             if (image.matches()) {
                 if (images++ < MAX_IMAGES) addBlock(out,
                         image(c, image.group(1), image.group(2), foreground), c, 8);
-                else addBlock(out, linkedFallback(c, image.group(1), image.group(2), foreground), c, 4);
+                else addBlock(out, linkedFallback(c, image.group(1), image.group(2), foreground, fill), c, 4);
                 i++;
                 continue;
             }
@@ -125,7 +125,7 @@ public final class OrbitRichResponseRenderer {
                 int level = heading.group(1).length();
                 float size = level == 1 ? (compact ? 18 : 19) :
                         level == 2 ? (compact ? 16.5f : 17.5f) : 15.5f;
-                TextView view = richText(c, heading.group(2), chatSize(c, size), foreground, true);
+                TextView view = richText(c, heading.group(2), chatSize(c, size), foreground, true, fill);
                 addBlock(out, view, c, level == 1 ? 9 : 6);
                 i++;
                 continue;
@@ -149,7 +149,7 @@ public final class OrbitRichResponseRenderer {
                     if (quote.length() > 0) quote.append('\n');
                     quote.append(part);
                 }
-                addBlock(out, quote(c, quote.toString(), foreground), c, 6);
+                addBlock(out, quote(c, quote.toString(), foreground, fill), c, 6);
                 continue;
             }
 
@@ -163,7 +163,7 @@ public final class OrbitRichResponseRenderer {
                     int indent = Math.min(3, item.group(1).replace("\t", "    ").length() / 2);
                     String marker = item.group(2).matches("\\d+.*") ? item.group(2) : "•";
                     TextView itemView = richText(c, marker + "  " + item.group(3),
-                            chatSize(c, compact ? 14 : 15), foreground, false);
+                            chatSize(c, compact ? 14 : 15), foreground, false, fill);
                     itemView.setPadding(UiKit.dp(c, 8 + indent * 14), UiKit.dp(c, 2), 0,
                             UiKit.dp(c, 2));
                     listBlock.addView(itemView);
@@ -181,7 +181,7 @@ public final class OrbitRichResponseRenderer {
                 i++;
             }
             addBlock(out, richText(c, paragraph.toString(), chatSize(c, compact ? 14 : 15),
-                    foreground, false), c, 6);
+                    foreground, false, fill), c, 6);
         }
         if (out.getChildCount() == 0) out.addView(text(c, source,
                 chatSize(c, compact ? 14 : 15),
@@ -197,13 +197,16 @@ public final class OrbitRichResponseRenderer {
                         TABLE_DIVIDER.matcher(lines[i + 1]).matches());
     }
 
-    private static TextView richText(Context c, String value, float size, int color, boolean bold) {
+    private static TextView richText(Context c, String value, float size, int color, boolean bold,
+                                     int surface) {
         TextView view = text(c, "", size, color, bold);
         CharSequence rendered = OrbitMarkdown.renderInline(c, value, color);
         view.setText(rendered);
         view.setMovementMethod(LinkMovementMethod.getInstance());
         view.setLinksClickable(true);
-        view.setLinkTextColor(UiKit.accent(c));
+        // Coloured against the surface this text actually sits on. Using the raw accent here made
+        // links invisible whenever the accent and the bubble fill were the same colour.
+        view.setLinkTextColor(UiKit.linkColorOn(c, surface));
         view.setLineSpacing(0, 1.12f);
         return view;
     }
@@ -215,15 +218,17 @@ public final class OrbitRichResponseRenderer {
         return view;
     }
 
-    private static View quote(Context c, String value, int foreground) {
+    private static View quote(Context c, String value, int foreground, int surface) {
         LinearLayout row = new LinearLayout(c);
         row.setOrientation(LinearLayout.HORIZONTAL);
         View rule = new View(c);
-        rule.setBackgroundColor(UiKit.accent(c));
+        // Same collision as inline links: this bar sits on the bubble fill, which the user can
+        // set to the accent itself, and a bar the colour of its background is no bar at all.
+        rule.setBackgroundColor(UiKit.linkColorOn(c, surface));
         row.addView(rule, new LinearLayout.LayoutParams(UiKit.dp(c, 3),
                 ViewGroup.LayoutParams.MATCH_PARENT));
         TextView body = richText(c, value, chatSize(c, 14),
-                UiKit.withAlpha(foreground, 220), false);
+                UiKit.withAlpha(foreground, 220), false, surface);
         body.setPadding(UiKit.dp(c, 10), UiKit.dp(c, 4), UiKit.dp(c, 3), UiKit.dp(c, 4));
         row.addView(body, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1));
@@ -279,7 +284,7 @@ public final class OrbitRichResponseRenderer {
         return clean.split("\\|", -1);
     }
 
-    private static View table(Context c, List<String[]> rows, int foreground) {
+    private static View table(Context c, List<String[]> rows, int foreground, int surface) {
         HorizontalScrollView scroll = new HorizontalScrollView(c);
         scroll.setHorizontalScrollBarEnabled(true);
         TableLayout table = new TableLayout(c);
@@ -288,7 +293,7 @@ public final class OrbitRichResponseRenderer {
             TableRow row = new TableRow(c);
             String[] cells = rows.get(r);
             for (String cell : cells) {
-                TextView view = richText(c, cell.trim(), chatSize(c, 12.5f), foreground, r == 0);
+                TextView view = richText(c, cell.trim(), chatSize(c, 12.5f), foreground, r == 0, surface);
                 view.setGravity(Gravity.TOP | Gravity.START);
                 float scale = Prefs.chatTextScale(c);
                 view.setMinWidth(UiKit.dp(c, Math.round(104 * scale)));
@@ -394,9 +399,10 @@ public final class OrbitRichResponseRenderer {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
-    private static View linkedFallback(Context c, String alt, String url, int foreground) {
+    private static View linkedFallback(Context c, String alt, String url, int foreground,
+                                       int surface) {
         TextView view = richText(c, "[" + (alt == null || alt.isEmpty() ? "Image" : alt) +
-                "](" + url + ")", chatSize(c, 13), foreground, false);
+                "](" + url + ")", chatSize(c, 13), foreground, false, surface);
         view.setContentDescription("Additional response image link");
         return view;
     }
