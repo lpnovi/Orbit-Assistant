@@ -79,17 +79,19 @@ public final class RoadmapActivity extends Activity {
         introLp.setMargins(UiKit.dp(this, 3), UiKit.dp(this, 18), UiKit.dp(this, 3), 0);
         page.addView(intro, introLp);
 
+        // Future-only, and audited against release history each time it changes. Three entries left
+        // in v0.7.4.2 because the work they described had already shipped: natural-language Routine
+        // creation as Create with Orbit in the 0.7.3 series, automation history as Routine Run
+        // history, and quick access as widgets, tiles and Custom Commands. Shipped work belongs in
+        // What's New, never here.
         addGroup(page, "NEXT UP", new String[][]{
-                {"Natural-language Routine creation", "Create editable Routines by describing the outcome in ordinary language."},
-                {"Richer automation & branching", "More expressive chained plans, conditions and saved automation."}
+                {"Richer automation & branching", "More expressive chained plans, and conditions beyond a single branch."},
+                {"Conversation-aware voice follow-ups", "Deciding when to reopen the microphone from the reply itself, not only from a switch."}
         });
         addGroup(page, "PLANNED", new String[][]{
                 {"Deeper Android actions", "Broader device controls through supported Android surfaces."},
-                {"Stronger Custom Commands", "More capable personal phrases built on Orbit's existing safety model."},
-                {"Additional AI providers", "More provider choices while preserving explicit account and privacy controls."},
-                {"Conversational Voice improvements", "A more natural, responsive voice experience across chat and overlay."},
-                {"Automation history & timeline", "Clear visibility into what ran, when it ran and what happened."},
-                {"Richer quick access", "More flexible entry points for common assistant and automation flows."}
+                {"Stronger Custom Commands", "Personal phrases that accept variation and detail, beyond today's exact wording."},
+                {"Additional AI providers", "More provider choices while preserving explicit account and privacy controls."}
         });
         addGroup(page, "EXPLORING", new String[][]{
                 {"Proactive screen intelligence", "Helpful context-aware assistance that remains transparent and controllable."},

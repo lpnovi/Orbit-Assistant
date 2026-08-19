@@ -279,3 +279,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Stopping keeps whatever Orbit had already written, ready to copy or regenerate, rather than showing an error.
   - A stopped reply can no longer finish later, run a delayed device action, notify you, or speak.
   - Typing, Voice, and the rest of the composer behave exactly as they did in v0.7.4.0.
+- **v0.7.4.2**: A reliability and diagnostics update for rare Side-button overlay startup failures.
+  - Added persistent Side-button launch diagnostics, so a rare overlay startup failure leaves evidence behind when it actually happens.
+  - Launch traces survive process restarts, force stops, and reboots, and are copied from the hidden Diagnostics screen.
+  - Each launch is classified as complete, dismissed, an internal transition, incomplete, or an exception, without guessing at a cause.
+  - The trace records lifecycle stages and state only: no message, voice, screen, or clipboard content is ever stored.
+  - Updated the in-app Roadmap so already-shipped Create with Orbit, Run history, and quick-access work is no longer listed as upcoming.
+  - Typing, Voice, link readability, and Stop Generating behave exactly as they did in v0.7.4.1.

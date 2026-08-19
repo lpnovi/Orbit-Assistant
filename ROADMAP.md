@@ -354,20 +354,39 @@
 - Leave the v0.7.3.9 focus architecture untouched: stopping is an ordinary button press that moves
   no focus, opens or closes no keyboard, and rebuilds no composer
 
+### 0.7.4.2
+- Add `OverlayLaunchTrace`, a bounded app-private record of Side-button overlay launches that
+  survives process death, force stop and reboot, because the rare startup failure it exists for may
+  end the process before anyone can reach Diagnostics
+- Instrument the Orbit-owned startup path from `OrbitSessionService.onNewSession` through a real
+  view-tree first-frame milestone, so a failed launch names the last stage that actually succeeded
+- Distinguish an Orbit-initiated dismissal, an internal Screen Selection or full-chat transition, a
+  hide Orbit never asked for, an incomplete launch, and an exception, keeping evidence separate from
+  inference rather than declaring a crash
+- Record lifecycle stages, booleans and counts only, through a closed API that cannot carry message,
+  voice, screen, clipboard, memory or credential content
+- Add **Copy overlay launch diagnostics** beside the existing report and typing traces, and a single
+  last-launch line in the ordinary diagnostic report
+- Make no speculative lifecycle change: the audited startup path already guards every nonessential
+  step, so this release adds instrumentation and nothing else
+- Correct the in-app Roadmap, which still offered natural-language Routine creation, automation
+  history and richer quick access as upcoming after all three had shipped
+
 ## Future direction
 
+The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever
+it changes. Anything released belongs to the sections above and to What's New, never to the list
+below.
+
 ### Next up
+- Richer automation, chained plans, and branching beyond a single condition
 - Whether reopening the microphone should read the conversation rather than following the
   Hands-free switch alone
-- Richer automation, chained plans, and branching beyond a single condition
 
 ### Planned
 - Deeper Android actions
-- Stronger Custom Commands
+- Custom Commands that accept variation and detail beyond today's exact wording
 - Additional AI providers
-- Conversational Voice improvements
-- Automation history and timeline
-- Richer quick access
 
 ### Exploring
 - Proactive screen intelligence

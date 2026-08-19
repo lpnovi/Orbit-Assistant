@@ -86,6 +86,23 @@ public final class DiagnosticsActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
         typingLp.setMargins(0, UiKit.dp(this, 10), 0, 0);
         page.addView(copyTyping, typingLp);
+
+        // Persistent Side-button launch trace. Unlike the typing trace this survives process death
+        // and reboots, because the failure it exists for may end the process before anyone can get
+        // here. Lifecycle milestones and state only, never conversation or screen content.
+        Button copyOverlay = button("Copy overlay launch diagnostics");
+        copyOverlay.setOnClickListener(v -> {
+            String trace = OverlayLaunchTrace.report(this);
+            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm != null) {
+                cm.setPrimaryClip(ClipData.newPlainText("Orbit overlay launch diagnostics", trace));
+            }
+            Toast.makeText(this, "Overlay launch diagnostics copied", Toast.LENGTH_SHORT).show();
+        });
+        LinearLayout.LayoutParams overlayLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
+        overlayLp.setMargins(0, UiKit.dp(this, 10), 0, 0);
+        page.addView(copyOverlay, overlayLp);
         return scroll;
     }
 
@@ -164,6 +181,7 @@ public final class DiagnosticsActivity extends Activity {
                 "\nHands-free voice follow-ups: " + Prefs.autoListen(this) +
                 "\n0.6 capabilities dashboard: available" +
                 "\nLelo mode: " + Prefs.leloMode(this) +
+                "\nLast overlay launch: " + OverlayLaunchTrace.summary(this) +
                 "\nLast error: " + error +
                 lastRoutinePlan(d);
     }

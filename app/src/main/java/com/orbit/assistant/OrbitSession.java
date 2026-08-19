@@ -37,6 +37,7 @@ import android.view.MotionEvent;
 import android.view.TouchDelegate;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowManager;
@@ -148,6 +149,9 @@ public class OrbitSession extends VoiceInteractionSession {
     private boolean autoListenHandledForShow = false;
     private long freshExternalShowAtElapsedMs = 0L;
     private String screenSelectionCallbackToken = "";
+    /** True once this invocation has drawn a frame the user could actually have seen. */
+    private boolean firstFrameRecorded = false;
+    private ViewTreeObserver.OnDrawListener firstFrameListener;
     private String attachmentCallbackToken = "";
     private boolean attachmentOpening = false;
     private ComposerAttachment genericAttachment;
@@ -159,46 +163,113 @@ public class OrbitSession extends VoiceInteractionSession {
 
     @Override
     public void onCreate() {
-        super.onCreate();
-        UiKit.syncTheme(getContext());
-        currentMode = Prefs.intelligenceMode(getContext());
-        Dialog d = getWindow();
-        if (d != null && d.getWindow() != null) {
-            Window w = d.getWindow();
-            w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            w.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-            w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
-            if (Prefs.keyboardAwareAssistant(getContext())) {
-                // Start above any keyboard already owned by the foreground app.
-                // When the user taps Orbit's editor we clear this flag and attach
-                // the IME to Orbit normally, preserving the polished sheet motion.
-                w.addFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM);
+        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_CREATE_START);
+        try {
+            super.onCreate();
+            UiKit.syncTheme(getContext());
+            currentMode = Prefs.intelligenceMode(getContext());
+            Dialog d = getWindow();
+            if (d != null && d.getWindow() != null) {
+                Window w = d.getWindow();
+                w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+                w.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+                w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
+                if (Prefs.keyboardAwareAssistant(getContext())) {
+                    // Start above any keyboard already owned by the foreground app.
+                    // When the user taps Orbit's editor we clear this flag and attach
+                    // the IME to Orbit normally, preserving the polished sheet motion.
+                    w.addFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM);
+                }
             }
+            initSpeech();
+            initTts();
+        } catch (Throwable t) {
+            throw OverlayLaunchTrace.rethrow(OverlayLaunchTrace.STAGE_CREATE_START, t);
         }
-        initSpeech();
-        initTts();
+        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_CREATE_COMPLETE,
+                OverlayLaunchTrace.State.of()
+                        .flag("window", getWindow() != null)
+                        .flag("keyboardAware", Prefs.keyboardAwareAssistant(getContext())));
     }
 
     @Override
     public View onCreateContentView() {
-        Context c = getContext();
-        root = new FrameLayout(c);
-        root.setFitsSystemWindows(false);
-        root.setOnApplyWindowInsetsListener((v, insets) -> {
-            applyImeInsets(insets);
-            return insets;
-        });
-        buildSheet(c);
-        prepareHiddenState();
-        root.post(root::requestApplyInsets);
-        return root;
+        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_CONTENT_START);
+        try {
+            Context c = getContext();
+            root = new FrameLayout(c);
+            root.setFitsSystemWindows(false);
+            root.setOnApplyWindowInsetsListener((v, insets) -> {
+                applyImeInsets(insets);
+                return insets;
+            });
+            // Attachment is the moment Android genuinely owns this view tree, and it is one of the
+            // few startup facts the session cannot infer for itself.
+            root.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(View v) {
+                    OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_ROOT_ATTACHED,
+                            OverlayLaunchTrace.State.of()
+                                    .flag("sheet", sheet != null)
+                                    .flag("sessionVisible", sessionVisible));
+                }
+                @Override public void onViewDetachedFromWindow(View v) {}
+            });
+            buildSheet(c);
+            prepareHiddenState();
+            root.post(root::requestApplyInsets);
+            OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_CONTENT_COMPLETE,
+                    OverlayLaunchTrace.State.of()
+                            .flag("root", true)
+                            .flag("sheet", sheet != null));
+            return root;
+        } catch (Throwable t) {
+            throw OverlayLaunchTrace.rethrow(OverlayLaunchTrace.STAGE_CONTENT_START, t);
+        }
     }
 
     @Override
     public void onPrepareShow(Bundle args, int showFlags) {
-        super.onPrepareShow(args, showFlags);
         boolean internalResume = args != null &&
                 args.getBoolean(INTERNAL_SCREEN_SELECTION_RESUME, false);
+        // A Screen Selection or attachment return is the same invocation coming back, so it stays
+        // on the attempt it belongs to. Only a genuinely external invocation opens a new one, and
+        // Android reuses one session across invocations, so this is where a fresh press is known.
+        if (!internalResume) {
+            OverlayLaunchTrace.beginIfInvocationIsNew(
+                    getContext(), OverlayLaunchTrace.STAGE_PREPARE_START);
+        }
+        OverlayLaunchTrace.event(internalResume
+                        ? OverlayLaunchTrace.STAGE_PREPARE_RESUME
+                        : OverlayLaunchTrace.STAGE_PREPARE_START,
+                OverlayLaunchTrace.State.of()
+                        .flag("internalResume", internalResume)
+                        .flag("root", root != null)
+                        .flag("sheet", sheet != null)
+                        .flag("sessionVisible", sessionVisible)
+                        .flag("busy", busy)
+                        .flag("listening", listening)
+                        .flag("speaking", speaking)
+                        .flag("dismissAnimating", dismissAnimating)
+                        .flag("orbitOwnsIme", orbitOwnsIme)
+                        .flag("newChatOnOpen", Prefs.newChatOnOpen(getContext()))
+                        .flag("autoListenOnOpen", Prefs.autoListenOnOpen(getContext()))
+                        .flag("keyboardAware", Prefs.keyboardAwareAssistant(getContext())));
+        try {
+            prepareShowInternal(args, showFlags, internalResume);
+        } catch (Throwable t) {
+            throw OverlayLaunchTrace.rethrow(internalResume
+                    ? OverlayLaunchTrace.STAGE_PREPARE_RESUME
+                    : OverlayLaunchTrace.STAGE_PREPARE_START, t);
+        }
+        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_PREPARE_COMPLETE,
+                OverlayLaunchTrace.State.of()
+                        .flag("root", root != null)
+                        .flag("sheet", sheet != null)
+                        .count("historyMessages", history.size()));
+    }
+
+    private void prepareShowInternal(Bundle args, int showFlags, boolean internalResume) {
+        super.onPrepareShow(args, showFlags);
         orbitOwnsIme = false;
         composerIme.reset();
         if (!internalResume) ComposerTrace.begin("side-button overlay");
@@ -229,8 +300,12 @@ public class OrbitSession extends VoiceInteractionSession {
         // v0.3.5 the reset happened in onShow(), after renderConversation() had
         // already drawn the previous chat. That made the UI look continuous while
         // the history store correctly treated the invocation as a new conversation.
+        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_RESET_START);
         saveCurrentConversation();
         resetInvocationContext();
+        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_RESET_COMPLETE);
+
+        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_CONTEXT_START);
         foregroundPackage = foregroundPackageFromShowArgs(args);
         foregroundAppLabel = appLabelForPackage(foregroundPackage);
         if (!AppProfileStore.screenBlocked(getContext(), foregroundPackage)) {
@@ -239,7 +314,13 @@ public class OrbitSession extends VoiceInteractionSession {
         screenAttached = AppProfileStore.shouldAttachByDefault(
                 getContext(), foregroundPackage, Prefs.attachScreenByDefault(getContext()));
         DiagnosticStore.recordScreen(getContext(), foregroundPackage, foregroundAppLabel, false, false);
+        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_CONTEXT_COMPLETE,
+                OverlayLaunchTrace.State.of()
+                        .foreground(foregroundPackage, foregroundAppLabel)
+                        .flag("screenContext", Prefs.screenContext(getContext()))
+                        .flag("screenAttached", screenAttached));
 
+        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_HISTORY_START);
         if (Prefs.newChatOnOpen(getContext())) {
             currentMode = AppProfileStore.defaultMode(
                     getContext(), foregroundPackage, Prefs.intelligenceMode(getContext()));
@@ -259,14 +340,25 @@ public class OrbitSession extends VoiceInteractionSession {
                 currentMode = ConversationStore.modeFor(getContext(), latest.id);
             }
         }
+        boolean restoreAttempted = !initialHistoryRestoreAttempted;
         initialHistoryRestoreAttempted = true;
+        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_HISTORY_COMPLETE,
+                OverlayLaunchTrace.State.of()
+                        .flag("restoreAttempted", restoreAttempted)
+                        .flag("historyEnabled", Prefs.historyEnabled(getContext()))
+                        .count("historyMessages", history.size()));
 
         // Build/re-theme while Android still has the voice UI hidden. This means
         // the first visible frame already contains the correct conversation.
         if (root != null) {
+            OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_SHEET_START);
             buildSheet(getContext());
+            OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_SHEET_COMPLETE,
+                    OverlayLaunchTrace.State.of().flag("sheet", sheet != null));
             prepareHiddenState();
+            OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_HIDDEN_READY);
             root.requestApplyInsets();
+            OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_INSETS_REQUESTED);
         }
     }
 
@@ -309,7 +401,7 @@ public class OrbitSession extends VoiceInteractionSession {
         // scrim fades, which prevents launcher icons from ghosting through the sheet.
         scrim = new View(c);
         scrim.setBackgroundColor(Color.argb(78, 0, 0, 0));
-        scrim.setOnClickListener(v -> dismissAnimated());
+        scrim.setOnClickListener(v -> dismissAnimated(OverlayLaunchTrace.REASON_SCRIM));
         root.addView(scrim, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
@@ -411,7 +503,7 @@ public class OrbitSession extends VoiceInteractionSession {
 
         ImageButton close = tinyIconButton(com.orbit.assistant.R.drawable.ic_close);
         close.setContentDescription("Close Orbit");
-        close.setOnClickListener(v -> dismissAnimated());
+        close.setOnClickListener(v -> dismissAnimated(OverlayLaunchTrace.REASON_CLOSE_BUTTON));
         top.addView(close, new LinearLayout.LayoutParams(UiKit.dp(c, 40), UiKit.dp(c, 40)));
         sheet.addView(top);
 
@@ -895,10 +987,28 @@ public class OrbitSession extends VoiceInteractionSession {
 
     @Override
     public void onShow(Bundle args, int showFlags) {
+        try {
+            showInternal(args, showFlags);
+        } catch (Throwable t) {
+            throw OverlayLaunchTrace.rethrow(OverlayLaunchTrace.STAGE_SHOW, t);
+        }
+    }
+
+    private void showInternal(Bundle args, int showFlags) {
         super.onShow(args, showFlags);
         boolean internalResume = internalScreenSelectionResume || args != null &&
                 args.getBoolean(INTERNAL_SCREEN_SELECTION_RESUME, false);
         internalScreenSelectionResume = false;
+        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_SHOW,
+                OverlayLaunchTrace.State.of()
+                        .flag("internalResume", internalResume)
+                        .flag("root", root != null)
+                        .flag("sheet", sheet != null)
+                        .flag("rootAttached", root != null && root.getWindowToken() != null)
+                        .flag("window", getWindow() != null)
+                        .flag("busy", busy)
+                        .flag("orbitOwnsIme", orbitOwnsIme));
+        armFirstFrameMilestone();
         freshExternalShowAtElapsedMs = internalResume
                 ? 0L : SystemClock.elapsedRealtime();
         sessionVisible = true;
@@ -1236,6 +1346,10 @@ public class OrbitSession extends VoiceInteractionSession {
                     main.postDelayed(() -> stateTextSafe(readyState()), 1200);
                     return;
                 }
+                OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_TRANSITION,
+                        OverlayLaunchTrace.State.of()
+                                .reason(OverlayLaunchTrace.REASON_SCREEN_SELECTION)
+                                .flag("firstFrame", firstFrameRecorded));
                 try { hide(); } catch (Exception ignored) { }
             });
         }, "orbit-screen-selection-source").start();
@@ -1364,6 +1478,10 @@ public class OrbitSession extends VoiceInteractionSession {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
             startAssistantActivity(intent);
+            OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_TRANSITION,
+                    OverlayLaunchTrace.State.of()
+                            .reason(OverlayLaunchTrace.REASON_ATTACHMENT_PICKER)
+                            .flag("firstFrame", firstFrameRecorded));
             hide();
         } catch (Exception e) {
             AttachmentBridge.cancel(token);
@@ -1961,7 +2079,7 @@ public class OrbitSession extends VoiceInteractionSession {
                 c.startActivity(i);
                 // A source link is explicitly taking the user out to their browser.
                 // Dismiss the overlay so the destination is visible immediately.
-                main.postDelayed(this::dismissAnimated, 70);
+                main.postDelayed(() -> dismissAnimated(OverlayLaunchTrace.REASON_SOURCE_LINK), 70);
             } catch (Exception e) {
                 stateTextSafe("Could not open source");
                 main.postDelayed(() -> stateTextSafe(readyState()), 1000);
@@ -2047,7 +2165,7 @@ public class OrbitSession extends VoiceInteractionSession {
             String result = DeviceActionExecutor.openReplyComposer(c, screenText, draft);
             if (result.startsWith("OPENED:")) {
                 stateTextSafe(result.substring("OPENED:".length()).trim());
-                main.postDelayed(this::dismissAnimated, 140);
+                main.postDelayed(() -> dismissAnimated(OverlayLaunchTrace.REASON_REPLY_COMPOSER), 140);
             } else {
                 ClipboardManager cm = (ClipboardManager) c.getSystemService(Context.CLIPBOARD_SERVICE);
                 if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Orbit reply", draft));
@@ -2322,7 +2440,7 @@ public class OrbitSession extends VoiceInteractionSession {
             Button grant = actionCardControlButton("Grant access", UiKit.accent(c));
             grant.setOnClickListener(v -> {
                 if (OrbitPermissionHelper.openSetupForAction(c, action)) {
-                    main.postDelayed(this::dismissAnimated, 120);
+                    main.postDelayed(() -> dismissAnimated(OverlayLaunchTrace.REASON_PERMISSION_SETUP), 120);
                 }
             });
             LinearLayout.LayoutParams grantLp = new LinearLayout.LayoutParams(
@@ -3193,7 +3311,7 @@ public class OrbitSession extends VoiceInteractionSession {
                         openCurrentChatAnimated();
                     } else if (event.getActionMasked() == MotionEvent.ACTION_UP && total >= threshold) {
                         if (Prefs.haptics(getContext())) vibrate(20);
-                        dismissAnimated();
+                        dismissAnimated(OverlayLaunchTrace.REASON_SWIPE_DOWN);
                     } else {
                         settleHandleGesture();
                     }
@@ -3348,6 +3466,10 @@ public class OrbitSession extends VoiceInteractionSession {
                 // arrives, so the overlay can never be left on screen.
                 OrbitHandoff.expectDestination(() -> {
                     dismissAnimating = false;
+                    OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_TRANSITION,
+                            OverlayLaunchTrace.State.of()
+                                    .reason(OverlayLaunchTrace.REASON_FULL_CHAT)
+                                    .flag("firstFrame", firstFrameRecorded));
                     hide();
                 });
                 try {
@@ -3395,6 +3517,50 @@ public class OrbitSession extends VoiceInteractionSession {
     private static String formatTime(long time) {
         if (time <= 0) return "Saved chat";
         return DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(new Date(time));
+    }
+
+    /**
+     * {@code onShow()} only means Android asked for the overlay. It does not mean a frame
+     * containing the sheet was ever drawn, and telling those two apart is the entire point of the
+     * launch trace, so the milestone comes from the view tree itself: the first draw pass in which
+     * the sheet is genuinely shown and measured.
+     */
+    private void armFirstFrameMilestone() {
+        firstFrameRecorded = false;
+        detachFirstFrameListener();
+        if (root == null) return;
+        ViewTreeObserver observer = root.getViewTreeObserver();
+        if (observer == null || !observer.isAlive()) return;
+        firstFrameListener = () -> {
+            if (firstFrameRecorded || sheet == null) return;
+            if (!sheet.isShown() || sheet.getWidth() <= 0 || sheet.getHeight() <= 0) return;
+            firstFrameRecorded = true;
+            OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_FIRST_FRAME,
+                    OverlayLaunchTrace.State.of()
+                            .flag("sessionVisible", sessionVisible)
+                            .flag("dismissAnimating", dismissAnimating)
+                            .flag("rootAttached", root != null && root.getWindowToken() != null));
+            // A draw listener cannot be removed from inside the draw pass it is running in.
+            main.post(this::detachFirstFrameListener);
+        };
+        try {
+            observer.addOnDrawListener(firstFrameListener);
+        } catch (Exception ignored) {
+            firstFrameListener = null;
+        }
+    }
+
+    private void detachFirstFrameListener() {
+        if (firstFrameListener == null) return;
+        try {
+            if (root != null) {
+                ViewTreeObserver observer = root.getViewTreeObserver();
+                if (observer != null && observer.isAlive()) {
+                    observer.removeOnDrawListener(firstFrameListener);
+                }
+            }
+        } catch (Exception ignored) {}
+        firstFrameListener = null;
     }
 
     private void prepareHiddenState() {
@@ -3451,12 +3617,33 @@ public class OrbitSession extends VoiceInteractionSession {
                     .translationY(0f)
                     .setDuration(285)
                     .setInterpolator(new PathInterpolator(0.18f, 0.00f, 0.00f, 1.00f))
+                    // Observational only: the entrance is unchanged, but its end is the point at
+                    // which the overlay is settled and genuinely usable.
+                    .withEndAction(() -> OverlayLaunchTrace.event(
+                            OverlayLaunchTrace.STAGE_STABLE_FRAME,
+                            OverlayLaunchTrace.State.of()
+                                    .flag("sessionVisible", sessionVisible)
+                                    .flag("firstFrame", firstFrameRecorded)
+                                    .flag("dismissAnimating", dismissAnimating)))
                     .start();
         });
     }
 
     private void dismissAnimated() {
+        dismissAnimated(OverlayLaunchTrace.REASON_UNSPECIFIED);
+    }
+
+    /**
+     * Every Orbit-initiated close funnels through here. The reason is recorded so that a later
+     * {@code onHide()} can be told apart from one Android delivered on its own.
+     */
+    private void dismissAnimated(String reason) {
         if (dismissAnimating) return;
+        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_DISMISS,
+                OverlayLaunchTrace.State.of()
+                        .reason(reason)
+                        .flag("sessionVisible", sessionVisible)
+                        .flag("firstFrame", firstFrameRecorded));
         if (root == null || sheet == null) {
             hide();
             return;
@@ -3490,7 +3677,7 @@ public class OrbitSession extends VoiceInteractionSession {
     public void onBackPressed() {
         // Back closes the attachment chooser first, leaving the sheet and keyboard untouched.
         if (OrbitAttachmentMenu.dismiss(root)) return;
-        dismissAnimated();
+        dismissAnimated(OverlayLaunchTrace.REASON_BACK);
     }
 
     @Override
@@ -3502,13 +3689,31 @@ public class OrbitSession extends VoiceInteractionSession {
         long sinceExternalShow = SystemClock.elapsedRealtime() - freshExternalShowAtElapsedMs;
         if (sessionVisible && freshExternalShowAtElapsedMs > 0L &&
                 sinceExternalShow >= 0L && sinceExternalShow < EXTERNAL_SHOW_STABILIZATION_MS) {
+            // Worth recording even though nothing happens: if this arrives on a launch that later
+            // goes wrong, it says the system was already trying to close the fresh overlay.
+            OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_CLOSE_DIALOGS_IGNORED,
+                    OverlayLaunchTrace.State.of()
+                            .count("sinceShowMs", (int) Math.min(Integer.MAX_VALUE, sinceExternalShow))
+                            .flag("firstFrame", firstFrameRecorded));
             return;
         }
-        dismissAnimated();
+        dismissAnimated(OverlayLaunchTrace.REASON_SYSTEM_DIALOGS);
     }
 
     @Override
     public void onHide() {
+        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_HIDE,
+                OverlayLaunchTrace.State.of()
+                        .flag("firstFrame", firstFrameRecorded)
+                        .flag("sessionVisible", sessionVisible)
+                        .flag("dismissAnimating", dismissAnimating)
+                        .flag("busy", busy)
+                        .flag("listening", listening)
+                        .flag("speaking", speaking)
+                        .flag("orbitOwnsIme", orbitOwnsIme)
+                        .flag("screenSelectionOpening", screenSelectionOpening)
+                        .flag("attachmentOpening", attachmentOpening));
+        detachFirstFrameListener();
         super.onHide();
         sessionVisible = false;
         freshExternalShowAtElapsedMs = 0L;
@@ -3532,6 +3737,12 @@ public class OrbitSession extends VoiceInteractionSession {
 
     @Override
     public void onDestroy() {
+        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_DESTROY,
+                OverlayLaunchTrace.State.of()
+                        .flag("firstFrame", firstFrameRecorded)
+                        .flag("sessionVisible", sessionVisible)
+                        .flag("busy", busy));
+        detachFirstFrameListener();
         UiPresence.leave(this);
         ScreenSelectionBridge.cancel(screenSelectionCallbackToken);
         screenSelectionCallbackToken = "";
