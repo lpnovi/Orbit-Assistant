@@ -53,6 +53,12 @@ public class RoutineEditorActivity extends Activity {
     /** Proposed automation from a generated draft; never scheduled by this screen. */
     private RoutineTriggerDraft draftTrigger;
     private Button addStepButton;
+    /**
+     * Which branch path a newly configured action belongs to, set by that path's Add action button
+     * and cleared as soon as the action lands. -1 means the action is an ordinary step at the end.
+     */
+    private int pendingBranchCondition = -1;
+    private int pendingBranchKind = RoutineBranch.BRANCH_NONE;
     private RoutineStore.Routine existing;
     private boolean dirty;
     private boolean initializing = true;
@@ -148,9 +154,9 @@ public class RoutineEditorActivity extends Activity {
         page.addView(header);
 
         TextView intro = UiKit.text(this,
-                "Steps run from top to bottom. An IF condition guards the steps after it and can "
-                        + "add an ELSE path that runs instead when the condition is false. Exactly "
-                        + "one path runs, then the routine continues.",
+                "Steps run from top to bottom. An IF condition holds a THEN path and an OTHERWISE "
+                        + "path; exactly one of them runs, then the routine carries on with the "
+                        + "steps below it.",
                 13, UiKit.MUTED, false);
         intro.setLineSpacing(0, 1.12f);
         LinearLayout.LayoutParams introLp = new LinearLayout.LayoutParams(
@@ -178,7 +184,12 @@ public class RoutineEditorActivity extends Activity {
         page.addView(stepsList);
 
         addStepButton = secondaryButton("+  Add step");
-        addStepButton.setOnClickListener(v -> showActionPicker(addStepButton));
+        addStepButton.setOnClickListener(v -> {
+            // This one always appends after everything, so any path the user started from and
+            // then abandoned is forgotten here rather than capturing the next action.
+            clearPendingBranch();
+            showActionPicker(addStepButton);
+        });
         LinearLayout.LayoutParams addLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
         addLp.setMargins(0, UiKit.dp(this, 2), 0, UiKit.dp(this, 18));
@@ -212,17 +223,14 @@ public class RoutineEditorActivity extends Activity {
             empty.addView(note);
             stepsList.addView(empty, cardLp());
         } else {
-            int[] branches = RoutineBranch.branchMap(workingActions);
-            int[] owners = RoutineBranch.branchOwners(workingActions);
-            for (int i = 0; i < workingActions.size(); i++) {
-                // A divider where the ELSE path begins, so the split is visible rather than
-                // something the user has to count out against the condition's step counts.
-                if (branches[i] == RoutineBranch.BRANCH_ELSE
-                        && (i == 0 || branches[i - 1] != RoutineBranch.BRANCH_ELSE
-                                   || owners[i - 1] != owners[i])) {
-                    stepsList.addView(branchDivider(owners[i]), cardLp());
-                }
-                stepsList.addView(stepCard(i, workingActions.get(i), branches[i]), cardLp());
+            // Laid out as top-level units: an ordinary step, or a whole IF block with its two
+            // paths drawn inside it. Nothing here asks the user how many steps a branch covers.
+            List<RoutineBranch.Unit> units = RoutineBranch.units(workingActions);
+            for (int position = 0; position < units.size(); position++) {
+                RoutineBranch.Unit unit = units.get(position);
+                stepsList.addView(unit.branch
+                        ? branchCard(unit, position + 1)
+                        : stepCard(unit.start, workingActions.get(unit.start), position + 1), cardLp());
             }
         }
         if (addStepButton != null) {
@@ -233,50 +241,189 @@ public class RoutineEditorActivity extends Activity {
         }
     }
 
-    /** Marks where an ELSE path begins, using the same card surface as a step. */
-    private View branchDivider(int conditionIndex) {
+    /**
+     * One IF condition drawn as a single block: the condition, the THEN path, and the OTHERWISE
+     * path. The paths are sections of the same card rather than separate steps, so which actions
+     * belong to which outcome is visible without counting anything.
+     */
+    private View branchCard(RoutineBranch.Unit unit, int number) {
+        int conditionIndex = unit.start;
+        AssistantReply.Action condition = workingActions.get(conditionIndex);
         LinearLayout card = card();
-        card.setPadding(UiKit.dp(this, 14), UiKit.dp(this, 9), UiKit.dp(this, 14), UiKit.dp(this, 9));
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
 
-        TextView tag = UiKit.text(this, "ELSE", 11, UiKit.accent(this), true);
-        tag.setLetterSpacing(0.12f);
-        row.addView(tag);
-
-        TextView note = UiKit.text(this,
-                conditionIndex >= 0
-                        ? "Runs instead when step " + (conditionIndex + 1) + " is false"
-                        : "Runs instead when the condition is false",
-                11, UiKit.MUTED, false);
-        note.setPadding(UiKit.dp(this, 10), 0, 0, 0);
-        row.addView(note, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        card.addView(row);
-        return card;
-    }
-
-    private View stepCard(int index, AssistantReply.Action action, int branch) {
-        LinearLayout card = card();
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-
-        TextView number = UiKit.text(this, String.valueOf(index + 1), 13, UiKit.onAccent(this), true);
-        number.setGravity(Gravity.CENTER);
-        number.setBackground(UiKit.rounded(UiKit.accent(this), 999, this));
-        LinearLayout.LayoutParams numLp = new LinearLayout.LayoutParams(UiKit.dp(this, 30), UiKit.dp(this, 30));
-        numLp.rightMargin = UiKit.dp(this, 12);
-        row.addView(number, numLp);
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.addView(numberBadge(number), numberLp());
 
         LinearLayout text = new LinearLayout(this);
         text.setOrientation(LinearLayout.VERTICAL);
-        if (branch != RoutineBranch.BRANCH_NONE) {
-            TextView branchTag = UiKit.text(this,
-                    branch == RoutineBranch.BRANCH_ELSE ? "ELSE PATH" : "IF PATH",
-                    10, UiKit.MUTED, true);
-            branchTag.setLetterSpacing(0.1f);
-            branchTag.setPadding(0, 0, 0, UiKit.dp(this, 2));
-            text.addView(branchTag);
+        TextView tag = UiKit.text(this, "IF", 10, UiKit.accent(this), true);
+        tag.setLetterSpacing(0.16f);
+        tag.setPadding(0, 0, 0, UiKit.dp(this, 2));
+        text.addView(tag);
+        TextView title = UiKit.text(this, conditionTitle(condition), 14, UiKit.TEXT, true);
+        title.setMaxLines(2);
+        text.addView(title);
+        header.addView(text, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
+        ImageButton more = iconButton(R.drawable.ic_more, "Branch options");
+        more.setOnClickListener(v -> showBranchMenu(more, conditionIndex));
+        header.addView(more, new LinearLayout.LayoutParams(UiKit.dp(this, 42), UiKit.dp(this, 42)));
+        card.addView(header);
+
+        RoutineBranch.Span span = RoutineBranch.spanAt(workingActions, conditionIndex);
+        card.addView(pathSection(conditionIndex, RoutineBranch.BRANCH_TRUE, "THEN",
+                span == null ? 0 : span.trueStart, span == null ? 0 : span.trueEnd));
+        card.addView(pathSection(conditionIndex, RoutineBranch.BRANCH_ELSE, "OTHERWISE",
+                span == null ? 0 : span.elseStart, span == null ? 0 : span.elseEnd));
+
+        // Where the branch ends, said in words rather than stored as a step. Only worth showing
+        // when something actually follows it.
+        if (unit.end < workingActions.size()) {
+            TextView continues = UiKit.text(this,
+                    "Either way, the routine continues below.", 11, UiKit.MUTED, false);
+            LinearLayout.LayoutParams continuesLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            continuesLp.setMargins(0, UiKit.dp(this, 13), 0, 0);
+            card.addView(continues, continuesLp);
         }
+        return card;
+    }
+
+    /**
+     * One labelled path inside a branch block, with its own actions and its own Add action.
+     *
+     * <p>A quiet accent rail down the left ties a path's rows together and tells the two paths
+     * apart — THEN reads as the primary outcome, OTHERWISE as the quieter alternative — without
+     * turning the card into a diagram.
+     */
+    private View pathSection(int conditionIndex, int kind, String label, int from, int to) {
+        boolean otherwise = kind == RoutineBranch.BRANCH_ELSE;
+        LinearLayout wrapper = new LinearLayout(this);
+        wrapper.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams wrapperLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        wrapperLp.setMargins(UiKit.dp(this, 13), UiKit.dp(this, 13), 0, 0);
+        wrapper.setLayoutParams(wrapperLp);
+
+        View rail = new View(this);
+        rail.setBackground(UiKit.rounded(
+                UiKit.withAlpha(UiKit.accent(this), otherwise ? 60 : 120), 999, this));
+        LinearLayout.LayoutParams railLp = new LinearLayout.LayoutParams(
+                UiKit.dp(this, 2), ViewGroup.LayoutParams.MATCH_PARENT);
+        railLp.rightMargin = UiKit.dp(this, 12);
+        wrapper.addView(rail, railLp);
+
+        LinearLayout section = new LinearLayout(this);
+        section.setOrientation(LinearLayout.VERTICAL);
+
+        TextView heading = UiKit.text(this, label, 10,
+                otherwise ? UiKit.MUTED : UiKit.accent(this), true);
+        heading.setLetterSpacing(0.16f);
+        heading.setPadding(0, 0, 0, UiKit.dp(this, 5));
+        section.addView(heading);
+
+        if (to <= from) {
+            // Not "Empty": the path is perfectly valid, it simply has no actions, which means a
+            // false condition does nothing here and the routine carries straight on.
+            TextView none = UiKit.text(this, "None", 13, UiKit.MUTED, false);
+            none.setPadding(0, UiKit.dp(this, 2), 0, UiKit.dp(this, 4));
+            section.addView(none);
+        } else {
+            for (int i = from; i < to; i++) {
+                section.addView(pathRow(i, workingActions.get(i)));
+            }
+        }
+
+        boolean canAdd = RoutineBranch.canAddTo(workingActions, conditionIndex, kind);
+        Button add = secondaryButton("+  Add action");
+        add.setTextSize(13);
+        add.setEnabled(canAdd);
+        add.setAlpha(canAdd ? 1f : 0.5f);
+        add.setOnClickListener(v -> {
+            if (!RoutineBranch.canAddTo(workingActions, conditionIndex, kind)) {
+                Toast.makeText(this, addBlockedReason(conditionIndex, kind), Toast.LENGTH_SHORT).show();
+                return;
+            }
+            pendingBranchCondition = conditionIndex;
+            pendingBranchKind = kind;
+            showActionPicker(add);
+        });
+        LinearLayout.LayoutParams addLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 38));
+        addLp.setMargins(0, UiKit.dp(this, 5), 0, 0);
+        section.addView(add, addLp);
+
+        wrapper.addView(section, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        return wrapper;
+    }
+
+    private String addBlockedReason(int conditionIndex, int kind) {
+        if (workingActions.size() >= RoutineActionCatalog.MAX_STEPS) {
+            return "Routine step limit reached.";
+        }
+        if (RoutineBranch.pathSize(workingActions, conditionIndex, kind)
+                >= RoutineBranch.MAX_BRANCH_STEPS) {
+            return "A path can hold up to " + RoutineBranch.MAX_BRANCH_STEPS + " actions.";
+        }
+        return "Add a THEN action first, so OTHERWISE has something to be an alternative to.";
+    }
+
+    /** One action inside a branch path. Compact, and never numbered: only one path ever runs. */
+    private View pathRow(int index, AssistantReply.Action action) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, UiKit.dp(this, 3), 0, UiKit.dp(this, 3));
+
+        View dot = new View(this);
+        dot.setBackground(UiKit.rounded(UiKit.withAlpha(UiKit.accent(this), 150), 999, this));
+        LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(UiKit.dp(this, 5), UiKit.dp(this, 5));
+        dotLp.setMargins(0, 0, UiKit.dp(this, 10), 0);
+        row.addView(dot, dotLp);
+
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        TextView title = UiKit.text(this, RoutineActionCatalog.title(action), 13, UiKit.TEXT, false);
+        title.setMaxLines(2);
+        text.addView(title);
+        row.addView(text, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
+        ImageButton more = iconButton(R.drawable.ic_more, "Action options");
+        more.setOnClickListener(v -> showStepMenu(more, index));
+        row.addView(more, new LinearLayout.LayoutParams(UiKit.dp(this, 36), UiKit.dp(this, 36)));
+        return row;
+    }
+
+    /** The condition's own description, without the branch bookkeeping the editor now owns. */
+    private String conditionTitle(AssistantReply.Action condition) {
+        String title = RoutineActionCatalog.title(condition);
+        int marker = title.indexOf(" · with ELSE");
+        return marker < 0 ? title : title.substring(0, marker);
+    }
+
+    private TextView numberBadge(int number) {
+        TextView badge = UiKit.text(this, String.valueOf(number), 13, UiKit.onAccent(this), true);
+        badge.setGravity(Gravity.CENTER);
+        badge.setBackground(UiKit.rounded(UiKit.accent(this), 999, this));
+        return badge;
+    }
+
+    private LinearLayout.LayoutParams numberLp() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                UiKit.dp(this, 30), UiKit.dp(this, 30));
+        lp.rightMargin = UiKit.dp(this, 12);
+        return lp;
+    }
+
+    private View stepCard(int index, AssistantReply.Action action, int number) {
+        LinearLayout card = card();
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.addView(numberBadge(number), numberLp());
+
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
         TextView title = UiKit.text(this, RoutineActionCatalog.title(action), 14, UiKit.TEXT, true);
         title.setMaxLines(1);
         text.addView(title);
@@ -293,11 +440,58 @@ public class RoutineEditorActivity extends Activity {
         return card;
     }
 
+    /** Options for a whole IF block. Moving it carries both paths with it. */
+    private void showBranchMenu(View anchor, int conditionIndex) {
+        List<String> labels = new ArrayList<>();
+        labels.add("Edit condition");
+        if (RoutineBranch.canMove(workingActions, conditionIndex, -1)) labels.add("Move up");
+        if (RoutineBranch.canMove(workingActions, conditionIndex, 1)) labels.add("Move down");
+        labels.add("Remove branch");
+        UiKit.showOrbitMenu(this, anchor, labels.toArray(new String[0]), -1, (choice, label) -> {
+            if ("Edit condition".equals(label)) {
+                configureAction(RoutineActionCatalog.IF_CONDITION, conditionIndex);
+            } else if ("Move up".equals(label)) {
+                if (RoutineBranch.move(workingActions, conditionIndex, -1)) markDirtyAndRefresh();
+            } else if ("Move down".equals(label)) {
+                if (RoutineBranch.move(workingActions, conditionIndex, 1)) markDirtyAndRefresh();
+            } else if ("Remove branch".equals(label)) {
+                confirmRemoveBranch(conditionIndex);
+            }
+        });
+    }
+
+    /**
+     * Removing an IF takes both paths with it. Leaving them behind as ordinary steps would run a
+     * THEN and its OTHERWISE one after the other, which is usually two opposite actions, so this
+     * asks rather than guessing.
+     */
+    private void confirmRemoveBranch(int conditionIndex) {
+        RoutineBranch.Unit unit = RoutineBranch.unitAt(workingActions, conditionIndex);
+        int actions = unit == null ? 0 : Math.max(0, unit.size() - 1);
+        if (actions == 0) {
+            if (RoutineBranch.removeBranch(workingActions, conditionIndex)) markDirtyAndRefresh();
+            return;
+        }
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Remove this branch?")
+                .setMessage("The condition and the " + actions
+                        + (actions == 1 ? " action" : " actions")
+                        + " on its THEN and OTHERWISE paths will be removed from this routine.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Remove", (d, which) -> {
+                    if (RoutineBranch.removeBranch(workingActions, conditionIndex)) {
+                        markDirtyAndRefresh();
+                    }
+                })
+                .create();
+        styleOrbitDialog(dialog, true, null);
+    }
+
     private void showStepMenu(View anchor, int index) {
         List<String> labels = new ArrayList<>();
         if (RoutineActionCatalog.isConfigurable(workingActions.get(index).type)) labels.add("Edit");
-        if (index > 0) labels.add("Move up");
-        if (index < workingActions.size() - 1) labels.add("Move down");
+        if (RoutineBranch.canMove(workingActions, index, -1)) labels.add("Move up");
+        if (RoutineBranch.canMove(workingActions, index, 1)) labels.add("Move down");
         if (workingActions.size() < RoutineActionCatalog.MAX_STEPS) labels.add("Duplicate");
         labels.add("Remove");
         String[] menu = labels.toArray(new String[0]);
@@ -305,38 +499,46 @@ public class RoutineEditorActivity extends Activity {
             if ("Edit".equals(label)) {
                 configureAction(workingActions.get(index).type, index);
             } else if ("Move up".equals(label)) {
-                AssistantReply.Action a = workingActions.remove(index);
-                workingActions.add(index - 1, a);
-                markDirtyAndRefresh();
+                if (RoutineBranch.move(workingActions, index, -1)) markDirtyAndRefresh();
             } else if ("Move down".equals(label)) {
-                AssistantReply.Action a = workingActions.remove(index);
-                workingActions.add(index + 1, a);
-                markDirtyAndRefresh();
+                if (RoutineBranch.move(workingActions, index, 1)) markDirtyAndRefresh();
             } else if ("Duplicate".equals(label)) {
-                AssistantReply.Action copy = RoutineActionCatalog.copy(workingActions.get(index));
-                if (copy != null) {
-                    workingActions.add(index + 1, copy);
-                    markDirtyAndRefresh();
-                }
+                if (RoutineBranch.duplicateStep(workingActions, index)) markDirtyAndRefresh();
+                else Toast.makeText(this, "There is no room to duplicate that action.",
+                        Toast.LENGTH_SHORT).show();
             } else if ("Remove".equals(label)) {
-                workingActions.remove(index);
-                markDirtyAndRefresh();
+                if (RoutineBranch.removeStep(workingActions, index)) markDirtyAndRefresh();
+                else Toast.makeText(this,
+                        "A THEN path needs at least one action. Remove the branch to delete it.",
+                        Toast.LENGTH_LONG).show();
             }
         });
     }
 
     private void showActionPicker(View anchor) {
         if (workingActions.size() >= RoutineActionCatalog.MAX_STEPS) return;
+        // A path holds plain actions only. One clear IF is the limit in this release, so a
+        // condition is simply not offered from inside a branch rather than being refused later.
+        boolean insideBranch = pendingBranchKind != RoutineBranch.BRANCH_NONE;
+        List<String> labels = new ArrayList<>();
+        List<String> types = new ArrayList<>();
+        for (int i = 0; i < RoutineActionCatalog.TYPES.length; i++) {
+            if (insideBranch && RoutineActionCatalog.IF_CONDITION.equals(RoutineActionCatalog.TYPES[i])) {
+                continue;
+            }
+            types.add(RoutineActionCatalog.TYPES[i]);
+            labels.add(RoutineActionCatalog.LABELS[i]);
+        }
         List<OrbitExtensionStore.ActionChoice> extensions = OrbitExtensionStore.enabledActions(this);
-        int builtInCount = RoutineActionCatalog.LABELS.length;
-        String[] labels = new String[builtInCount + (extensions.isEmpty() ? 0 : 1)];
-        System.arraycopy(RoutineActionCatalog.LABELS, 0, labels, 0, builtInCount);
-        if (!extensions.isEmpty()) labels[builtInCount] = "Extensions";
-        UiKit.showOrbitMenu(this, anchor, labels, -1, (index, label) -> {
-            if (index >= 0 && index < RoutineActionCatalog.TYPES.length) {
-                configureAction(RoutineActionCatalog.TYPES[index], -1);
+        int builtInCount = labels.size();
+        if (!extensions.isEmpty()) labels.add("Extensions");
+        UiKit.showOrbitMenu(this, anchor, labels.toArray(new String[0]), -1, (index, label) -> {
+            if (index >= 0 && index < types.size()) {
+                configureAction(types.get(index), -1);
             } else if (index == builtInCount) {
                 anchor.post(() -> showExtensionActionPicker(anchor, -1));
+            } else {
+                clearPendingBranch();
             }
         });
     }
@@ -520,8 +722,10 @@ public class RoutineEditorActivity extends Activity {
         int endDisplay = endH24 % 12; if (endDisplay == 0) endDisplay = 12;
         final int[] startAp = {startH24 >= 12 ? 1 : 0};
         final int[] endAp = {endH24 >= 12 ? 1 : 0};
-        int nextCount = Math.max(1, Math.min(5, oldParams.optInt("nextSteps", 1)));
-        final int[] next = {nextCount - 1};
+        // The branch shape is carried straight through: editing what the condition checks must
+        // never change which actions sit on its THEN and OTHERWISE paths.
+        final int keptTrueSteps = old == null ? 1 : RoutineBranch.trueSteps(old);
+        final int keptElseSteps = old == null ? 0 : RoutineBranch.elseSteps(old);
         float oldRadius = (float) oldParams.optDouble("radiusMeters", 200d);
         final float[] radii = {100f, 200f, 300f, 500f, 1000f, 2000f, 5000f};
         String[] radiusLabels = {"100 m", "200 m", "300 m", "500 m", "1 km", "2 km", "5 km"};
@@ -625,25 +829,15 @@ public class RoutineEditorActivity extends Activity {
         locationGroup.addView(locationHelp);
         form.addView(locationGroup);
 
-        form.addView(dialogLabel("IF path · run when true"));
-        LinearLayout nextSelector = dialogSelector(new String[]{"Next 1 step", "Next 2 steps", "Next 3 steps", "Next 4 steps", "Next 5 steps"}, next);
-        form.addView(nextSelector, selectorLp());
-
-        int elseCount = RoutineBranch.elseSteps(old);
-        final int[] otherwise = {elseCount};
-        form.addView(dialogLabel("ELSE path · run when false"));
-        LinearLayout elseSelector = dialogSelector(
-                new String[]{"No ELSE", "Next 1 step", "Next 2 steps", "Next 3 steps", "Next 4 steps", "Next 5 steps"},
-                otherwise);
-        form.addView(elseSelector, selectorLp());
-
+        // No step counts here any more. This dialog describes the condition; which actions belong
+        // to THEN and which to OTHERWISE is shown and edited on the branch itself, and Orbit keeps
+        // the stored counts in step with it.
         TextView behavior = UiKit.text(this,
-                "The ELSE steps come straight after the IF steps. Exactly one path runs, then Orbit "
-                        + "continues with the rest of the Routine. With no ELSE, a false condition "
-                        + "simply skips the IF steps.",
+                "Add the actions for THEN and OTHERWISE on the branch itself. Exactly one path "
+                        + "runs, then Orbit continues with the rest of the Routine.",
                 11, UiKit.MUTED, false);
         behavior.setLineSpacing(0, 1.1f);
-        behavior.setPadding(0, UiKit.dp(this, 7), 0, 0);
+        behavior.setPadding(0, UiKit.dp(this, 12), 0, 0);
         form.addView(behavior);
 
         timeGroup.setVisibility(mode[0] == 1 ? View.GONE : View.VISIBLE);
@@ -657,11 +851,11 @@ public class RoutineEditorActivity extends Activity {
                         JSONObject params = new JSONObject();
                         String selectedMode = mode[0] == 1 ? RoutineConditionEvaluator.MODE_LOCATION :
                                 mode[0] == 2 ? RoutineConditionEvaluator.MODE_TIME_AND_LOCATION : RoutineConditionEvaluator.MODE_TIME;
-                        params.put("mode", selectedMode).put("nextSteps", next[0] + 1);
-                        // Written only when an ELSE was actually chosen, so a condition without
-                        // one stays byte-identical to what every earlier release wrote.
-                        if (otherwise[0] > 0) {
-                            params.put(RoutineBranch.KEY_ELSE_STEPS, otherwise[0]);
+                        params.put("mode", selectedMode).put("nextSteps", keptTrueSteps);
+                        // Written only when an ELSE path actually holds actions, so a condition
+                        // without one stays byte-identical to what every earlier release wrote.
+                        if (keptElseSteps > 0) {
+                            params.put(RoutineBranch.KEY_ELSE_STEPS, keptElseSteps);
                         }
 
                         if (mode[0] != 1) {
@@ -942,6 +1136,9 @@ public class RoutineEditorActivity extends Activity {
     }
 
     private void putAction(int editIndex, AssistantReply.Action action) {
+        int branchCondition = pendingBranchCondition;
+        int branchKind = pendingBranchKind;
+        clearPendingBranch();
         if (!RoutineActionCatalog.isValid(action)) {
             Toast.makeText(this, "That action is incomplete.", Toast.LENGTH_SHORT).show();
             return;
@@ -949,13 +1146,25 @@ public class RoutineEditorActivity extends Activity {
         AssistantReply.Action copy = RoutineActionCatalog.copy(action);
         if (editIndex >= 0 && editIndex < workingActions.size()) {
             workingActions.set(editIndex, copy);
-        } else if (workingActions.size() < RoutineActionCatalog.MAX_STEPS) {
-            workingActions.add(copy);
-        } else {
+            // Editing a condition can change nothing about the branch shape, but a rewritten
+            // params object would drop the counts the editor maintains, so they are restored.
+            RoutineBranch.clampCounts(workingActions);
+        } else if (branchCondition >= 0 && branchKind != RoutineBranch.BRANCH_NONE) {
+            if (!RoutineBranch.addToPath(workingActions, branchCondition, branchKind, copy)) {
+                Toast.makeText(this, addBlockedReason(branchCondition, branchKind),
+                        Toast.LENGTH_SHORT).show();
+                return;
+            }
+        } else if (!RoutineBranch.addStep(workingActions, copy)) {
             Toast.makeText(this, "Routine step limit reached.", Toast.LENGTH_SHORT).show();
             return;
         }
         markDirtyAndRefresh();
+    }
+
+    private void clearPendingBranch() {
+        pendingBranchCondition = -1;
+        pendingBranchKind = RoutineBranch.BRANCH_NONE;
     }
 
     private void markDirtyAndRefresh() {
@@ -985,6 +1194,19 @@ public class RoutineEditorActivity extends Activity {
         String branchProblem = RoutineBranch.structureProblem(workingActions);
         if (!branchProblem.isEmpty()) {
             Toast.makeText(this, branchProblem, Toast.LENGTH_LONG).show();
+            return;
+        }
+        // An IF with nothing on its THEN path decides nothing. This is checked here rather than in
+        // RoutineBranch so that loading an older routine can never be affected by it.
+        List<RoutineBranch.Unit> units = RoutineBranch.units(workingActions);
+        for (int position = 0; position < units.size(); position++) {
+            RoutineBranch.Unit unit = units.get(position);
+            if (!unit.branch) continue;
+            if (RoutineBranch.pathSize(workingActions, unit.start, RoutineBranch.BRANCH_TRUE) > 0) {
+                continue;
+            }
+            Toast.makeText(this, "Add at least one THEN action to the IF condition in step "
+                    + (position + 1) + ".", Toast.LENGTH_LONG).show();
             return;
         }
         String exceptId = existing == null ? null : existing.id;

@@ -296,3 +296,9 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Branching works the same way for manual runs, widgets, tiles and automatic triggers, and a step on the untaken path never delays a background run.
   - **Create with Orbit** can draft a simple "otherwise" from a description, and says so when a request needs branching Orbit does not support.
   - Existing routines, typing, Voice, Stop Generating and the Side-button launch diagnostics are unchanged.
+- **v0.7.5.1**: Routine branching is now authored as two visible paths instead of step counts.
+  - An IF condition is one block showing its **THEN** and **OTHERWISE** paths, so what runs when is visible at a glance.
+  - Add actions straight to either path; Orbit works out the branch boundaries itself.
+  - An IF with no alternative shows **None** under OTHERWISE, and removing the last one returns it there.
+  - Reordering stays inside its own path, and moving an IF carries both paths with it.
+  - Existing routines open in the new layout unchanged, and how every routine runs is exactly as it was.

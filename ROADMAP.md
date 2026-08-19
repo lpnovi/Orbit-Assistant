@@ -391,6 +391,19 @@
   rebuilding it from a list a rejected step has shifted
 - Keep the release bounded: one level, no nesting, no loops, no jumps, no scripting
 
+### 0.7.5.1
+- Author a branch as two visible paths — one IF block holding a THEN and an OTHERWISE section —
+  instead of asking which of the "next 1-5 steps" each path covers
+- Keep `nextSteps` and `elseSteps` exactly as the persisted and executed representation, and demote
+  them to bookkeeping `RoutineBranch` maintains through every add, remove, duplicate and reorder
+- Show `None`, not "Empty", for a path with no actions: the path is valid, it simply does nothing
+- Add actions directly to a path, and give each path its own limit rather than one shared count
+- Make reordering branch-aware — a step moves only within its own path, an ordinary step steps over
+  a whole branch rather than into it, and moving an IF carries both of its paths with it
+- Refuse the two shapes the stored model cannot express: an ELSE with no THEN, and emptying a THEN
+- Clamp an overrunning legacy gate only when the user actually edits that branch, so opening a
+  routine never rewrites it
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever

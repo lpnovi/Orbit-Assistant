@@ -302,4 +302,284 @@ public final class RoutineBranch {
         }
         return skipped;
     }
+
+    // ---- editing --------------------------------------------------------------------------------
+
+    /**
+     * The routine read as a sequence of top-level units: either a whole branch block, or one
+     * ordinary step.
+     *
+     * <p>This is what the editor lays out, and what reordering moves. Treating a branch as one unit
+     * is what stops an ordinary step from being nudged into the middle of somebody's THEN path.
+     */
+    public static final class Unit {
+        /** Half-open range of step indexes this unit covers. */
+        public final int start;
+        public final int end;
+        /** True when this unit is an IF condition together with both of its paths. */
+        public final boolean branch;
+
+        Unit(int start, int end, boolean branch) {
+            this.start = start;
+            this.end = end;
+            this.branch = branch;
+        }
+
+        public int size() { return end - start; }
+    }
+
+    public static List<Unit> units(List<AssistantReply.Action> actions) {
+        List<Unit> out = new ArrayList<>();
+        int size = actions == null ? 0 : actions.size();
+        int i = 0;
+        while (i < size) {
+            Span span = spanAt(actions, i);
+            if (span == null) {
+                out.add(new Unit(i, i + 1, false));
+                i++;
+            } else {
+                int end = Math.max(i + 1, span.spanEnd());
+                out.add(new Unit(i, end, true));
+                i = end;
+            }
+        }
+        return out;
+    }
+
+    /** The unit containing {@code index}, or null. */
+    public static Unit unitAt(List<AssistantReply.Action> actions, int index) {
+        for (Unit unit : units(actions)) {
+            if (index >= unit.start && index < unit.end) return unit;
+        }
+        return null;
+    }
+
+    /**
+     * Reduces any declared count that reaches past the steps actually present.
+     *
+     * <p>Only ever reduces. A count is what defines its own path, so a count can never be inferred
+     * back from the list — that would just restate whatever it already said. Growing a path is done
+     * explicitly by the edit that adds to it; this exists for the one case where the stored number
+     * is larger than reality, which a routine written before v0.7.5.0 is allowed to be.
+     *
+     * <p>Deliberately not called on load: opening a routine must never rewrite it, and such a gate
+     * already executes as though it were clamped, so leaving it alone until the user actually edits
+     * the branch changes nothing about how it runs.
+     */
+    public static void clampCounts(List<AssistantReply.Action> actions) {
+        if (actions == null) return;
+        for (int i = 0; i < actions.size(); i++) {
+            Span span = spanAt(actions, i);
+            if (span == null) continue;
+            int trueCount = span.trueEnd - span.trueStart;
+            int elseCount = span.elseEnd - span.elseStart;
+            if (trueCount == span.declaredTrue && elseCount == span.declaredElse) continue;
+            AssistantReply.Action rewritten = withCounts(actions.get(i), trueCount, elseCount);
+            if (rewritten != null) actions.set(i, rewritten);
+        }
+    }
+
+    /** Writes one path's size onto its condition, leaving the other path's size untouched. */
+    private static void setPathCount(List<AssistantReply.Action> actions, int conditionIndex,
+                                     int kind, int count) {
+        if (actions == null || conditionIndex < 0 || conditionIndex >= actions.size()) return;
+        AssistantReply.Action condition = actions.get(conditionIndex);
+        if (!RoutineConditionEvaluator.isCondition(condition)) return;
+        int trueCount = kind == BRANCH_TRUE ? count : trueSteps(condition);
+        int elseCount = kind == BRANCH_ELSE ? count : elseSteps(condition);
+        AssistantReply.Action rewritten = withCounts(condition, trueCount, elseCount);
+        if (rewritten != null) actions.set(conditionIndex, rewritten);
+    }
+
+    /** Steps currently on one path of the branch owned by {@code conditionIndex}. */
+    public static int pathSize(List<AssistantReply.Action> actions, int conditionIndex, int kind) {
+        Span span = spanAt(actions, conditionIndex);
+        if (span == null) return 0;
+        return kind == BRANCH_ELSE ? span.elseEnd - span.elseStart : span.trueEnd - span.trueStart;
+    }
+
+    /** Where a new action appended to one path would land. */
+    public static int pathInsertIndex(List<AssistantReply.Action> actions, int conditionIndex, int kind) {
+        Span span = spanAt(actions, conditionIndex);
+        if (span == null) return -1;
+        return kind == BRANCH_ELSE ? span.elseEnd : span.trueEnd;
+    }
+
+    /**
+     * True when a path can take another action: it has room of its own, the routine has room, and
+     * an ELSE path is only offered once the IF path has something to be an alternative to. The
+     * stored model has no way to express an ELSE without an IF path, so the editor does not offer
+     * one rather than silently miscounting the first ELSE action as an IF step.
+     */
+    public static boolean canAddTo(List<AssistantReply.Action> actions, int conditionIndex, int kind) {
+        if (actions == null || actions.size() >= RoutineActionCatalog.MAX_STEPS) return false;
+        Span span = spanAt(actions, conditionIndex);
+        if (span == null) return false;
+        if (pathSize(actions, conditionIndex, kind) >= MAX_BRANCH_STEPS) return false;
+        return kind != BRANCH_ELSE || span.hasTruePath();
+    }
+
+    /**
+     * Adds an action to one path of a branch and updates that path's count.
+     *
+     * @param kind {@link #BRANCH_TRUE} or {@link #BRANCH_ELSE}
+     * @return true when the action was added
+     */
+    public static boolean addToPath(List<AssistantReply.Action> actions, int conditionIndex,
+                                    int kind, AssistantReply.Action action) {
+        if (action == null || !canAddTo(actions, conditionIndex, kind)) return false;
+        // Bring an overrunning legacy count in line first, so the new action lands where the
+        // editor is showing the path end rather than where a stale number claims it is.
+        clampCounts(actions);
+        int at = pathInsertIndex(actions, conditionIndex, kind);
+        if (at < 0 || at > actions.size()) return false;
+        int grown = pathSize(actions, conditionIndex, kind) + 1;
+        actions.add(at, action);
+        setPathCount(actions, conditionIndex, kind, grown);
+        return true;
+    }
+
+    /** Appends an ordinary step after everything else, outside any branch. */
+    public static boolean addStep(List<AssistantReply.Action> actions, AssistantReply.Action action) {
+        if (actions == null || action == null) return false;
+        if (actions.size() >= RoutineActionCatalog.MAX_STEPS) return false;
+        clampCounts(actions);
+        actions.add(action);
+        return true;
+    }
+
+    /**
+     * Removes one step, shrinking only the path it belonged to.
+     *
+     * <p>Refuses to empty an IF path, because the stored model has no way to say "guards nothing"
+     * and the remaining ELSE actions would silently become the IF path. Removing the condition
+     * itself is the way to delete a branch.
+     */
+    public static boolean removeStep(List<AssistantReply.Action> actions, int index) {
+        if (actions == null || index < 0 || index >= actions.size()) return false;
+        if (RoutineConditionEvaluator.isCondition(actions.get(index))) return false;
+        clampCounts(actions);
+        int kind = branchMap(actions)[index];
+        int owner = branchOwners(actions)[index];
+        // Emptying an IF path is refused outright. The count cannot go below one, so whatever
+        // followed the branch would quietly become the IF path instead.
+        if (kind == BRANCH_TRUE && pathSize(actions, owner, BRANCH_TRUE) <= 1) return false;
+        int shrunk = kind == BRANCH_NONE ? 0 : pathSize(actions, owner, kind) - 1;
+        actions.remove(index);
+        // The owning condition always sits before its own steps, so its index is unaffected.
+        if (kind != BRANCH_NONE) setPathCount(actions, owner, kind, shrunk);
+        return true;
+    }
+
+    /** Removes a condition together with both of its paths. */
+    public static boolean removeBranch(List<AssistantReply.Action> actions, int conditionIndex) {
+        clampCounts(actions);
+        Span span = spanAt(actions, conditionIndex);
+        if (span == null) return false;
+        for (int i = Math.max(conditionIndex + 1, span.spanEnd()) - 1; i >= conditionIndex; i--) {
+            actions.remove(i);
+        }
+        return true;
+    }
+
+    /** Copies one step in place, into the same path it already belongs to. */
+    public static boolean duplicateStep(List<AssistantReply.Action> actions, int index) {
+        if (actions == null || index < 0 || index >= actions.size()) return false;
+        AssistantReply.Action original = actions.get(index);
+        if (RoutineConditionEvaluator.isCondition(original)) return false;
+        if (actions.size() >= RoutineActionCatalog.MAX_STEPS) return false;
+        clampCounts(actions);
+        int kind = branchMap(actions)[index];
+        int owner = branchOwners(actions)[index];
+        if (kind != BRANCH_NONE && pathSize(actions, owner, kind) >= MAX_BRANCH_STEPS) return false;
+        AssistantReply.Action copy = RoutineActionCatalog.copy(original);
+        if (copy == null) return false;
+        int grown = kind == BRANCH_NONE ? 0 : pathSize(actions, owner, kind) + 1;
+        actions.add(index + 1, copy);
+        if (kind != BRANCH_NONE) setPathCount(actions, owner, kind, grown);
+        return true;
+    }
+
+    /**
+     * True when {@code index} can move one slot in {@code direction} (-1 up, +1 down).
+     *
+     * <p>A step on a path moves only within that path. Anything else moves as a whole top-level
+     * unit, so an ordinary step steps over an entire branch instead of landing inside it, and a
+     * branch carries both of its paths with it.
+     */
+    public static boolean canMove(List<AssistantReply.Action> actions, int index, int direction) {
+        if (actions == null || index < 0 || index >= actions.size()) return false;
+        if (direction != -1 && direction != 1) return false;
+        int branch = branchMap(actions)[index];
+        if (branch != BRANCH_NONE) {
+            Span span = spanAt(actions, branchOwners(actions)[index]);
+            if (span == null) return false;
+            int from = branch == BRANCH_ELSE ? span.elseStart : span.trueStart;
+            int to = branch == BRANCH_ELSE ? span.elseEnd : span.trueEnd;
+            int target = index + direction;
+            return target >= from && target < to;
+        }
+        List<Unit> units = units(actions);
+        int position = unitPosition(units, index);
+        int neighbour = position + direction;
+        return position >= 0 && neighbour >= 0 && neighbour < units.size();
+    }
+
+    /** Performs the move described by {@link #canMove}. */
+    public static boolean move(List<AssistantReply.Action> actions, int index, int direction) {
+        if (!canMove(actions, index, direction)) return false;
+        int branch = branchMap(actions)[index];
+        if (branch != BRANCH_NONE) {
+            AssistantReply.Action moved = actions.remove(index);
+            actions.add(index + direction, moved);
+            clampCounts(actions);
+            return true;
+        }
+        List<Unit> units = units(actions);
+        int position = unitPosition(units, index);
+        Unit self = units.get(position);
+        Unit other = units.get(position + direction);
+        Unit first = direction < 0 ? other : self;
+        Unit second = direction < 0 ? self : other;
+
+        List<AssistantReply.Action> firstSteps =
+                new ArrayList<>(actions.subList(first.start, first.end));
+        List<AssistantReply.Action> secondSteps =
+                new ArrayList<>(actions.subList(second.start, second.end));
+        for (int i = second.end - 1; i >= first.start; i--) actions.remove(i);
+        actions.addAll(first.start, firstSteps);
+        actions.addAll(first.start, secondSteps);
+        clampCounts(actions);
+        return true;
+    }
+
+    private static int unitPosition(List<Unit> units, int index) {
+        for (int i = 0; i < units.size(); i++) {
+            if (index >= units.get(i).start && index < units.get(i).end) return i;
+        }
+        return -1;
+    }
+
+    /**
+     * A copy of one condition carrying the given path sizes.
+     *
+     * <p>{@code elseSteps} is removed rather than written as zero, so a branch that loses its last
+     * ELSE action goes back to being stored exactly as an ordinary IF-only condition — the same
+     * bytes every release before v0.7.5.0 wrote.
+     */
+    private static AssistantReply.Action withCounts(AssistantReply.Action condition,
+                                                    int trueCount, int elseCount) {
+        AssistantReply.Action copy = RoutineActionCatalog.copy(condition);
+        if (copy == null || copy.params == null) return null;
+        int safeTrue = Math.max(1, Math.min(MAX_BRANCH_STEPS, trueCount));
+        int safeElse = Math.max(0, Math.min(MAX_BRANCH_STEPS, elseCount));
+        try {
+            copy.params.put("nextSteps", safeTrue);
+            if (safeElse > 0) copy.params.put(KEY_ELSE_STEPS, safeElse);
+            else copy.params.remove(KEY_ELSE_STEPS);
+        } catch (Exception ignored) {
+            return null;
+        }
+        return copy;
+    }
 }
