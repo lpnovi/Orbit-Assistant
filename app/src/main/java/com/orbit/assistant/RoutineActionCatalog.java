@@ -87,16 +87,17 @@ public final class RoutineActionCatalog {
         switch (type) {
             case IF_CONDITION: {
                 String mode = RoutineConditionEvaluator.mode(action);
+                String branch = RoutineBranch.hasElse(action) ? " · with ELSE" : "";
                 if (RoutineConditionEvaluator.MODE_LOCATION.equals(mode)) {
                     String name = clean(p.optString("locationName", ""));
-                    return "If location" + (name.isEmpty() ? "" : " · " + name);
+                    return "If location" + (name.isEmpty() ? "" : " · " + name) + branch;
                 }
                 String window = minuteLabel(p.optInt("startMinute", 0)) + "–" + minuteLabel(p.optInt("endMinute", 0));
                 if (RoutineConditionEvaluator.MODE_TIME_AND_LOCATION.equals(mode)) {
                     String name = clean(p.optString("locationName", ""));
-                    return "If time + location · " + window + (name.isEmpty() ? "" : " · " + name);
+                    return "If time + location · " + window + (name.isEmpty() ? "" : " · " + name) + branch;
                 }
-                return "If time · " + window;
+                return "If time · " + window + branch;
             }
             case OPEN_APP:
                 String app = clean(p.optString("app", p.optString("package", "")));
@@ -135,7 +136,16 @@ public final class RoutineActionCatalog {
         switch (type) {
             case IF_CONDITION: {
                 int next = RoutineConditionEvaluator.gatedSteps(action);
+                int otherwise = RoutineBranch.elseSteps(action);
                 String target = next == 1 ? "the next step" : "the next " + next + " steps";
+                if (otherwise > 0) {
+                    // With an ELSE the interesting fact is that exactly one path runs, so the
+                    // summary describes the split rather than repeating the condition mode.
+                    String elseTarget = otherwise == 1
+                            ? "the step after" : "the " + otherwise + " steps after";
+                    return "Runs " + target + " when true, otherwise " + elseTarget
+                            + ", then continues the routine";
+                }
                 String mode = RoutineConditionEvaluator.mode(action);
                 if (RoutineConditionEvaluator.MODE_LOCATION.equals(mode)) {
                     int radius = Math.round((float) p.optDouble("radiusMeters", 200d));
@@ -200,6 +210,9 @@ public final class RoutineActionCatalog {
                 String mode = RoutineConditionEvaluator.mode(action);
                 int next = p.optInt("nextSteps", 1);
                 if (next < 1 || next > 5) return false;
+                // Absent means no ELSE path, which is every condition written before v0.7.5.0.
+                int otherwise = p.optInt(RoutineBranch.KEY_ELSE_STEPS, 0);
+                if (otherwise < 0 || otherwise > RoutineBranch.MAX_BRANCH_STEPS) return false;
                 if (RoutineConditionEvaluator.MODE_TIME.equals(mode) ||
                         RoutineConditionEvaluator.MODE_TIME_AND_LOCATION.equals(mode)) {
                     int start = p.optInt("startMinute", -1);

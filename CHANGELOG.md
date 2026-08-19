@@ -286,3 +286,13 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - The trace records lifecycle stages and state only: no message, voice, screen, or clipboard content is ever stored.
   - Updated the in-app Roadmap so already-shipped Create with Orbit, Run history, and quick-access work is no longer listed as upcoming.
   - Typing, Voice, link readability, and Stop Generating behave exactly as they did in v0.7.4.1.
+
+## 0.7.5 series
+
+- **v0.7.5.0**: Routines can now branch: an IF condition can have an ELSE path that runs instead.
+  - Add an **ELSE path** to any IF condition, choosing how many steps belong to each side.
+  - Exactly one path runs, then the routine continues with its remaining steps as usual.
+  - The editor labels every step with the path it belongs to and refuses to save a half-defined branch.
+  - Branching works the same way for manual runs, widgets, tiles and automatic triggers, and a step on the untaken path never delays a background run.
+  - **Create with Orbit** can draft a simple "otherwise" from a description, and says so when a request needs branching Orbit does not support.
+  - Existing routines, typing, Voice, Stop Generating and the Side-button launch diagnostics are unchanged.

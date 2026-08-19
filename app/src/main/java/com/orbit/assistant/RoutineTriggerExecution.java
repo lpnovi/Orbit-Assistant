@@ -46,33 +46,25 @@ public final class RoutineTriggerExecution {
             return;
         }
 
+        // Lock every branch decision first, so a time or location boundary cannot flip between
+        // the background-safety scan and execution, and so the scan below and OrbitActionEngine
+        // agree exactly on which steps this run will step over.
+        List<AssistantReply.Action> locked = lockedCopy(c, routine.actions);
+        boolean[] willSkip = skipMap(c, locked);
+
         List<AssistantReply.Action> allowed = new ArrayList<>();
         int blockedIndex = -1;
-        int conditionSkippedSteps = 0;
-        for (int i = 0; i < routine.actions.size(); i++) {
-            AssistantReply.Action action = RoutineActionCatalog.copy(routine.actions.get(i));
-            if (conditionSkippedSteps > 0) {
-                // Keep condition-gated steps in the contiguous prefix so OrbitActionEngine
-                // can report them as skipped, but do not let a currently-false branch
-                // force an unnecessary foreground handoff.
+        for (int i = 0; i < locked.size(); i++) {
+            AssistantReply.Action action = locked.get(i);
+            if (willSkip[i]) {
+                // Keep the untaken branch in the contiguous prefix so OrbitActionEngine can report
+                // its steps as skipped, but never let a step that will not run force a foreground
+                // handoff or demand a confirmation for something the user will never see happen.
                 allowed.add(action);
-                conditionSkippedSteps--;
                 continue;
             }
             if (RoutineConditionEvaluator.isCondition(action)) {
-                RoutineConditionEvaluator.Result condition = RoutineConditionEvaluator.evaluate(c, action);
-                if (condition.evaluable && action.params != null) {
-                    try {
-                        // Lock the branch decision for this automatic run so a time/location
-                        // boundary cannot flip between the background-safety scan and execution.
-                        action.params.put("_orbitLockedMatch", condition.matched);
-                        action.params.put("_orbitLockedMessage", condition.message);
-                    } catch (Exception ignored) {}
-                }
                 allowed.add(action);
-                if (condition.evaluable && !condition.matched) {
-                    conditionSkippedSteps = RoutineConditionEvaluator.gatedSteps(action);
-                }
                 continue;
             }
             // A saved action that ever requires confirmation must never bypass that
@@ -152,16 +144,51 @@ public final class RoutineTriggerExecution {
     }
 
 
+    /**
+     * The chain with every branch decision resolved and written into the condition itself.
+     *
+     * <p>An automatic run reads each condition three times — the trigger-alert check, the special
+     * access preflight, and the background-safety scan — and then the engine reads it again. Doing
+     * it once here means all four see the same answer even if a time window or a geofence boundary
+     * is crossed while the routine is being prepared.
+     */
+    private static List<AssistantReply.Action> lockedCopy(Context c, List<AssistantReply.Action> actions) {
+        List<AssistantReply.Action> out = new ArrayList<>();
+        if (actions == null) return out;
+        for (AssistantReply.Action original : actions) {
+            AssistantReply.Action action = RoutineActionCatalog.copy(original);
+            if (RoutineConditionEvaluator.isCondition(action) && action.params != null) {
+                RoutineConditionEvaluator.Result condition =
+                        RoutineConditionEvaluator.evaluate(c, action);
+                if (condition.evaluable) {
+                    try {
+                        action.params.put("_orbitLockedMatch", condition.matched);
+                        action.params.put("_orbitLockedMessage", condition.message);
+                    } catch (Exception ignored) {}
+                }
+            }
+            out.add(action);
+        }
+        return out;
+    }
+
+    /** Steps this run will step over, so an untaken branch never blocks or delays the run. */
+    private static boolean[] skipMap(Context c, List<AssistantReply.Action> actions) {
+        return RoutineBranch.skippedSteps(actions, (index, condition) -> {
+            RoutineConditionEvaluator.Result result =
+                    RoutineConditionEvaluator.evaluate(c, condition);
+            return result.evaluable ? result.matched : null;
+        });
+    }
+
     private static boolean containsForegroundOrConfirmationStep(Context c, RoutineStore.Routine routine) {
         if (routine == null || routine.actions == null) return false;
-        int skipped = 0;
-        for (AssistantReply.Action action : routine.actions) {
-            if (skipped > 0) { skipped--; continue; }
-            if (RoutineConditionEvaluator.isCondition(action)) {
-                RoutineConditionEvaluator.Result condition = RoutineConditionEvaluator.evaluate(c, action);
-                if (condition.evaluable && !condition.matched) skipped = RoutineConditionEvaluator.gatedSteps(action);
-                continue;
-            }
+        List<AssistantReply.Action> actions = lockedCopy(c, routine.actions);
+        boolean[] skipped = skipMap(c, actions);
+        for (int i = 0; i < actions.size(); i++) {
+            if (skipped[i]) continue;
+            AssistantReply.Action action = actions.get(i);
+            if (RoutineConditionEvaluator.isCondition(action)) continue;
             if (action != null && action.requiresConfirmation) return true;
             if (requiresForeground(c, action)) return true;
         }
@@ -170,18 +197,17 @@ public final class RoutineTriggerExecution {
 
     private static int firstKnownMissingAccess(Context c, RoutineStore.Routine routine, boolean visible) {
         if (c == null || routine == null || routine.actions == null) return -1;
-        int skipped = 0;
-        for (int i = 0; i < routine.actions.size(); i++) {
-            AssistantReply.Action action = routine.actions.get(i);
-            if (skipped > 0) { skipped--; continue; }
+        List<AssistantReply.Action> actions = lockedCopy(c, routine.actions);
+        boolean[] skipped = skipMap(c, actions);
+        for (int i = 0; i < actions.size(); i++) {
+            if (skipped[i]) continue;
+            AssistantReply.Action action = actions.get(i);
             if (action == null || action.type == null) continue;
             if (RoutineConditionEvaluator.isCondition(action)) {
                 if (RoutineConditionEvaluator.needsLocation(action)) {
                     if (!RoutineLocationTriggerScheduler.hasFineLocation(c)) return i;
                     if (!visible && !RoutineLocationTriggerScheduler.hasBackgroundLocation(c)) return i;
                 }
-                RoutineConditionEvaluator.Result condition = RoutineConditionEvaluator.evaluate(c, action);
-                if (condition.evaluable && !condition.matched) skipped = RoutineConditionEvaluator.gatedSteps(action);
                 continue;
             }
             if (RoutineActionCatalog.SET_BRIGHTNESS.equals(action.type) &&

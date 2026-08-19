@@ -29,10 +29,13 @@ public final class OrbitActionEngine {
             if (listener != null) listener.onFinished(true, 0, 0);
             return;
         }
-        runStep(context, actions, 0, confirmationHandler, listener);
+        // Branch geometry is a fixed property of the saved chain, so it is resolved once here and
+        // then only read. Nothing about how a condition evaluates can move a branch boundary.
+        runStep(context, actions, RoutineBranch.flow(actions), 0, confirmationHandler, listener);
     }
 
-    private static void runStep(Context context, List<AssistantReply.Action> actions, int index,
+    private static void runStep(Context context, List<AssistantReply.Action> actions,
+                                RoutineBranch.Flow flow, int index,
                                 ConfirmationHandler confirmationHandler, Listener listener) {
         if (actions == null) {
             if (listener != null) listener.onFinished(true, 0, 0);
@@ -47,7 +50,7 @@ public final class OrbitActionEngine {
         if (action == null) {
             DeviceActionExecutor.Result skipped = DeviceActionExecutor.Result.failed("Empty action step").withContinuation(true);
             if (listener != null) listener.onStep(null, skipped, index, actions.size());
-            runStep(context, actions, index + 1, confirmationHandler, listener);
+            advance(context, actions, flow, index, confirmationHandler, listener);
             return;
         }
 
@@ -62,37 +65,46 @@ public final class OrbitActionEngine {
                     if (listener != null) listener.onFinished(false, index + 1, actions.size());
                     return;
                 }
-                int gated = RoutineConditionEvaluator.gatedSteps(action);
+                RoutineBranch.Span span = RoutineBranch.spanAt(actions, index);
+                boolean hasElse = span != null && span.hasElsePath();
+
                 if (condition.matched) {
-                    DeviceActionExecutor.Result met = DeviceActionExecutor.Result.success("Condition matched");
+                    DeviceActionExecutor.Result met = DeviceActionExecutor.Result.success(
+                            hasElse ? "Condition matched · running the IF path" : "Condition matched");
                     if (listener != null) listener.onStep(action, met, index, actions.size());
-                    runStep(context, actions, index + 1, confirmationHandler, listener);
+                    if (span != null && !span.hasTruePath() && hasElse) {
+                        // Nothing on the IF path to run, so the ELSE path is stepped over here
+                        // rather than being reached by falling through into it.
+                        reportSkipped(listener, actions, span.elseStart, span.elseEnd,
+                                "Skipped · IF path ran instead");
+                        runStep(context, actions, flow, span.elseEnd, confirmationHandler, listener);
+                        return;
+                    }
+                    runStep(context, actions, flow, index + 1, confirmationHandler, listener);
                     return;
                 }
 
-                DeviceActionExecutor.Result notMet = DeviceActionExecutor.Result.success(
-                        condition.message + " · skipped " + Math.min(gated, Math.max(0, actions.size() - index - 1)) +
-                                (gated == 1 ? " step" : " steps"));
+                int gated = RoutineBranch.trueSteps(action);
+                DeviceActionExecutor.Result notMet = DeviceActionExecutor.Result.success(hasElse
+                        ? condition.message + " · running the ELSE path"
+                        : condition.message + " · skipped "
+                                + Math.min(gated, Math.max(0, actions.size() - index - 1))
+                                + (gated == 1 ? " step" : " steps"));
                 if (listener != null) listener.onStep(action, notMet, index, actions.size());
-                int skipEnd = Math.min(actions.size(), index + 1 + gated);
-                if (listener != null) {
-                    for (int skippedIndex = index + 1; skippedIndex < skipEnd; skippedIndex++) {
-                        AssistantReply.Action skippedAction = actions.get(skippedIndex);
-                        listener.onStep(skippedAction, DeviceActionExecutor.Result.success("Skipped · condition not met"),
-                                skippedIndex, actions.size());
-                    }
-                }
-                runStep(context, actions, skipEnd, confirmationHandler, listener);
+                int skipEnd = span == null ? Math.min(actions.size(), index + 1 + gated) : span.trueEnd;
+                reportSkipped(listener, actions, index + 1, skipEnd,
+                        hasElse ? "Skipped · ELSE path ran instead" : "Skipped · condition not met");
+                runStep(context, actions, flow, skipEnd, confirmationHandler, listener);
                 return;
             }
 
             if (RoutineActionCatalog.EXTENSION_ACTION.equals(action.type)) {
                 OrbitExtensionActionExecutor.execute(context, action,
-                        result -> handleResult(context, actions, index, confirmationHandler,
+                        result -> handleResult(context, actions, flow, index, confirmationHandler,
                                 listener, action, result));
                 return;
             }
-            handleResult(context, actions, index, confirmationHandler, listener, action,
+            handleResult(context, actions, flow, index, confirmationHandler, listener, action,
                     DeviceActionExecutor.executeDetailed(context, action));
         };
 
@@ -100,22 +112,51 @@ public final class OrbitActionEngine {
             confirmationHandler.request(action, executeNow, () -> {
                 DeviceActionExecutor.Result cancelled = DeviceActionExecutor.Result.cancelled("Cancelled");
                 if (listener != null) listener.onStep(action, cancelled, index, actions.size());
-                runStep(context, actions, index + 1, confirmationHandler, listener);
+                advance(context, actions, flow, index, confirmationHandler, listener);
             });
         } else {
             executeNow.run();
         }
     }
 
+    /**
+     * Moves past the step at {@code index}.
+     *
+     * <p>Every ordinary continuation goes through here, including a cancelled confirmation and an
+     * empty step, so finishing the last step of an IF path always steps over the ELSE path no
+     * matter which way that step ended.
+     */
+    private static void advance(Context context, List<AssistantReply.Action> actions,
+                                RoutineBranch.Flow flow, int index,
+                                ConfirmationHandler confirmationHandler, Listener listener) {
+        int next = flow == null ? index + 1 : flow.nextAfter(index);
+        if (flow != null) {
+            reportSkipped(listener, actions, flow.skipFromAfter(index), flow.skipToAfter(index),
+                    "Skipped · IF path ran instead");
+        }
+        runStep(context, actions, flow, next, confirmationHandler, listener);
+    }
+
+    /** Reports a range of steps the run stepped over, so nothing skipped can look like it ran. */
+    private static void reportSkipped(Listener listener, List<AssistantReply.Action> actions,
+                                      int from, int to, String message) {
+        if (listener == null || actions == null) return;
+        for (int i = Math.max(0, from); i < Math.min(actions.size(), to); i++) {
+            listener.onStep(actions.get(i), DeviceActionExecutor.Result.success(message),
+                    i, actions.size());
+        }
+    }
+
     private static void handleResult(Context context, List<AssistantReply.Action> actions,
-                                     int index, ConfirmationHandler confirmationHandler,
+                                     RoutineBranch.Flow flow, int index,
+                                     ConfirmationHandler confirmationHandler,
                                      Listener listener, AssistantReply.Action action,
                                      DeviceActionExecutor.Result result) {
         DeviceActionExecutor.Result safeResult = result == null
                 ? DeviceActionExecutor.Result.failed("Action did not finish") : result;
         if (listener != null) listener.onStep(action, safeResult, index, actions.size());
         if (safeResult.shouldContinue) {
-            runStep(context, actions, index + 1, confirmationHandler, listener);
+            advance(context, actions, flow, index, confirmationHandler, listener);
         } else if (listener != null) {
             listener.onFinished(false, index + 1, actions.size());
         }

@@ -82,10 +82,11 @@ public final class RoadmapActivity extends Activity {
         // Future-only, and audited against release history each time it changes. Three entries left
         // in v0.7.4.2 because the work they described had already shipped: natural-language Routine
         // creation as Create with Orbit in the 0.7.3 series, automation history as Routine Run
-        // history, and quick access as widgets, tiles and Custom Commands. Shipped work belongs in
-        // What's New, never here.
+        // history, and quick access as widgets, tiles and Custom Commands. A fourth was rewritten in
+        // v0.7.5.0, which shipped IF / ELSE branching, so what is listed now is the branching work
+        // that genuinely remains. Shipped work belongs in What's New, never here.
         addGroup(page, "NEXT UP", new String[][]{
-                {"Richer automation & branching", "More expressive chained plans, and conditions beyond a single branch."},
+                {"More branch points & conditions", "Several decision points in one Routine, and conditions beyond time and place."},
                 {"Conversation-aware voice follow-ups", "Deciding when to reopen the microphone from the reply itself, not only from a switch."}
         });
         addGroup(page, "PLANNED", new String[][]{

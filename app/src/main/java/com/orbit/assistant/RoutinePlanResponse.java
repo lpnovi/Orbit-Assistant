@@ -282,6 +282,10 @@ public final class RoutinePlanResponse {
                     copyString(in, out, "mode");
                     int next = asInt(first(in, "nextSteps", "steps", "count"), -1);
                     if (next >= 0) out.put("nextSteps", next);
+                    // Written only when a branch was actually asked for, so a condition without an
+                    // ELSE normalises to exactly the params it did before v0.7.5.0.
+                    int otherwise = asInt(first(in, "elseSteps", "otherwiseSteps", "elseCount"), -1);
+                    if (otherwise > 0) out.put(RoutineBranch.KEY_ELSE_STEPS, otherwise);
                     int start = asInt(first(in, "startMinute", "fromMinute"), -1);
                     int end = asInt(first(in, "endMinute", "toMinute"), -1);
                     if (start >= 0) out.put("startMinute", start);

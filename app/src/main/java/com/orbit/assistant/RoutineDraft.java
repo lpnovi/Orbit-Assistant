@@ -135,6 +135,9 @@ public final class RoutineDraft {
         }
 
         List<AssistantReply.Action> actions = new ArrayList<>();
+        // Where each accepted step sat in the planner's own list. An ELSE path is positional, so
+        // this is what lets a branch be checked against the steps the planner actually counted.
+        List<Integer> plannedAt = new ArrayList<>();
         JSONArray steps = root.optJSONArray(KEY_STEPS);
         if (steps != null) {
             for (int i = 0; i < steps.length(); i++) {
@@ -165,8 +168,10 @@ public final class RoutineDraft {
                     continue;
                 }
                 actions.add(action);
+                plannedAt.add(i);
             }
         }
+        reconcileBranches(actions, plannedAt, warnings);
 
         if (actions.isEmpty()) {
             return new Outcome(null, response.shape, true, response.hasStepsArray(),
@@ -182,8 +187,11 @@ public final class RoutineDraft {
             addWarning(warnings, "Only the first automatic trigger was drafted. Add the others in "
                     + "Automatic triggers.");
         }
-        if (root.optBoolean("elseRequested", false)) {
-            addWarning(warnings, "\"Otherwise\" branching isn't supported in this builder yet");
+        // Kept for a planner that still answers in the pre-v0.7.5.0 shape: branching is supported
+        // now, so this only matters when one was asked for and none survived into the draft.
+        if (root.optBoolean("elseRequested", false) && !hasBranch(actions)) {
+            addWarning(warnings, "Orbit couldn't build the \"otherwise\" branch. Add it in the "
+                    + "IF step before saving.");
         }
 
         String name = root.optString(KEY_NAME, "").trim();
@@ -245,6 +253,66 @@ public final class RoutineDraft {
     /** Matches the default a hand-built location condition gets in the editor. */
     private static final int CONDITION_RADIUS_METERS = 150;
 
+    static boolean hasBranch(List<AssistantReply.Action> actions) {
+        if (actions == null) return false;
+        for (AssistantReply.Action action : actions) if (RoutineBranch.hasElse(action)) return true;
+        return false;
+    }
+
+    /**
+     * Drops any ELSE declaration Orbit cannot reproduce exactly.
+     *
+     * <p>An ELSE path is positional: it is the steps immediately after the IF path. If one of the
+     * planned steps failed validation and was left out, the steps that follow the condition are no
+     * longer the ones the planner counted, and rebuilding the branch from the shifted list would
+     * quietly move an action from one path to the other. Orbit reports that instead, and the draft
+     * still opens in the editor where the branch can be set by hand.
+     *
+     * @param plannedAt the planner index each accepted step came from, parallel to {@code actions}
+     */
+    private static void reconcileBranches(List<AssistantReply.Action> actions,
+                                          List<Integer> plannedAt, List<String> warnings) {
+        if (actions == null || plannedAt == null || actions.size() != plannedAt.size()) return;
+        boolean stripped = false;
+        for (int k = 0; k < actions.size(); k++) {
+            AssistantReply.Action condition = actions.get(k);
+            int branchSteps = RoutineBranch.elseSteps(condition);
+            if (branchSteps <= 0) continue;
+            int span = RoutineBranch.trueSteps(condition) + branchSteps;
+            boolean intact = true;
+            for (int n = 1; n <= span; n++) {
+                if (k + n >= actions.size()
+                        || plannedAt.get(k + n) != plannedAt.get(k) + n) {
+                    intact = false;
+                    break;
+                }
+            }
+            if (intact) continue;
+            actions.set(k, withoutElse(condition));
+            stripped = true;
+        }
+        // Last line of defence: anything still malformed, such as nesting the planner was told not
+        // to produce, loses its branching rather than reaching the editor as an unsaveable routine.
+        if (!RoutineBranch.structureValid(actions)) {
+            for (int k = 0; k < actions.size(); k++) {
+                if (RoutineBranch.hasElse(actions.get(k))) {
+                    actions.set(k, withoutElse(actions.get(k)));
+                    stripped = true;
+                }
+            }
+        }
+        if (stripped) {
+            addWarning(warnings, "Orbit couldn't build the \"otherwise\" branch from that plan. "
+                    + "Add it in the IF step before saving.");
+        }
+    }
+
+    private static AssistantReply.Action withoutElse(AssistantReply.Action condition) {
+        AssistantReply.Action copy = RoutineActionCatalog.copy(condition);
+        if (copy != null && copy.params != null) copy.params.remove(RoutineBranch.KEY_ELSE_STEPS);
+        return copy;
+    }
+
     private static String describeRejected(String described, String type) {
         String value = clip(described);
         if (!value.isEmpty()) return value;
@@ -295,6 +363,7 @@ public final class RoutineDraft {
             JSONObject root = new JSONObject(payload);
             if (root.optInt(KEY_SCHEMA, -1) != SCHEMA) return null;
             List<AssistantReply.Action> actions = new ArrayList<>();
+            List<Integer> plannedAt = new ArrayList<>();
             JSONArray steps = root.optJSONArray(KEY_STEPS);
             if (steps == null) return null;
             for (int i = 0; i < steps.length() && actions.size() < RoutineActionCatalog.MAX_STEPS; i++) {
@@ -304,6 +373,7 @@ public final class RoutineDraft {
                         step.optString(KEY_TYPE, ""), step.optJSONObject(KEY_PARAMS), false);
                 if (!RoutineActionCatalog.isValid(action) || !isAllowedType(context, action)) continue;
                 actions.add(action);
+                plannedAt.add(i);
             }
             if (actions.isEmpty()) return null;
             List<String> warnings = new ArrayList<>();
@@ -314,6 +384,8 @@ public final class RoutineDraft {
                     if (!value.isEmpty()) warnings.add(value);
                 }
             }
+            // The editor trusts nothing that was handed to it, branch geometry included.
+            reconcileBranches(actions, plannedAt, warnings);
             RoutineTriggerDraft trigger =
                     RoutineTriggerDraft.fromPayload(context, root.optJSONObject(KEY_TRIGGER));
             return new RoutineDraft(root.optString(KEY_NAME, ""), actions, warnings, trigger);

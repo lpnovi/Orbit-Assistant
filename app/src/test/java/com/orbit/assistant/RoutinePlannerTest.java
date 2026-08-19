@@ -117,8 +117,11 @@ public final class RoutinePlannerTest {
         assertTrue(prompt.contains("\"trigger\""));
         assertTrue(prompt.contains("Never guess a clock time"));
         assertTrue(prompt.contains("Never guess a place"));
-        assertTrue("an else branch must still be reported, not invented",
-                prompt.contains("Do not invent an \"otherwise\""));
+        // Branching became a real capability in v0.7.5.0, so an "otherwise" is now drafted rather
+        // than refused. What may not be guessed is the shape of it: one level, no nesting, no loops.
+        assertTrue("one dependable level of branching, and no more",
+                prompt.contains("One level of branching only"));
+        assertTrue(prompt.contains("elseSteps"));
     }
 
     @Test public void thePlanningPromptIsNotTheChatPrompt() {

@@ -262,7 +262,10 @@ public final class RoutineStore {
         for (AssistantReply.Action action : routine.actions) {
             if (!RoutineActionCatalog.isValid(action)) return false;
         }
-        return true;
+        // Branch shape is a property of the whole chain, not of any single step, so it is checked
+        // here rather than in the catalog. The rules only constrain a condition that declares an
+        // ELSE, so a routine saved before v0.7.5.0 cannot fail this.
+        return RoutineBranch.structureValid(routine.actions);
     }
 
     private static boolean nameExistsIn(List<Routine> routines, String name, String exceptId) {
@@ -332,6 +335,11 @@ public final class RoutineStore {
                 if (!RoutineActionCatalog.isValid(action)) return null;
                 actions.add(action);
             }
+            // Same reasoning as a damaged step: a routine whose declared ELSE path does not fit
+            // its own steps would execute something materially different from what was saved. The
+            // editor and upsert() both refuse to write one, so this can only reject tampered data,
+            // never a routine Orbit itself produced — and never an ELSE-free routine at all.
+            if (!RoutineBranch.structureValid(actions)) return null;
             return new Routine(id, name, actions,
                     obj.optLong("createdAt", System.currentTimeMillis()),
                     obj.optLong("updatedAt", System.currentTimeMillis()),

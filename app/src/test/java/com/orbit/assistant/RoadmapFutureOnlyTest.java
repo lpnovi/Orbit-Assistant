@@ -31,6 +31,8 @@ public final class RoadmapFutureOnlyTest {
             "Natural-language Routine creation",
             "Automation history",
             "Richer quick access",
+            // v0.7.5.0 shipped one dependable level of IF / ELSE branching.
+            "Richer automation & branching",
     };
 
     private String roadmapText() {
@@ -64,8 +66,8 @@ public final class RoadmapFutureOnlyTest {
         assertTrue(text.contains("NEXT UP"));
         assertTrue(text.contains("PLANNED"));
         assertTrue(text.contains("EXPLORING"));
-        assertTrue("branching beyond one condition is genuinely unfinished",
-                text.contains("Richer automation & branching"));
+        assertTrue("more than one branch point is genuinely unfinished",
+                text.contains("More branch points & conditions"));
         assertTrue(text.contains("Deeper Android actions"));
         assertTrue(text.contains("Proactive screen intelligence"));
     }

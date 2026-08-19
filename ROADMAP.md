@@ -372,6 +372,25 @@
 - Correct the in-app Roadmap, which still offered natural-language Routine creation, automation
   history and richer quick access as upcoming after all three had shipped
 
+## 0.7.5 Routine branching
+
+### 0.7.5.0
+- Give an IF condition an optional ELSE path: `elseSteps` alongside the existing `nextSteps`, so a
+  routine stays one flat ordered list and a condition written before v0.7.5.0 describes exactly the
+  execution it always did
+- Add `RoutineBranch` as the one authority on branch geometry, replacing the three separate copies
+  of the old "skip the gated steps" arithmetic that the engine and the background scans each kept
+- Run exactly one path, then continue with the rest of the routine, through the existing
+  `OrbitActionEngine` rather than any second automation path
+- Report the untaken path as skipped rather than letting run history imply it ran
+- Teach the background trigger scan the same geometry, so a foreground-only or confirmation step on
+  the path that will not run can no longer defer or block an automatic run
+- Show each step's path in the Routine editor, mark where the ELSE begins, and refuse to save a
+  branch that does not fit its own steps or that nests inside another
+- Draft a simple "otherwise" in Create with Orbit, and drop the branch with a warning rather than
+  rebuilding it from a list a rejected step has shifted
+- Keep the release bounded: one level, no nesting, no loops, no jumps, no scripting
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever
@@ -379,7 +398,7 @@ it changes. Anything released belongs to the sections above and to What's New, n
 below.
 
 ### Next up
-- Richer automation, chained plans, and branching beyond a single condition
+- Conditions beyond time and location, and more than one branch point in a single routine
 - Whether reopening the microphone should read the conversation rather than following the
   Hands-free switch alone
 

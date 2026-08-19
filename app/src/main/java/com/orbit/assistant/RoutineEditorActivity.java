@@ -148,7 +148,9 @@ public class RoutineEditorActivity extends Activity {
         page.addView(header);
 
         TextView intro = UiKit.text(this,
-                "Steps run from top to bottom. IF conditions can gate the next steps; if a condition is false, Orbit skips only those gated steps and continues the routine.",
+                "Steps run from top to bottom. An IF condition guards the steps after it and can "
+                        + "add an ELSE path that runs instead when the condition is false. Exactly "
+                        + "one path runs, then the routine continues.",
                 13, UiKit.MUTED, false);
         intro.setLineSpacing(0, 1.12f);
         LinearLayout.LayoutParams introLp = new LinearLayout.LayoutParams(
@@ -210,8 +212,17 @@ public class RoutineEditorActivity extends Activity {
             empty.addView(note);
             stepsList.addView(empty, cardLp());
         } else {
+            int[] branches = RoutineBranch.branchMap(workingActions);
+            int[] owners = RoutineBranch.branchOwners(workingActions);
             for (int i = 0; i < workingActions.size(); i++) {
-                stepsList.addView(stepCard(i, workingActions.get(i)), cardLp());
+                // A divider where the ELSE path begins, so the split is visible rather than
+                // something the user has to count out against the condition's step counts.
+                if (branches[i] == RoutineBranch.BRANCH_ELSE
+                        && (i == 0 || branches[i - 1] != RoutineBranch.BRANCH_ELSE
+                                   || owners[i - 1] != owners[i])) {
+                    stepsList.addView(branchDivider(owners[i]), cardLp());
+                }
+                stepsList.addView(stepCard(i, workingActions.get(i), branches[i]), cardLp());
             }
         }
         if (addStepButton != null) {
@@ -222,7 +233,29 @@ public class RoutineEditorActivity extends Activity {
         }
     }
 
-    private View stepCard(int index, AssistantReply.Action action) {
+    /** Marks where an ELSE path begins, using the same card surface as a step. */
+    private View branchDivider(int conditionIndex) {
+        LinearLayout card = card();
+        card.setPadding(UiKit.dp(this, 14), UiKit.dp(this, 9), UiKit.dp(this, 14), UiKit.dp(this, 9));
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView tag = UiKit.text(this, "ELSE", 11, UiKit.accent(this), true);
+        tag.setLetterSpacing(0.12f);
+        row.addView(tag);
+
+        TextView note = UiKit.text(this,
+                conditionIndex >= 0
+                        ? "Runs instead when step " + (conditionIndex + 1) + " is false"
+                        : "Runs instead when the condition is false",
+                11, UiKit.MUTED, false);
+        note.setPadding(UiKit.dp(this, 10), 0, 0, 0);
+        row.addView(note, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        card.addView(row);
+        return card;
+    }
+
+    private View stepCard(int index, AssistantReply.Action action, int branch) {
         LinearLayout card = card();
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -236,6 +269,14 @@ public class RoutineEditorActivity extends Activity {
 
         LinearLayout text = new LinearLayout(this);
         text.setOrientation(LinearLayout.VERTICAL);
+        if (branch != RoutineBranch.BRANCH_NONE) {
+            TextView branchTag = UiKit.text(this,
+                    branch == RoutineBranch.BRANCH_ELSE ? "ELSE PATH" : "IF PATH",
+                    10, UiKit.MUTED, true);
+            branchTag.setLetterSpacing(0.1f);
+            branchTag.setPadding(0, 0, 0, UiKit.dp(this, 2));
+            text.addView(branchTag);
+        }
         TextView title = UiKit.text(this, RoutineActionCatalog.title(action), 14, UiKit.TEXT, true);
         title.setMaxLines(1);
         text.addView(title);
@@ -584,10 +625,24 @@ public class RoutineEditorActivity extends Activity {
         locationGroup.addView(locationHelp);
         form.addView(locationGroup);
 
-        form.addView(dialogLabel("Apply condition to"));
+        form.addView(dialogLabel("IF path · run when true"));
         LinearLayout nextSelector = dialogSelector(new String[]{"Next 1 step", "Next 2 steps", "Next 3 steps", "Next 4 steps", "Next 5 steps"}, next);
         form.addView(nextSelector, selectorLp());
-        TextView behavior = UiKit.text(this, "If the condition is false, Orbit skips only these next steps, then continues with the rest of the Routine.", 11, UiKit.MUTED, false);
+
+        int elseCount = RoutineBranch.elseSteps(old);
+        final int[] otherwise = {elseCount};
+        form.addView(dialogLabel("ELSE path · run when false"));
+        LinearLayout elseSelector = dialogSelector(
+                new String[]{"No ELSE", "Next 1 step", "Next 2 steps", "Next 3 steps", "Next 4 steps", "Next 5 steps"},
+                otherwise);
+        form.addView(elseSelector, selectorLp());
+
+        TextView behavior = UiKit.text(this,
+                "The ELSE steps come straight after the IF steps. Exactly one path runs, then Orbit "
+                        + "continues with the rest of the Routine. With no ELSE, a false condition "
+                        + "simply skips the IF steps.",
+                11, UiKit.MUTED, false);
+        behavior.setLineSpacing(0, 1.1f);
         behavior.setPadding(0, UiKit.dp(this, 7), 0, 0);
         form.addView(behavior);
 
@@ -603,6 +658,11 @@ public class RoutineEditorActivity extends Activity {
                         String selectedMode = mode[0] == 1 ? RoutineConditionEvaluator.MODE_LOCATION :
                                 mode[0] == 2 ? RoutineConditionEvaluator.MODE_TIME_AND_LOCATION : RoutineConditionEvaluator.MODE_TIME;
                         params.put("mode", selectedMode).put("nextSteps", next[0] + 1);
+                        // Written only when an ELSE was actually chosen, so a condition without
+                        // one stays byte-identical to what every earlier release wrote.
+                        if (otherwise[0] > 0) {
+                            params.put(RoutineBranch.KEY_ELSE_STEPS, otherwise[0]);
+                        }
 
                         if (mode[0] != 1) {
                             Integer sh = parseInt(startHour.getText().toString());
@@ -919,6 +979,13 @@ public class RoutineEditorActivity extends Activity {
                 Toast.makeText(this, "One of the routine steps is incomplete.", Toast.LENGTH_SHORT).show();
                 return;
             }
+        }
+        // Branch shape is checked before anything is written, and the message names the step, so a
+        // half-defined ELSE is corrected here rather than becoming an unrunnable saved routine.
+        String branchProblem = RoutineBranch.structureProblem(workingActions);
+        if (!branchProblem.isEmpty()) {
+            Toast.makeText(this, branchProblem, Toast.LENGTH_LONG).show();
+            return;
         }
         String exceptId = existing == null ? null : existing.id;
         if (RoutineStore.nameExists(this, name, exceptId)) {
