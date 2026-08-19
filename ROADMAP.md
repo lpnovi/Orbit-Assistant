@@ -337,6 +337,23 @@
 - Give every OrbitSwitch one light confirmation tick from the shared component, so no screen has to
   add its own and no tap can produce two
 
+### 0.7.4.1
+- Colour links against the bubble surface they are actually drawn on, so an Accent link on an
+  Accent bubble stays readable, while keeping the underline as a second cue
+- Add **Show Stop button while replying**, on by default, turning the existing composer Send
+  control into Stop for the duration of a reply rather than adding a second button
+- Give `OrbitRequestManager` one authoritative `cancel`, used by both surfaces, which ends the
+  durable request, cancels its unique WorkManager work, and owns partial persistence
+- Add a `CANCELLED` terminal request state that is neither active nor a failure, so a stopped reply
+  offers no Retry and no error, and is pruned like any other finished request
+- Put every irreversible completion step behind one `completeIfNotCancelled` gate so an accepted
+  Stop and a completion landing at the same instant are mutually exclusive, leaving no path to a
+  late answer, a delayed device action, a completion notification, or a spoken reply
+- Keep a stopped reply's partial text as an ordinary finished answer with Copy and Regenerate,
+  written down exactly once so it survives reopening the conversation
+- Leave the v0.7.3.9 focus architecture untouched: stopping is an ordinary button press that moves
+  no focus, opens or closes no keyboard, and rebuilds no composer
+
 ## Future direction
 
 ### Next up

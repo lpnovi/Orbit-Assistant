@@ -85,6 +85,9 @@ public class OrbitSession extends VoiceInteractionSession {
     private LinearLayout suggestionRow;
     private EditText input;
     private ImageButton mic;
+    private ImageButton sendButton;
+    /** True while the composer control is showing Stop rather than Send. */
+    private boolean showingStop;
     private OrbitListeningHalo listeningHalo;
     private GradientDrawable sheetBackground;
     /** Resting and fully-open conversation heights, captured when a drag begins. */
@@ -247,6 +250,7 @@ public class OrbitSession extends VoiceInteractionSession {
             uiRequestConversationId = null;
             stopThinkingIndicator();
             streamingBubble = null;
+            updateComposerAction();
         } else if (!initialHistoryRestoreAttempted && history.isEmpty() && Prefs.historyEnabled(getContext())) {
             ConversationStore.Conversation latest = ConversationStore.latest(getContext());
             if (latest != null) {
@@ -586,15 +590,21 @@ public class OrbitSession extends VoiceInteractionSession {
         mic.setOnClickListener(v -> toggleListening());
         composer.addView(mic, new LinearLayout.LayoutParams(UiKit.dp(c, 44), UiKit.dp(c, 44)));
 
-        ImageButton send = tinyIconButton(com.orbit.assistant.R.drawable.ic_send);
-        send.setImageTintList(ColorStateList.valueOf(UiKit.onAccent(c)));
-        send.setBackground(UiKit.ripple(UiKit.accent(c), UiKit.onAccent(c), 18, c));
-        send.setContentDescription("Send message");
-        send.setOnClickListener(v -> submit());
+        // A freshly built control starts as Send, so the remembered state starts there too and a
+        // rebuilt composer cannot be left showing the wrong one.
+        showingStop = false;
+        sendButton = tinyIconButton(com.orbit.assistant.R.drawable.ic_send);
+        sendButton.setImageTintList(ColorStateList.valueOf(UiKit.onAccent(c)));
+        sendButton.setBackground(UiKit.ripple(UiKit.accent(c), UiKit.onAccent(c), 18, c));
+        sendButton.setContentDescription("Send message");
+        // One control, one footprint. While a reply is being generated the same button becomes
+        // Stop rather than a second button appearing beside it.
+        sendButton.setOnClickListener(v -> { if (showingStop) stopGenerating(); else submit(); });
         LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(UiKit.dp(c, 44), UiKit.dp(c, 44));
         sendLp.setMargins(UiKit.dp(c, 5), 0, 0, 0);
-        composer.addView(send, sendLp);
+        composer.addView(sendButton, sendLp);
         sheet.addView(composer);
+        updateComposerAction();
 
         input.setOnFocusChangeListener((v, hasFocus) -> {
             int stroke = hasFocus ? UiKit.withAlpha(UiKit.accent(c), 170) : Color.rgb(48, 53, 67);
@@ -657,6 +667,9 @@ public class OrbitSession extends VoiceInteractionSession {
     private void renderConversation() {
         historyMode = false;
         streamingBubble = null;
+        // Redrawing a conversation also settles Send/Stop, so opening a different chat can never
+        // leave the control showing the previous one's state.
+        updateComposerAction();
         if (messages == null) return;
         messages.removeAllViews();
         if (history.isEmpty()) {
@@ -1546,6 +1559,7 @@ public class OrbitSession extends VoiceInteractionSession {
         streamingBubble = null;
         stateTextSafe("Thinking");
         showThinkingIndicator();
+        updateComposerAction();
         if (Prefs.haptics(getContext())) vibrate(12);
 
         final String submitted = q;
@@ -1598,6 +1612,7 @@ public class OrbitSession extends VoiceInteractionSession {
                         if (voiceRequest && Prefs.speak(getContext())) speak(OrbitMarkdown.toSpeechText(
                                 SourceLinkUtil.displayText(storedText)));
                     }
+                    updateComposerAction();
                     traceComposer("response.rendered actions="
                             + (reply.actions == null ? 0 : reply.actions.size()));
                 });
@@ -1612,6 +1627,7 @@ public class OrbitSession extends VoiceInteractionSession {
                     if (ownsUi) {
                         busy = false;
                         uiRequestConversationId = null;
+                        updateComposerAction();
                     }
                     if (!ownsUi) return;
                     stopThinkingIndicator();
@@ -1623,6 +1639,10 @@ public class OrbitSession extends VoiceInteractionSession {
                         addFailureRetryAction(PendingRequestStore.load(getContext(), requestId));
                     }
                 });
+            }
+
+            @Override public void onCancelled(String requestId, String partialText) {
+                main.post(() -> applyCancellation(ownsCurrentUi(), partialText));
             }
         };
 
@@ -1706,11 +1726,49 @@ public class OrbitSession extends VoiceInteractionSession {
 
     private void finishStreamingBubble(String finalText) {
         finalText = SourceLinkUtil.displayText(finalText);
-        if (streamingBubble != null) {
-            if (streamingBubble.getParent() == messages) messages.removeView(streamingBubble);
-            streamingBubble = null;
-        }
+        discardStreamingBubble();
         addAssistantBubble(finalText);
+    }
+
+    /** Takes the live streaming bubble off screen, cursor and all, leaving nothing behind. */
+    private void discardStreamingBubble() {
+        if (streamingBubble == null) return;
+        if (messages != null && streamingBubble.getParent() == messages) messages.removeView(streamingBubble);
+        streamingBubble = null;
+    }
+
+    /**
+     * Swaps the composer control between Send and Stop. Only the icon, description, and what a tap
+     * does change; the button keeps its size, position, tint, and background, so the composer never
+     * moves and no extra control appears.
+     */
+    private void updateComposerAction() {
+        if (sendButton == null) return;
+        boolean stop = ComposerActionState.shouldShowStop(getContext(), conversationId, busy);
+        if (stop == showingStop) return;
+        showingStop = stop;
+        ComposerActionState.apply(sendButton, stop);
+    }
+
+    /**
+     * Stops the reply Orbit is generating for this conversation.
+     *
+     * <p>Deliberately touches nothing about the composer beyond the control that was tapped: focus,
+     * the keyboard, and the input connection are all left exactly as the user had them, so the next
+     * message can be typed straight away.
+     *
+     * <p>The one light tick of feedback comes from the shared press behaviour every composer button
+     * already has, so stopping cannot produce a second one. There is no confirmation to accept.
+     */
+    private void stopGenerating() {
+        // The manager owns cancellation; this only asks for it and reacts to the answer.
+        if (OrbitRequestManager.cancelActiveForConversation(getContext(), conversationId)) return;
+        // Nothing was still running, so the control had gone stale. Put it back.
+        busy = false;
+        uiRequestConversationId = null;
+        stopThinkingIndicator();
+        stateTextSafe(readyState());
+        updateComposerAction();
     }
 
     private boolean isDraftReplyRequest(String prompt) {
@@ -2067,6 +2125,7 @@ public class OrbitSession extends VoiceInteractionSession {
         if (!id.isEmpty()) {
             busy = true; uiRequestConversationId = conversationId;
             showThinkingIndicator(); stateTextSafe("Thinking");
+            updateComposerAction();
         }
     }
 
@@ -2077,6 +2136,7 @@ public class OrbitSession extends VoiceInteractionSession {
         uiRequestConversationId = conversationId;
         showThinkingIndicator();
         stateTextSafe("Thinking");
+        updateComposerAction();
         OrbitRequestManager.Listener listener = requestListenerForExistingUser(prompt, draftReply, voiceRequest);
         OrbitRequestManager.enqueue(getContext(), conversationId, prompt, screen, image,
                 voiceRequest, draftReply, currentMode, explicitAttachment, listener);
@@ -2114,6 +2174,7 @@ public class OrbitSession extends VoiceInteractionSession {
                         if (voiceRequest && Prefs.speak(getContext())) speak(OrbitMarkdown.toSpeechText(
                                 SourceLinkUtil.displayText(storedText)));
                     }
+                    updateComposerAction();
                 });
             }
             @Override public void onError(String requestId, String message) {
@@ -2124,10 +2185,47 @@ public class OrbitSession extends VoiceInteractionSession {
                     busy = false; uiRequestConversationId = null; stopThinkingIndicator(); stateTextSafe("Needs attention");
                     history.add(new AssistantClient.History("assistant", friendly));
                     if (sessionVisible) { addErrorBubble(friendly); addFailureRetryAction(PendingRequestStore.load(getContext(), requestId)); }
+                    updateComposerAction();
                     traceComposer("response.error-rendered");
                 });
             }
+            @Override public void onCancelled(String requestId, String partialText) {
+                main.post(() -> applyCancellation(ownsCurrentUi(), partialText));
+            }
         };
+    }
+
+    /**
+     * Settles the overlay after the user stopped a reply.
+     *
+     * <p>Whatever had already streamed stays on screen as an ordinary finished answer, with its
+     * Copy and Regenerate controls, because the manager has already persisted it. A reply that had
+     * not produced any text leaves no empty bubble behind. Either way this is not an error: no
+     * error bubble, no Retry, and the composer goes straight back to Ready without being touched.
+     */
+    private void applyCancellation(boolean ownsUi, String partialText) {
+        if (!ownsUi) {
+            updateComposerAction();
+            return;
+        }
+        busy = false;
+        uiRequestConversationId = null;
+        stopThinkingIndicator();
+        stateTextSafe(readyState());
+        String partial = partialText == null ? "" : partialText.trim();
+        if (partial.isEmpty()) {
+            discardStreamingBubble();
+        } else {
+            history.add(new AssistantClient.History("assistant", partial));
+            if (sessionVisible) {
+                finishStreamingBubble(SourceLinkUtil.displayText(partial));
+                addGenericResponseActions(partial, true);
+            } else {
+                discardStreamingBubble();
+            }
+        }
+        updateComposerAction();
+        traceComposer("response.stopped");
     }
 
     private void executeActions(List<AssistantReply.Action> actions, int index) {

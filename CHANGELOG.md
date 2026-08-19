@@ -273,3 +273,9 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - A short follow-up like "a little more" can continue the last device action when the target is unmistakable.
   - Orbit's animated switches now give one light tap of feedback whenever haptics are on.
   - The typing and focus behaviour verified in v0.7.3.9 is unchanged.
+- **v0.7.4.1**: Links stay readable, and you can now stop a reply while Orbit is still writing it.
+  - Links in Orbit's replies stay visible against every accent and conversation-colour combination.
+  - The Send button becomes Stop while a reply is being generated, with a new switch to turn that off.
+  - Stopping keeps whatever Orbit had already written, ready to copy or regenerate, rather than showing an error.
+  - A stopped reply can no longer finish later, run a delayed device action, notify you, or speak.
+  - Typing, Voice, and the rest of the composer behave exactly as they did in v0.7.4.0.

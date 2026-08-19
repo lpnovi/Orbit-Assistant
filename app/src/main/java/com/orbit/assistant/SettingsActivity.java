@@ -701,6 +701,9 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         conversationCard.addView(toggle("Start a new chat each time Orbit opens", Prefs.NEW_CHAT_ON_OPEN, true));
         conversationCard.addView(toggle("Save recent chats on this device", Prefs.HISTORY_ENABLED, true));
         conversationCard.addView(toggle("Save screen attachment thumbnails in chat history", Prefs.SAVE_SCREEN_THUMBNAILS, false));
+        conversationCard.addView(toggle("Show Stop button while replying",
+                "Replace Send with Stop while Orbit is generating a reply.",
+                Prefs.SHOW_STOP_BUTTON, true));
         conversationCard.addView(notificationToggle());
         TextView conversationNote = UiKit.text(this,
                 "Orbit keeps up to 100 recent chats locally when history is enabled. The full Orbit app can search, rename, reopen, and delete them. Screen thumbnails are stored only in Orbit's private app storage when that option is enabled.",

@@ -18,6 +18,12 @@ public final class PendingRequestStore {
     public static final String RUNNING = "running";
     public static final String DONE = "done";
     public static final String FAILED = "failed";
+    /**
+     * The user stopped this request before it finished. Terminal like {@link #DONE} and
+     * {@link #FAILED}, but deliberately neither of them: a cancelled request is not active, so it
+     * never shows a thinking state, and it is not a failure, so it never offers Retry or an error.
+     */
+    public static final String CANCELLED = "cancelled";
 
     private PendingRequestStore() {}
 
@@ -107,11 +113,23 @@ public final class PendingRequestStore {
         return failed.isEmpty() ? null : failed.get(0);
     }
 
+    /** True once a request can no longer change state, whichever way it ended. */
+    public static boolean isTerminal(String status) {
+        return DONE.equals(status) || FAILED.equals(status) || CANCELLED.equals(status);
+    }
+
+    /** Durable cancellation check, readable by the worker after the UI is long gone. */
+    public static synchronized boolean isCancelled(Context c, String id) {
+        Item item = load(c, id);
+        return item != null && CANCELLED.equals(item.status);
+    }
+
     public static synchronized void markSuperseded(Context c, String id) { update(c, id, DONE, ""); }
 
     public static synchronized void markRunning(Context c, String id) { update(c, id, RUNNING, ""); }
     public static synchronized void markDone(Context c, String id) { update(c, id, DONE, ""); }
     public static synchronized void markFailed(Context c, String id, String error) { update(c, id, FAILED, error == null ? "" : error); }
+    public static synchronized void markCancelled(Context c, String id) { update(c, id, CANCELLED, ""); }
 
     private static void update(Context c, String id, String status, String error) {
         List<Item> all = readAll(c);
@@ -130,7 +148,7 @@ public final class PendingRequestStore {
 
     private static void trim(List<Item> all) {
         long cutoff = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000;
-        all.removeIf(i -> (DONE.equals(i.status) || FAILED.equals(i.status)) && i.updatedAt < cutoff);
+        all.removeIf(i -> isTerminal(i.status) && i.updatedAt < cutoff);
         if (all.size() > 100) all.subList(100, all.size()).clear();
     }
 

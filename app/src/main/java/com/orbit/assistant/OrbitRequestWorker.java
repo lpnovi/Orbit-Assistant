@@ -38,7 +38,9 @@ public final class OrbitRequestWorker extends Worker {
         Context c = getApplicationContext();
         PendingRequestStore.Item item = PendingRequestStore.load(c, id);
         if (item == null) return Result.success();
-        if (PendingRequestStore.DONE.equals(item.status)) return Result.success();
+        // Covers a request that already finished and one the user stopped before this ran at all.
+        if (PendingRequestStore.isTerminal(item.status)) return Result.success();
+        if (cancelled(c, id)) return Result.success();
 
         PendingRequestStore.markRunning(c, id);
         OrbitRequestManager.dispatchStarted(id);
@@ -54,18 +56,14 @@ public final class OrbitRequestWorker extends Worker {
             String text = weatherReply.text == null || weatherReply.text.trim().isEmpty()
                     ? "I couldn't load the weather right now."
                     : weatherReply.text.trim().replace("—", "-");
-            ConversationStore.appendMessage(c, item.conversationId, new AssistantClient.History("assistant", text));
-            PendingRequestStore.markDone(c, id);
-            AttachmentStore.delete(item.screenshotPath);
-            OrbitRequestManager.dispatchSuccess(id, new AssistantReply(text, weatherReply.actions));
-            if (Prefs.backgroundNotifications(c) && !UiPresence.isVisible()) {
-                NotificationHelper.notifyResponseComplete(c, item.conversationId, item.prompt, text);
-            }
+            commit(c, item, id, new AssistantClient.History("assistant", text),
+                    new AssistantReply(text, weatherReply.actions), text);
             return Result.success();
         }
 
         RequestOutcome outcome = performRequest(c, item, screenshot, history,
                 item.intelligenceMode, id, true, 4);
+        if (cancelled(c, id)) return Result.success();
 
         // Hosted search can occasionally return a short-lived capacity error even
         // when ordinary ChatGPT requests are healthy. Voice and typed prompts now
@@ -75,6 +73,7 @@ public final class OrbitRequestWorker extends Worker {
                 && looksServerOverloaded(outcome.error)) {
             outcome = performRequest(c, item, screenshot, history,
                     Prefs.MODE_FAST, id, true, 2);
+            if (cancelled(c, id)) return Result.success();
         }
 
         AssistantReply reply = outcome.reply;
@@ -83,17 +82,12 @@ public final class OrbitRequestWorker extends Worker {
             String text = reply.text == null || reply.text.trim().isEmpty()
                     ? "Done."
                     : reply.text.trim().replace("—", "-");
-            ConversationStore.appendMessage(c, item.conversationId,
+            commit(c, item, id,
                     new AssistantClient.History("assistant", text, false, "", "", "", "",
-                            reply.memoryUsage, reply.suggestedMemoryText, reply.suggestedMemoryCategory));
-            PendingRequestStore.markDone(c, id);
-            AttachmentStore.delete(item.screenshotPath);
-            OrbitRequestManager.dispatchSuccess(id, new AssistantReply(text, reply.actions,
-                    reply.memoryUsage, reply.suggestedMemoryText, reply.suggestedMemoryCategory));
-            if (Prefs.backgroundNotifications(c) && !UiPresence.isVisible()) {
-                NotificationHelper.notifyResponseComplete(c, item.conversationId, item.prompt,
-                        SourceLinkUtil.displayText(text));
-            }
+                            reply.memoryUsage, reply.suggestedMemoryText, reply.suggestedMemoryCategory),
+                    new AssistantReply(text, reply.actions, reply.memoryUsage,
+                            reply.suggestedMemoryText, reply.suggestedMemoryCategory),
+                    SourceLinkUtil.displayText(text));
             return Result.success();
         }
 
@@ -102,18 +96,53 @@ public final class OrbitRequestWorker extends Worker {
         // Network/process/capacity disruptions get one durable retry before becoming
         // a visible chat error. Hosted-search overloads already received the quick
         // in-process fallback above, so this is the final safety net.
-        if (getRunAttemptCount() < 1 && looksTransient(friendly)) return Result.retry();
+        if (getRunAttemptCount() < 1 && looksTransient(friendly)) {
+            return cancelled(c, id) ? Result.success() : Result.retry();
+        }
         String visible = friendly.startsWith("Orbit could not finish")
                 ? friendly
                 : "Orbit could not finish this response: " + friendly;
-        ConversationStore.appendMessage(c, item.conversationId, new AssistantClient.History("assistant", visible));
-        PendingRequestStore.markFailed(c, id, visible);
-        DiagnosticStore.recordError(c, visible);
-        // Keep the pending screenshot temporarily so a visible Retry action can
-        // recreate the failed request with the same context. Pending metadata is
-        // pruned after seven days.
-        OrbitRequestManager.dispatchError(id, visible);
+        // Stopping a request is not a failure. Cancelling interrupts this worker, which surfaces
+        // here as an ordinary error, so the same gate the success path uses decides whether
+        // anything visible gets written at all.
+        OrbitRequestManager.completeIfNotCancelled(c, id, () -> {
+            ConversationStore.appendMessage(c, item.conversationId, new AssistantClient.History("assistant", visible));
+            PendingRequestStore.markFailed(c, id, visible);
+            DiagnosticStore.recordError(c, visible);
+            // Keep the pending screenshot temporarily so a visible Retry action can
+            // recreate the failed request with the same context. Pending metadata is
+            // pruned after seven days.
+            OrbitRequestManager.dispatchError(id, visible);
+        });
         return Result.success();
+    }
+
+    /**
+     * Finishes a request for good: persists the answer, marks it done, tells any visible surface,
+     * and only then lets background completion run.
+     *
+     * <p>All of it happens under the request's completion lock, so this either wins outright
+     * against a Stop the user is tapping right now or finds the request already cancelled and does
+     * nothing at all. Because the visible dispatch is inside the lock too, a cancelled request can
+     * never reach a listener, which is what keeps response actions, the completion notification,
+     * and a spoken reply from running for an answer the user stopped waiting for.
+     */
+    private void commit(Context c, PendingRequestStore.Item item, String id,
+                        AssistantClient.History message, AssistantReply reply, String notificationText) {
+        OrbitRequestManager.completeIfNotCancelled(c, id, () -> {
+            ConversationStore.appendMessage(c, item.conversationId, message);
+            PendingRequestStore.markDone(c, id);
+            AttachmentStore.delete(item.screenshotPath);
+            OrbitRequestManager.dispatchSuccess(id, reply);
+            if (Prefs.backgroundNotifications(c) && !UiPresence.isVisible()) {
+                NotificationHelper.notifyResponseComplete(c, item.conversationId, item.prompt, notificationText);
+            }
+        });
+    }
+
+    /** True once the user's Stop has been accepted, in this process or a previous one. */
+    private boolean cancelled(Context c, String id) {
+        return OrbitRequestManager.isCancelled(c, id);
     }
 
     private RequestOutcome performRequest(Context c, PendingRequestStore.Item item,

@@ -62,6 +62,8 @@ public class ChatActivity extends Activity {
     private EditText input;
     private ImageButton mic;
     private ImageButton send;
+    /** True while the composer control is showing Stop rather than Send. */
+    private boolean showingStop;
     private OrbitListeningHalo listeningHalo;
     private TextView voiceStatus;
     private VoiceInputController voiceController;
@@ -321,10 +323,15 @@ public class ChatActivity extends Activity {
         composer.addView(mic,
                 new LinearLayout.LayoutParams(UiKit.dp(this, 44), UiKit.dp(this, 44)));
 
+        // A freshly built control starts as Send, so the remembered state starts there too and a
+        // rebuilt composer cannot be left showing the wrong one.
+        showingStop = false;
         send = iconButton(com.orbit.assistant.R.drawable.ic_send, "Send");
         send.setImageTintList(ColorStateList.valueOf(UiKit.onAccent(this)));
         send.setBackground(UiKit.ripple(UiKit.accent(this), UiKit.onAccent(this), 18, this));
-        send.setOnClickListener(v -> submit(false));
+        // One control, one footprint. While a reply is being generated the same button becomes
+        // Stop rather than a second button appearing beside it.
+        send.setOnClickListener(v -> { if (showingStop) stopGenerating(); else submit(false); });
         composer.addView(send, new LinearLayout.LayoutParams(UiKit.dp(this, 44), UiKit.dp(this, 44)));
         input.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND) { submit(false); return true; }
@@ -378,6 +385,9 @@ public class ChatActivity extends Activity {
         }
         if (PendingRequestStore.hasActiveForConversation(this, conversationId)) addThinkingRow();
         else addFailureStateIfNeeded();
+        // Every path that redraws the conversation also settles Send/Stop, so the control can
+        // never be left showing the wrong one.
+        updateComposerAction();
         scrollBottomIfFollowing();
     }
 
@@ -691,6 +701,7 @@ public class ChatActivity extends Activity {
                 hasAttachment, listener);
         listeners.put(requestId, listener);
         addThinkingRow();
+        updateComposerAction();
         scrollBottom();
     }
 
@@ -707,6 +718,7 @@ public class ChatActivity extends Activity {
     private void attachToPending() {
         for (PendingRequestStore.Item item : PendingRequestStore.activeForConversation(this, conversationId)) registerRequest(item.id);
         if (PendingRequestStore.hasActiveForConversation(this, conversationId) && thinkingRow == null) addThinkingRow();
+        updateComposerAction();
     }
 
     private OrbitRequestManager.Listener createRequestListener() {
@@ -751,6 +763,17 @@ public class ChatActivity extends Activity {
             @Override public void onError(String requestId, String message) {
                 DiagnosticStore.recordError(ChatActivity.this, message);
                 runOnUiThread(() -> { listeners.remove(requestId); reloadConversation(); });
+            }
+            @Override public void onCancelled(String requestId, String partialText) {
+                runOnUiThread(() -> {
+                    listeners.remove(requestId);
+                    removeThinkingRow();
+                    // The manager has already persisted whatever had streamed, so reloading shows
+                    // the partial answer with its ordinary Copy and Regenerate controls, and shows
+                    // nothing at all when the reply had not started. Stopping is not a failure, so
+                    // no error bubble and no Retry appear either way.
+                    reloadConversation();
+                });
             }
         };
     }
@@ -1508,7 +1531,7 @@ public class ChatActivity extends Activity {
         OrbitRequestManager.Listener listener = createRequestListener();
         String id = OrbitRequestManager.retry(this, failed.id, listener);
         render();
-        if (!id.isEmpty()) { listeners.put(id, listener); if (thinkingRow == null) addThinkingRow(); scrollBottom(); }
+        if (!id.isEmpty()) { listeners.put(id, listener); if (thinkingRow == null) addThinkingRow(); updateComposerAction(); scrollBottom(); }
     }
 
     private void regenerateLastResponse() {
@@ -1532,7 +1555,7 @@ public class ChatActivity extends Activity {
                 user.attachmentText, screenshot, false, false, currentMode,
                 explicit, listener);
         listeners.put(id, listener);
-        addThinkingRow(); scrollBottom();
+        addThinkingRow(); updateComposerAction(); scrollBottom();
         if (user.screenAttached && screenshot == null) Toast.makeText(this, "Regenerating without the original screen image", Toast.LENGTH_SHORT).show();
     }
 
@@ -1634,11 +1657,52 @@ public class ChatActivity extends Activity {
      */
     private void updateSendState() {
         if (send == null) return;
+        // Stop owns the control's appearance while it is showing; typing behind it must not dim it.
+        if (showingStop) return;
         boolean hasText = input != null && input.getText().toString().trim().length() > 0;
         boolean ready = hasText || pendingAttachment != null;
         send.setEnabled(true);
         send.setAlpha(ready ? 1f : 0.45f);
         send.setContentDescription(ready ? "Send message" : "Send");
+    }
+
+    /**
+     * Swaps the composer control between Send and Stop. Only the icon, description, and what a tap
+     * does change; the button keeps its size, position, tint, and background, so the composer never
+     * moves and no extra control appears.
+     */
+    private void updateComposerAction() {
+        if (send == null) return;
+        boolean stop = ComposerActionState.shouldShowStop(this, conversationId, false);
+        if (stop == showingStop) return;
+        showingStop = stop;
+        ComposerActionState.apply(send, stop);
+        if (stop) {
+            // Stop is always available; an empty text field must not dim it.
+            send.setEnabled(true);
+            send.setAlpha(1f);
+        } else {
+            updateSendState();
+        }
+    }
+
+    /**
+     * Stops the reply Orbit is generating for this conversation.
+     *
+     * <p>Deliberately touches nothing about the composer beyond the control that was tapped: focus,
+     * the keyboard, and the input connection are all left exactly as the user had them, so the next
+     * message can be typed straight away.
+     *
+     * <p>The one light tick of feedback comes from the shared press behaviour every composer button
+     * already has, so stopping cannot produce a second one. There is no confirmation to accept.
+     */
+    private void stopGenerating() {
+        // The manager owns cancellation; this only asks for it and reacts to the answer.
+        if (!OrbitRequestManager.cancelActiveForConversation(this, conversationId)) {
+            // Nothing was still running, so the control had gone stale. Put it back.
+            removeThinkingRow();
+            updateComposerAction();
+        }
     }
 
     /** Puts the microphone on Orbit's shared audio-reactive listening background. */

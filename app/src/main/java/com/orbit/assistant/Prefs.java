@@ -37,6 +37,11 @@ public final class Prefs {
     public static final String HISTORY_ENABLED = "history_enabled";
     public static final String SAVE_SCREEN_THUMBNAILS = "save_screen_thumbnails";
     public static final String KEYBOARD_AWARE_ASSISTANT = "keyboard_aware_assistant";
+    /**
+     * Turns the composer's Send control into Stop while Orbit is generating a reply, on both
+     * surfaces. Off leaves the composer exactly as it was before this option existed.
+     */
+    public static final String SHOW_STOP_BUTTON = "show_stop_button";
     public static final String USER_BUBBLE_COLOR = "user_bubble_color";
     public static final String ASSISTANT_BUBBLE_COLOR = "assistant_bubble_color";
     public static final String CHAT_TEXT_SIZE = "chat_text_size";
@@ -91,7 +96,7 @@ public final class Prefs {
     private static final Set<String> BACKUP_BOOLEAN_KEYS = new HashSet<>(Arrays.asList(
             SCREEN_CONTEXT, SCREENSHOT, CONTEXT_CHIPS, ATTACH_SCREEN_BY_DEFAULT,
             SPEAK, HAPTICS, AUTO_LISTEN, AUTO_LISTEN_ON_OPEN, VOICE_PAUSE_FRIENDLY, NEW_CHAT_ON_OPEN,
-            HISTORY_ENABLED, SAVE_SCREEN_THUMBNAILS, KEYBOARD_AWARE_ASSISTANT,
+            HISTORY_ENABLED, SAVE_SCREEN_THUMBNAILS, KEYBOARD_AWARE_ASSISTANT, SHOW_STOP_BUTTON,
             LELO_MODE, BACKGROUND_NOTIFICATIONS, WEATHER_USE_DEVICE_LOCATION,
             MEMORY_ENABLED, MEMORY_USAGE_INDICATOR, MEMORY_SUGGESTIONS,
             NOTIFICATION_AI_ENABLED, AMOLED_MODE, UPDATE_NOTIFICATIONS));
@@ -178,6 +183,7 @@ public final class Prefs {
     public static boolean historyEnabled(Context c) { return get(c).getBoolean(HISTORY_ENABLED, true); }
     public static boolean saveScreenThumbnails(Context c) { return get(c).getBoolean(SAVE_SCREEN_THUMBNAILS, false); }
     public static boolean keyboardAwareAssistant(Context c) { return get(c).getBoolean(KEYBOARD_AWARE_ASSISTANT, true); }
+    public static boolean showStopButton(Context c) { return get(c).getBoolean(SHOW_STOP_BUTTON, true); }
     public static String userBubbleColor(Context c) { return get(c).getString(USER_BUBBLE_COLOR, "classic"); }
     public static String assistantBubbleColor(Context c) { return get(c).getString(ASSISTANT_BUBBLE_COLOR, "classic"); }
     public static String chatTextSize(Context c) {
