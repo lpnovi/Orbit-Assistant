@@ -82,6 +82,13 @@ public final class OverlayLaunchTrace {
      */
     public static final String STAGE_CLOSE_DIALOGS_IGNORED = "session.closeSystemDialogs.ignored";
 
+    /**
+     * Dismissal work armed by an earlier invocation finished after a newer one had already taken
+     * ownership of the shared session, and was refused. Without this the older invocation's exit
+     * animation would have hidden the overlay the user just opened.
+     */
+    public static final String STAGE_DISMISS_STALE = "session.dismiss.stale";
+
     // ---- Why the overlay went away ---------------------------------------------------------
 
     /** Orbit closed itself at the user's request. */
@@ -343,6 +350,11 @@ public final class OverlayLaunchTrace {
         public String endingReason = "";
         public String foreground = "";
         public boolean truncated;
+        /**
+         * Set once this attempt has been hidden. A dismissal recorded after the overlay was
+         * already gone cannot be the reason it went, so it must not become the ending reason.
+         */
+        boolean endingSettled;
 
         Attempt(String id, long startedAtMs, String processToken, String version, String trigger) {
             this.id = id;
@@ -603,7 +615,15 @@ public final class OverlayLaunchTrace {
             current.stages.add(stage);
             current.lines.add(String.format(Locale.US, "[%6d ms] %s%s",
                     offset, stage, detail.isEmpty() ? "" : " " + detail));
-            if (STAGE_DISMISS.equals(stage) || STAGE_TRANSITION.equals(stage)) {
+            // Ordering decides the cause. Orbit's own dismissal explains a hide only when it came
+            // first; the shared session keeps receiving close-system-dialogs callbacks long after
+            // an overlay is gone, and one of those arriving later must not be allowed to relabel
+            // an unexplained hide as something Orbit asked for.
+            if (STAGE_HIDE.equals(stage) || STAGE_DESTROY.equals(stage)) {
+                current.endingSettled = true;
+            }
+            if (!current.endingSettled
+                    && (STAGE_DISMISS.equals(stage) || STAGE_TRANSITION.equals(stage))) {
                 String reason = valueOf(detail, "reason");
                 if (!reason.isEmpty()) current.endingReason = reason;
             }

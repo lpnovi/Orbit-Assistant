@@ -188,6 +188,53 @@ public final class OverlayLaunchTraceTest {
                 OverlayLaunchTrace.status(OverlayLaunchTrace.attempts(context).get(0), false));
     }
 
+    /**
+     * The exact shape of the failure captured on the device: the overlay drew a frame, was hidden
+     * without Orbit asking, and only afterwards did a close-system-dialogs callback arrive on the
+     * shared session. The report used to read that trailing callback as the cause and call the
+     * whole attempt an expected dismissal, which hid the one launch that had finally reproduced.
+     */
+    @Test public void aDismissalAfterTheHideCannotExplainIt() {
+        driveNormalLaunch();
+        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_HIDE);
+        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_DISMISS,
+                OverlayLaunchTrace.State.of().reason(OverlayLaunchTrace.REASON_SYSTEM_DIALOGS));
+
+        OverlayLaunchTrace.Attempt attempt = OverlayLaunchTrace.attempts(context).get(0);
+        assertEquals("nothing Orbit did before the hide explains it", "", attempt.endingReason);
+        assertEquals(OverlayLaunchTrace.SYSTEM_HIDE,
+                OverlayLaunchTrace.status(attempt, false));
+    }
+
+    /** A dismissal that really did come first still explains the hide that followed it. */
+    @Test public void aDismissalBeforeTheHideStillExplainsIt() {
+        driveNormalLaunch();
+        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_DISMISS,
+                OverlayLaunchTrace.State.of().reason(OverlayLaunchTrace.REASON_SCRIM));
+        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_HIDE);
+        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_DISMISS,
+                OverlayLaunchTrace.State.of().reason(OverlayLaunchTrace.REASON_SYSTEM_DIALOGS));
+
+        OverlayLaunchTrace.Attempt attempt = OverlayLaunchTrace.attempts(context).get(0);
+        assertEquals("a later callback must not rewrite a settled ending",
+                OverlayLaunchTrace.REASON_SCRIM, attempt.endingReason);
+        assertEquals(OverlayLaunchTrace.EXPECTED_DISMISS,
+                OverlayLaunchTrace.status(attempt, false));
+    }
+
+    /** Handing off to one of Orbit's own screens is still told apart from a system hide. */
+    @Test public void aTransitionBeforeTheHideStillExplainsIt() {
+        driveNormalLaunch();
+        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_TRANSITION,
+                OverlayLaunchTrace.State.of().reason(OverlayLaunchTrace.REASON_FULL_CHAT));
+        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_HIDE);
+
+        OverlayLaunchTrace.Attempt attempt = OverlayLaunchTrace.attempts(context).get(0);
+        assertEquals(OverlayLaunchTrace.REASON_FULL_CHAT, attempt.endingReason);
+        assertEquals(OverlayLaunchTrace.INTERNAL_TRANSITION,
+                OverlayLaunchTrace.status(attempt, false));
+    }
+
     @Test public void aSessionThatIsNeverAskedToAppearIsNotCalledAFailure() {
         OverlayLaunchTrace.begin(context, OverlayLaunchTrace.STAGE_NEW_SESSION);
         OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_SESSION_CONSTRUCTED);

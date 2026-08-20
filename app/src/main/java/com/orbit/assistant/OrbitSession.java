@@ -134,6 +134,14 @@ public class OrbitSession extends VoiceInteractionSession {
     private boolean ttsReady = false;
     private boolean busy = false;
     private boolean dismissAnimating = false;
+    /**
+     * Who owns the right to hide this session. Android reuses one VoiceInteractionSession across
+     * every Side-button invocation, so an exit animation's end action can outlive the invocation
+     * that armed it. Rebuilding the sheet or returning it to its hidden starting state bumps this,
+     * which is precisely when a new invocation takes over, so older dismissal work can tell that it
+     * no longer speaks for what is on screen.
+     */
+    private int dismissOwnershipToken = 0;
     private boolean sessionVisible = false;
     private boolean orbitOwnsIme = false;
     /** Who owns the composer and the IME for this invocation. */
@@ -394,6 +402,14 @@ public class OrbitSession extends VoiceInteractionSession {
 
     private void buildSheet(Context c) {
         if (root == null) return;
+        // Retire the outgoing sheet BEFORE the field references are replaced. Once removeAllViews()
+        // runs, the old sheet and scrim are unreachable and any animation still running on them can
+        // no longer be cancelled - cancelling the freshly built sheet afterwards reaches the wrong
+        // view. Bumping the ownership token first means an end action that fires as part of this
+        // cancellation already belongs to a finished invocation and cannot hide the new sheet.
+        dismissOwnershipToken++;
+        if (sheet != null) sheet.animate().cancel();
+        if (scrim != null) scrim.animate().cancel();
         root.removeAllViews();
         root.setBackgroundColor(Color.TRANSPARENT);
 
@@ -3565,6 +3581,9 @@ public class OrbitSession extends VoiceInteractionSession {
 
     private void prepareHiddenState() {
         dismissAnimating = false;
+        // This sheet is being returned to its hidden starting state for a show that is about to
+        // happen, so nothing armed before now is still entitled to hide it.
+        dismissOwnershipToken++;
         if (scrim != null) {
             scrim.animate().cancel();
             scrim.setAlpha(0f);
@@ -3654,12 +3673,28 @@ public class OrbitSession extends VoiceInteractionSession {
         sheet.animate().cancel();
         if (scrim != null) scrim.animate().cancel();
 
+        // The end action below runs a few hundred milliseconds from now, on a session Android
+        // reuses for every invocation. Capture who armed it so it can prove it still speaks for
+        // what is on screen when it finally fires.
+        final int armedToken = dismissOwnershipToken;
         float travel = Math.max(sheet.getHeight(), UiKit.dp(getContext(), 320)) + UiKit.dp(getContext(), 20);
         sheet.animate()
                 .translationY(travel)
                 .setDuration(225)
                 .setInterpolator(new PathInterpolator(0.40f, 0.00f, 1.00f, 1.00f))
                 .withEndAction(() -> {
+                    if (!OverlayDismissOwnership.dismissalStillOwnsSession(
+                            armedToken, dismissOwnershipToken)) {
+                        // A newer invocation owns the session now. Leaving dismissAnimating alone
+                        // matters as much as not hiding: it belongs to that invocation, not this
+                        // finished one.
+                        OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_DISMISS_STALE,
+                                OverlayLaunchTrace.State.of()
+                                        .reason(reason)
+                                        .flag("sessionVisible", sessionVisible)
+                                        .flag("firstFrame", firstFrameRecorded));
+                        return;
+                    }
                     dismissAnimating = false;
                     hide();
                 })
@@ -3682,18 +3717,29 @@ public class OrbitSession extends VoiceInteractionSession {
 
     @Override
     public void onCloseSystemDialogs() {
-        // Some Samsung builds can deliver the tail of the Side-button invocation as
-        // close-system-dialogs just after this fresh external sheet becomes visible.
-        // Ignore only that short callback race. Explicit Orbit dismissals bypass this
-        // method, and a genuine system hide still reaches onHide() normally.
-        long sinceExternalShow = SystemClock.elapsedRealtime() - freshExternalShowAtElapsedMs;
-        if (sessionVisible && freshExternalShowAtElapsedMs > 0L &&
-                sinceExternalShow >= 0L && sinceExternalShow < EXTERNAL_SHOW_STABILIZATION_MS) {
+        // Two callbacks must not close anything. A session that is already hidden has no overlay to
+        // close, and arming an exit animation there would leave an end action that hides whatever
+        // the NEXT invocation puts on screen - the Side-button press itself delivers this callback
+        // to the hidden session moments before the new invocation is prepared. Some Samsung builds
+        // also deliver the tail of the invocation as close-system-dialogs just after a fresh sheet
+        // becomes visible. Everything else still closes Orbit exactly as before.
+        long nowElapsed = SystemClock.elapsedRealtime();
+        long sinceExternalShow = nowElapsed - freshExternalShowAtElapsedMs;
+        OverlayDismissOwnership.CloseSystemDialogs decision =
+                OverlayDismissOwnership.onCloseSystemDialogs(sessionVisible,
+                        freshExternalShowAtElapsedMs, nowElapsed,
+                        EXTERNAL_SHOW_STABILIZATION_MS);
+        if (decision != OverlayDismissOwnership.CloseSystemDialogs.DISMISS) {
             // Worth recording even though nothing happens: if this arrives on a launch that later
             // goes wrong, it says the system was already trying to close the fresh overlay.
+            boolean stabilizing =
+                    decision == OverlayDismissOwnership.CloseSystemDialogs.IGNORE_STABILIZING;
             OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_CLOSE_DIALOGS_IGNORED,
                     OverlayLaunchTrace.State.of()
-                            .count("sinceShowMs", (int) Math.min(Integer.MAX_VALUE, sinceExternalShow))
+                            .count("sinceShowMs", stabilizing
+                                    ? (int) Math.min(Integer.MAX_VALUE, sinceExternalShow) : 0)
+                            .flag("sessionVisible", sessionVisible)
+                            .flag("stabilizing", stabilizing)
                             .flag("firstFrame", firstFrameRecorded));
             return;
         }

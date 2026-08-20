@@ -413,6 +413,22 @@
 - Audit every `styleOrbitDialog` call site in the app for the same missing `show()`; this was the
   only one
 
+### 0.7.5.3
+- Fix the intermittent Side-button overlay disappearance, reproduced on device with
+  `OverlayLaunchTrace` active: the overlay drew a real frame and was hidden 184 ms later
+- Root cause: `onCloseSystemDialogs()` on an already-hidden session still ran `dismissAnimated`,
+  arming a 225 ms exit animation whose end action calls `hide()` on the session Android reuses for
+  every invocation. The Side-button press itself delivers that callback to the hidden session, so
+  the animation completed on top of the invocation the press had just opened
+- A hidden session now arms nothing and only records the callback
+- `OverlayDismissOwnership` holds the ownership token: rebuilding the sheet or returning it to its
+  hidden state invalidates dismissal work armed by a finished invocation
+- Cancel the outgoing sheet and scrim in `buildSheet` before `root.removeAllViews()`, while the old
+  references still exist
+- Fix `OverlayLaunchTrace` classification so ordering decides the cause: a dismissal recorded after
+  the hide can no longer relabel a `SYSTEM_HIDE` as `EXPECTED_DISMISS`
+- Keep the 450 ms Samsung fresh-show stabilization window exactly as it was
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever

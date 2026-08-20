@@ -307,3 +307,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - A branch with actions asks for confirmation first, and nothing is removed until you tap Remove.
   - Cancelling leaves the routine exactly as it was; confirming removes the condition and both paths and nothing else.
   - A branch with no actions is still removed straight away, and every other branching behaviour is unchanged.
+
+- **v0.7.5.3**: Fixed a rare case where the Side-button overlay appeared and then vanished on its own.
+  - Orbit could briefly appear and immediately disappear when opened over another app.
+  - Closing work left behind by an earlier overlay can no longer close a newly opened one.
+  - A closed overlay no longer reacts to system close requests that no longer concern it.
+  - Overlay diagnostics no longer mislabel an unexpected disappearance as a close Orbit asked for.
+  - Normal closing, swipe-down, tapping outside, and Voice behaviour are all unchanged.
