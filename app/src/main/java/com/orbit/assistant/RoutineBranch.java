@@ -391,6 +391,19 @@ public final class RoutineBranch {
         if (rewritten != null) actions.set(conditionIndex, rewritten);
     }
 
+    /**
+     * How many user actions sit inside a branch, across both of its paths.
+     *
+     * <p>Zero means removing the branch destroys nothing but the condition itself. Anything above
+     * zero is what makes removal worth confirming, so the question is answered here rather than
+     * recounted by whichever screen happens to be asking.
+     */
+    public static int branchActionCount(List<AssistantReply.Action> actions, int conditionIndex) {
+        Span span = spanAt(actions, conditionIndex);
+        if (span == null) return 0;
+        return Math.max(0, span.spanEnd() - span.trueStart);
+    }
+
     /** Steps currently on one path of the branch owned by {@code conditionIndex}. */
     public static int pathSize(List<AssistantReply.Action> actions, int conditionIndex, int kind) {
         Span span = spanAt(actions, conditionIndex);

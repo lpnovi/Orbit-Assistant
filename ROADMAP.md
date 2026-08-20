@@ -404,6 +404,15 @@
 - Clamp an overrunning legacy gate only when the user actually edits that branch, so opening a
   routine never rewrites it
 
+### 0.7.5.2
+- Fix Remove branch doing nothing on a branch that held actions: v0.7.5.1 built and styled the
+  confirmation but never called `show()`, which `UiKit.styleOrbitDialog` does not do for the caller
+- Confirm before removing a populated branch, and remove an empty one without asking
+- Cover the whole path in tests that drive `RoutineEditorActivity.confirmRemoveBranch` itself, so
+  the assertion that the dialog reaches the screen is the thing that would regress
+- Audit every `styleOrbitDialog` call site in the app for the same missing `show()`; this was the
+  only one
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever

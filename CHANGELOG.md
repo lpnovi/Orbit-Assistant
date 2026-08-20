@@ -302,3 +302,8 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - An IF with no alternative shows **None** under OTHERWISE, and removing the last one returns it there.
   - Reordering stays inside its own path, and moving an IF carries both paths with it.
   - Existing routines open in the new layout unchanged, and how every routine runs is exactly as it was.
+- **v0.7.5.2**: Fixed Remove branch doing nothing when the branch already contained actions.
+  - **Remove branch** now works on a branch that holds THEN or OTHERWISE actions, where it previously did nothing at all.
+  - A branch with actions asks for confirmation first, and nothing is removed until you tap Remove.
+  - Cancelling leaves the routine exactly as it was; confirming removes the condition and both paths and nothing else.
+  - A branch with no actions is still removed straight away, and every other branching behaviour is unchanged.

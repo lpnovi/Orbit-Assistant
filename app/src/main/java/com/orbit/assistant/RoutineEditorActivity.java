@@ -462,21 +462,26 @@ public class RoutineEditorActivity extends Activity {
 
     /**
      * Removing an IF takes both paths with it. Leaving them behind as ordinary steps would run a
-     * THEN and its OTHERWISE one after the other, which is usually two opposite actions, so this
-     * asks rather than guessing.
+     * THEN and its OTHERWISE one after the other, which is usually two opposite actions, so a
+     * branch that actually holds actions asks first.
+     *
+     * <p>v0.7.5.1 built and styled that dialog but never called {@code show()}, which
+     * {@link UiKit#styleOrbitDialog} does not do for you — it only prepares the window and
+     * registers an on-show listener. The dialog was created and immediately discarded, so tapping
+     * Remove branch on a populated branch did nothing at all. Package-visible so the tests can
+     * drive this exact path rather than a copy of it.
      */
-    private void confirmRemoveBranch(int conditionIndex) {
-        RoutineBranch.Unit unit = RoutineBranch.unitAt(workingActions, conditionIndex);
-        int actions = unit == null ? 0 : Math.max(0, unit.size() - 1);
+    void confirmRemoveBranch(int conditionIndex) {
+        int actions = RoutineBranch.branchActionCount(workingActions, conditionIndex);
         if (actions == 0) {
+            // Nothing to lose but the condition itself, so there is nothing worth asking about.
             if (RoutineBranch.removeBranch(workingActions, conditionIndex)) markDirtyAndRefresh();
             return;
         }
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("Remove this branch?")
-                .setMessage("The condition and the " + actions
-                        + (actions == 1 ? " action" : " actions")
-                        + " on its THEN and OTHERWISE paths will be removed from this routine.")
+                .setTitle("Remove branch?")
+                .setMessage("This will remove the IF condition and all actions inside its THEN "
+                        + "and OTHERWISE paths.")
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Remove", (d, which) -> {
                     if (RoutineBranch.removeBranch(workingActions, conditionIndex)) {
@@ -485,6 +490,12 @@ public class RoutineEditorActivity extends Activity {
                 })
                 .create();
         styleOrbitDialog(dialog, true, null);
+        dialog.show();
+    }
+
+    /** The steps currently being edited. Package-visible so tests can drive the real editor. */
+    List<AssistantReply.Action> editingSteps() {
+        return workingActions;
     }
 
     private void showStepMenu(View anchor, int index) {
