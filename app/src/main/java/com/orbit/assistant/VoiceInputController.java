@@ -51,6 +51,14 @@ public final class VoiceInputController {
     /** Identifies the utterance currently being spoken, so an interrupted one cannot act. */
     private int utteranceGeneration;
     private String liveUtteranceId = "";
+    /** The reply Orbit last spoke, read only by the Smart follow-up decision. */
+    private String lastSpokenReply = "";
+    /**
+     * The user reached for the keyboard, so no pending hands-free handover may take the composer
+     * back. Cleared when a voice turn starts or a new reply begins speaking, both of which are
+     * fresh opportunities rather than the one the user opted out of.
+     */
+    private boolean composerClaimedForTyping;
     private String originalText = "";
     private String accumulated = "";
     private String partial = "";
@@ -99,6 +107,7 @@ public final class VoiceInputController {
         manualFinish = false;
         finalizing = false;
         active = true;
+        composerClaimedForTyping = false;
         cancelFinalize();
         voiceTurn.begin();
         if (Prefs.haptics(context)) {
@@ -135,6 +144,10 @@ public final class VoiceInputController {
      * for editing, nothing is submitted, and no preference is changed.
      */
     public boolean handOffToTyping() {
+        // Reaching for the keyboard claims the composer even when no turn is running. That case
+        // matters most while Orbit is still speaking: there is no recognizer to tear down, but the
+        // reply that is mid-sentence must not hand the microphone back once it finishes.
+        composerClaimedForTyping = true;
         if (!VoiceHandoff.shouldTakeOver(listening || active, finalizing)) return false;
         String preserved = combinedDraft();
         cancelFinalize();
@@ -157,9 +170,43 @@ public final class VoiceInputController {
     public void speak(String text) {
         if (!ttsReady || tts == null || text == null || text.trim().isEmpty()) return;
         try {
+            lastSpokenReply = text;
+            composerClaimedForTyping = false;
             liveUtteranceId = "orbit_chat_reply_" + (++utteranceGeneration);
             tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, liveUtteranceId);
         } catch (Exception ignored) {}
+    }
+
+    /**
+     * The hands-free handover, decided by {@link VoiceFollowUpPolicy} and then re-decided when the
+     * delayed reopen actually runs, so a turn the user has since taken over cannot be revived.
+     *
+     * <p>Full chat asks exactly the same policy as the Side-button overlay; only the mechanics of
+     * starting recognition differ. The utterance generation is captured here so a newer reply that
+     * begins speaking in the gap disowns this handover.
+     */
+    private void scheduleVoiceFollowUp() {
+        if (!followUpDecision().reopensMicrophone()) return;
+        final int generationAtSchedule = utteranceGeneration;
+        main.postDelayed(() -> {
+            if (generationAtSchedule != utteranceGeneration) return;
+            if (!followUpDecision().reopensMicrophone()) return;
+            start();
+        }, 220L);
+    }
+
+    /** Package-private so the wiring, not just the policy, can be driven in tests. */
+    VoiceFollowUpPolicy.Decision followUpDecision() {
+        // An interrupted utterance clears the live id; a turn that is already listening, still
+        // finalising, or has been handed to the keyboard is not eligible to be reopened.
+        boolean utteranceLive = liveUtteranceId.isEmpty() && !speaking;
+        // Deliberately not voiceTurn.hasLiveTurn(): the non-pause-friendly submit path leaves the
+        // turn owned, so testing it here would silently stop follow-ups for anyone with Voice Beta
+        // pauses switched off. active/listening/finalizing are cleared by every submit path.
+        boolean surfaceEligible = !listening && !finalizing && !active
+                && !composerClaimedForTyping;
+        return VoiceFollowUpPolicy.decide(Prefs.autoListen(context), Prefs.smartFollowUps(context),
+                utteranceLive, surfaceEligible, lastSpokenReply);
     }
 
     /**
@@ -408,8 +455,7 @@ public final class VoiceInputController {
                             liveUtteranceId = "";
                             callback.onStatus("");
                             notifyState();
-                            if (Prefs.autoListen(context)) main.postDelayed(
-                                    VoiceInputController.this::start, 220L);
+                            scheduleVoiceFollowUp();
                         });
                     }
                     @Override public void onError(String utteranceId) {

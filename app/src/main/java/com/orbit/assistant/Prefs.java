@@ -31,6 +31,13 @@ public final class Prefs {
      * after Orbit finishes speaking. The two stages are controlled independently.
      */
     public static final String AUTO_LISTEN_ON_OPEN = "auto_listen_on_open";
+    /**
+     * Subordinate to {@link #AUTO_LISTEN}: when the master is on, reopen the microphone only for a
+     * reply that is actually waiting for an answer. Turning this off restores the older behaviour
+     * where every eligible spoken reply opened the microphone. It has no effect while
+     * {@link #AUTO_LISTEN} is off, and its stored value is kept either way.
+     */
+    public static final String SMART_FOLLOW_UPS = "smart_follow_ups";
     public static final String VOICE_PAUSE_FRIENDLY = "voice_pause_friendly";
     public static final String ACCENT = "accent";
     public static final String NEW_CHAT_ON_OPEN = "new_chat_on_open";
@@ -95,7 +102,8 @@ public final class Prefs {
             QUICK_SETTINGS_ROUTINE_ID, PAGE_TRANSITION));
     private static final Set<String> BACKUP_BOOLEAN_KEYS = new HashSet<>(Arrays.asList(
             SCREEN_CONTEXT, SCREENSHOT, CONTEXT_CHIPS, ATTACH_SCREEN_BY_DEFAULT,
-            SPEAK, HAPTICS, AUTO_LISTEN, AUTO_LISTEN_ON_OPEN, VOICE_PAUSE_FRIENDLY, NEW_CHAT_ON_OPEN,
+            SPEAK, HAPTICS, AUTO_LISTEN, AUTO_LISTEN_ON_OPEN, SMART_FOLLOW_UPS,
+            VOICE_PAUSE_FRIENDLY, NEW_CHAT_ON_OPEN,
             HISTORY_ENABLED, SAVE_SCREEN_THUMBNAILS, KEYBOARD_AWARE_ASSISTANT, SHOW_STOP_BUTTON,
             LELO_MODE, BACKGROUND_NOTIFICATIONS, WEATHER_USE_DEVICE_LOCATION,
             MEMORY_ENABLED, MEMORY_USAGE_INDICATOR, MEMORY_SUGGESTIONS,
@@ -178,6 +186,7 @@ public final class Prefs {
     public static boolean haptics(Context c) { return get(c).getBoolean(HAPTICS, true); }
     public static boolean autoListen(Context c) { return get(c).getBoolean(AUTO_LISTEN, false); }
     public static boolean autoListenOnOpen(Context c) { return get(c).getBoolean(AUTO_LISTEN_ON_OPEN, false); }
+    public static boolean smartFollowUps(Context c) { return get(c).getBoolean(SMART_FOLLOW_UPS, true); }
     public static boolean voicePauseFriendly(Context c) { return get(c).getBoolean(VOICE_PAUSE_FRIENDLY, true); }
     public static boolean newChatOnOpen(Context c) { return get(c).getBoolean(NEW_CHAT_ON_OPEN, true); }
     public static boolean historyEnabled(Context c) { return get(c).getBoolean(HISTORY_ENABLED, true); }

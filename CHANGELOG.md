@@ -314,3 +314,12 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - A closed overlay no longer reacts to system close requests that no longer concern it.
   - Overlay diagnostics no longer mislabel an unexpected disappearance as a close Orbit asked for.
   - Normal closing, swipe-down, tapping outside, and Voice behaviour are all unchanged.
+
+## 0.7.6 series
+
+- **v0.7.6.0**: Added Smart follow-ups, so hands-free Voice only reopens the microphone when Orbit is waiting for an answer.
+  - Orbit now reopens the microphone after speaking only when its reply genuinely asks you something.
+  - A clarification, a choice, a confirmation, or a request for a missing detail all keep listening.
+  - A finished answer, a completed action, or an offer of more help now simply stops.
+  - Turn Smart follow-ups off to keep the previous behaviour of always listening again.
+  - Start listening when the overlay opens stays separate, and interrupted replies still cannot reopen Voice.

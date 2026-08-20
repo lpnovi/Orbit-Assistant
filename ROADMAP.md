@@ -429,6 +429,26 @@
   the hide can no longer relabel a `SYSTEM_HIDE` as `EXPECTED_DISMISS`
 - Keep the 450 ms Samsung fresh-show stabilization window exactly as it was
 
+## 0.7.6 Smart Hands-free Voice
+
+### 0.7.6.0
+- Make the hands-free handover conversational: after an eligible spoken reply, reopen the
+  microphone only when the reply is actually waiting for an answer
+- `VoiceFollowUpPolicy` is the single shared decision, called by both `OrbitSession` and
+  `VoiceInputController`, so the overlay and full chat cannot grow separate heuristics
+- Deterministic and local: the decision reads the reply Orbit already produced. No second provider
+  request, no extra billing, and no dependence on the network when a turn ends
+- Only the last sentence counts, and quoted text, code, links, and blockquotes are removed first,
+  so a rhetorical or quoted question does not hand the turn back
+- Ownership is consulted before preferences and preferences before text, so an interrupted or
+  superseded utterance is refused however clearly the reply asked something
+- The delayed reopen re-asks the same policy when it actually runs, so typing, dismissal, or a
+  newer reply in the gap cancels a handover that was already scheduled
+- `Prefs.SMART_FOLLOW_UPS` defaults on, is subordinate to `AUTO_LISTEN`, and joins Backup &
+  Restore; a backup written before this version restores onto the default
+- `AUTO_LISTEN_ON_OPEN` stays completely independent, and Smart off restores the previous
+  always-follow-up behaviour exactly
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever
@@ -437,8 +457,6 @@ below.
 
 ### Next up
 - Conditions beyond time and location, and more than one branch point in a single routine
-- Whether reopening the microphone should read the conversation rather than following the
-  Hands-free switch alone
 
 ### Planned
 - Deeper Android actions

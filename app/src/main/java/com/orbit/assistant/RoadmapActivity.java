@@ -84,10 +84,10 @@ public final class RoadmapActivity extends Activity {
         // creation as Create with Orbit in the 0.7.3 series, automation history as Routine Run
         // history, and quick access as widgets, tiles and Custom Commands. A fourth was rewritten in
         // v0.7.5.0, which shipped IF / ELSE branching, so what is listed now is the branching work
-        // that genuinely remains. Shipped work belongs in What's New, never here.
+        // that genuinely remains. A fifth left in v0.7.6.0: conversation-aware voice follow-ups
+        // shipped as Smart follow-ups. Shipped work belongs in What's New, never here.
         addGroup(page, "NEXT UP", new String[][]{
-                {"More branch points & conditions", "Several decision points in one Routine, and conditions beyond time and place."},
-                {"Conversation-aware voice follow-ups", "Deciding when to reopen the microphone from the reply itself, not only from a switch."}
+                {"More branch points & conditions", "Several decision points in one Routine, and conditions beyond time and place."}
         });
         addGroup(page, "PLANNED", new String[][]{
                 {"Deeper Android actions", "Broader device controls through supported Android surfaces."},

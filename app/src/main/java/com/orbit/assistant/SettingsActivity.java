@@ -582,7 +582,12 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         voiceCard.addView(toggle("Start listening when overlay opens",
                 "Automatically activate the microphone when the assistant overlay appears.",
                 Prefs.AUTO_LISTEN_ON_OPEN, false));
-        voiceCard.addView(toggle("Hands-free voice follow-ups", Prefs.AUTO_LISTEN, false));
+        voiceCard.addView(toggle("Hands-free voice follow-ups",
+                "Reopen the microphone after Orbit speaks.",
+                Prefs.AUTO_LISTEN, false));
+        voiceCard.addView(toggle("Smart follow-ups",
+                "Only reopen the microphone when Orbit is waiting for your answer.",
+                Prefs.SMART_FOLLOW_UPS, true));
         voiceCard.addView(toggle("Keyboard-aware assistant invocation", Prefs.KEYBOARD_AWARE_ASSISTANT, true));
 
         Button capabilities = secondaryButton("Permissions & capabilities");

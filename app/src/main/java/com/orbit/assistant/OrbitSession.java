@@ -131,6 +131,8 @@ public class OrbitSession extends VoiceInteractionSession {
     /** Identifies the utterance currently being spoken, so an interrupted one cannot act. */
     private int utteranceGeneration;
     private String liveUtteranceId = "";
+    /** The reply Orbit last spoke, read only by the Smart follow-up decision. */
+    private String lastSpokenReply = "";
     private boolean ttsReady = false;
     private boolean busy = false;
     private boolean dismissAnimating = false;
@@ -2913,7 +2915,7 @@ public class OrbitSession extends VoiceInteractionSession {
                                 updateMic();
                                 restoreComposerHintSafe();
                                 stateTextSafe(readyState());
-                                if (Prefs.autoListen(getContext())) main.postDelayed(() -> startListening(), 220);
+                                scheduleVoiceFollowUp();
                             });
                         }
                         public void onError(String utteranceId) {
@@ -2933,9 +2935,45 @@ public class OrbitSession extends VoiceInteractionSession {
     private void speak(String text) {
         if (!ttsReady || tts == null || text == null || text.isEmpty()) return;
         try {
+            lastSpokenReply = text;
             liveUtteranceId = "orbit_reply_" + (++utteranceGeneration);
             tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, liveUtteranceId);
         } catch (Exception ignored) {}
+    }
+
+    /**
+     * The hands-free handover, decided by {@link VoiceFollowUpPolicy} and then re-decided when the
+     * delayed reopen actually runs.
+     *
+     * <p>Asking twice is the point. Between a reply finishing and the microphone opening, the user
+     * can start typing, dismiss the overlay, send something else, or press the Side button again,
+     * and the second call sees that world rather than the one that existed when the reply ended.
+     * The utterance generation is captured here so a newer reply that starts speaking in the gap
+     * disowns this handover outright.
+     */
+    private void scheduleVoiceFollowUp() {
+        if (!followUpDecision().reopensMicrophone()) return;
+        final int generationAtSchedule = utteranceGeneration;
+        main.postDelayed(() -> {
+            if (generationAtSchedule != utteranceGeneration) return;
+            if (!followUpDecision().reopensMicrophone()) return;
+            startListening();
+        }, 220);
+    }
+
+    private VoiceFollowUpPolicy.Decision followUpDecision() {
+        Context c = getContext();
+        // Voice ownership, not the words: an interrupted utterance clears the live id, and the
+        // overlay is only eligible while it is on screen, idle, and has not handed the composer
+        // over to the keyboard.
+        boolean utteranceLive = liveUtteranceId.isEmpty() && !speaking;
+        // composerIme.isTyping() rather than orbitOwnsIme: owning the IME is sticky for the whole
+        // invocation, so a user who typed once early on would never get another follow-up. The
+        // typing state is released whenever Orbit puts the keyboard away, which a voice turn does.
+        boolean surfaceEligible = sessionVisible && !busy && !listening && !voiceFinishing
+                && !composerIme.isTyping();
+        return VoiceFollowUpPolicy.decide(Prefs.autoListen(c), Prefs.smartFollowUps(c),
+                utteranceLive, surfaceEligible, lastSpokenReply);
     }
 
     /**
