@@ -323,3 +323,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - A finished answer, a completed action, or an offer of more help now simply stops.
   - Turn Smart follow-ups off to keep the previous behaviour of always listening again.
   - Start listening when the overlay opens stays separate, and interrupted replies still cannot reopen Voice.
+
+- **v0.7.6.1**: Fixed timer confirmations using phrases like "20 minutes timer".
+  - Timer confirmations now read naturally, such as "Setting a 20-minute timer."
+  - Chained commands and Routine step summaries use the same corrected wording.
+  - Ordinary durations elsewhere still read normally, such as "20 minutes".
+  - Compact action titles such as "Timer · 20 minutes" are unchanged.
+  - Timer behaviour itself is untouched: only the wording changed.

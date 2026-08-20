@@ -168,7 +168,8 @@ public final class RoutineActionCatalog {
                 return p.optBoolean("on", true) ? "Turns the flashlight on" : "Turns the flashlight off";
             case SET_TIMER: {
                 String label = clean(p.optString("label", ""));
-                String base = "Starts a " + durationLabel(Math.max(1, p.optInt("seconds", 60))) + " timer";
+                String base = "Starts a "
+                        + durationModifierLabel(Math.max(1, p.optInt("seconds", 60))) + " timer";
                 return label.isEmpty() || "Orbit timer".equals(label) ? base : base + " · " + label;
             }
             case SET_ALARM: {
@@ -345,6 +346,31 @@ public final class RoutineActionCatalog {
             return minutes + (minutes == 1 ? " minute" : " minutes");
         }
         return safe + (safe == 1 ? " second" : " seconds");
+    }
+
+    /**
+     * The same duration written as a modifier in front of a noun: "20-minute timer", "1-hour
+     * timer". English hyphenates a counted unit in that position and keeps it singular, which is
+     * the opposite of {@link #durationLabel(int)}: a duration standing on its own is still "20
+     * minutes". Composing the standalone form with a noun is what produced "20 minutes timer".
+     */
+    public static String durationModifierLabel(int seconds) {
+        int safe = Math.max(1, seconds);
+        if (safe % 3600 == 0) return durationModifier(safe / 3600, "hour");
+        if (safe % 60 == 0) return durationModifier(safe / 60, "minute");
+        return durationModifier(safe, "second");
+    }
+
+    /**
+     * The grammar rule itself, for callers that already know the count and unit the user said and
+     * must not restate it in different terms. Kept beside {@link #durationLabel(int)} so the two
+     * forms cannot drift apart again in separate files.
+     *
+     * @param count        how many of the unit
+     * @param singularUnit the unit in its singular form: "second", "minute", "hour"
+     */
+    public static String durationModifier(long count, String singularUnit) {
+        return count + "-" + singularUnit;
     }
 
     private static String clean(String s) {

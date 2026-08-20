@@ -242,14 +242,17 @@ public final class LocalCommandRouter {
                 : unit.startsWith("min") ? n * 60 : n;
         if (seconds <= 0) return null;
 
-        String spokenUnit = unit.startsWith("hour") || unit.startsWith("hr")
-                ? (n == 1 ? "hour" : "hours")
-                : unit.startsWith("min") ? (n == 1 ? "minute" : "minutes")
-                : (n == 1 ? "second" : "seconds");
+        // The duration modifies "timer" here, so it is hyphenated and singular: "a 20-minute
+        // timer", never "a 20 minutes timer". Built from the count and unit the user actually
+        // said rather than from the computed seconds, so asking for 90 minutes is confirmed as 90
+        // minutes rather than restated as an hour and a half.
+        String singularUnit = unit.startsWith("hour") || unit.startsWith("hr") ? "hour"
+                : unit.startsWith("min") ? "minute" : "second";
+        String spokenDuration = RoutineActionCatalog.durationModifier(n, singularUnit);
         return new ParsedCommand(
                 action("SET_TIMER", new JSONObject().put("seconds", seconds).put("label", "Orbit timer")),
-                "Setting a " + n + " " + spokenUnit + " timer.",
-                "set a " + n + " " + spokenUnit + " timer");
+                "Setting a " + spokenDuration + " timer.",
+                "set a " + spokenDuration + " timer");
     }
 
     /** Digits, or one of the small written numbers the shared normalizer knows. */
