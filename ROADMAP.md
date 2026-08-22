@@ -456,6 +456,11 @@
 - Hide the control once the conversation is at the bottom again, including a manual scroll back
 - Keep automatic follow-the-bottom scrolling instant and leave the Side-button overlay unchanged
 
+### 0.7.6.3
+- Polish Copy and Regenerate under assistant replies into the shared message-action language
+- Long-press a user message to copy it through Orbit's existing popup, in full chat and the overlay
+- Keep regenerate on the latest assistant turn only, and copy the real message text rather than chrome
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever

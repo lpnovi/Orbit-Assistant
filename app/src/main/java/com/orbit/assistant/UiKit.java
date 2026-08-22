@@ -37,6 +37,7 @@ import android.view.animation.Interpolator;
 import android.widget.TextView;
 import android.widget.Button;
 import android.widget.CompoundButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.FrameLayout;
 import android.widget.PopupWindow;
@@ -959,6 +960,79 @@ public final class UiKit {
                     popup.dismiss();
                     choice.onChoice(index, labelText);
                 }
+            });
+
+            LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(c, 44));
+            if (i > 0) rowLp.topMargin = dp(c, 2);
+            box.addView(row, rowLp);
+        }
+
+        showAnchoredOrbitPopup(c, anchor, popup, width, labels.length, 44);
+    }
+
+    /**
+     * Compact icon+label action menu for a small set of choices, such as copying a
+     * message. It uses the same surface, accent, motion, and screen-aware placement
+     * as {@link #showOrbitMenu}, but stays narrower, includes Orbit icons, and does
+     * not take input focus so the keyboard is left alone.
+     */
+    public static void showOrbitActionMenu(Context c, View anchor, String[] labels, int[] icons,
+                                           OrbitMenuChoice choice) {
+        if (c == null || anchor == null || labels == null || labels.length == 0) return;
+        boolean showIcons = icons != null && icons.length == labels.length;
+
+        LinearLayout box = new LinearLayout(c);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(c, 6), dp(c, 6), dp(c, 6), dp(c, 6));
+        box.setBackground(outlined(SURFACE_2, withAlpha(accent(c), 72), 18, c));
+
+        int maxChars = 0;
+        for (String label : labels) {
+            if (label != null) maxChars = Math.max(maxChars, label.length());
+        }
+        int widthDp = Math.max(148, Math.min(240, 92 + (showIcons ? 28 : 0) + (maxChars * 7)));
+        int width = dp(c, widthDp);
+        PopupWindow popup = new PopupWindow(box, width,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT, false);
+        popup.setOutsideTouchable(true);
+        popup.setTouchable(true);
+        popup.setFocusable(false);
+        popup.setInputMethodMode(PopupWindow.INPUT_METHOD_NOT_NEEDED);
+        popup.setClippingEnabled(true);
+        popup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        popup.setAnimationStyle(R.style.OrbitPopupAnimation);
+        if (Build.VERSION.SDK_INT >= 21) popup.setElevation(dp(c, 12));
+
+        for (int i = 0; i < labels.length; i++) {
+            final int index = i;
+            final String labelText = labels[i];
+
+            LinearLayout row = new LinearLayout(c);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(c, 12), 0, dp(c, 12), 0);
+            row.setBackground(ripple(SURFACE_2, accent(c), 13, c));
+
+            if (showIcons && icons[i] != 0) {
+                ImageView icon = new ImageView(c);
+                icon.setImageResource(icons[i]);
+                icon.setImageTintList(ColorStateList.valueOf(MUTED));
+                icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+                icon.setPadding(dp(c, 1), dp(c, 1), dp(c, 1), dp(c, 1));
+                row.addView(icon, new LinearLayout.LayoutParams(dp(c, 22), dp(c, 22)));
+            }
+
+            TextView label = text(c, labelText, 14, TEXT, false);
+            LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
+                    0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+            if (showIcons && icons[i] != 0) labelLp.setMargins(dp(c, 10), 0, 0, 0);
+            row.addView(label, labelLp);
+
+            pressScale(row);
+            row.setOnClickListener(v -> {
+                popup.dismiss();
+                if (choice != null) choice.onChoice(index, labelText);
             });
 
             LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(

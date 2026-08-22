@@ -415,6 +415,7 @@ public class ChatActivity extends Activity {
             bubble.setLineSpacing(0, 1.08f);
             bubble.setPadding(UiKit.dp(this, 15), UiKit.dp(this, 12), UiKit.dp(this, 15), UiKit.dp(this, 12));
             bubble.setBackground(UiKit.rounded(fill, 18, this));
+            MessageActions.bindUserCopy(bubble, rawVisible, null);
             messages.addView(bubble, bubbleLp(Gravity.END, UiKit.dp(this, 310)));
         } else {
             View bubble = OrbitRichResponseRenderer.render(this, visible, fill, false);
@@ -431,7 +432,9 @@ public class ChatActivity extends Activity {
             addMemoryUsageIndicator(h);
             if (index == history.size() - 1) addMemorySuggestion(h, index);
             addSourceLink(rawVisible);
-            addResponseActions(rawVisible, index == history.size() - 1);
+            messages.addView(MessageActions.assistantRow(this, rawVisible,
+                    index == history.size() - 1, this::regenerateLastResponse),
+                    MessageActions.rowLayoutParams(this));
             addPersistedActionCards(index);
         }
         if (user && h.screenAttached) addAttachment(h);
@@ -597,63 +600,6 @@ public class ChatActivity extends Activity {
         lp.gravity = Gravity.START;
         lp.setMargins(UiKit.dp(this, 5), -UiKit.dp(this, 2), 0, UiKit.dp(this, 3));
         messages.addView(source, lp);
-    }
-
-    private void addResponseActions(String text, boolean canRegenerate) {
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-        ImageButton copy = responseActionButton(com.orbit.assistant.R.drawable.ic_copy, "Copy Orbit response");
-        copy.setOnClickListener(v -> {
-            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-            if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Orbit response", SourceLinkUtil.copyText(text)));
-            if (Prefs.haptics(this)) copy.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK);
-            Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show();
-        });
-        row.addView(copy, new LinearLayout.LayoutParams(UiKit.dp(this, 34), UiKit.dp(this, 34)));
-        if (canRegenerate) {
-            ImageButton regen = responseActionButton(com.orbit.assistant.R.drawable.ic_regenerate, "Regenerate response");
-            LinearLayout.LayoutParams regenLp = new LinearLayout.LayoutParams(UiKit.dp(this, 34), UiKit.dp(this, 34));
-            regenLp.setMargins(UiKit.dp(this, 4), 0, 0, 0);
-            row.addView(regen, regenLp);
-            regen.setOnClickListener(v -> regenerateLastResponse());
-        }
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 34));
-        lp.gravity = Gravity.START;
-        lp.setMargins(UiKit.dp(this, 5), -UiKit.dp(this, 2), 0, UiKit.dp(this, 2));
-        messages.addView(row, lp);
-    }
-
-    private ImageButton responseActionButton(int drawable, String description) {
-        ImageButton b = new ImageButton(this);
-        b.setImageResource(drawable);
-        b.setImageTintList(ColorStateList.valueOf(UiKit.MUTED));
-        b.setContentDescription(description);
-        b.setPadding(UiKit.dp(this, 7), UiKit.dp(this, 7), UiKit.dp(this, 7), UiKit.dp(this, 7));
-        b.setBackground(UiKit.ripple(Color.TRANSPARENT, UiKit.accent(this), 16, this));
-        UiKit.pressScale(b);
-        return b;
-    }
-
-    private void addCopyControl(String text) {
-        ImageButton copy = new ImageButton(this);
-        copy.setImageResource(com.orbit.assistant.R.drawable.ic_copy);
-        copy.setImageTintList(ColorStateList.valueOf(UiKit.MUTED));
-        copy.setContentDescription("Copy Orbit response");
-        copy.setPadding(UiKit.dp(this, 7), UiKit.dp(this, 7), UiKit.dp(this, 7), UiKit.dp(this, 7));
-        copy.setBackground(UiKit.ripple(Color.TRANSPARENT, UiKit.accent(this), 16, this));
-        copy.setOnClickListener(v -> {
-            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-            if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Orbit response", SourceLinkUtil.copyText(text)));
-            if (Prefs.haptics(this)) copy.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK);
-            copy.setImageTintList(ColorStateList.valueOf(UiKit.accent(this)));
-            Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show();
-            copy.postDelayed(() -> copy.setImageTintList(ColorStateList.valueOf(UiKit.MUTED)), 900);
-        });
-        UiKit.pressScale(copy);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(UiKit.dp(this, 34), UiKit.dp(this, 34));
-        lp.gravity = Gravity.START;
-        lp.setMargins(UiKit.dp(this, 5), -UiKit.dp(this, 2), 0, UiKit.dp(this, 2));
-        messages.addView(copy, lp);
     }
 
     private void addAttachment(AssistantClient.History h) {

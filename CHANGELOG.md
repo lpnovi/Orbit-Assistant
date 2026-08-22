@@ -337,3 +337,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - The control disappears on its own when you reach the bottom, including if you scroll back yourself.
   - It follows the current accent and stays readable in dark, AMOLED, Dynamic, and custom colours.
   - The Side-button overlay, typing, Voice, and how new replies follow the conversation are unchanged.
+
+- **v0.7.6.3**: Refined message actions so Copy and Regenerate feel like part of the conversation, and your own messages can be copied too.
+  - Copy and Regenerate under Orbit's replies are easier to tap, follow the current accent, and give a light confirmation when used.
+  - Long-press one of your own messages, in full chat or the Side-button overlay, to copy it with Orbit's usual menu.
+  - Copying takes the real message text, including long and Markdown replies, without labels or extra chrome.
+  - The controls stay out of the way while you scroll or type, and they do not dismiss the keyboard.
+  - Jump to latest, Voice, and how replies are generated are unchanged.

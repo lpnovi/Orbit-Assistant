@@ -2115,35 +2115,11 @@ public class OrbitSession extends VoiceInteractionSession {
     private void addGenericResponseActions(String text, boolean canRegenerate) {
         if (messages == null || text == null || text.trim().isEmpty()) return;
         Context c = getContext();
-        LinearLayout row = new LinearLayout(c);
-        row.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-
-        ImageButton copy = tinyIconButton(com.orbit.assistant.R.drawable.ic_copy);
-        copy.setContentDescription("Copy Orbit response");
-        copy.setImageTintList(ColorStateList.valueOf(UiKit.MUTED));
-        copy.setOnClickListener(v -> {
-            ClipboardManager cm = (ClipboardManager) c.getSystemService(Context.CLIPBOARD_SERVICE);
-            if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Orbit response", SourceLinkUtil.copyText(text)));
-            stateTextSafe("Copied");
-            if (Prefs.haptics(c)) vibrate(10);
-            main.postDelayed(() -> stateTextSafe(readyState()), 800);
-        });
-        row.addView(copy, new LinearLayout.LayoutParams(UiKit.dp(c, 34), UiKit.dp(c, 34)));
-
-        if (canRegenerate) {
-            ImageButton regen = tinyIconButton(com.orbit.assistant.R.drawable.ic_regenerate);
-            regen.setContentDescription("Regenerate response");
-            regen.setImageTintList(ColorStateList.valueOf(UiKit.MUTED));
-            LinearLayout.LayoutParams regenLp = new LinearLayout.LayoutParams(UiKit.dp(c, 34), UiKit.dp(c, 34));
-            regenLp.setMargins(UiKit.dp(c, 4), 0, 0, 0);
-            row.addView(regen, regenLp);
-            regen.setOnClickListener(v -> regenerateLastResponse());
-        }
-
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(c, 34));
-        lp.gravity = Gravity.START;
-        lp.setMargins(UiKit.dp(c, 4), -UiKit.dp(c, 3), 0, UiKit.dp(c, 3));
-        messages.addView(row, lp);
+        messages.addView(MessageActions.assistantRow(c, text, canRegenerate, this::regenerateLastResponse,
+                () -> {
+                    stateTextSafe("Copied");
+                    main.postDelayed(() -> stateTextSafe(readyState()), 800);
+                }), MessageActions.rowLayoutParams(c));
         scrollBottom();
     }
 
@@ -3053,6 +3029,10 @@ public class OrbitSession extends VoiceInteractionSession {
     private void addBubbleNow(String text, boolean user, boolean error) {
         if (messages == null) return;
         TextView bubble = makeBubbleText(text, user, error);
+        if (user && !error) MessageActions.bindUserCopy(bubble, text, () -> {
+            stateTextSafe("Copied");
+            main.postDelayed(() -> stateTextSafe(readyState()), 800);
+        });
         messages.addView(bubble, bubbleLp(user ? Gravity.END : Gravity.START, UiKit.dp(getContext(), 330)));
         bubble.setAlpha(0f);
         bubble.setTranslationY(UiKit.dp(getContext(), 8));
