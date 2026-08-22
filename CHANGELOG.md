@@ -330,3 +330,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Ordinary durations elsewhere still read normally, such as "20 minutes".
   - Compact action titles such as "Timer · 20 minutes" are unchanged.
   - Timer behaviour itself is untouched: only the wording changed.
+
+- **v0.7.6.2**: Added a Jump to latest control in full chat, so you can return to the newest messages without scrolling the whole conversation.
+  - After you scroll up far enough that the latest messages leave the screen, a compact down-arrow appears just above the text box.
+  - Tap it to glide back to the newest message, with the same light haptic used by other Orbit controls.
+  - The control disappears on its own when you reach the bottom, including if you scroll back yourself.
+  - It follows the current accent and stays readable in dark, AMOLED, Dynamic, and custom colours.
+  - The Side-button overlay, typing, Voice, and how new replies follow the conversation are unchanged.

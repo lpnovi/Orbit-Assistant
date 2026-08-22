@@ -25,6 +25,7 @@ import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -59,6 +60,8 @@ public class ChatActivity extends Activity {
     private final Map<String, OrbitRequestManager.Listener> listeners = new HashMap<>();
     private LinearLayout messages;
     private ScrollView scroll;
+    private ImageButton jumpLatest;
+    private boolean jumpLatestVisible;
     private EditText input;
     private ImageButton mic;
     private ImageButton send;
@@ -212,16 +215,24 @@ public class ChatActivity extends Activity {
         more.setOnClickListener(v -> showChatOptions(more));
         root.addView(top);
 
+        FrameLayout conversation = new FrameLayout(this);
         scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         // Follow new content only while the user is already reading the latest messages. Once they
         // scroll up to read back, streaming updates and refreshes stop yanking them to the bottom.
-        scroll.setOnScrollChangeListener((v, x, y, oldX, oldY) -> followBottom = nearBottom());
+        scroll.setOnScrollChangeListener((v, x, y, oldX, oldY) -> {
+            followBottom = nearBottom();
+            updateJumpLatest();
+        });
+        scroll.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> updateJumpLatest());
         messages = new LinearLayout(this);
         messages.setOrientation(LinearLayout.VERTICAL);
         messages.setPadding(0, UiKit.dp(this, 16), 0, UiKit.dp(this, 18));
         scroll.addView(messages, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        root.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        conversation.addView(scroll, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        conversation.addView(buildJumpLatest(), jumpLatestLayoutParams());
+        root.addView(conversation, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
         attachmentTray = new LinearLayout(this);
         attachmentTray.setGravity(Gravity.CENTER_VERTICAL);
@@ -389,6 +400,7 @@ public class ChatActivity extends Activity {
         // never be left showing the wrong one.
         updateComposerAction();
         scrollBottomIfFollowing();
+        scroll.post(this::updateJumpLatest);
     }
 
     private void addHistoryBubble(AssistantClient.History h, int index) {
@@ -1652,6 +1664,99 @@ public class ChatActivity extends Activity {
     }
 
     /**
+     * Compact down-arrow that returns a scrolled-up conversation to the newest messages. It lives
+     * in the conversation pane, not the composer, so it cannot cover the text field, attach, mic,
+     * Send, or the AI-strength chip.
+     */
+    private ImageButton buildJumpLatest() {
+        jumpLatest = new ImageButton(this);
+        jumpLatest.setImageResource(com.orbit.assistant.R.drawable.ic_jump_latest);
+        jumpLatest.setImageTintList(ColorStateList.valueOf(UiKit.accent(this)));
+        jumpLatest.setBackground(UiKit.rippleOutlined(
+                UiKit.SURFACE_2,
+                UiKit.withAlpha(UiKit.accent(this), 140),
+                UiKit.accent(this),
+                21,
+                this));
+        jumpLatest.setContentDescription("Jump to latest");
+        jumpLatest.setPadding(UiKit.dp(this, 10), UiKit.dp(this, 10),
+                UiKit.dp(this, 10), UiKit.dp(this, 10));
+        jumpLatest.setVisibility(View.GONE);
+        jumpLatest.setAlpha(0f);
+        jumpLatest.setOnClickListener(v -> jumpToLatest());
+        UiKit.pressScale(jumpLatest);
+        return jumpLatest;
+    }
+
+    private FrameLayout.LayoutParams jumpLatestLayoutParams() {
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                UiKit.dp(this, 42), UiKit.dp(this, 42));
+        lp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        lp.bottomMargin = UiKit.dp(this, 10);
+        return lp;
+    }
+
+    /**
+     * Smoothly returns to the newest message. Automatic follow-the-bottom scrolling stays instant;
+     * only this explicit control animates the journey.
+     */
+    private void jumpToLatest() {
+        followBottom = true;
+        if (scroll != null) {
+            scroll.post(() -> FocusSafeScroll.toBottom(scroll, true));
+        }
+    }
+
+    private void updateJumpLatest() {
+        boolean show = JumpToLatest.shouldShow(
+                scrollContentHeight(), scrollViewportHeight(),
+                scroll == null ? 0 : scroll.getScrollY(), JumpToLatest.slopPx(this));
+        if (jumpLatest == null || show == jumpLatestVisible) return;
+        jumpLatestVisible = show;
+        jumpLatest.animate().cancel();
+        if (!show) {
+            if (!UiKit.animationsEnabled() || jumpLatest.getVisibility() != View.VISIBLE) {
+                jumpLatest.setAlpha(0f);
+                jumpLatest.setTranslationY(0f);
+                jumpLatest.setVisibility(View.GONE);
+                return;
+            }
+            jumpLatest.animate().alpha(0f).translationY(UiKit.dp(this, 8))
+                    .setDuration(UiKit.MOTION_FAST)
+                    .setInterpolator(UiKit.motionEasing())
+                    .withEndAction(() -> {
+                        if (!jumpLatestVisible) {
+                            jumpLatest.setVisibility(View.GONE);
+                            jumpLatest.setTranslationY(0f);
+                        }
+                    })
+                    .start();
+            return;
+        }
+        jumpLatest.setVisibility(View.VISIBLE);
+        if (!UiKit.animationsEnabled()) {
+            jumpLatest.setAlpha(1f);
+            jumpLatest.setTranslationY(0f);
+            return;
+        }
+        jumpLatest.setAlpha(0f);
+        jumpLatest.setTranslationY(UiKit.dp(this, 8));
+        jumpLatest.animate().alpha(1f).translationY(0f)
+                .setDuration(UiKit.MOTION_STANDARD)
+                .setInterpolator(UiKit.motionEasing())
+                .start();
+    }
+
+    private int scrollContentHeight() {
+        if (scroll == null || scroll.getChildCount() == 0) return 0;
+        return scroll.getChildAt(0).getHeight();
+    }
+
+    private int scrollViewportHeight() {
+        return scroll == null ? 0 : scroll.getHeight();
+    }
+
+    /**
      * Dims Send while there is nothing to send. An attachment alone is a valid message, so the
      * control stays available for that too.
      */
@@ -1741,11 +1846,9 @@ public class ChatActivity extends Activity {
 
     /** True when the latest messages are already on screen, within a small tolerance. */
     private boolean nearBottom() {
-        if (scroll == null || scroll.getChildCount() == 0) return true;
-        int content = scroll.getChildAt(0).getHeight();
-        int viewport = scroll.getHeight();
-        if (content <= viewport) return true;
-        return content - (scroll.getScrollY() + viewport) <= UiKit.dp(this, 96);
+        return JumpToLatest.nearBottom(
+                scrollContentHeight(), scrollViewportHeight(),
+                scroll == null ? 0 : scroll.getScrollY(), JumpToLatest.slopPx(this));
     }
 
     /** Keeps up with new content without pulling the user away from older messages they opened. */

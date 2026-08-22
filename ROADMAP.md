@@ -449,6 +449,13 @@
 - `AUTO_LISTEN_ON_OPEN` stays completely independent, and Smart off restores the previous
   always-follow-up behaviour exactly
 
+### 0.7.6.2
+- Add a Jump to latest control in full chat when the newest messages leave the viewport
+- Smooth-scroll to the newest message on tap through existing `FocusSafeScroll`, with the shared
+  light haptic tick
+- Hide the control once the conversation is at the bottom again, including a manual scroll back
+- Keep automatic follow-the-bottom scrolling instant and leave the Side-button overlay unchanged
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever
