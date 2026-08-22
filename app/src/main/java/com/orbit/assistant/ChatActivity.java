@@ -179,6 +179,7 @@ public class ChatActivity extends Activity {
         if (voiceController != null) voiceController.stop(false);
         // Navigating away ends listening, so the microphone must not be left animating.
         stopListeningHalo();
+        MessageActions.dismiss();
         super.onPause();
     }
 
@@ -373,6 +374,7 @@ public class ChatActivity extends Activity {
     }
 
     private void render() {
+        MessageActions.dismiss();
         boolean animateNewest = animateNewestOnRender;
         animateNewestOnRender = false;
         // removeAllViews detaches any running indicator, which stops its frames.
@@ -415,7 +417,7 @@ public class ChatActivity extends Activity {
             bubble.setLineSpacing(0, 1.08f);
             bubble.setPadding(UiKit.dp(this, 15), UiKit.dp(this, 12), UiKit.dp(this, 15), UiKit.dp(this, 12));
             bubble.setBackground(UiKit.rounded(fill, 18, this));
-            MessageActions.bindUserCopy(bubble, rawVisible, null);
+            MessageActions.bindUser(bubble, rawVisible, () -> placeInComposer(rawVisible), null);
             messages.addView(bubble, bubbleLp(Gravity.END, UiKit.dp(this, 310)));
         } else {
             View bubble = OrbitRichResponseRenderer.render(this, visible, fill, false);
@@ -426,15 +428,16 @@ public class ChatActivity extends Activity {
                     ViewGroup.LayoutParams.WRAP_CONTENT);
             richLp.gravity = Gravity.START;
             richLp.setMargins(0, UiKit.dp(this, 5), UiKit.dp(this, 8), UiKit.dp(this, 5));
+            if (!visible.trim().isEmpty() && !visible.startsWith("Orbit could not finish")) {
+                MessageActions.bindAssistant(bubble, rawVisible, index == history.size() - 1,
+                        this::regenerateLastResponse, null);
+            }
             messages.addView(bubble, richLp);
         }
         if (!user && !visible.trim().isEmpty() && !visible.startsWith("Orbit could not finish")) {
             addMemoryUsageIndicator(h);
             if (index == history.size() - 1) addMemorySuggestion(h, index);
             addSourceLink(rawVisible);
-            messages.addView(MessageActions.assistantRow(this, rawVisible,
-                    index == history.size() - 1, this::regenerateLastResponse),
-                    MessageActions.rowLayoutParams(this));
             addPersistedActionCards(index);
         }
         if (user && h.screenAttached) addAttachment(h);
@@ -1490,6 +1493,22 @@ public class ChatActivity extends Activity {
         String id = OrbitRequestManager.retry(this, failed.id, listener);
         render();
         if (!id.isEmpty()) { listeners.put(id, listener); if (thinkingRow == null) addThinkingRow(); updateComposerAction(); scrollBottom(); }
+    }
+
+    /**
+     * Puts an earlier user message back in the composer so it can be edited and sent as a
+     * new turn. The original history is not rewritten.
+     */
+    void placeInComposer(String text) {
+        if (input == null) return;
+        String value = text == null ? "" : text;
+        android.text.Editable editable = input.getText();
+        if (editable == null) input.setText(value);
+        else editable.replace(0, editable.length(), value);
+        int end = input.length();
+        input.setSelection(end);
+        updateSendState();
+        showComposerKeyboard();
     }
 
     private void regenerateLastResponse() {

@@ -1,5 +1,6 @@
 package com.orbit.assistant;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -8,20 +9,17 @@ import static org.junit.Assert.assertTrue;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
-import android.widget.ImageButton;
-import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
-import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 
 /**
- * Copy must take the real message, not chrome, and the assistant action row must stay a
- * compact non-focusable control so it cannot steal the composer.
+ * Copy must take the real message, not chrome, and the contextual menu must expose Copy /
+ * Regenerate or Copy / Edit &amp; resend without putting persistent controls under bubbles.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {29, 31, 35})
@@ -41,7 +39,7 @@ public final class MessageActionsTest {
         String copied = MessageActions.assistantCopyText(raw);
         assertTrue(copied.startsWith("OLED is usually best for perfect blacks."));
         assertTrue(copied.contains("Source: https://example.com/oled"));
-        assertFalse(copied.contains("Copy Orbit response"));
+        assertFalse(copied.contains("Copy"));
         assertFalse(copied.contains("Regenerate"));
     }
 
@@ -54,28 +52,28 @@ public final class MessageActionsTest {
         assertEquals(body.toString().trim(), copied);
     }
 
-    @Test public void theAssistantRowExposesCopyAndOptionalRegenerate() {
-        android.app.Activity activity = Robolectric.buildActivity(android.app.Activity.class).setup().get();
-        LinearLayout withRegen = MessageActions.assistantRow(activity, "Hello", true, () -> {});
-        assertEquals(2, withRegen.getChildCount());
-        ImageButton copy = (ImageButton) withRegen.getChildAt(0);
-        ImageButton regen = (ImageButton) withRegen.getChildAt(1);
-        assertEquals(MessageActions.COPY_ASSISTANT_DESCRIPTION, copy.getContentDescription());
-        assertEquals(MessageActions.REGENERATE_DESCRIPTION, regen.getContentDescription());
-        assertFalse("copy must not steal composer focus", copy.isFocusable());
-        assertFalse(regen.isFocusable());
-
-        LinearLayout copyOnly = MessageActions.assistantRow(activity, "Hello", false, () -> {});
-        assertEquals(1, copyOnly.getChildCount());
-        assertEquals(MessageActions.COPY_ASSISTANT_DESCRIPTION,
-                copyOnly.getChildAt(0).getContentDescription());
+    @Test public void theLatestAssistantTurnOffersCopyAndRegenerate() {
+        assertArrayEquals(new String[]{MessageActions.COPY_MENU_LABEL, MessageActions.REGENERATE_MENU_LABEL},
+                MessageActions.assistantLabels(true));
+        assertEquals(2, MessageActions.assistantIcons(true).length);
     }
 
-    @Test public void tappingCopyPutsTheAssistantTextOnTheClipboard() {
+    @Test public void olderAssistantTurnsOfferCopyOnly() {
+        assertArrayEquals(new String[]{MessageActions.COPY_MENU_LABEL},
+                MessageActions.assistantLabels(false));
+        assertEquals(1, MessageActions.assistantIcons(false).length);
+    }
+
+    @Test public void userTurnsOfferCopyAndEditResend() {
+        assertArrayEquals(new String[]{MessageActions.COPY_MENU_LABEL, MessageActions.EDIT_MENU_LABEL},
+                MessageActions.userLabels());
+        assertEquals(2, MessageActions.userIcons().length);
+    }
+
+    @Test public void copyingPutsTheAssistantTextOnTheClipboard() {
         android.app.Activity activity = Robolectric.buildActivity(android.app.Activity.class).setup().get();
-        LinearLayout row = MessageActions.assistantRow(activity,
-                "Saturn is a gas giant.\n\nSource: https://example.com/saturn", true, () -> {});
-        row.getChildAt(0).performClick();
+        MessageActions.copyAssistant(activity,
+                "Saturn is a gas giant.\n\nSource: https://example.com/saturn", null);
         assertEquals("Saturn is a gas giant.\n\nSource: https://example.com/saturn",
                 clipboardText(activity));
     }
@@ -83,9 +81,9 @@ public final class MessageActionsTest {
     @Test public void aUserBubbleCanBeCopiedWithoutChangingTheText() {
         android.app.Activity activity = Robolectric.buildActivity(android.app.Activity.class).setup().get();
         TextView bubble = UiKit.text(activity, "Pack a jacket", 15, UiKit.TEXT, false);
-        MessageActions.bindUserCopy(bubble, "Pack a jacket", null);
+        MessageActions.bindUser(bubble, "Pack a jacket", () -> {}, null);
         assertTrue(bubble.isLongClickable());
-        MessageActions.copyUser(activity, bubble, "Pack a jacket", () -> {});
+        MessageActions.copyUser(activity, "Pack a jacket", () -> {});
         assertEquals("Pack a jacket", clipboardText(activity));
         assertEquals("Pack a jacket", bubble.getText().toString());
     }
@@ -93,8 +91,15 @@ public final class MessageActionsTest {
     @Test public void emptyUserTextDoesNotGainACopyGesture() {
         android.app.Activity activity = Robolectric.buildActivity(android.app.Activity.class).setup().get();
         TextView bubble = UiKit.text(activity, "", 15, UiKit.TEXT, false);
-        MessageActions.bindUserCopy(bubble, "   ", null);
+        MessageActions.bindUser(bubble, "   ", () -> {}, null);
         assertFalse(bubble.isLongClickable());
+    }
+
+    @Test public void anAssistantBubbleBecomesLongPressable() {
+        android.app.Activity activity = Robolectric.buildActivity(android.app.Activity.class).setup().get();
+        TextView bubble = UiKit.text(activity, "Saturn is a gas giant.", 15, UiKit.TEXT, false);
+        MessageActions.bindAssistant(bubble, "Saturn is a gas giant.", true, () -> {}, null);
+        assertTrue(bubble.isLongClickable());
     }
 
     private static String clipboardText(Context context) {

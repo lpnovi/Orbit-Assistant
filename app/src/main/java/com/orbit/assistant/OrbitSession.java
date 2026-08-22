@@ -775,6 +775,7 @@ public class OrbitSession extends VoiceInteractionSession {
     }
 
     private void renderConversation() {
+        MessageActions.dismiss();
         historyMode = false;
         streamingBubble = null;
         // Redrawing a conversation also settles Send/Stop, so opening a different chat can never
@@ -792,7 +793,7 @@ public class OrbitSession extends VoiceInteractionSession {
             String rawVisible = user ? item.content : removeEmDashes(item.content);
             String visible = user ? rawVisible : SourceLinkUtil.displayText(rawVisible);
             if (user) addBubbleNow(visible, true, false);
-            else addRichAssistantBubble(visible);
+            else addRichAssistantBubble(visible, rawVisible, i == history.size() - 1);
             if (user && item.screenAttached) addScreenAttachmentBadge(
                     item.attachmentLabel == null || item.attachmentLabel.trim().isEmpty()
                             ? ("screen_selection".equals(item.attachmentKind)
@@ -807,7 +808,6 @@ public class OrbitSession extends VoiceInteractionSession {
                 else if (draftReply) addDraftReplyActions(visible, i == history.size() - 1);
                 else {
                     addSourceLink(rawVisible);
-                    addGenericResponseActions(rawVisible, i == history.size() - 1);
                 }
                 addPersistedActionCards(i);
             }
@@ -1623,6 +1623,22 @@ public class OrbitSession extends VoiceInteractionSession {
         editable.clear();
     }
 
+    /**
+     * Puts an earlier user message back in the composer so it can be edited and sent as a
+     * new turn. The original history is not rewritten.
+     */
+    private void placeInComposer(String text) {
+        if (input == null) return;
+        String value = text == null ? "" : text;
+        Editable editable = input.getText();
+        if (editable == null) input.setText(value);
+        else editable.replace(0, editable.length(), value);
+        int end = input.length();
+        input.setSelection(end);
+        input.requestFocus();
+        updateComposerAction();
+    }
+
     private String defaultAttachmentPrompt(ComposerAttachment attachment) {
         if (attachment == null) return "What can you help me with?";
         if ("file_text".equals(attachment.kind)) return "Summarize this file and tell me what matters.";
@@ -1736,13 +1752,12 @@ public class OrbitSession extends VoiceInteractionSession {
                             reply.suggestedMemoryCategory);
                     history.add(assistantItem);
                     if (sessionVisible) {
-                        finishStreamingBubble(SourceLinkUtil.displayText(storedText));
+                        finishStreamingBubble(storedText);
                         addMemoryUsageIndicator(assistantItem);
                         addMemorySuggestion(assistantItem);
                         if (draftedReply) addDraftReplyActions(storedText, true);
                         else {
                             if (!voiceRequest) addSourceLink(storedText);
-                            addGenericResponseActions(storedText, true);
                         }
                         executeActions(reply.actions, 0);
                         if (voiceRequest && Prefs.speak(getContext())) speak(OrbitMarkdown.toSpeechText(
@@ -1860,10 +1875,9 @@ public class OrbitSession extends VoiceInteractionSession {
         scrollBottom();
     }
 
-    private void finishStreamingBubble(String finalText) {
-        finalText = SourceLinkUtil.displayText(finalText);
+    private void finishStreamingBubble(String rawText) {
         discardStreamingBubble();
-        addAssistantBubble(finalText);
+        addRichAssistantBubble(SourceLinkUtil.displayText(rawText), rawText, true);
     }
 
     /** Takes the live streaming bubble off screen, cursor and all, leaving nothing behind. */
@@ -2112,17 +2126,6 @@ public class OrbitSession extends VoiceInteractionSession {
         scrollBottom();
     }
 
-    private void addGenericResponseActions(String text, boolean canRegenerate) {
-        if (messages == null || text == null || text.trim().isEmpty()) return;
-        Context c = getContext();
-        messages.addView(MessageActions.assistantRow(c, text, canRegenerate, this::regenerateLastResponse,
-                () -> {
-                    stateTextSafe("Copied");
-                    main.postDelayed(() -> stateTextSafe(readyState()), 800);
-                }), MessageActions.rowLayoutParams(c));
-        scrollBottom();
-    }
-
     private void addDraftReplyActions(String draft, boolean canRegenerate) {
         if (messages == null || draft == null || draft.trim().isEmpty()) return;
         Context c = getContext();
@@ -2274,13 +2277,12 @@ public class OrbitSession extends VoiceInteractionSession {
                             reply.suggestedMemoryCategory);
                     history.add(assistantItem);
                     if (sessionVisible) {
-                        finishStreamingBubble(SourceLinkUtil.displayText(storedText));
+                        finishStreamingBubble(storedText);
                         addMemoryUsageIndicator(assistantItem);
                         addMemorySuggestion(assistantItem);
                         if (draftedReply) addDraftReplyActions(storedText, true);
                         else {
                             if (!voiceRequest) addSourceLink(storedText);
-                            addGenericResponseActions(storedText, true);
                         }
                         executeActions(reply.actions, 0);
                         if (voiceRequest && Prefs.speak(getContext())) speak(OrbitMarkdown.toSpeechText(
@@ -2330,8 +2332,7 @@ public class OrbitSession extends VoiceInteractionSession {
         } else {
             history.add(new AssistantClient.History("assistant", partial));
             if (sessionVisible) {
-                finishStreamingBubble(SourceLinkUtil.displayText(partial));
-                addGenericResponseActions(partial, true);
+                finishStreamingBubble(partial);
             } else {
                 discardStreamingBubble();
             }
@@ -2994,13 +2995,6 @@ public class OrbitSession extends VoiceInteractionSession {
     }
 
     private void addUserBubble(String text) { addBubble(text, true, false); }
-    private void addAssistantBubble(String text) {
-        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
-            addRichAssistantBubble(text);
-        } else {
-            main.post(() -> addRichAssistantBubble(text));
-        }
-    }
     private void addErrorBubble(String text) { addBubble(text, false, true); }
 
     private void addBubble(String text, boolean user, boolean error) {
@@ -3029,10 +3023,12 @@ public class OrbitSession extends VoiceInteractionSession {
     private void addBubbleNow(String text, boolean user, boolean error) {
         if (messages == null) return;
         TextView bubble = makeBubbleText(text, user, error);
-        if (user && !error) MessageActions.bindUserCopy(bubble, text, () -> {
-            stateTextSafe("Copied");
-            main.postDelayed(() -> stateTextSafe(readyState()), 800);
-        });
+        if (user && !error) MessageActions.bindUser(bubble, text,
+                () -> placeInComposer(text),
+                () -> {
+                    stateTextSafe("Copied");
+                    main.postDelayed(() -> stateTextSafe(readyState()), 800);
+                });
         messages.addView(bubble, bubbleLp(user ? Gravity.END : Gravity.START, UiKit.dp(getContext(), 330)));
         bubble.setAlpha(0f);
         bubble.setTranslationY(UiKit.dp(getContext(), 8));
@@ -3043,18 +3039,26 @@ public class OrbitSession extends VoiceInteractionSession {
         scrollBottom();
     }
 
-    private void addRichAssistantBubble(String text) {
+    private void addRichAssistantBubble(String displayText, String rawText, boolean canRegenerate) {
         if (messages == null) return;
         Context c = getContext();
         int fill = UiKit.assistantBubbleFill(c, UiKit.SURFACE);
-        View bubble = OrbitRichResponseRenderer.render(c, text, fill, true);
+        View bubble = OrbitRichResponseRenderer.render(c, displayText, fill, true);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                OrbitRichResponseRenderer.prefersWideLayout(text)
+                OrbitRichResponseRenderer.prefersWideLayout(displayText)
                         ? ViewGroup.LayoutParams.MATCH_PARENT
                         : ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.gravity = Gravity.START;
         lp.setMargins(0, UiKit.dp(c, 4), UiKit.dp(c, 4), UiKit.dp(c, 6));
+        if (displayText != null && !displayText.trim().isEmpty()
+                && !displayText.startsWith("Orbit could not finish")) {
+            MessageActions.bindAssistant(bubble, rawText, canRegenerate, this::regenerateLastResponse,
+                    () -> {
+                        stateTextSafe("Copied");
+                        main.postDelayed(() -> stateTextSafe(readyState()), 800);
+                    });
+        }
         messages.addView(bubble, lp);
         bubble.setAlpha(0f);
         bubble.setTranslationY(UiKit.dp(c, 8));
@@ -3675,6 +3679,7 @@ public class OrbitSession extends VoiceInteractionSession {
      * {@code onHide()} can be told apart from one Android delivered on its own.
      */
     private void dismissAnimated(String reason) {
+        MessageActions.dismiss();
         if (dismissAnimating) return;
         OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_DISMISS,
                 OverlayLaunchTrace.State.of()
@@ -3778,6 +3783,7 @@ public class OrbitSession extends VoiceInteractionSession {
                         .flag("screenSelectionOpening", screenSelectionOpening)
                         .flag("attachmentOpening", attachmentOpening));
         detachFirstFrameListener();
+        MessageActions.dismiss();
         super.onHide();
         sessionVisible = false;
         freshExternalShowAtElapsedMs = 0L;

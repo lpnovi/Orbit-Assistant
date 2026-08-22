@@ -344,3 +344,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Copying takes the real message text, including long and Markdown replies, without labels or extra chrome.
   - The controls stay out of the way while you scroll or type, and they do not dismiss the keyboard.
   - Jump to latest, Voice, and how replies are generated are unchanged.
+
+- **v0.7.6.4**: Message actions now live on a long-press, so the chat stays clean until you actually want Copy, Regenerate, or Edit & resend.
+  - Long-press an Orbit reply for Copy and, on the latest turn, Regenerate.
+  - Long-press one of your own messages to copy it, or put it back in the text box as Edit & resend without sending it for you.
+  - Sending an edited message is an ordinary new message; the original stays in the conversation.
+  - The menu uses Orbit's usual surface, accent, and light haptic, and stays fully on screen.
+  - Jump to latest, Voice, and how replies are generated are unchanged.
+

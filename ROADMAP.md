@@ -461,6 +461,11 @@
 - Long-press a user message to copy it through Orbit's existing popup, in full chat and the overlay
 - Keep regenerate on the latest assistant turn only, and copy the real message text rather than chrome
 
+### 0.7.6.4
+- Move Copy and Regenerate off persistent under-message icons onto a long-press Orbit menu
+- Add Edit & resend, which returns a user message to the composer without rewriting history
+- Keep code-block Copy, draft-reply actions, and Jump to latest unchanged
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever

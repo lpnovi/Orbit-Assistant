@@ -3,34 +3,33 @@ package com.orbit.assistant;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
-import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.view.HapticFeedbackConstants;
-import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.widget.ImageButton;
-import android.widget.ImageView;
-import android.widget.LinearLayout;
-import android.widget.Toast;
+import android.widget.PopupWindow;
 
 /**
- * Shared Copy / Regenerate language for full chat and the Side-button overlay.
+ * Contextual message actions for full chat and the Side-button overlay.
  *
- * <p>Assistant replies keep a compact icon row so Copy and Regenerate stay one tap away.
- * User messages stay visually quiet and reveal Copy through a long-press Orbit menu, so a
- * long conversation is not lined with extra chrome.
+ * <p>The conversation stays visually quiet. Long-pressing a message opens one Orbit menu:
+ * Copy and Regenerate on assistant replies (Regenerate only on the latest turn), Copy and
+ * Edit &amp; resend on the user's own messages. Edit &amp; resend only returns the text to
+ * the composer; sending still goes through the ordinary Send path and does not rewrite history.
  */
 final class MessageActions {
-    static final String COPY_ASSISTANT_DESCRIPTION = "Copy Orbit response";
-    static final String REGENERATE_DESCRIPTION = "Regenerate response";
     static final String COPY_MENU_LABEL = "Copy";
-    static final int ACTION_SIZE_DP = 38;
-    private static final int FLASH_MS = 900;
+    static final String REGENERATE_MENU_LABEL = "Regenerate";
+    static final String EDIT_MENU_LABEL = "Edit & resend";
 
     interface AfterCopy {
         void onCopied();
     }
+
+    private static PopupWindow openMenu;
+    private static View highlighted;
 
     private MessageActions() {}
 
@@ -45,114 +44,163 @@ final class MessageActions {
         return raw.replace("—", "-");
     }
 
-    static ImageButton iconButton(Context c, int drawable, String description) {
-        ImageButton b = new ImageButton(c);
-        b.setImageResource(drawable);
-        b.setImageTintList(ColorStateList.valueOf(UiKit.MUTED));
-        b.setContentDescription(description);
-        b.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        b.setPadding(UiKit.dp(c, 8), UiKit.dp(c, 8), UiKit.dp(c, 8), UiKit.dp(c, 8));
-        b.setMinimumWidth(0);
-        b.setMinimumHeight(0);
-        b.setStateListAnimator(null);
-        b.setFocusable(false);
-        b.setFocusableInTouchMode(false);
-        b.setBackground(UiKit.ripple(Color.TRANSPARENT, UiKit.accent(c), 16, c));
-        UiKit.pressScale(b);
-        return b;
+    static String[] assistantLabels(boolean canRegenerate) {
+        return canRegenerate
+                ? new String[]{COPY_MENU_LABEL, REGENERATE_MENU_LABEL}
+                : new String[]{COPY_MENU_LABEL};
     }
 
-    /**
-     * Compact Copy / Regenerate row that sits under an assistant reply. Regenerating stays
-     * on the latest turn only; older replies keep Copy.
-     */
-    static LinearLayout assistantRow(Context c, String rawText, boolean canRegenerate,
-                                     Runnable regenerate) {
-        return assistantRow(c, rawText, canRegenerate, regenerate, null);
+    static int[] assistantIcons(boolean canRegenerate) {
+        return canRegenerate
+                ? new int[]{R.drawable.ic_copy, R.drawable.ic_regenerate}
+                : new int[]{R.drawable.ic_copy};
     }
 
-    static LinearLayout assistantRow(Context c, String rawText, boolean canRegenerate,
-                                     Runnable regenerate, AfterCopy afterCopy) {
-        LinearLayout row = new LinearLayout(c);
-        row.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-        row.setFocusable(false);
-        row.setPadding(UiKit.dp(c, 2), UiKit.dp(c, 2), UiKit.dp(c, 2), UiKit.dp(c, 2));
-
-        ImageButton copy = iconButton(c, R.drawable.ic_copy, COPY_ASSISTANT_DESCRIPTION);
-        copy.setOnClickListener(v -> copyAssistant(c, copy, rawText, afterCopy));
-        row.addView(copy, actionLp(c, 0));
-
-        if (canRegenerate && regenerate != null) {
-            ImageButton regen = iconButton(c, R.drawable.ic_regenerate, REGENERATE_DESCRIPTION);
-            regen.setOnClickListener(v -> regenerate.run());
-            row.addView(regen, actionLp(c, 6));
-        }
-        return row;
+    static String[] userLabels() {
+        return new String[]{COPY_MENU_LABEL, EDIT_MENU_LABEL};
     }
 
-    static LinearLayout.LayoutParams rowLayoutParams(Context c) {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(c, ACTION_SIZE_DP + 4));
-        lp.gravity = Gravity.START;
-        lp.setMargins(UiKit.dp(c, 5), -UiKit.dp(c, 2), 0, UiKit.dp(c, 4));
-        return lp;
+    static int[] userIcons() {
+        return new int[]{R.drawable.ic_copy, R.drawable.ic_edit};
     }
 
-    static void bindUserCopy(View bubble, String rawText, AfterCopy afterCopy) {
+    static void bindAssistant(View bubble, String rawText, boolean canRegenerate,
+                              Runnable regenerate, AfterCopy afterCopy) {
         if (bubble == null) return;
-        String text = userCopyText(rawText);
-        if (text.trim().isEmpty()) return;
-        bubble.setLongClickable(true);
-        bubble.setOnLongClickListener(v -> {
-            UiKit.haptic(v, HapticFeedbackConstants.LONG_PRESS);
-            showCopyMenu(v.getContext(), v, text, afterCopy);
+        String copyText = assistantCopyText(rawText);
+        if (copyText.trim().isEmpty()) return;
+        bindTree(bubble, v -> {
+            showAssistantMenu(bubble, copyText, canRegenerate, regenerate, afterCopy);
             return true;
         });
     }
 
-    static void copyAssistant(Context c, View feedback, String rawText, AfterCopy afterCopy) {
-        copy(c, feedback, "Orbit response", assistantCopyText(rawText), afterCopy);
+    static void bindUser(View bubble, String rawText, Runnable editResend, AfterCopy afterCopy) {
+        if (bubble == null) return;
+        String text = userCopyText(rawText);
+        if (text.trim().isEmpty()) return;
+        bindTree(bubble, v -> {
+            showUserMenu(bubble, text, editResend, afterCopy);
+            return true;
+        });
     }
 
-    static void copyUser(Context c, View feedback, String rawText, AfterCopy afterCopy) {
-        copy(c, feedback, "Orbit message", userCopyText(rawText), afterCopy);
+    static void copyAssistant(Context c, String rawText, AfterCopy afterCopy) {
+        copy(c, "Orbit response", assistantCopyText(rawText), afterCopy);
     }
 
-    static void copy(Context c, View feedback, String clipLabel, String text, AfterCopy afterCopy) {
+    static void copyUser(Context c, String rawText, AfterCopy afterCopy) {
+        copy(c, "Orbit message", userCopyText(rawText), afterCopy);
+    }
+
+    static void copy(Context c, String clipLabel, String text, AfterCopy afterCopy) {
         if (c == null) return;
         String value = text == null ? "" : text;
         ClipboardManager cm = (ClipboardManager) c.getSystemService(Context.CLIPBOARD_SERVICE);
         if (cm != null) cm.setPrimaryClip(ClipData.newPlainText(clipLabel, value));
-        flashCopied(feedback);
         if (afterCopy != null) afterCopy.onCopied();
-        else Toast.makeText(c, "Copied", Toast.LENGTH_SHORT).show();
     }
 
-    static void flashCopied(View feedback) {
-        if (!(feedback instanceof ImageButton)) return;
-        ImageButton button = (ImageButton) feedback;
-        Context c = button.getContext();
-        button.setImageTintList(ColorStateList.valueOf(UiKit.accent(c)));
-        button.postDelayed(() -> {
-            if (button.isAttachedToWindow()) {
-                button.setImageTintList(ColorStateList.valueOf(UiKit.MUTED));
+    static void dismiss() {
+        PopupWindow popup = openMenu;
+        openMenu = null;
+        if (popup != null && popup.isShowing()) {
+            try { popup.dismiss(); } catch (Exception ignored) {}
+        }
+        clearHighlight();
+    }
+
+    private static void showAssistantMenu(View bubble, String copyText, boolean canRegenerate,
+                                          Runnable regenerate, AfterCopy afterCopy) {
+        showMenu(bubble, assistantLabels(canRegenerate), assistantIcons(canRegenerate),
+                (index, label) -> {
+                    if (COPY_MENU_LABEL.equals(label)) {
+                        copy(bubble.getContext(), "Orbit response", copyText, afterCopy);
+                    } else if (REGENERATE_MENU_LABEL.equals(label) && regenerate != null) {
+                        regenerate.run();
+                    }
+                });
+    }
+
+    private static void showUserMenu(View bubble, String text, Runnable editResend,
+                                     AfterCopy afterCopy) {
+        showMenu(bubble, userLabels(), userIcons(), (index, label) -> {
+            if (COPY_MENU_LABEL.equals(label)) {
+                copy(bubble.getContext(), "Orbit message", text, afterCopy);
+            } else if (EDIT_MENU_LABEL.equals(label) && editResend != null) {
+                editResend.run();
             }
-        }, FLASH_MS);
+        });
     }
 
-    static void showCopyMenu(Context c, View anchor, String text, AfterCopy afterCopy) {
-        if (c == null || anchor == null) return;
-        String value = text == null ? "" : text;
-        UiKit.showOrbitActionMenu(c, anchor,
-                new String[]{COPY_MENU_LABEL},
-                new int[]{R.drawable.ic_copy},
-                (index, label) -> copy(c, null, "Orbit message", value, afterCopy));
+    private static void showMenu(View bubble, String[] labels, int[] icons,
+                                 UiKit.OrbitMenuChoice choice) {
+        if (bubble == null || labels == null || labels.length == 0) return;
+        dismiss();
+        UiKit.haptic(bubble, HapticFeedbackConstants.LONG_PRESS);
+        highlight(bubble);
+        PopupWindow popup = UiKit.showOrbitActionMenu(bubble.getContext(), bubble, labels, icons,
+                (index, label) -> {
+                    if (choice != null) choice.onChoice(index, label);
+                });
+        if (popup == null) {
+            clearHighlight();
+            return;
+        }
+        openMenu = popup;
+        popup.setOnDismissListener(() -> {
+            if (openMenu == popup) openMenu = null;
+            clearHighlight();
+        });
     }
 
-    private static LinearLayout.LayoutParams actionLp(Context c, int leftMarginDp) {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                UiKit.dp(c, ACTION_SIZE_DP), UiKit.dp(c, ACTION_SIZE_DP));
-        if (leftMarginDp > 0) lp.setMargins(UiKit.dp(c, leftMarginDp), 0, 0, 0);
-        return lp;
+    private static void highlight(View bubble) {
+        highlighted = bubble;
+        Context c = bubble.getContext();
+        bubble.setForeground(UiKit.outlined(Color.TRANSPARENT,
+                UiKit.withAlpha(UiKit.accent(c), 110), 18, c));
+        if (!UiKit.animationsEnabled()) return;
+        bubble.animate().cancel();
+        bubble.animate().scaleX(1.012f).scaleY(1.012f)
+                .setDuration(UiKit.MOTION_FAST)
+                .setInterpolator(UiKit.motionEasing())
+                .start();
+    }
+
+    private static void clearHighlight() {
+        View bubble = highlighted;
+        highlighted = null;
+        if (bubble == null) return;
+        bubble.setForeground(null);
+        bubble.animate().cancel();
+        if (UiKit.animationsEnabled() && bubble.isAttachedToWindow()) {
+            bubble.animate().scaleX(1f).scaleY(1f)
+                    .setDuration(UiKit.MOTION_FAST)
+                    .start();
+        } else {
+            bubble.setScaleX(1f);
+            bubble.setScaleY(1f);
+        }
+    }
+
+    /**
+     * Long-press is attached to the message and its non-interactive children so a rich
+     * Markdown reply still opens the menu. Code-block Copy buttons keep their own tap.
+     */
+    private static void bindTree(View view, View.OnLongClickListener listener) {
+        if (view == null || listener == null) return;
+        if (isReservedControl(view)) return;
+        view.setLongClickable(true);
+        view.setOnLongClickListener(listener);
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                bindTree(group.getChildAt(i), listener);
+            }
+        }
+    }
+
+    private static boolean isReservedControl(View view) {
+        return view instanceof Button || view instanceof ImageButton;
     }
 }

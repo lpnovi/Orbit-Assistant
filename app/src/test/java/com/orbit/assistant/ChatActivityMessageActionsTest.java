@@ -28,8 +28,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Full chat hosts Copy and Regenerate on assistant replies and a long-press Copy path on
- * the user's own messages, without putting extra chrome on every bubble.
+ * Full chat keeps the conversation clean: no persistent Copy/Regenerate chrome under replies.
+ * Long-press is how message actions appear; Edit &amp; resend only fills the composer.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {29, 31, 35})
@@ -43,46 +43,42 @@ public final class ChatActivityMessageActionsTest {
         ConversationStore.clear(context);
         OrbitRequestManager.resetForTest();
         OrbitRequestManager.setWorkCanceller(name -> {});
+        MessageActions.dismiss();
     }
 
-    @Test public void aFreshChatHasNoMessageActions() {
+    @Test public void aFreshChatHasNoPersistentMessageActions() {
         ChatActivity activity = openChat();
-        assertEquals(0, countByDescription(activity.getWindow().getDecorView(),
-                MessageActions.COPY_ASSISTANT_DESCRIPTION));
-        assertEquals(0, countByDescription(activity.getWindow().getDecorView(),
-                MessageActions.REGENERATE_DESCRIPTION));
+        assertEquals(0, countCopyButtons(activity.getWindow().getDecorView()));
+        assertEquals(0, countRegenButtons(activity.getWindow().getDecorView()));
     }
 
-    @Test public void theLatestAssistantReplyHasCopyAndRegenerate() {
+    @Test public void assistantRepliesHaveNoPersistentCopyOrRegenerateChrome() {
         seedConversation(
                 user("What is Saturn?"),
                 assistant("Saturn is a gas giant."));
         ChatActivity activity = openChat();
         View root = activity.getWindow().getDecorView();
-        assertEquals(1, countByDescription(root, MessageActions.COPY_ASSISTANT_DESCRIPTION));
-        assertEquals(1, countByDescription(root, MessageActions.REGENERATE_DESCRIPTION));
-
-        ImageButton copy = (ImageButton) findByDescription(root, MessageActions.COPY_ASSISTANT_DESCRIPTION);
-        ImageButton regen = (ImageButton) findByDescription(root, MessageActions.REGENERATE_DESCRIPTION);
-        assertNotNull(copy);
-        assertNotNull(regen);
-        assertFalse("copy must not steal composer focus", copy.isFocusable());
-        assertFalse(regen.isFocusable());
+        assertEquals("ordinary replies must not keep Copy under the bubble",
+                0, countCopyButtons(root));
+        assertEquals("ordinary replies must not keep Regenerate under the bubble",
+                0, countRegenButtons(root));
+        assertTrue("the assistant reply must be long-pressable",
+                hasLongClickableText(root, "Saturn is a gas giant."));
     }
 
-    @Test public void olderAssistantRepliesKeepCopyWithoutRegenerate() {
+    @Test public void userMessagesAreLongPressableWithoutAVisibleControl() {
         seedConversation(
-                user("First"),
-                assistant("First answer"),
-                user("Second"),
-                assistant("Second answer"));
+                user("Bring milk and eggs"),
+                assistant("Noted."));
         ChatActivity activity = openChat();
         View root = activity.getWindow().getDecorView();
-        assertEquals(2, countByDescription(root, MessageActions.COPY_ASSISTANT_DESCRIPTION));
-        assertEquals(1, countByDescription(root, MessageActions.REGENERATE_DESCRIPTION));
+        TextView userBubble = findText(root, "Bring milk and eggs");
+        assertNotNull("the user's message must still be a bubble", userBubble);
+        assertTrue(userBubble.isLongClickable());
+        assertEquals(0, countCopyButtons(root));
     }
 
-    @Test public void tappingCopyPutsTheAssistantReplyOnTheClipboard() {
+    @Test public void copyingAnAssistantReplyPutsTheRealTextOnTheClipboard() {
         seedConversation(
                 user("What is Saturn?"),
                 assistant("Saturn is a gas giant.\n\nSource: https://example.com/saturn"));
@@ -92,10 +88,8 @@ public final class ChatActivityMessageActionsTest {
         composer.requestFocus();
         assertTrue(composer.hasFocus());
 
-        ImageButton copy = (ImageButton) findByDescription(activity.getWindow().getDecorView(),
-                MessageActions.COPY_ASSISTANT_DESCRIPTION);
-        assertNotNull(copy);
-        copy.performClick();
+        MessageActions.copyAssistant(activity,
+                "Saturn is a gas giant.\n\nSource: https://example.com/saturn", null);
 
         assertEquals("Saturn is a gas giant.\n\nSource: https://example.com/saturn",
                 clipboardText(activity));
@@ -103,37 +97,65 @@ public final class ChatActivityMessageActionsTest {
         assertEquals(2, ConversationStore.load(context, CHAT_ID).messages.size());
     }
 
-    @Test public void userMessagesCanBeCopiedThroughLongPressWithoutAVisibleControl() {
+    @Test public void copyingAUserMessageDoesNotChangeTheBubble() {
         seedConversation(
                 user("Bring milk and eggs"),
                 assistant("Noted."));
         ChatActivity activity = openChat();
-        View root = activity.getWindow().getDecorView();
-        TextView userBubble = findText(root, "Bring milk and eggs");
-        assertNotNull("the user's message must still be a bubble", userBubble);
-        assertTrue(userBubble.isLongClickable());
-        assertEquals("no extra copy control should sit under the user bubble",
-                1, countByDescription(root, MessageActions.COPY_ASSISTANT_DESCRIPTION));
-
-        MessageActions.copyUser(activity, userBubble, "Bring milk and eggs", () -> {});
+        TextView userBubble = findText(activity.getWindow().getDecorView(), "Bring milk and eggs");
+        assertNotNull(userBubble);
+        MessageActions.copyUser(activity, "Bring milk and eggs", null);
         assertEquals("Bring milk and eggs", clipboardText(activity));
         assertEquals("Bring milk and eggs", userBubble.getText().toString());
+        assertEquals(2, ConversationStore.load(context, CHAT_ID).messages.size());
     }
 
-    @Test public void markdownRepliesCopyTheMessageNotTheRenderedLabels() {
+    @Test public void editAndResendPutsTheOriginalTextInTheComposer() {
+        seedConversation(
+                user("Bring milk and eggs"),
+                assistant("Noted."));
+        ChatActivity activity = openChat();
+        EditText composer = findComposer(activity.getWindow().getDecorView());
+        assertNotNull(composer);
+        activity.placeInComposer("Bring milk and eggs");
+        assertEquals("Bring milk and eggs", composer.getText().toString());
+        assertEquals("the original turn must still be in history",
+                "Bring milk and eggs",
+                ConversationStore.load(context, CHAT_ID).messages.get(0).content);
+        assertEquals(2, ConversationStore.load(context, CHAT_ID).messages.size());
+    }
+
+    @Test public void editAndResendLeavesTheComposerEditable() {
+        seedConversation(user("Original"), assistant("Answer"));
+        ChatActivity activity = openChat();
+        EditText composer = findComposer(activity.getWindow().getDecorView());
+        activity.placeInComposer("Original");
+        composer.getText().append(" plus more");
+        assertEquals("Original plus more", composer.getText().toString());
+        assertEquals("Original", ConversationStore.load(context, CHAT_ID).messages.get(0).content);
+    }
+
+    @Test public void markdownRepliesCopyTheMessageNotRenderedLabels() {
         seedConversation(
                 user("Summarise OLED"),
                 assistant("## OLED vs Mini LED\n\n**Quick takeaway:** OLED is usually best."));
         ChatActivity activity = openChat();
-        ImageButton copy = (ImageButton) findByDescription(activity.getWindow().getDecorView(),
-                MessageActions.COPY_ASSISTANT_DESCRIPTION);
-        assertNotNull(copy);
-        copy.performClick();
+        assertEquals(0, countCopyButtons(activity.getWindow().getDecorView()));
+        MessageActions.copyAssistant(activity,
+                "## OLED vs Mini LED\n\n**Quick takeaway:** OLED is usually best.", null);
         String copied = clipboardText(activity);
         assertTrue(copied.contains("OLED vs Mini LED"));
         assertTrue(copied.contains("OLED is usually best."));
         assertFalse(copied.contains("Copy code block"));
         assertFalse(copied.contains("Copy Orbit response"));
+    }
+
+    @Test public void jumpToLatestIsStillHostedInTheConversationPane() {
+        ChatActivity activity = openChat();
+        ImageButton jump = (ImageButton) findByDescription(activity.getWindow().getDecorView(),
+                "Jump to latest");
+        assertNotNull(jump);
+        assertEquals(View.GONE, jump.getVisibility());
     }
 
     private ChatActivity openChat() {
@@ -167,6 +189,14 @@ public final class ChatActivityMessageActionsTest {
         return text == null ? "" : text.toString();
     }
 
+    private static int countCopyButtons(View view) {
+        return countByDescription(view, "Copy Orbit response");
+    }
+
+    private static int countRegenButtons(View view) {
+        return countByDescription(view, "Regenerate response");
+    }
+
     private static int countByDescription(View view, String description) {
         int count = 0;
         CharSequence label = view.getContentDescription();
@@ -191,6 +221,22 @@ public final class ChatActivityMessageActionsTest {
             }
         }
         return null;
+    }
+
+    private static boolean hasLongClickableText(View view, String value) {
+        if (view instanceof TextView) {
+            CharSequence text = ((TextView) view).getText();
+            if (value.equals(text == null ? null : text.toString()) && view.isLongClickable()) {
+                return true;
+            }
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                if (hasLongClickableText(group.getChildAt(i), value)) return true;
+            }
+        }
+        return false;
     }
 
     private static TextView findText(View view, String value) {

@@ -977,21 +977,21 @@ public final class UiKit {
      * as {@link #showOrbitMenu}, but stays narrower, includes Orbit icons, and does
      * not take input focus so the keyboard is left alone.
      */
-    public static void showOrbitActionMenu(Context c, View anchor, String[] labels, int[] icons,
+    public static PopupWindow showOrbitActionMenu(Context c, View anchor, String[] labels, int[] icons,
                                            OrbitMenuChoice choice) {
-        if (c == null || anchor == null || labels == null || labels.length == 0) return;
+        if (c == null || anchor == null || labels == null || labels.length == 0) return null;
         boolean showIcons = icons != null && icons.length == labels.length;
 
         LinearLayout box = new LinearLayout(c);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(c, 6), dp(c, 6), dp(c, 6), dp(c, 6));
-        box.setBackground(outlined(SURFACE_2, withAlpha(accent(c), 72), 18, c));
+        box.setBackground(outlined(SURFACE_2, withAlpha(accent(c), 80), 18, c));
 
         int maxChars = 0;
         for (String label : labels) {
             if (label != null) maxChars = Math.max(maxChars, label.length());
         }
-        int widthDp = Math.max(148, Math.min(240, 92 + (showIcons ? 28 : 0) + (maxChars * 7)));
+        int widthDp = Math.max(156, Math.min(248, 96 + (showIcons ? 28 : 0) + (maxChars * 7)));
         int width = dp(c, widthDp);
         PopupWindow popup = new PopupWindow(box, width,
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT, false);
@@ -1011,7 +1011,7 @@ public final class UiKit {
             LinearLayout row = new LinearLayout(c);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(android.view.Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(c, 12), 0, dp(c, 12), 0);
+            row.setPadding(dp(c, 12), 0, dp(c, 14), 0);
             row.setBackground(ripple(SURFACE_2, accent(c), 13, c));
 
             if (showIcons && icons[i] != 0) {
@@ -1026,7 +1026,7 @@ public final class UiKit {
             TextView label = text(c, labelText, 14, TEXT, false);
             LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
                     0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-            if (showIcons && icons[i] != 0) labelLp.setMargins(dp(c, 10), 0, 0, 0);
+            if (showIcons && icons[i] != 0) labelLp.setMargins(dp(c, 11), 0, 0, 0);
             row.addView(label, labelLp);
 
             pressScale(row);
@@ -1042,6 +1042,7 @@ public final class UiKit {
         }
 
         showAnchoredOrbitPopup(c, anchor, popup, width, labels.length, 44);
+        return popup;
     }
 
     /**
@@ -1147,13 +1148,31 @@ public final class UiKit {
             int safeTop = visibleFrame.top + margin;
             int safeBottom = visibleFrame.bottom - margin;
 
-            int xScreen = anchorScreen[0] + (anchor.getWidth() / 2) - (width / 2);
+            Rect anchorVisible = new Rect(
+                    anchorScreen[0],
+                    anchorScreen[1],
+                    anchorScreen[0] + Math.max(1, anchor.getWidth()),
+                    anchorScreen[1] + Math.max(1, anchor.getHeight()));
+            if (!anchorVisible.intersect(visibleFrame)) {
+                anchorVisible.set(
+                        Math.max(visibleFrame.left, anchorScreen[0]),
+                        Math.max(visibleFrame.top, anchorScreen[1]),
+                        Math.min(visibleFrame.right, anchorScreen[0] + Math.max(1, anchor.getWidth())),
+                        Math.min(visibleFrame.bottom, anchorScreen[1] + Math.max(1, anchor.getHeight())));
+            }
+            if (anchorVisible.width() <= 0 || anchorVisible.height() <= 0) {
+                anchorVisible.set(anchorScreen[0], anchorScreen[1],
+                        anchorScreen[0] + Math.max(1, anchor.getWidth()),
+                        anchorScreen[1] + Math.max(1, anchor.getHeight()));
+            }
+
+            int xScreen = anchorVisible.centerX() - (width / 2);
             xScreen = Math.max(safeLeft, Math.min(safeRight - width, xScreen));
 
-            int belowY = anchorScreen[1] + anchor.getHeight() + gap;
-            int aboveY = anchorScreen[1] - popupHeight - gap;
+            int belowY = anchorVisible.bottom + gap;
+            int aboveY = anchorVisible.top - popupHeight - gap;
             int roomBelow = safeBottom - belowY;
-            int roomAbove = anchorScreen[1] - gap - safeTop;
+            int roomAbove = anchorVisible.top - gap - safeTop;
 
             int yScreen;
             if (roomBelow >= popupHeight || roomBelow >= roomAbove) {
