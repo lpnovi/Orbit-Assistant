@@ -30,7 +30,7 @@ final class ChatGptProvider implements AiProvider {
     @Override public String displayName() { return "ChatGPT"; }
 
     @Override public String description() {
-        return "Your ChatGPT account, with Orbit's full feature set.";
+        return "Your ChatGPT account. Currently Orbit's fullest feature set.";
     }
 
     @Override public AiCapabilities capabilities() { return CAPABILITIES; }

@@ -375,3 +375,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - When ChatGPT is already connected, the big Sign in button disappears; Sign out becomes a restrained action with a confirmation.
   - The active provider card is clearly marked with an accent edge, a softly tinted surface, and an Active badge.
 
+- **v0.7.7.2**: Orbit Local now manages like a polished optional extension, and provider descriptions are honest about their differences.
+  - Removing the local model is a deliberate full-width management action with a clear confirmation: what gets removed, the storage freed, and that the rest of Orbit is untouched.
+  - When Orbit Local is your active provider, its model card shows Active with the same accent treatment as the AI Providers screen, instead of offering Use Orbit Local again.
+  - Download progress now shows a percentage alongside the megabytes, and a fully downloaded model is recognized again even if its saved state was lost, with no re-download.
+  - Orbit Local can no longer be chosen, or silently stay selected, without a ready model; Orbit falls back to ChatGPT so requests always have an answer.
+  - The AI Providers screen now says features and capabilities vary by provider, and Orbit Local honestly notes its compact model gives simpler answers than cloud AI.
+

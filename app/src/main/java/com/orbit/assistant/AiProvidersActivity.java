@@ -104,7 +104,7 @@ public final class AiProvidersActivity extends Activity {
         page.addView(header);
 
         TextView intro = UiKit.text(this,
-                "Orbit works the same whichever provider answers.",
+                "Choose how Orbit thinks. Features and capabilities vary by provider.",
                 13, UiKit.MUTED, false);
         intro.setLineSpacing(0, 1.14f);
         LinearLayout.LayoutParams introLp = new LinearLayout.LayoutParams(

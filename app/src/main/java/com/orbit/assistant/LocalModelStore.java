@@ -27,22 +27,64 @@ public final class LocalModelStore {
     private static final String KEY_ERROR = "model_error";
 
     /**
+     * One downloadable local component: everything the store needs to download, verify, adopt,
+     * and remove it. Orbit Local's near future holds more than one of these — a general chat
+     * model today, a lightweight device-action/intent model later — so all file, state, and
+     * validation logic is keyed by a spec rather than assuming a single global model. Each spec
+     * keeps its own preference keys, so components never share or clobber state.
+     */
+    public static final class ModelSpec {
+        public final String id;
+        public final String displayName;
+        public final String fileName;
+        public final String downloadUrl;
+        public final long sizeBytes;
+        public final String sha256;
+        public final int maxTokens;
+        final String stateKey;
+        final String errorKey;
+
+        ModelSpec(String id, String displayName, String downloadUrl, long sizeBytes,
+                  String sha256, int maxTokens, String stateKey, String errorKey) {
+            this.id = id;
+            this.displayName = displayName;
+            this.fileName = id + ".task";
+            this.downloadUrl = downloadUrl;
+            this.sizeBytes = sizeBytes;
+            this.sha256 = sha256;
+            this.maxTokens = maxTokens;
+            this.stateKey = stateKey;
+            this.errorKey = errorKey;
+        }
+    }
+
+    /**
      * Qwen 2.5 1.5B Instruct, 8-bit quantized, 4K context, packaged for Google's LiteRT/MediaPipe
      * LLM runtime by the litert-community project. Chosen because it is Apache-2.0 licensed,
      * publicly downloadable without an account, small enough for optional install, and strong
      * enough at instruction following for real assistant chat on a modern flagship.
+     *
+     * <p>Its state keys keep the pre-spec names so an already-installed model is never orphaned
+     * by an update; future components use "<key>:<model id>" keys.
      */
-    public static final String MODEL_ID = "qwen2.5-1.5b-instruct-q8";
-    public static final String MODEL_DISPLAY_NAME = "Qwen 2.5 (1.5B)";
-    public static final String MODEL_FILE_NAME = MODEL_ID + ".task";
-    public static final String MODEL_DOWNLOAD_URL =
+    public static final ModelSpec CHAT_MODEL = new ModelSpec(
+            "qwen2.5-1.5b-instruct-q8",
+            "Qwen 2.5 (1.5B)",
             "https://huggingface.co/litert-community/Qwen2.5-1.5B-Instruct/resolve/main/"
-                    + "Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.task";
-    public static final long MODEL_SIZE_BYTES = 1_598_556_720L;
-    public static final String MODEL_SHA256 =
-            "82968d0a6c3872cf016fdbcfc591571605f4c7fd2b0f64d2533df502cc6596b3";
+                    + "Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.task",
+            1_598_556_720L,
+            "82968d0a6c3872cf016fdbcfc591571605f4c7fd2b0f64d2533df502cc6596b3",
+            4096,
+            KEY_STATE, KEY_ERROR);
+
+    public static final String MODEL_ID = CHAT_MODEL.id;
+    public static final String MODEL_DISPLAY_NAME = CHAT_MODEL.displayName;
+    public static final String MODEL_FILE_NAME = CHAT_MODEL.fileName;
+    public static final String MODEL_DOWNLOAD_URL = CHAT_MODEL.downloadUrl;
+    public static final long MODEL_SIZE_BYTES = CHAT_MODEL.sizeBytes;
+    public static final String MODEL_SHA256 = CHAT_MODEL.sha256;
     /** Context window the packaged model was exported with. */
-    public static final int MODEL_MAX_TOKENS = 4096;
+    public static final int MODEL_MAX_TOKENS = CHAT_MODEL.maxTokens;
     /** Extra free space required beyond the model itself before a download may start. */
     public static final long STORAGE_MARGIN_BYTES = 500L * 1024 * 1024;
 
@@ -70,21 +112,32 @@ public final class LocalModelStore {
         return dir;
     }
 
-    public static File modelFile(Context c) { return new File(modelDir(c), MODEL_FILE_NAME); }
+    public static File modelFile(Context c) { return modelFile(c, CHAT_MODEL); }
 
-    static File partFile(Context c) { return new File(modelDir(c), MODEL_FILE_NAME + ".part"); }
+    public static File modelFile(Context c, ModelSpec spec) {
+        return new File(modelDir(c), spec.fileName);
+    }
+
+    static File partFile(Context c) { return partFile(c, CHAT_MODEL); }
+
+    static File partFile(Context c, ModelSpec spec) {
+        return new File(modelDir(c), spec.fileName + ".part");
+    }
 
     /** The state after reconciling the stored mark against what is actually on disk. */
-    public static State state(Context c) {
-        String raw = prefs(c).getString(KEY_STATE, "");
+    public static State state(Context c) { return state(c, CHAT_MODEL); }
+
+    public static State state(Context c, ModelSpec spec) {
+        String raw = prefs(c).getString(spec.stateKey, "");
         State marked;
         try { marked = State.valueOf(raw); } catch (Exception e) { marked = State.NOT_INSTALLED; }
-        File model = modelFile(c);
-        File part = partFile(c);
+        File model = modelFile(c, spec);
+        File part = partFile(c, spec);
+        boolean fileComplete = model.exists() && model.length() == spec.sizeBytes;
         if (marked == State.READY) {
-            if (model.exists() && model.length() == MODEL_SIZE_BYTES) return State.READY;
+            if (fileComplete) return State.READY;
             // The mark outlived its file: someone cleared storage or deletion half-finished.
-            setState(c, State.NOT_INSTALLED, "");
+            setState(c, spec, State.NOT_INSTALLED, "");
             return part.exists() ? State.PAUSED : State.NOT_INSTALLED;
         }
         if (marked == State.DOWNLOADING || marked == State.VALIDATING) {
@@ -94,27 +147,40 @@ public final class LocalModelStore {
             return part.exists() ? State.PAUSED : State.NOT_INSTALLED;
         }
         if (marked == State.ERROR) return State.ERROR;
+        if (fileComplete) {
+            // A complete model file only ever exists after checksum promotion, so a lost mark
+            // (cleared preferences, a future key migration) re-adopts it instead of demanding a
+            // fresh multi-gigabyte download.
+            setState(c, spec, State.READY, "");
+            return State.READY;
+        }
         return part.exists() ? State.PAUSED : State.NOT_INSTALLED;
     }
 
     public static boolean isReady(Context c) { return state(c) == State.READY; }
 
     public static String errorMessage(Context c) {
-        return prefs(c).getString(KEY_ERROR, "");
+        return prefs(c).getString(CHAT_MODEL.errorKey, "");
     }
 
     static void setState(Context c, State state, String error) {
+        setState(c, CHAT_MODEL, state, error);
+    }
+
+    static void setState(Context c, ModelSpec spec, State state, String error) {
         prefs(c).edit()
-                .putString(KEY_STATE, state.name())
-                .putString(KEY_ERROR, error == null ? "" : error)
+                .putString(spec.stateKey, state.name())
+                .putString(spec.errorKey, error == null ? "" : error)
                 .apply();
     }
 
     /** Bytes present locally, whether partial or complete. */
-    public static long downloadedBytes(Context c) {
-        File model = modelFile(c);
+    public static long downloadedBytes(Context c) { return downloadedBytes(c, CHAT_MODEL); }
+
+    public static long downloadedBytes(Context c, ModelSpec spec) {
+        File model = modelFile(c, spec);
         if (model.exists()) return model.length();
-        File part = partFile(c);
+        File part = partFile(c, spec);
         return part.exists() ? part.length() : 0L;
     }
 
@@ -141,41 +207,56 @@ public final class LocalModelStore {
      * the download worker only. Any mismatch deletes the bytes rather than leaving a corrupted
      * file that could later be mistaken for a model.
      */
-    static boolean validateAndPromote(Context c) {
-        File part = partFile(c);
-        if (!part.exists() || part.length() != MODEL_SIZE_BYTES) {
-            setState(c, State.ERROR, "The downloaded file was incomplete. Download it again.");
+    static boolean validateAndPromote(Context c) { return validateAndPromote(c, CHAT_MODEL); }
+
+    static boolean validateAndPromote(Context c, ModelSpec spec) {
+        File part = partFile(c, spec);
+        if (!part.exists() || part.length() != spec.sizeBytes) {
+            setState(c, spec, State.ERROR, "The downloaded file was incomplete. Download it again.");
             //noinspection ResultOfMethodCallIgnored
             part.delete();
             return false;
         }
         String digest = sha256(part);
-        if (!MODEL_SHA256.equalsIgnoreCase(digest)) {
-            setState(c, State.ERROR, "The downloaded file failed verification and was removed. Download it again.");
+        if (!spec.sha256.equalsIgnoreCase(digest)) {
+            setState(c, spec, State.ERROR, "The downloaded file failed verification and was removed. Download it again.");
             //noinspection ResultOfMethodCallIgnored
             part.delete();
             return false;
         }
-        File model = modelFile(c);
+        File model = modelFile(c, spec);
         //noinspection ResultOfMethodCallIgnored
         model.delete();
         if (!part.renameTo(model)) {
-            setState(c, State.ERROR, "Orbit could not finish installing the model. Try again.");
+            setState(c, spec, State.ERROR, "Orbit could not finish installing the model. Try again.");
             return false;
         }
-        setState(c, State.READY, "");
+        setState(c, spec, State.READY, "");
         return true;
     }
 
-    /** Removes the model, partial bytes, and state. The download can be started again later. */
-    public static void delete(Context c) {
+    /**
+     * Removes one model completely: its file, its partial bytes, any stray temp file carrying
+     * its name, and its state — and nothing else. Conversations, preferences, other providers,
+     * the shared runtime, and any other installed local component are untouched, and the model
+     * can be downloaded again at any time.
+     */
+    public static void delete(Context c) { delete(c, CHAT_MODEL); }
+
+    public static void delete(Context c, ModelSpec spec) {
         LocalModelDownloadWorker.cancel(c);
         LocalLlmEngine.unload();
-        //noinspection ResultOfMethodCallIgnored
-        modelFile(c).delete();
-        //noinspection ResultOfMethodCallIgnored
-        partFile(c).delete();
-        setState(c, State.NOT_INSTALLED, "");
+        File[] files = modelDir(c).listFiles();
+        if (files != null) {
+            for (File file : files) {
+                // Prefix match sweeps the model, its .part file, and any stray temp sibling.
+                if (file.getName().startsWith(spec.fileName)) {
+                    //noinspection ResultOfMethodCallIgnored
+                    file.delete();
+                }
+            }
+        }
+        setState(c, spec, State.NOT_INSTALLED, "");
     }
 
     /** Clears an error so the user can retry from a clean NOT_INSTALLED or PAUSED state. */

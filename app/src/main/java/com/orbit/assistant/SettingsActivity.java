@@ -945,7 +945,10 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         chatGptHelp = null;
         chatGptSignIn = null;
         chatGptSignOut = null;
-        providerDetailsFor = Prefs.provider(this);
+        // The effective provider, not the raw stored one: if a stored Orbit Local selection lost
+        // its model, requests already fall back to ChatGPT, and this block must describe the
+        // provider that actually answers.
+        providerDetailsFor = AiProviders.active(this).id();
         if (Prefs.PROVIDER_LOCAL.equals(providerDetailsFor)) {
             TextView localHelp = UiKit.text(this,
                     "Orbit Local answers on this phone with no account and no internet. Your ChatGPT sign-in, if present, stays securely saved but inactive while Orbit Local is selected.",
@@ -1051,7 +1054,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
                     "Active: " + active.displayName() + " · " + active.statusDetail(this));
         }
         if (providerDetails != null && providerDetailsFor != null
-                && !providerDetailsFor.equals(Prefs.provider(this))) {
+                && !providerDetailsFor.equals(AiProviders.active(this).id())) {
             swapProviderDetails();
         }
     }

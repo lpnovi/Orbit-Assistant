@@ -75,6 +75,57 @@ public final class LocalModelStoreTest {
         assertEquals("", LocalModelStore.errorMessage(context));
     }
 
+    @Test public void deleteSweepsStrayModelFilesButNothingElse() throws Exception {
+        File dir = LocalModelStore.modelFile(context).getParentFile();
+        write(LocalModelStore.partFile(context), new byte[]{1});
+        File stray = new File(dir, LocalModelStore.MODEL_FILE_NAME + ".tmp");
+        write(stray, new byte[]{2});
+        File unrelated = new File(dir, "some-other-model.task");
+        write(unrelated, new byte[]{3});
+
+        LocalModelStore.delete(context);
+
+        assertFalse("partial bytes must be removed", LocalModelStore.partFile(context).exists());
+        assertFalse("stray temp files of this model must be removed", stray.exists());
+        assertTrue("another model's file must never be touched", unrelated.exists());
+        //noinspection ResultOfMethodCallIgnored
+        unrelated.delete();
+    }
+
+    @Test public void aCompleteFileWithALostMarkIsReAdoptedNotReDownloaded() throws Exception {
+        // A file of the exact pinned size can only exist through checksum promotion; losing the
+        // preference mark (cleared prefs, key migration) must not cost a 1.6 GB re-download.
+        File model = LocalModelStore.modelFile(context);
+        //noinspection ResultOfMethodCallIgnored
+        model.getParentFile().mkdirs();
+        try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(model, "rw")) {
+            raf.setLength(LocalModelStore.MODEL_SIZE_BYTES);
+        }
+        assertEquals(LocalModelStore.State.READY, LocalModelStore.state(context));
+        assertTrue(LocalModelStore.isReady(context));
+    }
+
+    @Test public void modelSpecsKeepIndependentStateAndFiles() {
+        // The store must not assume a single local component: a future device-action model gets
+        // its own files and its own state keys, never sharing the chat model's.
+        LocalModelStore.ModelSpec future = new LocalModelStore.ModelSpec(
+                "future-intent-model", "Future Intent Model",
+                "https://example.invalid/model.task", 1234L, "00", 1024,
+                "model_state:future-intent-model", "model_error:future-intent-model");
+        assertFalse(future.fileName.equals(LocalModelStore.CHAT_MODEL.fileName));
+        assertFalse(future.stateKey.equals(LocalModelStore.CHAT_MODEL.stateKey));
+
+        LocalModelStore.setState(context, future, LocalModelStore.State.ERROR, "future boom");
+        assertEquals("another spec's state must not leak into the chat model",
+                LocalModelStore.State.NOT_INSTALLED, LocalModelStore.state(context));
+        assertEquals(LocalModelStore.State.ERROR, LocalModelStore.state(context, future));
+
+        LocalModelStore.setState(context, LocalModelStore.CHAT_MODEL,
+                LocalModelStore.State.NOT_INSTALLED, "");
+        assertEquals("the chat model's state must not clobber another spec's",
+                LocalModelStore.State.ERROR, LocalModelStore.state(context, future));
+    }
+
     @Test public void clearErrorReturnsToACleanState() {
         LocalModelStore.setState(context, LocalModelStore.State.ERROR, "boom");
         LocalModelStore.clearError(context);

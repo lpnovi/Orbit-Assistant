@@ -43,7 +43,7 @@ final class OrbitLocalProvider implements AiProvider {
     @Override public String displayName() { return "Orbit Local"; }
 
     @Override public String description() {
-        return "Private AI that runs on this phone, even with no internet.";
+        return "Private AI on this phone, even offline. A compact model, so answers are simpler than cloud AI.";
     }
 
     @Override public AiCapabilities capabilities() { return CAPABILITIES; }
@@ -70,7 +70,10 @@ final class OrbitLocalProvider implements AiProvider {
     }
 
     @Override public boolean selectable(Context context) {
-        return status(context) != Status.UNSUPPORTED;
+        // Without a ready model this provider cannot answer a single request, so it can neither
+        // be chosen nor remain silently active: AiProviders.active() falls back to ChatGPT if
+        // the model disappears underneath a stored selection.
+        return status(context) == Status.READY;
     }
 
     @Override public void send(Context context, AiRequest request,

@@ -59,6 +59,17 @@ public final class AiProvidersTest {
                 Prefs.PROVIDER_CHATGPT, Prefs.provider(context));
     }
 
+    @Test public void orbitLocalWithoutItsModelCannotBeOrStayActive() {
+        // No model is installed in this environment, so Orbit Local cannot answer a request.
+        assertFalse("a provider without its model must not be selectable",
+                AiProviders.byId(Prefs.PROVIDER_LOCAL).selectable(context));
+        assertFalse(AiProviders.select(context, Prefs.PROVIDER_LOCAL));
+        // Even a stale stored selection must not leave chat pointed at it.
+        Prefs.get(context).edit().putString(Prefs.PROVIDER, Prefs.PROVIDER_LOCAL).commit();
+        assertEquals("requests must fall back to a provider that can answer",
+                Prefs.PROVIDER_CHATGPT, AiProviders.active(context).id());
+    }
+
     @Test public void selectionIsExplicitAndPersisted() {
         assertTrue(AiProviders.select(context, Prefs.PROVIDER_RELAY));
         assertEquals(Prefs.PROVIDER_RELAY, Prefs.provider(context));

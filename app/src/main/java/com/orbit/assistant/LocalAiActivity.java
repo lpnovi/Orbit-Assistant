@@ -195,7 +195,16 @@ public final class LocalAiActivity extends Activity {
     }
 
     private View modelCard() {
+        LocalModelStore.State state = LocalModelStore.state(this);
+        boolean active = Prefs.PROVIDER_LOCAL.equals(AiProviders.active(this).id());
         LinearLayout card = card();
+        if (active) {
+            // Same selected treatment the AI Providers screen uses, so "this is what Orbit is
+            // thinking with right now" reads identically everywhere.
+            card.setBackground(UiKit.outlined(
+                    UiKit.blend(UiKit.SURFACE, UiKit.accent(this), 0.93f),
+                    UiKit.accent(this), 22, this));
+        }
         card.addView(UiKit.text(this, "Local model", 12, UiKit.MUTED, true));
 
         LinearLayout titleRow = new LinearLayout(this);
@@ -203,10 +212,10 @@ public final class LocalAiActivity extends Activity {
         titleRow.setPadding(0, UiKit.dp(this, 7), 0, 0);
         titleRow.addView(UiKit.text(this, LocalModelStore.MODEL_DISPLAY_NAME, 17, UiKit.TEXT, true),
                 new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        LocalModelStore.State state = LocalModelStore.state(this);
-        TextView statePill = UiKit.text(this, stateLabel(state), 11,
-                state == LocalModelStore.State.READY ? UiKit.onAccent(this) : UiKit.TEXT, true);
-        statePill.setBackground(state == LocalModelStore.State.READY
+        boolean accentPill = active || state == LocalModelStore.State.READY;
+        TextView statePill = UiKit.text(this, active ? "Active" : stateLabel(state), 11,
+                accentPill ? UiKit.onAccent(this) : UiKit.TEXT, true);
+        statePill.setBackground(accentPill
                 ? UiKit.rounded(UiKit.accent(this), 99, this)
                 : UiKit.outlined(UiKit.SURFACE_2, Color.rgb(53, 58, 72), 99, this));
         statePill.setPadding(UiKit.dp(this, 10), UiKit.dp(this, 4), UiKit.dp(this, 10), UiKit.dp(this, 4));
@@ -236,7 +245,8 @@ public final class LocalAiActivity extends Activity {
                     state == LocalModelStore.State.VALIDATING
                             ? "Verifying the downloaded model…"
                             : LocalModelStore.formatBytes(done) + " of "
-                                    + LocalModelStore.formatBytes(LocalModelStore.MODEL_SIZE_BYTES),
+                                    + LocalModelStore.formatBytes(LocalModelStore.MODEL_SIZE_BYTES)
+                                    + " · " + (progress / 10) + "%",
                     12, UiKit.MUTED, false);
             progressText.setPadding(0, UiKit.dp(this, 6), 0, 0);
             card.addView(progressText);
@@ -269,7 +279,7 @@ public final class LocalAiActivity extends Activity {
         actions.addView(button, lp);
     }
 
-    /** Compact right-aligned secondary or destructive action; never squeezed beside a primary. */
+    /** Compact right-aligned secondary action; never squeezed beside a primary. */
     private void addCompactAction(LinearLayout actions, Button button) {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.END);
@@ -279,6 +289,18 @@ public final class LocalAiActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         if (actions.getChildCount() > 0) lp.topMargin = UiKit.dp(this, 8);
         actions.addView(row, lp);
+    }
+
+    /**
+     * Model removal in the Extensions-manager idiom: a full-width restrained destructive row,
+     * separated from the primary action by deliberate space — designed in, not floated into a
+     * leftover corner.
+     */
+    private void addDestructiveAction(LinearLayout actions, Button button) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44));
+        if (actions.getChildCount() > 0) lp.topMargin = UiKit.dp(this, 14);
+        actions.addView(button, lp);
     }
 
     private String stateLabel(LocalModelStore.State state) {
@@ -296,7 +318,7 @@ public final class LocalAiActivity extends Activity {
         String size = LocalModelStore.formatBytes(LocalModelStore.MODEL_SIZE_BYTES);
         switch (state) {
             case READY:
-                return "Installed · " + size + " on device · Works completely offline\n"
+                return size + " installed · Works completely offline\n"
                         + "Good for private chat, drafting, and quick answers. Device actions and screen reading stay with cloud providers for now.";
             case DOWNLOADING:
                 return "Downloading in the background. You can leave this screen; the download continues and survives interruptions.";
@@ -337,9 +359,9 @@ public final class LocalAiActivity extends Activity {
                     refresh.run();
                 });
                 addPrimaryAction(actions, resume);
-                Button delete = dangerButton("Remove download");
+                Button delete = dangerButton("Remove downloaded data");
                 delete.setOnClickListener(v -> confirmDelete(true));
-                addCompactAction(actions, delete);
+                addDestructiveAction(actions, delete);
                 break;
             }
             case DOWNLOADING:
@@ -366,29 +388,51 @@ public final class LocalAiActivity extends Activity {
                     });
                     addPrimaryAction(actions, use);
                 }
-                Button delete = dangerButton("Delete model");
+                Button delete = dangerButton("Delete local model");
                 delete.setOnClickListener(v -> confirmDelete(false));
-                addCompactAction(actions, delete);
+                addDestructiveAction(actions, delete);
                 break;
             }
         }
     }
 
+    /**
+     * Removing gigabytes must never happen from one accidental tap, and the dialog says exactly
+     * what is removed and what is not: the downloaded model data only — never Orbit itself,
+     * conversations, settings, or other providers — and the model can always come back.
+     */
     private void confirmDelete(boolean partialOnly) {
+        boolean active = Prefs.PROVIDER_LOCAL.equals(AiProviders.active(this).id());
+        String title;
+        String message;
+        if (partialOnly) {
+            title = "Remove downloaded data?";
+            message = "About " + LocalModelStore.formatBytes(LocalModelStore.downloadedBytes(this))
+                    + " of partly downloaded model data will be removed, freeing that storage. "
+                    + "You can start the download again at any time.";
+        } else {
+            title = "Remove " + LocalModelStore.MODEL_DISPLAY_NAME + "?";
+            message = "About " + LocalModelStore.formatBytes(LocalModelStore.MODEL_SIZE_BYTES)
+                    + " of downloaded model data will be removed, freeing that storage. "
+                    + "Orbit Local stops working until the model is downloaded again."
+                    + (active ? " ChatGPT becomes the active provider." : "")
+                    + " Your conversations, settings, and other providers are not affected, and "
+                    + "you can download the model again later.";
+        }
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(partialOnly ? "Remove downloaded data?" : "Delete the local model?")
-                .setMessage(partialOnly
-                        ? "The partly downloaded model data is removed from this phone. You can start the download again later."
-                        : "The model is removed from this phone and Orbit Local stops working until it is downloaded again. Conversations are not affected.")
+                .setTitle(title)
+                .setMessage(message)
                 .setNegativeButton("Cancel", null)
-                .setPositiveButton(partialOnly ? "Remove" : "Delete", (d, w) -> {
+                .setPositiveButton(partialOnly ? "Remove" : "Remove model", (d, w) -> {
                     boolean wasActive = Prefs.PROVIDER_LOCAL.equals(AiProviders.active(this).id());
                     LocalModelStore.delete(this);
                     if (wasActive) {
                         // Never leave chat pointed at a provider that can no longer answer.
                         AiProviders.select(this, Prefs.PROVIDER_CHATGPT);
-                        Toast.makeText(this, "Model deleted. ChatGPT is the active provider again.",
+                        Toast.makeText(this, "Model removed. ChatGPT is the active provider again.",
                                 Toast.LENGTH_LONG).show();
+                    } else if (!partialOnly) {
+                        Toast.makeText(this, "Local model removed", Toast.LENGTH_SHORT).show();
                     }
                     rebuildModelCard();
                 })
@@ -421,13 +465,15 @@ public final class LocalAiActivity extends Activity {
         return b;
     }
 
+    /** Restrained destructive treatment, matching the Extensions manager's Remove control. */
     private Button dangerButton(String text) {
         Button b = new Button(this);
         b.setText(text);
         b.setTextColor(UiKit.DANGER);
         b.setTextSize(14);
         b.setAllCaps(false);
-        b.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2,
+        b.setBackground(UiKit.rippleOutlined(
+                UiKit.blend(UiKit.DANGER, UiKit.SURFACE_2, 0.08f),
                 UiKit.withAlpha(UiKit.DANGER, 110), UiKit.DANGER, 15, this));
         b.setMinHeight(0); b.setMinimumHeight(0); b.setStateListAnimator(null);
         UiKit.pressScale(b);

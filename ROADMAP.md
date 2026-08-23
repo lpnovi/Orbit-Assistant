@@ -515,6 +515,38 @@
 - Temporarily withdraw the unreliable Edit & resend message action, keeping Copy and the
   composer-side machinery so the action can return once resending is dependable
 
+### 0.7.7.1
+- Fix the AI Providers entry clipping its status line: the row sizes to its two-line content
+  instead of borrowing a fixed one-line selector height
+- Make card actions follow provider state through one tested rule: READY earns "Use this
+  provider", anything not ready offers only the step that would make it usable
+- Rebuild the provider cards for scanning — name, status dot, one sentence, wrapping capability
+  chips, one honest limitation line — with the single primary action full width and secondary
+  actions compact
+- Hide the ChatGPT Sign in button entirely while connected; Sign out becomes a restrained
+  destructive action behind an Orbit-styled confirmation
+- Mark the active provider with accent stroke, a faintly accent-blended surface, and an Active
+  pill
+
+### 0.7.7.2
+- Rebuild model removal in the Extensions-manager idiom: a full-width restrained destructive
+  "Delete local model" row, separated from the primary action, replacing the tacked-on corner
+  button
+- Precise removal language and a confirmation that states the size removed, the storage freed,
+  the fallback to ChatGPT when Orbit Local was active, and that nothing else in Orbit is touched
+- Deletion sweeps the model file, partial bytes, and stray temp siblings by model-file prefix,
+  and never touches another component's files
+- Key `LocalModelStore` by `ModelSpec` (id, pinned URL/size/SHA-256, per-model state keys) so a
+  future device-action model installs beside the chat model without shared or clobbered state
+- Re-adopt a complete pinned-size model file whose state mark was lost, instead of demanding a
+  fresh multi-gigabyte download
+- Gate Orbit Local's selectability on a ready model: it can neither be chosen nor silently stay
+  active without one; requests fall back to ChatGPT
+- Show the active state on the Orbit Local model card with the AI Providers screen's selected
+  treatment, and add a percentage to download progress
+- Replace "Orbit works the same whichever provider answers" with capability-honest messaging;
+  Orbit Local now says its compact model gives simpler answers than cloud AI
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever
@@ -533,10 +565,13 @@ runtime** rather than an app tied to one model service.
 #### Remaining 0.7.7 patches, in order
 1. Mature local model management — download UX polish, richer failure explanations, and
    performance/battery tuning on real devices
-2. Local tool/function calling — Orbit Local requesting existing Orbit tools through the same
-   action envelope the cloud providers use, starting with simple reversible actions such as
-   flashlight, brightness, and volume; the local model must never grow its own device-control
-   logic
+2. Local device actions — a lightweight local intent/function model installed beside the chat
+   model (the `ModelSpec` architecture already keeps their files and state independent). The
+   intended pipeline is fixed: user request → lightweight local intent/function model →
+   normalized Orbit tool request → existing Orbit tool execution layer → result. The local model
+   only ever *requests* existing Orbit tools — starting with simple reversible actions such as
+   flashlight, brightness, and volume — and never grows its own device-control logic; cloud and
+   local providers ultimately share the same tool execution layer
 3. Full OpenRouter support — streaming chat and model selection on top of the existing shell and
    secure key storage, then tool calling where the chosen model supports it
 4. Expanded local-model choices, sized to different phones, on the same `LocalModelStore`
