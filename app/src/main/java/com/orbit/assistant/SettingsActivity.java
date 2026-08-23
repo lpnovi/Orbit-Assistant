@@ -66,6 +66,9 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     private TextView providerRowStatus;
     /** Which provider the details block is currently built for, so onResume can catch switches. */
     private String providerDetailsFor;
+    private TextView chatGptHelp;
+    private Button chatGptSignIn;
+    private Button chatGptSignOut;
     private ScrollView settingsScroll;
     private String appliedAppearance = "";
     /** Accent/AMOLED only — the appearance that forces a rebuild. */
@@ -561,7 +564,12 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         providersRow.setOnClickListener(v ->
                 startActivity(new Intent(this, AiProvidersActivity.class)));
         UiKit.pressScale(providersRow);
-        accountCard.addView(providersRow, selectorLp());
+        // Deliberately not selectorLp(): that is a fixed 54dp meant for one-line dropdown rows,
+        // and this row holds a title plus a status line that may wrap. The row measures itself.
+        LinearLayout.LayoutParams providersLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        providersLp.setMargins(0, 0, 0, UiKit.dp(this, 10));
+        accountCard.addView(providersRow, providersLp);
         providerDetails = new LinearLayout(this);
         providerDetails.setOrientation(LinearLayout.VERTICAL);
         providerDetails.setPadding(0, UiKit.dp(this, 13), 0, 0);
@@ -903,10 +911,23 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         }
     }
 
+    /**
+     * The connected and signed-out states show different actions, not just different text: an
+     * already-connected account never presents a bright "Sign in" as the dominant action, and a
+     * signed-out one never offers "Sign out".
+     */
     private void updateChatGptStatus() {
         if (chatGptStatus == null) return;
         ChatGptAuth.AccountInfo info = ChatGptAuth.getAccountInfo(this);
-        if (info == null) {
+        boolean connected = info != null;
+        if (chatGptSignIn != null) chatGptSignIn.setVisibility(connected ? View.GONE : View.VISIBLE);
+        if (chatGptSignOut != null) chatGptSignOut.setVisibility(connected ? View.VISIBLE : View.GONE);
+        if (chatGptHelp != null) {
+            chatGptHelp.setText(connected
+                    ? "Orbit is using this account's ChatGPT/Codex allowance. No API key is needed."
+                    : "Recommended: sign in with your normal ChatGPT account using OpenAI's Codex device-code flow. This path uses your account-backed Codex/ChatGPT allowance and does not require an OpenAI API key.");
+        }
+        if (!connected) {
             chatGptStatus.setText("○ Not signed in with ChatGPT");
             chatGptStatus.setTextColor(UiKit.TEXT);
             return;
@@ -921,6 +942,9 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     private void populateProviderDetails(LinearLayout container) {
         if (container == null) return;
         chatGptStatus = null;
+        chatGptHelp = null;
+        chatGptSignIn = null;
+        chatGptSignOut = null;
         providerDetailsFor = Prefs.provider(this);
         if (Prefs.PROVIDER_LOCAL.equals(providerDetailsFor)) {
             TextView localHelp = UiKit.text(this,
@@ -979,26 +1003,36 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
 
         chatGptStatus = UiKit.text(this, "Checking ChatGPT sign-in…", 15, UiKit.TEXT, true);
         container.addView(chatGptStatus);
-        TextView accountHelp = UiKit.text(this,
-                "Recommended: sign in with your normal ChatGPT account using OpenAI's Codex device-code flow. This path uses your account-backed Codex/ChatGPT allowance and does not require an OpenAI API key.",
-                13, UiKit.MUTED, false);
-        accountHelp.setPadding(0, UiKit.dp(this, 7), 0, UiKit.dp(this, 13));
-        container.addView(accountHelp);
+        chatGptHelp = UiKit.text(this, "", 13, UiKit.MUTED, false);
+        chatGptHelp.setLineSpacing(0, 1.13f);
+        chatGptHelp.setPadding(0, UiKit.dp(this, 7), 0, UiKit.dp(this, 13));
+        container.addView(chatGptHelp);
 
-        Button signIn = primaryButton("Sign in with ChatGPT");
-        signIn.setOnClickListener(v -> startChatGptLogin());
-        container.addView(signIn, new LinearLayout.LayoutParams(
+        chatGptSignIn = primaryButton("Sign in with ChatGPT");
+        chatGptSignIn.setOnClickListener(v -> startChatGptLogin());
+        container.addView(chatGptSignIn, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48)));
 
-        Button signOut = secondaryButton("Sign out of ChatGPT");
+        // Signing out is disruptive rather than dangerous, so it stays a restrained outlined
+        // action with a confirmation, never a bright primary competing with the connected state.
+        chatGptSignOut = dangerOutlineButton("Sign out of ChatGPT");
         LinearLayout.LayoutParams signOutLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
         signOutLp.setMargins(0, UiKit.dp(this, 8), 0, 0);
-        container.addView(signOut, signOutLp);
-        signOut.setOnClickListener(v -> {
-            ChatGptAuth.logout(this);
-            updateChatGptStatus();
-            Toast.makeText(this, "Signed out of ChatGPT in Orbit", Toast.LENGTH_SHORT).show();
+        container.addView(chatGptSignOut, signOutLp);
+        chatGptSignOut.setOnClickListener(v -> {
+            AlertDialog dialog = new AlertDialog.Builder(this)
+                    .setTitle("Sign out of ChatGPT?")
+                    .setMessage("Orbit forgets this ChatGPT connection on this phone. You can sign in again at any time.")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Sign out", (d, w) -> {
+                        ChatGptAuth.logout(this);
+                        updateChatGptStatus();
+                        Toast.makeText(this, "Signed out of ChatGPT in Orbit", Toast.LENGTH_SHORT).show();
+                    })
+                    .create();
+            styleOrbitDialog(dialog, true);
+            dialog.show();
         });
 
         TextView experimental = UiKit.text(this,
@@ -1309,6 +1343,20 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         b.setTextSize(14);
         b.setAllCaps(false);
         b.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2, Color.rgb(53,58,72), UiKit.accent(this), 15, this));
+        b.setMinHeight(0); b.setMinimumHeight(0); b.setStateListAnimator(null);
+        UiKit.pressScale(b);
+        return b;
+    }
+
+    /** Orbit's restrained destructive treatment: outlined, never a filled bright surface. */
+    private Button dangerOutlineButton(String text) {
+        Button b = new Button(this);
+        b.setText(text);
+        b.setTextColor(UiKit.DANGER);
+        b.setTextSize(14);
+        b.setAllCaps(false);
+        b.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2,
+                UiKit.withAlpha(UiKit.DANGER, 110), UiKit.DANGER, 15, this));
         b.setMinHeight(0); b.setMinimumHeight(0); b.setStateListAnimator(null);
         UiKit.pressScale(b);
         return b;

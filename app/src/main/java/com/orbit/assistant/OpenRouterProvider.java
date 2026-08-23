@@ -29,7 +29,7 @@ final class OpenRouterProvider implements AiProvider {
     @Override public String displayName() { return "OpenRouter"; }
 
     @Override public String description() {
-        return "One account reaching many model families, including Claude, Gemini, and Llama. Full support arrives in an upcoming Orbit update.";
+        return "Many model families through one account. Chat arrives in an upcoming Orbit update.";
     }
 
     @Override public AiCapabilities capabilities() { return CAPABILITIES; }

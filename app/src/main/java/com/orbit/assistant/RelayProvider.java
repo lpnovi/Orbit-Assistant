@@ -51,7 +51,7 @@ final class RelayProvider implements AiProvider {
     @Override public String displayName() { return "API relay"; }
 
     @Override public String description() {
-        return "Advanced fallback: Orbit calls a private HTTPS relay you control. Your OpenAI API key stays on that server and is never stored in Orbit.";
+        return "Advanced fallback: a private HTTPS relay you control. Your API key never enters Orbit.";
     }
 
     @Override public AiCapabilities capabilities() { return CAPABILITIES; }

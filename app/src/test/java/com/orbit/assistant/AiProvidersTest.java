@@ -133,15 +133,45 @@ public final class AiProvidersTest {
         assertTrue(error.get().contains("ChatGPT"));
     }
 
-    @Test public void capabilitySummaryStatesGapsPlainly() {
-        String local = AiProvidersActivity.capabilitySummary(
+    @Test public void capabilityChipsStateStrengthsAndGapsPlainly() {
+        java.util.List<String> local = AiProvidersActivity.capabilityChips(
                 AiProviders.byId(Prefs.PROVIDER_LOCAL).capabilities());
         assertTrue(local.contains("Works offline"));
+        assertFalse("a chip may never claim an absent capability",
+                local.contains("Device actions"));
         assertTrue("missing device actions must be admitted, not hidden",
-                local.contains("Can't run device actions yet"));
-        String chatgpt = AiProvidersActivity.capabilitySummary(
-                AiProviders.byId(Prefs.PROVIDER_CHATGPT).capabilities());
-        assertTrue(chatgpt.contains("Device actions"));
-        assertFalse(chatgpt.contains("Can't"));
+                AiProvidersActivity.capabilityLimitation(
+                        AiProviders.byId(Prefs.PROVIDER_LOCAL).capabilities())
+                        .contains("Can't run device actions"));
+
+        AiCapabilities chatgptCaps = AiProviders.byId(Prefs.PROVIDER_CHATGPT).capabilities();
+        assertTrue(AiProvidersActivity.capabilityChips(chatgptCaps).contains("Device actions"));
+        assertEquals("a fully capable provider has no limitation line",
+                "", AiProvidersActivity.capabilityLimitation(chatgptCaps));
+    }
+
+    /** Status and offered actions must always agree: not-ready providers are not selectable UI. */
+    @Test public void cardActionsFollowProviderState() {
+        assertEquals(java.util.Arrays.asList(
+                        AiProvidersActivity.ACTION_USE, AiProvidersActivity.ACTION_MANAGE),
+                AiProvidersActivity.actionLabels(AiProvider.Status.READY, false));
+        assertEquals("the active provider needs no Use button",
+                java.util.Collections.singletonList(AiProvidersActivity.ACTION_MANAGE),
+                AiProvidersActivity.actionLabels(AiProvider.Status.READY, true));
+        assertEquals("an unconfigured provider offers only the step that makes it usable",
+                java.util.Collections.singletonList(AiProvidersActivity.ACTION_SET_UP),
+                AiProvidersActivity.actionLabels(AiProvider.Status.NEEDS_SETUP, false));
+        assertEquals(java.util.Collections.singletonList(AiProvidersActivity.ACTION_SET_UP),
+                AiProvidersActivity.actionLabels(AiProvider.Status.NOT_INSTALLED, false));
+        assertEquals(java.util.Collections.singletonList(AiProvidersActivity.ACTION_SET_UP),
+                AiProvidersActivity.actionLabels(AiProvider.Status.COMING_SOON, false));
+        assertEquals(java.util.Collections.singletonList(AiProvidersActivity.ACTION_DETAILS),
+                AiProvidersActivity.actionLabels(AiProvider.Status.UNSUPPORTED, false));
+        for (AiProvider.Status status : AiProvider.Status.values()) {
+            if (status == AiProvider.Status.READY) continue;
+            assertFalse("Use this provider must never appear while " + status,
+                    AiProvidersActivity.actionLabels(status, false)
+                            .contains(AiProvidersActivity.ACTION_USE));
+        }
     }
 }

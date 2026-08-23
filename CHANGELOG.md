@@ -367,3 +367,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - OpenRouter appears as an experimental preview: you can store its API key securely now, and full chat arrives in an upcoming update.
   - Edit & resend is temporarily removed from the message menu until it works dependably; Copy and Regenerate stay.
 
+- **v0.7.7.1**: A polish pass over AI Providers and AI & account, so provider cards read cleanly and only offer actions that make sense.
+  - The AI Providers entry no longer clips its status line; the row now sizes to its content.
+  - Provider cards are easier to scan: name, status dot, one short sentence, and compact capability chips that wrap instead of cramming.
+  - Actions now follow provider state: a provider that isn't ready shows Set up instead of a misleading Use this provider button.
+  - Buttons no longer squeeze side by side; the main action is full width and secondary actions stay compact, so nothing overflows the card.
+  - When ChatGPT is already connected, the big Sign in button disappears; Sign out becomes a restrained action with a confirmation.
+  - The active provider card is clearly marked with an accent edge, a softly tinted surface, and an Active badge.
+

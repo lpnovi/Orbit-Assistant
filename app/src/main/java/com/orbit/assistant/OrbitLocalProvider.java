@@ -43,7 +43,7 @@ final class OrbitLocalProvider implements AiProvider {
     @Override public String displayName() { return "Orbit Local"; }
 
     @Override public String description() {
-        return "Private on-device AI. Chats stay on your phone and keep working with no internet.";
+        return "Private AI that runs on this phone, even with no internet.";
     }
 
     @Override public AiCapabilities capabilities() { return CAPABILITIES; }

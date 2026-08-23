@@ -253,11 +253,32 @@ public final class LocalAiActivity extends Activity {
         }
 
         LinearLayout actions = new LinearLayout(this);
-        actions.setGravity(Gravity.END);
+        actions.setOrientation(LinearLayout.VERTICAL);
         actions.setPadding(0, UiKit.dp(this, 12), 0, 0);
         buildActions(actions, state);
-        card.addView(actions);
+        card.addView(actions, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return card;
+    }
+
+    /** Full-width primary, in Orbit's stacked settings button language. */
+    private void addPrimaryAction(LinearLayout actions, Button button) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 46));
+        if (actions.getChildCount() > 0) lp.topMargin = UiKit.dp(this, 8);
+        actions.addView(button, lp);
+    }
+
+    /** Compact right-aligned secondary or destructive action; never squeezed beside a primary. */
+    private void addCompactAction(LinearLayout actions, Button button) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.END);
+        row.addView(button, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 40)));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        if (actions.getChildCount() > 0) lp.topMargin = UiKit.dp(this, 8);
+        actions.addView(row, lp);
     }
 
     private String stateLabel(LocalModelStore.State state) {
@@ -305,20 +326,20 @@ public final class LocalAiActivity extends Activity {
                     main.removeCallbacks(refresh);
                     refresh.run();
                 });
-                actions.addView(download, actionLp(false));
+                addPrimaryAction(actions, download);
                 break;
             }
             case PAUSED: {
-                Button delete = dangerButton("Remove download");
-                delete.setOnClickListener(v -> confirmDelete(true));
-                actions.addView(delete, actionLp(false));
-                Button resume = primaryButton("Resume");
+                Button resume = primaryButton("Resume download");
                 resume.setOnClickListener(v -> {
                     LocalModelDownloadWorker.start(this);
                     main.removeCallbacks(refresh);
                     refresh.run();
                 });
-                actions.addView(resume, actionLp(true));
+                addPrimaryAction(actions, resume);
+                Button delete = dangerButton("Remove download");
+                delete.setOnClickListener(v -> confirmDelete(true));
+                addCompactAction(actions, delete);
                 break;
             }
             case DOWNLOADING:
@@ -330,13 +351,10 @@ public final class LocalAiActivity extends Activity {
                     LocalModelStore.setState(this, LocalModelStore.State.PAUSED, "");
                     rebuildModelCard();
                 });
-                actions.addView(cancel, actionLp(false));
+                addCompactAction(actions, cancel);
                 break;
             }
             case READY: {
-                Button delete = dangerButton("Delete model");
-                delete.setOnClickListener(v -> confirmDelete(false));
-                actions.addView(delete, actionLp(false));
                 if (!Prefs.PROVIDER_LOCAL.equals(AiProviders.active(this).id())) {
                     Button use = primaryButton("Use Orbit Local");
                     use.setOnClickListener(v -> {
@@ -346,8 +364,11 @@ public final class LocalAiActivity extends Activity {
                             rebuildModelCard();
                         }
                     });
-                    actions.addView(use, actionLp(true));
+                    addPrimaryAction(actions, use);
                 }
+                Button delete = dangerButton("Delete model");
+                delete.setOnClickListener(v -> confirmDelete(false));
+                addCompactAction(actions, delete);
                 break;
             }
         }
@@ -374,13 +395,6 @@ public final class LocalAiActivity extends Activity {
                 .create();
         UiKit.styleOrbitDialog(dialog, this, true);
         dialog.show();
-    }
-
-    private LinearLayout.LayoutParams actionLp(boolean spaced) {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        if (spaced) lp.leftMargin = UiKit.dp(this, 9);
-        return lp;
     }
 
     private Button primaryButton(String text) {
