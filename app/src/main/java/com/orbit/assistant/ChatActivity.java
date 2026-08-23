@@ -156,6 +156,7 @@ public class ChatActivity extends Activity {
         super.onResume();
         ComposerTrace.event("chat.onResume");
         UiPresence.enter(this);
+        if (modeChip != null) modeChip.setText(modeChipText());
         reloadConversation();
         attachToPending();
         applyLauncherComposerIntent();
@@ -209,7 +210,7 @@ public class ChatActivity extends Activity {
         View headerSpacer = new View(this);
         top.addView(headerSpacer, new LinearLayout.LayoutParams(0, 1, 1));
         modeChip = new Button(this);
-        modeChip.setText(Prefs.modeLabel(currentMode));
+        modeChip.setText(modeChipText());
         modeChip.setTextSize(12);
         modeChip.setTextColor(UiKit.TEXT);
         modeChip.setAllCaps(false);
@@ -384,7 +385,7 @@ public class ChatActivity extends Activity {
             history.addAll(c.messages);
             if (c.intelligenceMode != null && !c.intelligenceMode.trim().isEmpty()) currentMode = Prefs.normalizeMode(c.intelligenceMode);
         }
-        if (modeChip != null) modeChip.setText(Prefs.modeLabel(currentMode));
+        if (modeChip != null) modeChip.setText(modeChipText());
         render();
     }
 
@@ -1460,7 +1461,24 @@ public class ChatActivity extends Activity {
         pendingScreenSelectionAge = "";
     }
 
+    /**
+     * The chip names the AI strength when the provider really has strengths, and names the
+     * provider itself when it does not, so it never looks like a control that does nothing.
+     */
+    private String modeChipText() {
+        AiProvider active = AiProviders.active(this);
+        if (!active.capabilities().reasoningLevels) {
+            String name = active.displayName();
+            return name.startsWith("Orbit ") ? name.substring(6) : name;
+        }
+        return Prefs.modeLabel(currentMode);
+    }
+
     private void showModeMenu() {
+        if (!AiProviders.active(this).capabilities().reasoningLevels) {
+            startActivity(new Intent(this, AiProvidersActivity.class));
+            return;
+        }
         String[] labels = {"Auto", "Fast", "Balanced", "Deep", "Custom"};
         int selected = Prefs.MODE_AUTO.equals(currentMode) ? 0
                 : Prefs.MODE_FAST.equals(currentMode) ? 1
@@ -1474,7 +1492,7 @@ public class ChatActivity extends Activity {
                     : index == 4 ? Prefs.MODE_CUSTOM
                     : Prefs.MODE_BALANCED;
             ConversationStore.setMode(this, conversationId, currentMode);
-            modeChip.setText(Prefs.modeLabel(currentMode));
+            modeChip.setText(modeChipText());
             Toast.makeText(this, "This chat is now " + Prefs.modeLabel(currentMode),
                     Toast.LENGTH_SHORT).show();
         });

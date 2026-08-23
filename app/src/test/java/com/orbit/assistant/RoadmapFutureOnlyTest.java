@@ -33,6 +33,9 @@ public final class RoadmapFutureOnlyTest {
             "Richer quick access",
             // v0.7.5.0 shipped one dependable level of IF / ELSE branching.
             "Richer automation & branching",
+            // v0.7.7.0 shipped the provider layer, provider management, and the first Orbit Local.
+            "Choice of AI provider",
+            "More AI providers & models",
     };
 
     private String roadmapText() {
@@ -72,14 +75,15 @@ public final class RoadmapFutureOnlyTest {
         assertTrue(text.contains("Proactive screen intelligence"));
     }
 
-    /** The 0.7.7 direction ROADMAP.md records must be discoverable in the app, not only in git. */
+    /** The remaining 0.7.7 direction must be discoverable in the app, not only in git. */
     @Test public void theProviderAndOnDeviceDirectionIsListed() {
         String text = roadmapText();
-        assertTrue("provider abstraction is the next line of work",
-                text.contains("Choice of AI provider"));
-        assertTrue(text.contains("More AI providers & models"));
-        assertTrue("Orbit Local is the planned optional on-device provider",
-                text.contains("Orbit Local"));
+        assertTrue("finishing OpenRouter chat is the next provider work",
+                text.contains("OpenRouter chat"));
+        assertTrue("local tool calling is the next Orbit Local work",
+                text.contains("Local device actions"));
+        assertTrue("the withdrawn Edit & resend action must be promised back",
+                text.contains("Edit & resend, reliably"));
         assertTrue(text.contains("Hybrid Auto"));
     }
 

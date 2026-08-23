@@ -87,16 +87,19 @@ public final class RoadmapActivity extends Activity {
         // that genuinely remains. A fifth left in v0.7.6.0: conversation-aware voice follow-ups
         // shipped as Smart follow-ups. Shipped work belongs in What's New, never here.
         //
-        // The AI-provider and on-device entries were vague while the direction was undecided. They
-        // now name the plan ROADMAP.md records for the 0.7.7 line, kept in this page's user-facing
-        // language rather than its architecture.
+        // Two more entries left in v0.7.7.0, which shipped provider choice and the first Orbit
+        // Local release: "Choice of AI provider" and the old planned "Orbit Local" wording are now
+        // What's New material. What remains here is the genuinely unfinished part of that line —
+        // finishing OpenRouter chat, teaching the local model Orbit's device actions, and the
+        // temporarily withdrawn Edit & resend action, which returns once resending is dependable.
         addGroup(page, "NEXT UP", new String[][]{
-                {"Choice of AI provider", "Groundwork so Orbit is not tied to one AI service, with your existing account unchanged."},
+                {"OpenRouter chat", "Finish the OpenRouter provider: model choice and streaming chat, on the secure setup that already exists."},
+                {"Local device actions", "Orbit Local asking the same trusted Orbit actions the cloud providers use, starting with simple reversible controls."},
                 {"More branch points & conditions", "Several decision points in one Routine, and conditions beyond time and place."}
         });
         addGroup(page, "PLANNED", new String[][]{
-                {"More AI providers & models", "Reach more model families through one provider, with explicit account and privacy controls."},
-                {"Orbit Local", "An optional AI model Orbit downloads and manages, for private answers that work offline."},
+                {"More local models", "A choice of on-device models sized to different phones and needs."},
+                {"Edit & resend, reliably", "The message action returns once editing and resending an earlier message is dependable."},
                 {"Deeper Android actions", "Broader device controls through supported Android surfaces."},
                 {"Stronger Custom Commands", "Personal phrases that accept variation and detail, beyond today's exact wording."}
         });

@@ -359,3 +359,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - A draft you had not sent yet is kept and put back if you cancel editing, instead of being lost.
   - Typing works straight away, Send behaves normally, and the original message stays in the conversation.
 
+- **v0.7.7.0**: Orbit becomes multi-provider: a new AI Providers screen and the first release of Orbit Local, optional on-device AI.
+  - AI & account now opens AI Providers, where you choose what Orbit thinks with: ChatGPT stays the recommended default and keeps working exactly as before.
+  - Orbit Local is new: download a compact AI model once (about 1.6 GB) and chat privately on the phone itself, even with no internet.
+  - The Orbit Local screen checks your device honestly, shows download progress, and lets you pause, resume, or delete the model at any time.
+  - Every downloaded model byte is verified before use, and the model is optional; the app itself stays lean.
+  - OpenRouter appears as an experimental preview: you can store its API key securely now, and full chat arrives in an upcoming update.
+  - Edit & resend is temporarily removed from the message menu until it works dependably; Copy and Regenerate stay.
+

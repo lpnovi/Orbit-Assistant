@@ -7,7 +7,8 @@ Orbit is built for Android 10 and newer. Development is active, and releases are
 ## Highlights
 
 - **System-level access:** Use Orbit as Android's default assistant from the Side button or assistant gesture, or open the full companion chat.
-- **Flexible AI access:** Connect a ChatGPT account through the Codex device-code flow, or use the optional private OpenAI API relay fallback. Choose Auto, Fast, Balanced, or Deep intelligence modes.
+- **Multiple AI providers:** Choose what Orbit thinks with from one AI Providers screen. Connect a ChatGPT account through the Codex device-code flow, use the optional private OpenAI API relay fallback, or run Orbit Local. Cloud providers offer Auto, Fast, Balanced, or Deep intelligence modes.
+- **Orbit Local (on-device AI):** Optionally download a compact, checksum-verified language model (about 1.6 GB) and chat privately on the phone itself — no account, and no internet once installed. Device actions and screen understanding stay with cloud providers for now.
 - **Screen understanding:** Attach configurable screen text and screenshots, use one-tap full-screen context, or precisely Crop and Mark up a Screen Selection.
 - **Voice Beta:** Speak requests and optionally hear responses while retaining the normal text workflow.
 - **Rich conversations:** Assistant replies render native Markdown, including headings, lists, quotes, code blocks, links, and readable tables in both full chat and the Side-button overlay.
@@ -33,7 +34,7 @@ After installation, Orbit's built-in updater can discover later stable releases.
 ## Getting started
 
 1. Install Orbit and complete the first-run onboarding.
-2. Connect a ChatGPT account if you want account-backed AI access, or configure your own private relay.
+2. Choose an AI provider: connect a ChatGPT account for account-backed cloud AI, download the optional Orbit Local model for private on-device chat, or configure your own private relay.
 3. Set Orbit as Android's digital assistant to use the Side button or assistant gesture.
 4. Grant only the Android capabilities you want Orbit to use.
 5. Invoke Orbit over another app to use screen context, Screen Selection, voice, or local actions.
@@ -43,7 +44,8 @@ After installation, Orbit's built-in updater can discover later stable releases.
 - Screen text and screenshot context are configurable, and screen use can be blocked per app.
 - Selected-region attachments always require an explicit selection. Full-screen context follows the user's one-tap choice or existing default-attachment preference.
 - API fallback credentials are not embedded in the APK. The relay API key remains server-side in the user's private relay deployment.
-- ChatGPT account credentials are stored through Orbit's secure local credential store and are intentionally excluded from backups.
+- ChatGPT account credentials and provider API keys are stored through Orbit's secure local credential store and are intentionally excluded from backups.
+- Orbit Local conversations are generated entirely on the device; the local model is downloaded once from a pinned public source and verified against a pinned checksum.
 - Orbit backup files stay in the location selected through Android's file picker. They are not encrypted and should be stored somewhere private.
 - Automatic update checks read public GitHub Release metadata. Orbit never silently downloads or installs an update.
 
@@ -55,7 +57,7 @@ Curated public screenshots will be added here later. No private device or user s
 
 ## Development status
 
-Orbit is actively developed. Future areas under consideration include natural-language Routine creation, richer automation and branching, image retrieval integrations, additional AI providers, deeper Android actions, advanced Voice work, and more local intelligence. These are directions rather than fixed promises or dates.
+Orbit is actively developed. Future areas under consideration include full OpenRouter support, local device actions and more on-device models for Orbit Local, Hybrid Auto cloud/local routing, richer automation and branching, image retrieval integrations, deeper Android actions, and advanced Voice work. These are directions rather than fixed promises or dates.
 
 The declarative Extensions v1/v2 format and security model are documented in [docs/EXTENSIONS.md](docs/EXTENSIONS.md).
 

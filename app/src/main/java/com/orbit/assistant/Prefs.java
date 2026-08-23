@@ -73,6 +73,8 @@ public final class Prefs {
 
     public static final String PROVIDER_CHATGPT = "chatgpt";
     public static final String PROVIDER_RELAY = "relay";
+    public static final String PROVIDER_LOCAL = "local";
+    public static final String PROVIDER_OPENROUTER = "openrouter";
 
     public static final String MODE_AUTO = "auto";
     public static final String MODE_FAST = "fast";
@@ -163,7 +165,16 @@ public final class Prefs {
     public static String model(Context c) { return get(c).getString(MODEL, "gpt-5.6-terra"); }
     public static String reasoning(Context c) { return get(c).getString(REASONING, "low"); }
     public static String intelligenceMode(Context c) { return get(c).getString(INTELLIGENCE_MODE, MODE_BALANCED); }
-    public static String provider(Context c) { return get(c).getString(PROVIDER, PROVIDER_CHATGPT); }
+    public static String provider(Context c) {
+        return normalizeProvider(get(c).getString(PROVIDER, PROVIDER_CHATGPT));
+    }
+
+    /** Unknown stored provider ids resolve to ChatGPT rather than to undefined behavior. */
+    public static String normalizeProvider(String provider) {
+        if (PROVIDER_CHATGPT.equals(provider) || PROVIDER_RELAY.equals(provider) ||
+                PROVIDER_LOCAL.equals(provider) || PROVIDER_OPENROUTER.equals(provider)) return provider;
+        return PROVIDER_CHATGPT;
+    }
     public static String backendUrl(Context c) { return get(c).getString(BACKEND_URL, "").trim(); }
     public static String token(Context c) { return SecureStore.loadRelayToken(c); }
     public static boolean relayConfigured(Context c) {

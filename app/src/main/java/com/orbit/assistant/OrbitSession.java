@@ -738,12 +738,24 @@ public class OrbitSession extends VoiceInteractionSession {
     }
 
     private String readyState() {
+        // The overlay stays quiet about the default cloud setup; only a deliberately different
+        // provider choice earns a subtle mention, so the user always knows who is answering.
+        AiProvider active = AiProviders.active(getContext());
+        if (active.capabilities().offline) return "Ready · " + active.displayName();
         return "Ready";
     }
 
     private void showModeMenu() {
         if (modeChip == null) return;
         Context c = getContext();
+        // A provider without real reasoning levels gets no fake strength menu. The chip opens
+        // provider management instead, which is what it is actually reporting.
+        if (!AiProviders.active(c).capabilities().reasoningLevels) {
+            Intent providers = new Intent(c, AiProvidersActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try { c.startActivity(providers); hide(); } catch (Exception ignored) {}
+            return;
+        }
         String[] labels = {"Auto", "Fast", "Balanced", "Deep", "Custom"};
         int selected = Prefs.MODE_AUTO.equals(currentMode) ? 0
                 : Prefs.MODE_FAST.equals(currentMode) ? 1
@@ -769,6 +781,16 @@ public class OrbitSession extends VoiceInteractionSession {
 
     private void updateModeChip() {
         if (modeChip == null) return;
+        AiProvider active = AiProviders.active(getContext());
+        if (!active.capabilities().reasoningLevels) {
+            // Fast/Balanced/Deep would be a control that does nothing for this provider, so the
+            // chip honestly names the provider instead.
+            String name = active.displayName().startsWith("Orbit ")
+                    ? active.displayName().substring(6) : active.displayName();
+            modeChip.setText(name + "  ▾");
+            modeChip.setContentDescription("AI provider: " + active.displayName() + ". Tap to manage.");
+            return;
+        }
         String label = Prefs.modeLabel(currentMode);
         modeChip.setText(label + "  ▾");
         modeChip.setContentDescription("AI strength: " + label + ". Tap to change.");

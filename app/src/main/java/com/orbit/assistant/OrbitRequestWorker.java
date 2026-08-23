@@ -68,8 +68,10 @@ public final class OrbitRequestWorker extends Worker {
         // Hosted search can occasionally return a short-lived capacity error even
         // when ordinary ChatGPT requests are healthy. Voice and typed prompts now
         // use the exact same recovery path: retry the fresh-info request once on a
-        // lighter model before surfacing an error to the user.
-        if (outcome.reply == null && ChatGptClient.shouldOfferHostedWebSearch(item.prompt)
+        // lighter model before surfacing an error to the user. This is ChatGPT-specific
+        // recovery, so it only runs when the active provider actually offers hosted search.
+        if (outcome.reply == null && AiProviders.active(c).capabilities().hostedWebSearch
+                && ChatGptClient.shouldOfferHostedWebSearch(item.prompt)
                 && looksServerOverloaded(outcome.error)) {
             outcome = performRequest(c, item, screenshot, history,
                     Prefs.MODE_FAST, id, true, 2);
@@ -155,6 +157,7 @@ public final class OrbitRequestWorker extends Worker {
 
         AssistantClient.send(c, item.prompt, item.screenText, screenshot, history,
                 mode, item.explicitAttachment, item.trustedTaskContext,
+                () -> isStopped() || OrbitRequestManager.isCancelled(c, requestId),
                 new AssistantClient.Callback() {
                     @Override public void onDelta(String text) {
                         if (streamDeltas && text != null && !text.isEmpty()) {
@@ -175,7 +178,8 @@ public final class OrbitRequestWorker extends Worker {
 
         try {
             if (!latch.await(timeoutMinutes, TimeUnit.MINUTES)) {
-                return new RequestOutcome(null, "Orbit timed out while waiting for ChatGPT.");
+                return new RequestOutcome(null, "Orbit timed out while waiting for "
+                        + AiProviders.active(c).displayName() + ".");
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

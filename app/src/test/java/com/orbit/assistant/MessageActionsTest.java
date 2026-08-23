@@ -64,10 +64,14 @@ public final class MessageActionsTest {
         assertEquals(1, MessageActions.assistantIcons(false).length);
     }
 
-    @Test public void userTurnsOfferCopyAndEditResend() {
-        assertArrayEquals(new String[]{MessageActions.COPY_MENU_LABEL, MessageActions.EDIT_MENU_LABEL},
+    /**
+     * Edit &amp; resend is temporarily withdrawn from the menu until its resend state handling is
+     * reliable on device; the composer-side editing machinery remains and is still tested below.
+     */
+    @Test public void userTurnsOfferCopyOnly() {
+        assertArrayEquals(new String[]{MessageActions.COPY_MENU_LABEL},
                 MessageActions.userLabels());
-        assertEquals(2, MessageActions.userIcons().length);
+        assertEquals(1, MessageActions.userIcons().length);
     }
 
     @Test public void copyingPutsTheAssistantTextOnTheClipboard() {

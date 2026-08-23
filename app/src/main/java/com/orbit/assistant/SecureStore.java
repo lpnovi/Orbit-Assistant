@@ -26,6 +26,10 @@ public final class SecureStore {
     private static final String CHATGPT_PENDING_ENC = "chatgpt_pending_auth_enc";
     private static final String CHATGPT_PENDING_IV = "chatgpt_pending_auth_iv";
 
+    private static final String OPENROUTER_ALIAS = "orbit_openrouter_key_v1";
+    private static final String OPENROUTER_ENC = "openrouter_key_enc";
+    private static final String OPENROUTER_IV = "openrouter_key_iv";
+
     private SecureStore() {}
 
     public static void saveRelayToken(Context c, String value) {
@@ -50,6 +54,40 @@ public final class SecureStore {
             if (!value.isEmpty()) return value;
         } catch (Exception ignored) {}
         return Prefs.get(c).getString(Prefs.BACKEND_TOKEN, "").trim();
+    }
+
+    /**
+     * Stores the OpenRouter API key, hardware-encrypted only. Unlike the optional relay token,
+     * there is deliberately no plaintext-preferences fallback: if the Android Keystore cannot
+     * hold the key, saving fails visibly instead of degrading secrecy. The key is excluded from
+     * backups and never logged or exported.
+     */
+    public static boolean saveOpenRouterKey(Context c, String value) {
+        try {
+            if (value == null || value.trim().isEmpty()) {
+                Prefs.get(c).edit().remove(OPENROUTER_ENC).remove(OPENROUTER_IV).apply();
+                return true;
+            }
+            return encrypt(c, OPENROUTER_ALIAS, OPENROUTER_ENC, OPENROUTER_IV, value.trim());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static String loadOpenRouterKey(Context c) {
+        try {
+            return decrypt(c, OPENROUTER_ALIAS, OPENROUTER_ENC, OPENROUTER_IV);
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    public static boolean hasOpenRouterKey(Context c) {
+        return !loadOpenRouterKey(c).isEmpty();
+    }
+
+    public static void clearOpenRouterKey(Context c) {
+        Prefs.get(c).edit().remove(OPENROUTER_ENC).remove(OPENROUTER_IV).apply();
     }
 
     public static boolean saveChatGptTokens(Context c, String idToken, String accessToken,

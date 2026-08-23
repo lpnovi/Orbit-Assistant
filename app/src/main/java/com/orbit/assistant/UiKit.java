@@ -84,13 +84,6 @@ public final class UiKit {
             "Classic", "Accent", "Blurple", "Violet", "Blue", "Mint", "Rose", "Nova",
             "Pastel Pink", "Pastel Blue"
     };
-    private static final String[] PROVIDER_KEYS = {
-            Prefs.PROVIDER_CHATGPT, Prefs.PROVIDER_RELAY
-    };
-    private static final String[] PROVIDER_LABELS = {
-            "ChatGPT account (recommended)", "OpenAI API relay (fallback)"
-    };
-
     private static final Map<TextView, FontPreview> FONT_PREVIEWS = new WeakHashMap<>();
     private static final Map<TextView, Boolean> INTENTIONAL_MONOSPACE = new WeakHashMap<>();
     private static final Map<TextView, Boolean> TYPOGRAPHY_APPLIED = new WeakHashMap<>();
@@ -142,8 +135,6 @@ public final class UiKit {
     public static String[] accentLabels() { return ACCENT_LABELS.clone(); }
     public static String[] bubbleColorKeys() { return BUBBLE_COLOR_KEYS.clone(); }
     public static String[] bubbleColorLabels() { return BUBBLE_COLOR_LABELS.clone(); }
-    public static String[] providerKeys() { return PROVIDER_KEYS.clone(); }
-    public static String[] providerLabels() { return PROVIDER_LABELS.clone(); }
 
     public static void registerAppearanceListener(AppearanceListener listener) {
         if (listener == null) return;

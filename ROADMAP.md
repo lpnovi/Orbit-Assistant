@@ -488,6 +488,33 @@
 - Keep the Side-button overlay's Edit & resend deliberately simple, acknowledged on the state line
   it already uses for Copy
 
+## 0.7.7 hybrid, provider-agnostic AI
+
+### 0.7.7.0
+- Introduce the internal provider layer: `AiProvider` contract, explicit `AiCapabilities`
+  metadata, one normalized `AiRequest` shape, and the `AiProviders` registry as the only place
+  that knows which backends exist
+- Move the ChatGPT/Codex path and the API-relay path behind that contract unchanged —
+  `ChatGptAuth`, `ChatGptClient`, streaming, tools, and background completion untouched
+- Route every surface — chat, overlay, Routines planning, background worker — through the
+  registry; the request pipeline no longer contains provider name checks
+- Ship the AI Providers management screen: active-provider selection, per-provider status,
+  capability strengths and honest gaps, and per-provider manage flows
+- Ship Orbit Local's first release on Google's MediaPipe/LiteRT LLM runtime with one supported
+  model, Qwen 2.5 1.5B Instruct (Apache-2.0, ~1.6 GB, downloaded on request, never bundled)
+- Resumable, checksum-verified model downloading with pause, resume, cancel, delete, and
+  storage-aware failure states that never leave a corrupted model marked ready
+- Honest device capability assessment from facts Android exposes: architecture, OS version,
+  memory, and storage
+- Local streaming chat through the normal conversation UI, cancellable, offline once installed,
+  with no silent fallback to a cloud provider
+- Provider-aware AI strength: providers without real reasoning levels show the provider name
+  instead of a strength menu that would do nothing
+- OpenRouter configuration shell with Android Keystore-only API-key storage (no plaintext
+  fallback, excluded from backups); its chat path deliberately does not run yet
+- Temporarily withdraw the unreliable Edit & resend message action, keeping Copy and the
+  composer-side machinery so the action can return once resending is dependable
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever
@@ -496,50 +523,28 @@ below.
 
 ### 0.7.7 development line — hybrid, provider-agnostic AI
 
-The 0.7.6 message-interaction work is the stable base this begins from. Nothing in this section is
-implemented; it is the agreed direction for the 0.7.7 line, recorded here so any later session can
-find and follow it.
+v0.7.7.0 shipped this line's foundation: the provider layer, the AI Providers screen, and Orbit
+Local's first release, all recorded in the completed sections above. What remains here is the
+genuinely unfinished remainder of the line, in the order the next patches should take it.
 
-The long-term goal is for Orbit to become a **hybrid, provider-agnostic Android assistant runtime**
-rather than an app tied to one model service.
+The long-term goal is unchanged: Orbit becomes a **hybrid, provider-agnostic Android assistant
+runtime** rather than an app tied to one model service.
 
-#### Provider abstraction (first, and a prerequisite for everything below)
-- Introduce a real internal provider/router layer, so chat, the Side-button overlay, tools,
-  Routines, and device actions talk to a provider interface rather than to a specific backend
-- Move the coupling out of the surfaces: `AssistantClient`, `AutoRouter`, `OrbitRequestManager`, and
-  the action pipeline should each depend on the abstraction, not on ChatGPT/Codex specifics
-- The existing ChatGPT/Codex provider keeps working exactly as it does today, as one provider behind
-  the new interface, including its device-code authentication
-- Carry capability metadata on the provider itself — streaming, tool/function calling, images,
-  context size — so a surface can ask what is possible instead of assuming
-- Normalize errors, so one failure vocabulary reaches the UI whatever the provider was
-
-#### Additional cloud providers
-OpenRouter is the preferred early second cloud integration, because one provider interface there
-reaches several model families.
-
-- Provider selection and, within a provider, model selection
-- Streaming, and tool/function calling where the model supports it
-- Provider-specific authentication and settings, kept independent per provider
-- Normalized error handling and capability metadata, as above
-- Not in scope for 0.7.6.x: this is 0.7.7 work
-
-#### Orbit Local — optional on-device AI
-An optional on-device provider. The architecture should favour a model or component **downloaded and
-managed by Orbit**, not a multi-gigabyte model bundled into the APK, and not a separate companion
-APK unless a later architecture review shows a compelling reason.
-
-Planned stages, in order:
-
-1. Provider abstraction
-2. Initial `LocalProvider` foundation
-3. One carefully supported local model
-4. Local streaming chat
-5. Model download, delete, and management UI
-6. Device capability detection and honest compatibility guidance
-7. Local Orbit tool/function calling
-8. Optional lightweight local intent/device-command model
-9. Automatic cloud/local routing and fallback
+#### Remaining 0.7.7 patches, in order
+1. Mature local model management — download UX polish, richer failure explanations, and
+   performance/battery tuning on real devices
+2. Local tool/function calling — Orbit Local requesting existing Orbit tools through the same
+   action envelope the cloud providers use, starting with simple reversible actions such as
+   flashlight, brightness, and volume; the local model must never grow its own device-control
+   logic
+3. Full OpenRouter support — streaming chat and model selection on top of the existing shell and
+   secure key storage, then tool calling where the chosen model supports it
+4. Expanded local-model choices, sized to different phones, on the same `LocalModelStore`
+   catalog architecture
+5. Provider-aware AI strength maturation — per-provider mode mapping beyond today's
+   show-or-hide behavior
+6. Automatic cloud/local routing groundwork inside `AiProviders`, which already owns the
+   capability and availability answers that decision needs
 
 #### Long-term Hybrid Auto mode
 Orbit chooses provider and model from capability, task, availability, and user preference:
@@ -550,14 +555,18 @@ Orbit chooses provider and model from capability, task, availability, and user p
 - Complex reasoning → cloud
 - Current or web-dependent information → cloud
 
+Routing stays explainable and never silently overrides an explicit provider choice; a future
+setting has to opt into any automatic fallback.
+
 ### Next up
-- Provider abstraction: an internal provider/router layer, with ChatGPT/Codex preserved as one
-  provider behind it
+- OpenRouter chat: finish the provider on the secure setup that already exists
+- Local device actions: Orbit Local asking Orbit's existing tools to run simple reversible
+  controls
 - Conditions beyond time and location, and more than one branch point in a single routine
 
 ### Planned
-- OpenRouter as an additional cloud provider, with provider and model selection
-- Orbit Local: an optional Orbit-managed on-device model, offline-capable and clearly optional
+- More local models, sized to different phones and needs
+- Edit & resend returns to the message menu once editing and resending is dependable
 - Deeper Android actions
 - Custom Commands that accept variation and detail beyond today's exact wording
 

@@ -139,9 +139,13 @@ public final class OrbitRequestManager {
                 trustedTaskContext);
         if (listener != null) addListener(item.id, listener);
         Data input = new Data.Builder().putString(OrbitRequestWorker.KEY_REQUEST_ID, item.id).build();
+        // An offline-capable provider (Orbit Local) must not wait for connectivity: its whole
+        // point is answering with none. Cloud providers keep the connectivity constraint so a
+        // request survives a dead network instead of failing instantly.
+        boolean offlineOk = MemoryCommandRouter.canHandle(prompt)
+                || AiProviders.active(c).capabilities().offline;
         Constraints constraints = new Constraints.Builder()
-                .setRequiredNetworkType(MemoryCommandRouter.canHandle(prompt)
-                        ? NetworkType.NOT_REQUIRED : NetworkType.CONNECTED)
+                .setRequiredNetworkType(offlineOk ? NetworkType.NOT_REQUIRED : NetworkType.CONNECTED)
                 .build();
         OneTimeWorkRequest work = new OneTimeWorkRequest.Builder(OrbitRequestWorker.class)
                 .setConstraints(constraints)

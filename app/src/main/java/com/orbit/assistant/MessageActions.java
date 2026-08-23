@@ -82,12 +82,17 @@ final class MessageActions {
                 : new int[]{R.drawable.ic_copy};
     }
 
+    /**
+     * Edit &amp; resend is deliberately absent: its state handling proved unreliable on device, and
+     * a visibly broken action is worse than none. The composer-side machinery stays in place so
+     * the action can return once resending is dependable; the roadmap records that intent.
+     */
     static String[] userLabels() {
-        return new String[]{COPY_MENU_LABEL, EDIT_MENU_LABEL};
+        return new String[]{COPY_MENU_LABEL};
     }
 
     static int[] userIcons() {
-        return new int[]{R.drawable.ic_copy, R.drawable.ic_edit};
+        return new int[]{R.drawable.ic_copy};
     }
 
     static void bindAssistant(View bubble, String rawText, boolean canRegenerate,

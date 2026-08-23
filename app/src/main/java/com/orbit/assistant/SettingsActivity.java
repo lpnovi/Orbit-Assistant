@@ -43,9 +43,9 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     private static final int REQ_ASSISTANT_SETTINGS = 78;
     private static final String TAG_CARD = "orbit_card";
     private static final String TAG_SECTION_PREFIX = "orbit_settings_section:";
-    private static final String EXTRA_SECTION = "settings_section";
+    static final String EXTRA_SECTION = "settings_section";
     private static final String SECTION_ASSISTANT = "assistant";
-    private static final String SECTION_AI = "ai";
+    static final String SECTION_AI = "ai";
     private static final String SECTION_VOICE = "voice";
     private static final String SECTION_DATA = "data";
     private static final String SECTION_CONVERSATIONS = "conversations";
@@ -63,6 +63,9 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     private TextView quickRoutineSelection;
     private TextView chatGptStatus;
     private LinearLayout providerDetails;
+    private TextView providerRowStatus;
+    /** Which provider the details block is currently built for, so onResume can catch switches. */
+    private String providerDetailsFor;
     private ScrollView settingsScroll;
     private String appliedAppearance = "";
     /** Accent/AMOLED only — the appearance that forces a rebuild. */
@@ -127,6 +130,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         applyAppearanceChange();
         updateAssistantStatus();
         refreshQuickRoutineSelection();
+        refreshProviderSection();
         updateChatGptStatus();
         if (chatGptStatus != null && !ChatGptAuth.isSignedIn(this) &&
                 ChatGptAuth.resumePendingDeviceCode(this, chatGptLoginCallback)) {
@@ -184,7 +188,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         page.addView(settingsCategoryCard(SECTION_ASSISTANT, "Assistant setup",
                 "Default assistant, Side button and Quick Settings access"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_AI, "AI & account",
-                "ChatGPT sign-in, provider and intelligence modes"), categoryLp());
+                "AI Providers, ChatGPT sign-in and intelligence modes"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_VOICE, "Voice, context & permissions",
                 "Voice Beta, screen context and capabilities"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_DATA, "Personalization & data",
@@ -532,20 +536,32 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         page.addView(sectionTitle("CONNECTION & PROVIDER", "account"));
         LinearLayout accountCard = card();
         tagSectionCard(accountCard, "account");
-        accountCard.addView(label("Provider"));
-        String[] providerKeys = UiKit.providerKeys();
-        String[] providerLabels = UiKit.providerLabels();
-        LinearLayout provider = menuSelector(providerLabels,
-                indexOf(providerKeys, Prefs.provider(this)),
-                (pos, selectedLabel) -> {
-                    String selectedProvider = providerKeys[Math.max(0,
-                            Math.min(providerKeys.length - 1, pos))];
-                    if (!selectedProvider.equals(Prefs.provider(this))) {
-                        Prefs.get(this).edit().putString(Prefs.PROVIDER, selectedProvider).apply();
-                        swapProviderDetails();
-                    }
-                });
-        accountCard.addView(provider, selectorLp());
+        AiProvider activeProvider = AiProviders.active(this);
+        LinearLayout providersRow = new LinearLayout(this);
+        providersRow.setGravity(Gravity.CENTER_VERTICAL);
+        providersRow.setPadding(UiKit.dp(this, 14), UiKit.dp(this, 12),
+                UiKit.dp(this, 12), UiKit.dp(this, 12));
+        providersRow.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2,
+                UiKit.withAlpha(UiKit.accent(this), 38), UiKit.accent(this), 16, this));
+        providersRow.setClickable(true);
+        providersRow.setFocusable(true);
+        LinearLayout providersText = new LinearLayout(this);
+        providersText.setOrientation(LinearLayout.VERTICAL);
+        providersText.addView(UiKit.text(this, "AI Providers", 15, UiKit.TEXT, true));
+        providerRowStatus = UiKit.text(this,
+                "Active: " + activeProvider.displayName() + " · " + activeProvider.statusDetail(this),
+                12, UiKit.MUTED, false);
+        providerRowStatus.setPadding(0, UiKit.dp(this, 3), 0, 0);
+        providersText.addView(providerRowStatus);
+        providersRow.addView(providersText, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        TextView providersArrow = UiKit.text(this, "›", 24, UiKit.accent(this), false);
+        providersArrow.setPadding(UiKit.dp(this, 10), 0, UiKit.dp(this, 4), 0);
+        providersRow.addView(providersArrow);
+        providersRow.setOnClickListener(v ->
+                startActivity(new Intent(this, AiProvidersActivity.class)));
+        UiKit.pressScale(providersRow);
+        accountCard.addView(providersRow, selectorLp());
         providerDetails = new LinearLayout(this);
         providerDetails.setOrientation(LinearLayout.VERTICAL);
         providerDetails.setPadding(0, UiKit.dp(this, 13), 0, 0);
@@ -905,7 +921,21 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     private void populateProviderDetails(LinearLayout container) {
         if (container == null) return;
         chatGptStatus = null;
-        if (Prefs.PROVIDER_RELAY.equals(Prefs.provider(this))) {
+        providerDetailsFor = Prefs.provider(this);
+        if (Prefs.PROVIDER_LOCAL.equals(providerDetailsFor)) {
+            TextView localHelp = UiKit.text(this,
+                    "Orbit Local answers on this phone with no account and no internet. Your ChatGPT sign-in, if present, stays securely saved but inactive while Orbit Local is selected.",
+                    13, UiKit.MUTED, false);
+            localHelp.setPadding(0, 0, 0, UiKit.dp(this, 12));
+            container.addView(localHelp);
+            Button manageLocal = secondaryButton("Manage Orbit Local");
+            manageLocal.setOnClickListener(v ->
+                    startActivity(new Intent(this, LocalAiActivity.class)));
+            container.addView(manageLocal, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48)));
+            return;
+        }
+        if (Prefs.PROVIDER_RELAY.equals(providerDetailsFor)) {
             TextView relayHelp = UiKit.text(this,
                     "Advanced fallback: Orbit calls a private HTTPS relay you control. Your OpenAI API key stays on that server and is never stored in Orbit. ChatGPT credentials, if present, remain securely saved but inactive while this provider is selected.",
                     13, UiKit.MUTED, false);
@@ -977,6 +1007,19 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         experimental.setPadding(0, UiKit.dp(this, 8), 0, 0);
         container.addView(experimental);
         updateChatGptStatus();
+    }
+
+    /** Reflects a provider switch made in AI Providers when the user returns here. */
+    private void refreshProviderSection() {
+        if (providerRowStatus != null) {
+            AiProvider active = AiProviders.active(this);
+            providerRowStatus.setText(
+                    "Active: " + active.displayName() + " · " + active.statusDetail(this));
+        }
+        if (providerDetails != null && providerDetailsFor != null
+                && !providerDetailsFor.equals(Prefs.provider(this))) {
+            swapProviderDetails();
+        }
     }
 
     private void swapProviderDetails() {
