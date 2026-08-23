@@ -466,24 +466,105 @@
 - Add Edit & resend, which returns a user message to the composer without rewriting history
 - Keep code-block Copy, draft-reply actions, and Jump to latest unchanged
 
+### 0.7.6.5
+- Replace the barely visible long-press bubble growth with `OrbitMessageHighlight`: an accent
+  ripple travelling out from the press point, a faint wash carrying it through the message, and one
+  edge pulse settling into the held selection
+- Draw the whole effect in the message's foreground, so no bubble is resized, no text reflows, and
+  no surrounding message moves
+- Schedule frames from the drawable itself as `OrbitListeningHalo` does, building one radial
+  gradient per press and moving it with a reused matrix rather than allocating per frame
+- Drop a released selection's foreground exactly once on a fixed schedule, never from the
+  drawable's own last frame or detach path, so no message can be left looking selected and
+  `setForeground` is never re-entered
+- Give the message-action menu its own surface — an accent-warmed sheet on Orbit's largest radius,
+  each action's icon on an accent chip, larger touch rows — instead of a utility list
+- Rebuild Edit & resend as a real composer state: a compact accent "Editing previous message" pill
+  above the composer, the recalled message with the caret at its end, and the ordinary Send path
+- Hold an unsent draft that Edit & resend displaced and put it back if the mode is cancelled,
+  rather than destroying it silently
+- Edit the existing `Editable` in place and move no window state, so the keyboard is not closed and
+  reopened and typing needs no second tap
+- Keep the Side-button overlay's Edit & resend deliberately simple, acknowledged on the state line
+  it already uses for Copy
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever
 it changes. Anything released belongs to the sections above and to What's New, never to the list
 below.
 
+### 0.7.7 development line — hybrid, provider-agnostic AI
+
+The 0.7.6 message-interaction work is the stable base this begins from. Nothing in this section is
+implemented; it is the agreed direction for the 0.7.7 line, recorded here so any later session can
+find and follow it.
+
+The long-term goal is for Orbit to become a **hybrid, provider-agnostic Android assistant runtime**
+rather than an app tied to one model service.
+
+#### Provider abstraction (first, and a prerequisite for everything below)
+- Introduce a real internal provider/router layer, so chat, the Side-button overlay, tools,
+  Routines, and device actions talk to a provider interface rather than to a specific backend
+- Move the coupling out of the surfaces: `AssistantClient`, `AutoRouter`, `OrbitRequestManager`, and
+  the action pipeline should each depend on the abstraction, not on ChatGPT/Codex specifics
+- The existing ChatGPT/Codex provider keeps working exactly as it does today, as one provider behind
+  the new interface, including its device-code authentication
+- Carry capability metadata on the provider itself — streaming, tool/function calling, images,
+  context size — so a surface can ask what is possible instead of assuming
+- Normalize errors, so one failure vocabulary reaches the UI whatever the provider was
+
+#### Additional cloud providers
+OpenRouter is the preferred early second cloud integration, because one provider interface there
+reaches several model families.
+
+- Provider selection and, within a provider, model selection
+- Streaming, and tool/function calling where the model supports it
+- Provider-specific authentication and settings, kept independent per provider
+- Normalized error handling and capability metadata, as above
+- Not in scope for 0.7.6.x: this is 0.7.7 work
+
+#### Orbit Local — optional on-device AI
+An optional on-device provider. The architecture should favour a model or component **downloaded and
+managed by Orbit**, not a multi-gigabyte model bundled into the APK, and not a separate companion
+APK unless a later architecture review shows a compelling reason.
+
+Planned stages, in order:
+
+1. Provider abstraction
+2. Initial `LocalProvider` foundation
+3. One carefully supported local model
+4. Local streaming chat
+5. Model download, delete, and management UI
+6. Device capability detection and honest compatibility guidance
+7. Local Orbit tool/function calling
+8. Optional lightweight local intent/device-command model
+9. Automatic cloud/local routing and fallback
+
+#### Long-term Hybrid Auto mode
+Orbit chooses provider and model from capability, task, availability, and user preference:
+
+- Simple device command → local, when local can do it well
+- Lightweight conversational request → local, when local can do it well
+- No network → local fallback
+- Complex reasoning → cloud
+- Current or web-dependent information → cloud
+
 ### Next up
+- Provider abstraction: an internal provider/router layer, with ChatGPT/Codex preserved as one
+  provider behind it
 - Conditions beyond time and location, and more than one branch point in a single routine
 
 ### Planned
+- OpenRouter as an additional cloud provider, with provider and model selection
+- Orbit Local: an optional Orbit-managed on-device model, offline-capable and clearly optional
 - Deeper Android actions
 - Custom Commands that accept variation and detail beyond today's exact wording
-- Additional AI providers
 
 ### Exploring
+- Hybrid Auto: automatic local/cloud routing chosen from capability, task, and availability
 - Proactive screen intelligence
 - Image retrieval integrations with safe sourcing and attribution
-- Local and on-device intelligence
 
 ## 1.0 direction
 - Reliable daily-driver overlay and chat experience

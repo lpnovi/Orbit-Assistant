@@ -86,6 +86,15 @@ public class ChatActivity extends Activity {
     private static final int REQ_SCREEN_SELECTION = 5605;
     private static final int REQ_MIC_PERMISSION = 5606;
 
+    /**
+     * The text Edit &amp; resend recalled, or null when the composer is in its ordinary state.
+     * Only UI state: history is never rewritten, and sending stays the ordinary Send path.
+     */
+    private String editingMessage;
+    /** An unsent draft Edit &amp; resend displaced, put back if the user leaves without sending. */
+    private String displacedDraft;
+    private LinearLayout editingBar;
+
     private LinearLayout attachmentTray;
     private TextView attachmentTrayLabel;
     private ImageView attachmentTrayPreview;
@@ -273,6 +282,12 @@ public class ChatActivity extends Activity {
         root.addView(voiceStatus, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        LinearLayout.LayoutParams editingLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        editingLp.gravity = Gravity.START;
+        editingLp.setMargins(UiKit.dp(this, 4), 0, 0, UiKit.dp(this, 6));
+        root.addView(buildEditingBar(), editingLp);
+
         LinearLayout composer = new LinearLayout(this);
         // Bottom-aligned so the controls stay level with the last line as the field grows,
         // instead of drifting to the middle of a tall multiline box.
@@ -417,7 +432,7 @@ public class ChatActivity extends Activity {
             bubble.setLineSpacing(0, 1.08f);
             bubble.setPadding(UiKit.dp(this, 15), UiKit.dp(this, 12), UiKit.dp(this, 15), UiKit.dp(this, 12));
             bubble.setBackground(UiKit.rounded(fill, 18, this));
-            MessageActions.bindUser(bubble, rawVisible, () -> placeInComposer(rawVisible), null);
+            MessageActions.bindUser(bubble, rawVisible, () -> beginEditResend(rawVisible), null);
             messages.addView(bubble, bubbleLp(Gravity.END, UiKit.dp(this, 310)));
         } else {
             View bubble = OrbitRichResponseRenderer.render(this, visible, fill, false);
@@ -634,6 +649,9 @@ public class ChatActivity extends Activity {
 
         traceComposer("submit.before-clear");
         clearComposerInPlace();
+        // The revised message has gone through the ordinary Send path, so the editing state has
+        // done its job and the composer returns to normal.
+        finishEditResend();
         traceComposer("submit.after-clear");
 
         boolean hasAttachment = attached != null;
@@ -1496,8 +1514,12 @@ public class ChatActivity extends Activity {
     }
 
     /**
-     * Puts an earlier user message back in the composer so it can be edited and sent as a
-     * new turn. The original history is not rewritten.
+     * Writes text into the composer, leaves the caret at the end, and makes sure the field is
+     * genuinely ready to type in.
+     *
+     * <p>The existing {@link android.text.Editable} is edited in place rather than replaced, for
+     * the same reason {@link #clearComposerInPlace()} does: it keeps the editor's live
+     * relationship with the input method, so no second tap is needed before typing.
      */
     void placeInComposer(String text) {
         if (input == null) return;
@@ -1509,6 +1531,111 @@ public class ChatActivity extends Activity {
         input.setSelection(end);
         updateSendState();
         showComposerKeyboard();
+    }
+
+    /**
+     * The compact composer state that explains why an earlier message has appeared in the text
+     * field. A pill rather than a banner: it sits directly above the composer, follows the accent,
+     * and carries the one control that leaves the mode.
+     */
+    private View buildEditingBar() {
+        editingBar = new LinearLayout(this);
+        editingBar.setGravity(Gravity.CENTER_VERTICAL);
+        editingBar.setPadding(UiKit.dp(this, 10), UiKit.dp(this, 3),
+                UiKit.dp(this, 3), UiKit.dp(this, 3));
+        editingBar.setBackground(UiKit.outlined(
+                UiKit.blend(UiKit.accent(this), UiKit.SURFACE, 0.13f),
+                UiKit.withAlpha(UiKit.accent(this), 110), 15, this));
+        editingBar.setVisibility(View.GONE);
+
+        ImageView mark = new ImageView(this);
+        mark.setImageResource(com.orbit.assistant.R.drawable.ic_edit);
+        mark.setImageTintList(ColorStateList.valueOf(UiKit.accent(this)));
+        mark.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        editingBar.addView(mark,
+                new LinearLayout.LayoutParams(UiKit.dp(this, 15), UiKit.dp(this, 15)));
+
+        TextView label = UiKit.text(this, "Editing previous message", 12, UiKit.TEXT, false);
+        LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        labelLp.setMargins(UiKit.dp(this, 7), 0, UiKit.dp(this, 2), 0);
+        editingBar.addView(label, labelLp);
+
+        ImageButton stop = new ImageButton(this);
+        stop.setImageResource(com.orbit.assistant.R.drawable.ic_close);
+        stop.setImageTintList(ColorStateList.valueOf(UiKit.accent(this)));
+        stop.setBackground(UiKit.ripple(Color.TRANSPARENT, UiKit.accent(this), 13, this));
+        stop.setContentDescription("Stop editing previous message");
+        stop.setPadding(UiKit.dp(this, 7), UiKit.dp(this, 7), UiKit.dp(this, 7), UiKit.dp(this, 7));
+        stop.setOnClickListener(v -> cancelEditResend());
+        UiKit.pressScale(stop);
+        editingBar.addView(stop,
+                new LinearLayout.LayoutParams(UiKit.dp(this, 28), UiKit.dp(this, 28)));
+        return editingBar;
+    }
+
+    /**
+     * Enters Edit &amp; resend: the chosen message goes back into the composer ready to edit, the
+     * composer says so, and nothing is sent.
+     *
+     * <p>An unsent draft is never destroyed silently. It is held here and restored by
+     * {@link #cancelEditResend()}, which is the behaviour that fits Orbit's existing composer,
+     * where a draft simply survives until the user sends it.
+     */
+    void beginEditResend(String text) {
+        if (input == null) return;
+        String value = text == null ? "" : text;
+        if (value.trim().isEmpty()) return;
+        if (editingMessage == null) {
+            String current = input.getText().toString();
+            displacedDraft = current.trim().isEmpty() ? null : current;
+        }
+        editingMessage = value;
+        setEditingBarVisible(true);
+        placeInComposer(value);
+    }
+
+    /** Leaves Edit &amp; resend, putting back whatever draft the mode displaced. */
+    private void cancelEditResend() {
+        if (editingMessage == null) return;
+        String restore = displacedDraft;
+        editingMessage = null;
+        displacedDraft = null;
+        setEditingBarVisible(false);
+        placeInComposer(restore == null ? "" : restore);
+    }
+
+    /**
+     * Leaves Edit &amp; resend because the revised message has been sent. The displaced draft is
+     * dropped rather than restored: the user finished the message they were editing.
+     */
+    private void finishEditResend() {
+        if (editingMessage == null && displacedDraft == null) return;
+        editingMessage = null;
+        displacedDraft = null;
+        setEditingBarVisible(false);
+    }
+
+    /**
+     * Shows or hides the editing pill. Visibility only, on a view built once: the composer's
+     * focus, its input connection, and the keyboard are never touched from here.
+     */
+    private void setEditingBarVisible(boolean visible) {
+        if (editingBar == null) return;
+        boolean showing = editingBar.getVisibility() == View.VISIBLE;
+        if (visible == showing) return;
+        editingBar.setVisibility(visible ? View.VISIBLE : View.GONE);
+        if (visible) UiKit.enterContent(editingBar);
+    }
+
+    /** True while the composer is showing an earlier message for editing. */
+    boolean isEditingPreviousMessage() {
+        return editingMessage != null;
+    }
+
+    /** The draft Edit &amp; resend is holding on the user's behalf, or null when there is none. */
+    String heldDraft() {
+        return displacedDraft;
     }
 
     private void regenerateLastResponse() {

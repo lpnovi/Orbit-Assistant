@@ -3,8 +3,8 @@ package com.orbit.assistant;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
-import android.graphics.Color;
 import android.view.HapticFeedbackConstants;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -14,15 +14,22 @@ import android.widget.PopupWindow;
 /**
  * Contextual message actions for full chat and the Side-button overlay.
  *
- * <p>The conversation stays visually quiet. Long-pressing a message opens one Orbit menu:
- * Copy and Regenerate on assistant replies (Regenerate only on the latest turn), Copy and
- * Edit &amp; resend on the user's own messages. Edit &amp; resend only returns the text to
- * the composer; sending still goes through the ordinary Send path and does not rewrite history.
+ * <p>The conversation stays visually quiet. Long-pressing a message gives one haptic
+ * acknowledgement, sends {@link OrbitMessageHighlight}'s accent ripple through the bubble, and
+ * opens one Orbit menu: Copy and Regenerate on assistant replies (Regenerate only on the latest
+ * turn), Copy and Edit &amp; resend on the user's own messages. Edit &amp; resend only returns the
+ * text to the composer; sending still goes through the ordinary Send path and does not rewrite
+ * history.
  */
 final class MessageActions {
     static final String COPY_MENU_LABEL = "Copy";
     static final String REGENERATE_MENU_LABEL = "Regenerate";
     static final String EDIT_MENU_LABEL = "Edit & resend";
+
+    /** Both surfaces draw message bubbles at this radius, so the selection matches their shape. */
+    private static final float BUBBLE_RADIUS_DP = 18f;
+    /** The released selection's fade, plus enough slack for its last frame to have landed. */
+    private static final long RELEASE_CLEAR_MS = OrbitMessageHighlight.releaseDurationMs() + 80L;
 
     interface AfterCopy {
         void onCopied();
@@ -30,6 +37,25 @@ final class MessageActions {
 
     private static PopupWindow openMenu;
     private static View highlighted;
+    private static OrbitMessageHighlight selection;
+    private static float pressRawX;
+    private static float pressRawY;
+    private static boolean pressKnown;
+
+    /**
+     * Records where a press landed so the ripple can start there rather than at the middle of the
+     * bubble. One shared listener for every message: it stores two floats and never consumes the
+     * event, so ordinary tapping, link handling, scrolling, and Android's own long-press timing
+     * are all left exactly as they were.
+     */
+    private static final View.OnTouchListener PRESS_POINT = (view, event) -> {
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            pressRawX = event.getRawX();
+            pressRawY = event.getRawY();
+            pressKnown = true;
+        }
+        return false;
+    };
 
     private MessageActions() {}
 
@@ -154,44 +180,68 @@ final class MessageActions {
         });
     }
 
+    /**
+     * Marks the held message with Orbit's accent ripple. The effect lives entirely in the
+     * bubble's foreground, so the message keeps its own size and position and the conversation
+     * around it does not move or reflow.
+     */
     private static void highlight(View bubble) {
         highlighted = bubble;
-        Context c = bubble.getContext();
-        bubble.setForeground(UiKit.outlined(Color.TRANSPARENT,
-                UiKit.withAlpha(UiKit.accent(c), 110), 18, c));
-        if (!UiKit.animationsEnabled()) return;
-        bubble.animate().cancel();
-        bubble.animate().scaleX(1.012f).scaleY(1.012f)
-                .setDuration(UiKit.MOTION_FAST)
-                .setInterpolator(UiKit.motionEasing())
-                .start();
+        OrbitMessageHighlight held = new OrbitMessageHighlight(bubble.getContext(), BUBBLE_RADIUS_DP);
+        if (pressKnown) {
+            int[] onScreen = new int[2];
+            bubble.getLocationOnScreen(onScreen);
+            held.setPressPoint(pressRawX - onScreen[0], pressRawY - onScreen[1]);
+        }
+        // Consumed, so a long-press that arrived without a touch — an accessibility action, say —
+        // ripples from the middle of its own message instead of an earlier finger position.
+        pressKnown = false;
+        selection = held;
+        bubble.setForeground(held);
     }
 
+    /**
+     * Fades the selection out and drops it. The fade is a fixed length, so the foreground is
+     * dropped exactly once from a posted runnable rather than from the drawable's own last frame,
+     * and the drop is identity-checked: a message long-pressed again mid-fade keeps its new
+     * selection, and the released one cannot clear it.
+     */
     private static void clearHighlight() {
         View bubble = highlighted;
+        OrbitMessageHighlight held = selection;
         highlighted = null;
+        selection = null;
         if (bubble == null) return;
-        bubble.setForeground(null);
-        bubble.animate().cancel();
-        if (UiKit.animationsEnabled() && bubble.isAttachedToWindow()) {
-            bubble.animate().scaleX(1f).scaleY(1f)
-                    .setDuration(UiKit.MOTION_FAST)
-                    .start();
-        } else {
-            bubble.setScaleX(1f);
-            bubble.setScaleY(1f);
+        if (held == null) {
+            drop(bubble, null);
+            return;
         }
+        held.release();
+        if (!bubble.isAttachedToWindow() || !UiKit.animationsEnabled()) {
+            drop(bubble, held);
+            return;
+        }
+        bubble.postDelayed(() -> drop(bubble, held), RELEASE_CLEAR_MS);
+    }
+
+    private static void drop(View bubble, OrbitMessageHighlight held) {
+        if (bubble.getForeground() == held) bubble.setForeground(null);
     }
 
     /**
      * Long-press is attached to the message and its non-interactive children so a rich
      * Markdown reply still opens the menu. Code-block Copy buttons keep their own tap.
+     *
+     * <p>Nothing here fights Android's own gesture detection: a press that turns into a scroll is
+     * cancelled by the conversation's scroll container before the long-press timer fires, which is
+     * what keeps the menu out of ordinary scrolling.
      */
     private static void bindTree(View view, View.OnLongClickListener listener) {
         if (view == null || listener == null) return;
         if (isReservedControl(view)) return;
         view.setLongClickable(true);
         view.setOnLongClickListener(listener);
+        view.setOnTouchListener(PRESS_POINT);
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;
             for (int i = 0; i < group.getChildCount(); i++) {

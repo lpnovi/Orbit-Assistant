@@ -972,26 +972,29 @@ public final class UiKit {
     }
 
     /**
-     * Compact icon+label action menu for a small set of choices, such as copying a
-     * message. It uses the same surface, accent, motion, and screen-aware placement
-     * as {@link #showOrbitMenu}, but stays narrower, includes Orbit icons, and does
-     * not take input focus so the keyboard is left alone.
+     * Compact icon+label action menu for a small set of choices, such as the actions on a held
+     * message. It shares {@link #showOrbitMenu}'s accent, motion, and screen-aware placement, and
+     * is deliberately a softer, more finished surface than a utility list: an accent-warmed sheet
+     * on Orbit's largest corner radius, each action's icon on its own accent chip, and generous
+     * touch rows. It does not take input focus, so the keyboard is left alone.
      */
     public static PopupWindow showOrbitActionMenu(Context c, View anchor, String[] labels, int[] icons,
                                            OrbitMenuChoice choice) {
         if (c == null || anchor == null || labels == null || labels.length == 0) return null;
         boolean showIcons = icons != null && icons.length == labels.length;
+        int accent = accent(c);
+        int rowHeightDp = 46;
 
         LinearLayout box = new LinearLayout(c);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(c, 6), dp(c, 6), dp(c, 6), dp(c, 6));
-        box.setBackground(outlined(SURFACE_2, withAlpha(accent(c), 80), 18, c));
+        box.setBackground(actionMenuSheet(c, accent));
 
         int maxChars = 0;
         for (String label : labels) {
             if (label != null) maxChars = Math.max(maxChars, label.length());
         }
-        int widthDp = Math.max(156, Math.min(248, 96 + (showIcons ? 28 : 0) + (maxChars * 7)));
+        int widthDp = Math.max(170, Math.min(258, 100 + (showIcons ? 36 : 0) + (maxChars * 7)));
         int width = dp(c, widthDp);
         PopupWindow popup = new PopupWindow(box, width,
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT, false);
@@ -1002,7 +1005,7 @@ public final class UiKit {
         popup.setClippingEnabled(true);
         popup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         popup.setAnimationStyle(R.style.OrbitPopupAnimation);
-        if (Build.VERSION.SDK_INT >= 21) popup.setElevation(dp(c, 12));
+        if (Build.VERSION.SDK_INT >= 21) popup.setElevation(dp(c, 14));
 
         for (int i = 0; i < labels.length; i++) {
             final int index = i;
@@ -1011,19 +1014,23 @@ public final class UiKit {
             LinearLayout row = new LinearLayout(c);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(android.view.Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(c, 12), 0, dp(c, 14), 0);
-            row.setBackground(ripple(SURFACE_2, accent(c), 13, c));
+            row.setPadding(dp(c, 8), 0, dp(c, 14), 0);
+            // Transparent fill so the sheet's accent warmth reads through the row rather than
+            // being covered by a second flat surface.
+            row.setBackground(ripple(Color.TRANSPARENT, accent, 15, c));
 
             if (showIcons && icons[i] != 0) {
                 ImageView icon = new ImageView(c);
                 icon.setImageResource(icons[i]);
-                icon.setImageTintList(ColorStateList.valueOf(MUTED));
+                icon.setImageTintList(ColorStateList.valueOf(accent));
                 icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-                icon.setPadding(dp(c, 1), dp(c, 1), dp(c, 1), dp(c, 1));
-                row.addView(icon, new LinearLayout.LayoutParams(dp(c, 22), dp(c, 22)));
+                icon.setBackground(rounded(withAlpha(accent, 34), 11, c));
+                icon.setPadding(dp(c, 6), dp(c, 6), dp(c, 6), dp(c, 6));
+                row.addView(icon, new LinearLayout.LayoutParams(dp(c, 30), dp(c, 30)));
             }
 
-            TextView label = text(c, labelText, 14, TEXT, false);
+            TextView label = text(c, labelText, 14.5f, TEXT, false);
+            label.setSingleLine(true);
             LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
                     0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1);
             if (showIcons && icons[i] != 0) labelLp.setMargins(dp(c, 11), 0, 0, 0);
@@ -1036,13 +1043,27 @@ public final class UiKit {
             });
 
             LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(c, 44));
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(c, rowHeightDp));
             if (i > 0) rowLp.topMargin = dp(c, 2);
             box.addView(row, rowLp);
         }
 
-        showAnchoredOrbitPopup(c, anchor, popup, width, labels.length, 44);
+        showAnchoredOrbitPopup(c, anchor, popup, width, labels.length, rowHeightDp);
         return popup;
+    }
+
+    /**
+     * The action menu's own surface: Orbit's raised panel warmed towards the accent at the top,
+     * with a hairline accent edge. Built from the resolved accent so AMOLED, Light, Dynamic, and
+     * custom accents all produce a sheet that belongs to the current appearance.
+     */
+    private static GradientDrawable actionMenuSheet(Context c, int accent) {
+        GradientDrawable sheet = new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{blend(accent, SURFACE_2, 0.12f), SURFACE_2});
+        sheet.setCornerRadius(dp(c, 20));
+        sheet.setStroke(dp(c, 1), withAlpha(accent, 96));
+        return sheet;
     }
 
     /**

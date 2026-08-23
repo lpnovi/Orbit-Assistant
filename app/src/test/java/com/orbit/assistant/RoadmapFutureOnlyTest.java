@@ -72,6 +72,17 @@ public final class RoadmapFutureOnlyTest {
         assertTrue(text.contains("Proactive screen intelligence"));
     }
 
+    /** The 0.7.7 direction ROADMAP.md records must be discoverable in the app, not only in git. */
+    @Test public void theProviderAndOnDeviceDirectionIsListed() {
+        String text = roadmapText();
+        assertTrue("provider abstraction is the next line of work",
+                text.contains("Choice of AI provider"));
+        assertTrue(text.contains("More AI providers & models"));
+        assertTrue("Orbit Local is the planned optional on-device provider",
+                text.contains("Orbit Local"));
+        assertTrue(text.contains("Hybrid Auto"));
+    }
+
     @Test public void thePageStillSaysItIsFutureOnly() {
         assertTrue(roadmapText().contains("future-only"));
     }

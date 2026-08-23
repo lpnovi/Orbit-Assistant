@@ -3024,7 +3024,14 @@ public class OrbitSession extends VoiceInteractionSession {
         if (messages == null) return;
         TextView bubble = makeBubbleText(text, user, error);
         if (user && !error) MessageActions.bindUser(bubble, text,
-                () -> placeInComposer(text),
+                () -> {
+                    // The overlay keeps Edit & resend deliberately simple: the message returns to
+                    // the compact composer, and the state line says why, using the same brief
+                    // acknowledgement Copy already uses rather than adding overlay chrome.
+                    placeInComposer(text);
+                    stateTextSafe("Editing previous message");
+                    main.postDelayed(() -> stateTextSafe(readyState()), 1200);
+                },
                 () -> {
                     stateTextSafe("Copied");
                     main.postDelayed(() -> stateTextSafe(readyState()), 800);

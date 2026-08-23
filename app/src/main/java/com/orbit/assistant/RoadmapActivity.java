@@ -86,18 +86,24 @@ public final class RoadmapActivity extends Activity {
         // v0.7.5.0, which shipped IF / ELSE branching, so what is listed now is the branching work
         // that genuinely remains. A fifth left in v0.7.6.0: conversation-aware voice follow-ups
         // shipped as Smart follow-ups. Shipped work belongs in What's New, never here.
+        //
+        // The AI-provider and on-device entries were vague while the direction was undecided. They
+        // now name the plan ROADMAP.md records for the 0.7.7 line, kept in this page's user-facing
+        // language rather than its architecture.
         addGroup(page, "NEXT UP", new String[][]{
+                {"Choice of AI provider", "Groundwork so Orbit is not tied to one AI service, with your existing account unchanged."},
                 {"More branch points & conditions", "Several decision points in one Routine, and conditions beyond time and place."}
         });
         addGroup(page, "PLANNED", new String[][]{
+                {"More AI providers & models", "Reach more model families through one provider, with explicit account and privacy controls."},
+                {"Orbit Local", "An optional AI model Orbit downloads and manages, for private answers that work offline."},
                 {"Deeper Android actions", "Broader device controls through supported Android surfaces."},
-                {"Stronger Custom Commands", "Personal phrases that accept variation and detail, beyond today's exact wording."},
-                {"Additional AI providers", "More provider choices while preserving explicit account and privacy controls."}
+                {"Stronger Custom Commands", "Personal phrases that accept variation and detail, beyond today's exact wording."}
         });
         addGroup(page, "EXPLORING", new String[][]{
+                {"Hybrid Auto", "Orbit choosing on-device or cloud by itself, from the task, what is available, and your preference."},
                 {"Proactive screen intelligence", "Helpful context-aware assistance that remains transparent and controllable."},
-                {"Image retrieval integrations", "Purpose-built image discovery with safe sources and clear attribution."},
-                {"Local & on-device intelligence", "More useful private processing that can happen directly on the device."}
+                {"Image retrieval integrations", "Purpose-built image discovery with safe sources and clear attribution."}
         });
 
         UiKit.applyTypography(page);

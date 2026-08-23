@@ -352,3 +352,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - The menu uses Orbit's usual surface, accent, and light haptic, and stays fully on screen.
   - Jump to latest, Voice, and how replies are generated are unchanged.
 
+- **v0.7.6.5**: Holding a message now sends a ripple of your accent colour through it, and Edit & resend is a proper composer state.
+  - The old barely visible bubble growth is gone: your accent ripples out from where you pressed, then settles into a soft selection.
+  - The action menu is softer and easier to hit, with each action's icon on its own accent chip.
+  - Edit & resend now shows a compact "Editing previous message" pill, so it is clear why earlier text appeared in the text box.
+  - A draft you had not sent yet is kept and put back if you cancel editing, instead of being lost.
+  - Typing works straight away, Send behaves normally, and the original message stays in the conversation.
+

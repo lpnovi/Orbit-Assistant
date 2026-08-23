@@ -3,17 +3,26 @@ package com.orbit.assistant;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.drawable.Drawable;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.TextView;
+
+import androidx.work.Configuration;
+import androidx.work.ListenableWorker;
+import androidx.work.WorkManager;
+import androidx.work.Worker;
+import androidx.work.WorkerFactory;
+import androidx.work.WorkerParameters;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -23,13 +32,18 @@ import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.annotation.Config;
+import org.robolectric.shadows.ShadowLooper;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Full chat keeps the conversation clean: no persistent Copy/Regenerate chrome under replies.
- * Long-press is how message actions appear; Edit &amp; resend only fills the composer.
+ * Long-press is how message actions appear, it selects the held message with Orbit's ripple rather
+ * than resizing it, and Edit &amp; resend puts the message back in the composer without sending.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {29, 31, 35})
@@ -44,6 +58,39 @@ public final class ChatActivityMessageActionsTest {
         OrbitRequestManager.resetForTest();
         OrbitRequestManager.setWorkCanceller(name -> {});
         MessageActions.dismiss();
+        initWorkManager();
+    }
+
+    /**
+     * Lets the ordinary Send path run end to end under Robolectric. Only the background execution
+     * is stubbed: the request is still enqueued through {@code OrbitRequestManager}, so what these
+     * tests assert about history and the composer is the real send behaviour.
+     */
+    private void initWorkManager() {
+        try {
+            WorkManager.getInstance(context);
+            return;
+        } catch (IllegalStateException notInitialized) {
+            // Falls through to initialize it for this test application.
+        }
+        // Off the main thread: WorkManager keeps its queue in a database, and Room refuses main
+        // thread access. The send path under test never waits on it.
+        ExecutorService background = Executors.newSingleThreadExecutor();
+        Configuration configuration = new Configuration.Builder()
+                .setExecutor(background)
+                .setTaskExecutor(background)
+                .setWorkerFactory(new WorkerFactory() {
+                    @Override public ListenableWorker createWorker(
+                            Context appContext, String workerClassName, WorkerParameters params) {
+                        return new Worker(appContext, params) {
+                            @Override public Result doWork() {
+                                return Result.success();
+                            }
+                        };
+                    }
+                })
+                .build();
+        WorkManager.initialize(context, configuration);
     }
 
     @Test public void aFreshChatHasNoPersistentMessageActions() {
@@ -150,6 +197,175 @@ public final class ChatActivityMessageActionsTest {
         assertFalse(copied.contains("Copy Orbit response"));
     }
 
+    // ---- Long-press selection -----------------------------------------------------------------
+
+    @Test public void longPressingAMessageSelectsItWithoutResizingTheBubble() {
+        seedConversation(user("Bring milk and eggs"), assistant("Noted."));
+        ChatActivity activity = openChat();
+        TextView bubble = findText(activity.getWindow().getDecorView(), "Bring milk and eggs");
+        assertNotNull(bubble);
+
+        assertTrue(bubble.performLongClick());
+
+        Drawable held = bubble.getForeground();
+        assertTrue("the held message must carry Orbit's ripple selection",
+                held instanceof OrbitMessageHighlight);
+        assertEquals("the selection must use the live accent",
+                UiKit.accent(activity), ((OrbitMessageHighlight) held).accentColor());
+        assertEquals("the bubble must not grow", 1f, bubble.getScaleX(), 0.0001f);
+        assertEquals("the bubble must not grow", 1f, bubble.getScaleY(), 0.0001f);
+        assertEquals("selection must not move the message",
+                0f, bubble.getTranslationY(), 0.0001f);
+    }
+
+    @Test public void dismissingTheMenuCannotLeaveAMessageSelected() {
+        seedConversation(user("Bring milk and eggs"), assistant("Noted."));
+        ChatActivity activity = openChat();
+        TextView bubble = findText(activity.getWindow().getDecorView(), "Bring milk and eggs");
+        bubble.performLongClick();
+        assertNotNull(bubble.getForeground());
+
+        MessageActions.dismiss();
+        ShadowLooper.idleMainLooper(500, TimeUnit.MILLISECONDS);
+
+        assertNull("a dismissed menu must leave no selected message", bubble.getForeground());
+    }
+
+    @Test public void holdingASecondMessageReleasesTheFirst() {
+        seedConversation(user("First message"), assistant("Answer"), user("Second message"));
+        ChatActivity activity = openChat();
+        View root = activity.getWindow().getDecorView();
+        TextView first = findText(root, "First message");
+        TextView second = findText(root, "Second message");
+        assertNotNull(first);
+        assertNotNull(second);
+
+        first.performLongClick();
+        second.performLongClick();
+        ShadowLooper.idleMainLooper(500, TimeUnit.MILLISECONDS);
+
+        assertNull("rapid repeated long presses must not stack selections", first.getForeground());
+        assertTrue("the message actually held must be the selected one",
+                second.getForeground() instanceof OrbitMessageHighlight);
+    }
+
+    @Test public void aRichMarkdownReplyIsSelectableAsOneMessage() {
+        seedConversation(
+                user("Summarise OLED"),
+                assistant("## OLED vs Mini LED\n\nOLED gives perfect blacks.\n\n```\ncode\n```"));
+        ChatActivity activity = openChat();
+        View bubble = findLongClickableAncestorOfText(
+                activity.getWindow().getDecorView(), "OLED gives perfect blacks.");
+        assertNotNull("a Markdown reply must still be long-pressable", bubble);
+        assertTrue(bubble.performLongClick());
+        assertTrue(bubble.getForeground() instanceof OrbitMessageHighlight);
+        MessageActions.dismiss();
+        ShadowLooper.idleMainLooper(500, TimeUnit.MILLISECONDS);
+        assertNull(bubble.getForeground());
+    }
+
+    // ---- Edit & resend ------------------------------------------------------------------------
+
+    @Test public void editAndResendExplainsItselfWithoutSending() {
+        seedConversation(user("Bring milk"), assistant("Noted."));
+        ChatActivity activity = openChat();
+        View root = activity.getWindow().getDecorView();
+        EditText composer = findComposer(root);
+        assertNotNull(composer);
+
+        activity.beginEditResend("Bring milk");
+
+        assertTrue(activity.isEditingPreviousMessage());
+        assertEquals("Bring milk", composer.getText().toString());
+        assertEquals("the caret belongs at the end of the recalled text",
+                composer.length(), composer.getSelectionStart());
+        assertEquals("the composer must be ready to type in", composer.length(),
+                composer.getSelectionEnd());
+        assertTrue("Edit & resend must keep composer focus", composer.hasFocus());
+        assertEquals(View.VISIBLE, editingPill(root).getVisibility());
+        assertEquals("nothing may be sent by choosing Edit & resend",
+                2, ConversationStore.load(context, CHAT_ID).messages.size());
+    }
+
+    @Test public void editAndResendHoldsAnUnsentDraftAndPutsItBackOnCancel() {
+        seedConversation(user("Bring milk"), assistant("Noted."));
+        ChatActivity activity = openChat();
+        View root = activity.getWindow().getDecorView();
+        EditText composer = findComposer(root);
+        composer.setText("half-written thought");
+
+        activity.beginEditResend("Bring milk");
+        assertEquals("half-written thought", activity.heldDraft());
+        assertEquals("Bring milk", composer.getText().toString());
+
+        findByDescription(root, "Stop editing previous message").performClick();
+
+        assertFalse(activity.isEditingPreviousMessage());
+        assertNull(activity.heldDraft());
+        assertEquals("an unsent draft must survive Edit & resend",
+                "half-written thought", composer.getText().toString());
+        assertEquals(View.GONE, editingPill(root).getVisibility());
+    }
+
+    @Test public void aSecondEditAndResendKeepsTheOriginalHeldDraft() {
+        seedConversation(user("Bring milk"), assistant("Noted."), user("And bread"));
+        ChatActivity activity = openChat();
+        View root = activity.getWindow().getDecorView();
+        EditText composer = findComposer(root);
+        composer.setText("half-written thought");
+
+        activity.beginEditResend("Bring milk");
+        activity.beginEditResend("And bread");
+
+        assertEquals("the recalled message must never become the held draft",
+                "half-written thought", activity.heldDraft());
+        assertEquals("And bread", composer.getText().toString());
+    }
+
+    @Test public void cancellingWithNoEarlierDraftClearsTheRecalledText() {
+        seedConversation(user("Bring milk"), assistant("Noted."));
+        ChatActivity activity = openChat();
+        View root = activity.getWindow().getDecorView();
+        EditText composer = findComposer(root);
+
+        activity.beginEditResend("Bring milk");
+        findByDescription(root, "Stop editing previous message").performClick();
+
+        assertFalse(activity.isEditingPreviousMessage());
+        assertEquals("", composer.getText().toString());
+        assertEquals(View.GONE, editingPill(root).getVisibility());
+    }
+
+    @Test public void sendingTheRevisedMessageLeavesEditModeAndKeepsTheOriginal() {
+        seedConversation(user("Bring milk"), assistant("Noted."));
+        ChatActivity activity = openChat();
+        View root = activity.getWindow().getDecorView();
+        EditText composer = findComposer(root);
+
+        activity.beginEditResend("Bring milk");
+        composer.getText().append(" and eggs");
+        View send = findByDescription(root, "Send message");
+        assertNotNull("Send must be available for the revised message", send);
+        send.performClick();
+
+        List<AssistantClient.History> saved = ConversationStore.load(context, CHAT_ID).messages;
+        assertEquals(3, saved.size());
+        assertEquals("the original turn must be left exactly as it was",
+                "Bring milk", saved.get(0).content);
+        assertEquals("Bring milk and eggs", saved.get(2).content);
+        assertFalse(activity.isEditingPreviousMessage());
+        assertNull(activity.heldDraft());
+        assertEquals("", composer.getText().toString());
+        assertEquals(View.GONE, editingPill(root).getVisibility());
+    }
+
+    @Test public void anEmptyMessageCannotEnterEditAndResend() {
+        seedConversation(user("Bring milk"), assistant("Noted."));
+        ChatActivity activity = openChat();
+        activity.beginEditResend("   ");
+        assertFalse(activity.isEditingPreviousMessage());
+    }
+
     @Test public void jumpToLatestIsStillHostedInTheConversationPane() {
         ChatActivity activity = openChat();
         ImageButton jump = (ImageButton) findByDescription(activity.getWindow().getDecorView(),
@@ -248,6 +464,45 @@ public final class ChatActivityMessageActionsTest {
             ViewGroup group = (ViewGroup) view;
             for (int i = 0; i < group.getChildCount(); i++) {
                 TextView found = findText(group.getChildAt(i), value);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    /** The compact Edit &amp; resend pill, located through the one control that leaves the mode. */
+    private static View editingPill(View root) {
+        View stop = findByDescription(root, "Stop editing previous message");
+        assertNotNull("Edit & resend must have a visible way out", stop);
+        return (View) stop.getParent();
+    }
+
+    /**
+     * The message a rich Markdown reply's inner text belongs to: the outermost ancestor carrying
+     * the long-press, which is the bubble the selection is drawn on.
+     */
+    private static View findLongClickableAncestorOfText(View root, String value) {
+        TextView text = findTextContaining(root, value);
+        assertNotNull("the reply text must be rendered", text);
+        View bubble = null;
+        View node = text;
+        while (node != null && node != root) {
+            if (node.isLongClickable()) bubble = node;
+            node = node.getParent() instanceof View ? (View) node.getParent() : null;
+        }
+        return bubble;
+    }
+
+    /** Rendered Markdown may add its own leading or trailing marks around the text it shows. */
+    private static TextView findTextContaining(View view, String value) {
+        if (view instanceof TextView) {
+            CharSequence text = ((TextView) view).getText();
+            if (text != null && text.toString().contains(value)) return (TextView) view;
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                TextView found = findTextContaining(group.getChildAt(i), value);
                 if (found != null) return found;
             }
         }
