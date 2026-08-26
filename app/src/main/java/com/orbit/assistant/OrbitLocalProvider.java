@@ -19,6 +19,18 @@ final class OrbitLocalProvider implements AiProvider {
     static final String NOT_INSTALLED_ERROR =
             "Orbit Local's model is not installed yet. Open Settings > AI & account > AI Providers > Orbit Local to download it.";
 
+    /**
+     * The last status Orbit read from the component.
+     *
+     * <p>Reaching the component means an IPC round trip, and {@link #status} is called from layout
+     * passes on the AI Providers screen. This caches the answer so drawing a list never blocks on
+     * another process, while {@link #refreshAsync} keeps it honest. It is deliberately pessimistic
+     * on failure: an unreachable component reads as not ready, never as ready.
+     */
+    private static volatile OrbitLocalStatus cachedStatus;
+    private static volatile long cachedStatusAt;
+    private static final long STATUS_FRESH_MS = 4000L;
+
     private static final AiCapabilities CAPABILITIES = AiCapabilities.builder()
             .streaming(true)
             .deviceActions(false)
@@ -48,47 +60,104 @@ final class OrbitLocalProvider implements AiProvider {
 
     @Override public AiCapabilities capabilities() { return CAPABILITIES; }
 
+    /** The cached component status, refreshed in the background when it goes stale. */
+    static OrbitLocalStatus cachedStatus(Context context) {
+        if (!OrbitLocalComponent.isUsable(context)) {
+            cachedStatus = null;
+            return null;
+        }
+        if (System.currentTimeMillis() - cachedStatusAt > STATUS_FRESH_MS) refreshAsync(context);
+        return cachedStatus;
+    }
+
+    /** Re-reads the component's status off the main thread. */
+    static void refreshAsync(Context context) {
+        cachedStatusAt = System.currentTimeMillis();
+        OrbitLocalClient.statusAsync(context, status -> cachedStatus = status);
+    }
+
+    /**
+     * What to say when the component itself is the thing standing in the way, or "" when it is not.
+     *
+     * <p>A device already carrying a model from an older Orbit is told something more useful than
+     * "not installed": the expensive part is already done, and only the small component is missing.
+     */
+    static String componentStatusDetail(OrbitLocalComponent.State state, boolean hasLegacyModel) {
+        switch (state) {
+            case NOT_INSTALLED:
+                return hasLegacyModel
+                        ? "Component required · model ready to move" : "Component not installed";
+            case UNTRUSTED: return "Component not verified";
+            case UPDATE_REQUIRED: return "Component update required";
+            default: return "";
+        }
+    }
+
+    /** Drops the cached view, e.g. right after the component or model changes. */
+    static void invalidateStatus() {
+        cachedStatus = null;
+        cachedStatusAt = 0L;
+    }
+
     @Override public Status status(Context context) {
         if (!DeviceCapabilityCheck.allowsLocalAi(DeviceCapabilityCheck.assess(context))) {
             return Status.UNSUPPORTED;
         }
-        return LocalModelStore.isReady(context) ? Status.READY : Status.NOT_INSTALLED;
+        // The optional component is now a hard prerequisite: without it there is no runtime to
+        // answer with, whatever model files happen to exist.
+        if (!OrbitLocalComponent.isUsable(context)) return Status.NOT_INSTALLED;
+        OrbitLocalStatus status = cachedStatus(context);
+        return status != null && status.modelReady() ? Status.READY : Status.NOT_INSTALLED;
     }
 
     @Override public String statusDetail(Context context) {
-        switch (status(context)) {
-            case READY: return "Ready · works offline";
-            case UNSUPPORTED: return "Not supported on this device";
-            default:
-                LocalModelStore.State state = LocalModelStore.state(context);
-                if (state == LocalModelStore.State.DOWNLOADING) return "Downloading model…";
-                if (state == LocalModelStore.State.VALIDATING) return "Verifying model…";
-                if (state == LocalModelStore.State.PAUSED) return "Download paused";
-                if (state == LocalModelStore.State.ERROR) return "Needs attention";
-                return "Model not installed";
+        if (!DeviceCapabilityCheck.allowsLocalAi(DeviceCapabilityCheck.assess(context))) {
+            return "Not supported on this device";
+        }
+        String componentDetail = componentStatusDetail(
+                OrbitLocalComponent.state(context), LocalModelStore.hasLegacyModel(context));
+        if (!componentDetail.isEmpty()) return componentDetail;
+        OrbitLocalStatus status = cachedStatus(context);
+        if (status == null) return "Checking component…";
+        switch (status.modelState) {
+            case OrbitLocalStatus.READY: return "Ready · works offline";
+            case OrbitLocalStatus.DOWNLOADING: return "Downloading model…";
+            case OrbitLocalStatus.VALIDATING: return "Verifying model…";
+            case OrbitLocalStatus.IMPORTING: return "Moving existing model…";
+            case OrbitLocalStatus.PAUSED: return "Download paused";
+            case OrbitLocalStatus.ERROR: return "Needs attention";
+            default: return "Model not installed";
         }
     }
 
     @Override public boolean selectable(Context context) {
-        // Without a ready model this provider cannot answer a single request, so it can neither
-        // be chosen nor remain silently active: AiProviders.active() falls back to ChatGPT if
-        // the model disappears underneath a stored selection.
+        // Without a trusted component and a ready model this provider cannot answer a single
+        // request, so it can neither be chosen nor remain silently active: AiProviders.active()
+        // falls back to ChatGPT if either disappears underneath a stored selection.
         return status(context) == Status.READY;
     }
 
     @Override public void send(Context context, AiRequest request,
                                AssistantClient.Callback callback) {
-        if (!LocalModelStore.isReady(context)) {
-            callback.onError(NOT_INSTALLED_ERROR);
+        String unavailable = OrbitLocalClient.unavailableReason(context);
+        if (!unavailable.isEmpty()) {
+            callback.onError(unavailable);
             return;
         }
         String prompt = buildPrompt(context, request);
-        LocalLlmEngine.generate(context, prompt, request.cancelled, new LocalLlmEngine.StreamCallback() {
+        // Cancellation is watched here and forwarded to the component, so Stop behaves exactly as
+        // it does for the cloud providers even though generation happens in another process.
+        final java.util.concurrent.atomic.AtomicBoolean finished =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
+        startCancellationWatch(context, request, finished);
+
+        OrbitLocalClient.generate(context, prompt, new OrbitLocalClient.StreamCallback() {
             @Override public void onPartial(String cumulativeText) {
                 callback.onDelta(clean(cumulativeText));
             }
 
             @Override public void onDone(String fullText) {
+                finished.set(true);
                 String text = clean(fullText);
                 if (text.trim().isEmpty()) {
                     callback.onError("Orbit Local produced no answer. Try rephrasing, or switch provider for this question.");
@@ -98,10 +167,37 @@ final class OrbitLocalProvider implements AiProvider {
             }
 
             @Override public void onError(String message) {
-                callback.onError("Orbit Local could not answer: " + message
-                        + ". If this keeps happening, reinstall the model from the Orbit Local screen.");
+                finished.set(true);
+                // Deliberately terminal. A prompt the user aimed at on-device AI is never
+                // silently re-sent to a cloud provider because the local path failed.
+                callback.onError(message);
             }
         });
+    }
+
+    /**
+     * Polls Orbit's normal cancellation signal and tells the component to stop.
+     *
+     * <p>The signal is a {@code BooleanSupplier} owned by the request pipeline, which cannot be
+     * passed across Binder, so it is watched on this side and translated into one cancel call.
+     */
+    private static void startCancellationWatch(Context context, AiRequest request,
+                                               java.util.concurrent.atomic.AtomicBoolean finished) {
+        if (request.cancelled == null) return;
+        final Context app = context.getApplicationContext();
+        new Thread(() -> {
+            long deadline = System.currentTimeMillis() + 10 * 60_000L;
+            while (!finished.get() && System.currentTimeMillis() < deadline) {
+                if (request.cancelled.getAsBoolean()) {
+                    OrbitLocalClient.cancelGeneration(app);
+                    return;
+                }
+                try { Thread.sleep(200L); } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }, "orbit-local-cancel-watch").start();
     }
 
     @Override public void plan(Context context, String planningPrompt, String intelligenceMode,

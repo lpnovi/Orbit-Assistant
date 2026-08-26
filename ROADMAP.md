@@ -605,6 +605,38 @@ second update server, a second app, a second package name, or a weaker build.
 - Preserve `orbit-update.json` schema 1 and the existing APK asset naming, so the updater already
   shipped in v0.7.7.3 can install v0.7.7.4 normally
 
+### 0.7.7.5-beta.1 — Modular Orbit Local (in Beta validation)
+**Not completed history yet.** Published as a prerelease for real-device validation; it becomes
+`0.7.7.5` Stable only after that testing is satisfactory.
+
+- Add the optional `:local` Gradle module, package `com.orbit.assistant.local`, and move
+  `com.google.mediapipe:tasks-genai` and the inference engine into it. The main Orbit APK no longer
+  depends on the runtime at all, so an install without local AI never carries its native libraries
+- `ReleaseModularityTest` fails the build if the runtime returns to the main module, if the
+  component gains a launcher entry or an Activity, or if its service loses its signature permission
+- One versioned AIDL contract in `ipc/`, compiled into both sides so the two ends cannot drift.
+  `IOrbitLocalService` covers protocol version, status, model download lifecycle, model import,
+  streaming generation, cancellation, and engine unload — and nothing else
+- Trust is mutual and checked every time: the service re-verifies its caller's package and signing
+  certificate on every transaction behind a signature-level permission, and Orbit verifies the
+  component's package, Orbit's permanent certificate, and its version before binding. Signature is
+  checked before version, so a hostile package can never pose as merely out of date
+- `OrbitLocalProvider` stays in Orbit and keeps owning the prompt, memory, history, and
+  conversation; it now reaches the runtime through `OrbitLocalClient` instead of MediaPipe directly
+- A failed local request is a local error. A prompt aimed at on-device AI is never silently
+  re-sent to a cloud provider, at any failure point including the component's process dying
+- The component owns the model: new downloads land in its own storage, run by its own WorkManager
+  worker, so a download no longer depends on Orbit's screen or process
+- Existing models are migrated, never discarded: streamed over a file descriptor, verified against
+  the pinned size and SHA-256 by the component, and Orbit's copy deleted only after READY. On a
+  device without room for two copies Orbit offers an explicit replace-and-redownload instead
+- Rebuild the Orbit Local screen around four cards — device, component, model, storage — plus
+  separate "Delete local model" and "Remove Orbit Local" actions. Android owns every install and
+  uninstall confirmation, and the real package state is reconciled on resume
+- Extend the one release workflow to build, sign, verify, and publish both APKs. `orbit-update.json`
+  stays schema 1 with an additive `component` block, so the updater shipped in v0.7.7.4 is
+  unaffected
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever
@@ -625,7 +657,8 @@ v0.7.7.4 shipped the Beta channel, so this order is now also the order these are
 *tested* in: a feature becomes `v0.7.7.5-beta.1`, is validated on a real device, and only then
 becomes a Stable release.
 
-1. **Modular Orbit Local** — the first feature to ship through the new Beta channel
+1. **Finish Modular Orbit Local Beta validation** — `0.7.7.5-beta.1` is published; it becomes
+   `0.7.7.5` Stable once real-device testing is satisfactory, or `beta.2` if it is not
 2. **Orbit Local device actions** — a lightweight local intent/function model installed beside the
    chat model (the `ModelSpec` architecture already keeps their files and state independent). The
    intended pipeline is fixed: user request → lightweight local intent/function model → normalized
@@ -730,7 +763,7 @@ awareness, "what can I make with what I have". Not built until real use shows th
 place. Orbit should first be excellent *during* cooking rather than become a meal planner.
 
 ### Next up
-- Modular Orbit Local, the first feature to be tested through the new Beta channel
+- Finish Modular Orbit Local Beta validation on a real device, then promote it to Stable
 - Local device actions: Orbit Local asking Orbit's existing tools to run simple reversible
   controls
 - Conditions beyond time and location, and more than one branch point in a single routine

@@ -14,3 +14,6 @@ dependencyResolutionManagement {
 }
 rootProject.name = "OrbitAssistant"
 include ':app'
+// The optional Orbit Local component. Built and signed by the same release pipeline as :app,
+// published as a separate APK, and installed only by users who choose local AI.
+include ':local'

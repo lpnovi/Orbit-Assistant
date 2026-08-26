@@ -397,3 +397,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - You can return to Stable whenever you like, and Orbit will never downgrade a newer build you already have installed.
   - Beta and Stable updates are the same app, signed and verified by Orbit's permanent certificate exactly the same way.
 
+- **v0.7.7.5-beta.1**: Orbit Local becomes a genuinely optional add-on, so Orbit itself is a much smaller download.
+  - Orbit no longer carries the on-device AI engine unless you actually want local AI, which makes the app significantly smaller for everyone else.
+  - Setting up Orbit Local now installs a small Orbit Local component first, then the AI model, in one guided flow.
+  - If you already downloaded the 1.6 GB model, Orbit offers to move it across instead of downloading it again.
+  - The model and the component can be removed separately, and Orbit Local storage is now itemised on its screen.
+  - Everything is still signed and verified by Orbit's permanent certificate, and Orbit refuses any component it did not publish.
+  - This is a Beta build for real-device testing; local AI needs validating on hardware before this becomes a stable release.
+

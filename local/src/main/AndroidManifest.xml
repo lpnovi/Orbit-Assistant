@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
+      Only Orbit may bind this service. The permission is signature-level, so Android grants it
+      solely to a package signed with Orbit's permanent release certificate; the service also
+      re-checks its caller at every transaction rather than relying on that alone.
+    -->
+    <permission
+        android:name="com.orbit.assistant.permission.BIND_ORBIT_LOCAL"
+        android:protectionLevel="signature"
+        android:label="@string/orbit_local_bind_permission_label"
+        android:description="@string/orbit_local_bind_permission_description" />
+
+    <application
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:supportsRtl="true">
+
+        <!--
+          Deliberately no launcher Activity, no launcher icon, no onboarding, and no settings.
+          Orbit Local is a component of Orbit, not a second assistant app: every user-facing
+          control lives in Orbit under AI Providers > Orbit Local. Android Settings will list the
+          package, which is expected and honest.
+        -->
+        <service
+            android:name=".OrbitLocalService"
+            android:exported="true"
+            android:permission="com.orbit.assistant.permission.BIND_ORBIT_LOCAL">
+            <intent-filter>
+                <action android:name="com.orbit.assistant.local.BIND" />
+            </intent-filter>
+        </service>
+
+    </application>
+</manifest>

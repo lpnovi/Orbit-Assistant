@@ -62,12 +62,21 @@ public final class UpdateChannelUiTest {
                 text.contains("Update notifications"));
     }
 
-    /** The channel and the installed build are different things and are shown separately. */
-    @Test public void aStableBuildShowsNoBetaBranding() {
+    /**
+     * The channel and the installed build are different things, and About &amp; updates shows both.
+     *
+     * <p>The pill describes the APK that is running, which is why it is correct for it to appear
+     * on this Beta build even though the update channel still defaults to Stable — the two are not
+     * the same fact.
+     */
+    @Test public void theInstalledBuildTypeIsShownSeparatelyFromTheChannel() {
         Activity activity = open();
         String text = allText(activity.getWindow().getDecorView());
-        assertFalse("v0.7.7.4 is a Stable build", text.contains("BETA BUILD"));
-        assertTrue(text.contains("Current version: " + BuildConfig.VERSION_NAME));
+        assertTrue("the running build is named in its readable form",
+                text.contains("Current version: " + OrbitVersion.installedDisplayName()));
+        assertEquals("the pill reflects the installed APK, not the channel",
+                OrbitVersion.installedIsBeta(), text.contains("BETA BUILD"));
+        assertTrue("the channel is still Stable by default", text.contains("Stable"));
     }
 
     // ---- the Beta confirmation --------------------------------------------------------------------

@@ -22,6 +22,8 @@ env:
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
   EXPECTED_PACKAGE_NAME: com.orbit.assistant
   EXPECTED_CERT_SHA256: 7D:AD:61:93:85:DF:F1:1E:C7:31:AA:55:5F:2B:44:8A:94:3C:73:91:81:3D:1A:94:DF:1C:B4:23:2E:CD:41:E3
+  EXPECTED_COMPONENT_PACKAGE_NAME: com.orbit.assistant.local
+  ORBIT_LOCAL_PROTOCOL: "1"
 
 jobs:
   release:
@@ -119,7 +121,7 @@ jobs:
             exit 1
           fi
 
-      - name: Build signed release APK
+      - name: Build signed release APKs
         shell: bash
         env:
           ORBIT_RELEASE_STORE_FILE: ${{ runner.temp }}/orbit-release.jks
@@ -183,30 +185,81 @@ jobs:
             exit 1
           fi
 
+          # ---- the optional Orbit Local component -------------------------------------------
+          # Held to exactly the same standard as the main APK: its own package, its own version,
+          # one signer, and the same permanent Orbit certificate. Orbit refuses to install a
+          # component that fails any of these, so publishing one would be publishing a dead asset.
+          component_apk="local/build/outputs/apk/release/local-release.apk"
+          if [[ ! -f "${component_apk}" ]]; then
+            echo "::error::Orbit Local component APK was not produced."
+            exit 1
+          fi
+          component_line="$("${aapt}" dump badging "${component_apk}" | grep -m 1 '^package:')"
+          component_package="$(awk -F"'" '{print $2}' <<< "${component_line}")"
+          component_version_code="$(awk -F"'" '{print $4}' <<< "${component_line}")"
+          component_version_name="$(awk -F"'" '{print $6}' <<< "${component_line}")"
+          if [[ "${component_package}" != "${EXPECTED_COMPONENT_PACKAGE_NAME}" ]]; then
+            echo "::error::Orbit Local component package name verification failed."
+            exit 1
+          fi
+          if [[ "${component_version_name}" != "${EXPECTED_VERSION_NAME}" ||
+                "${component_version_code}" != "${EXPECTED_VERSION_CODE}" ]]; then
+            echo "::error::Orbit Local component version verification failed."
+            exit 1
+          fi
+          component_report="${RUNNER_TEMP}/orbit-local-apksigner-report.txt"
+          "${apksigner}" verify --verbose --print-certs "${component_apk}" > "${component_report}" 2>&1
+          component_signers="$(grep -ciF 'certificate SHA-256 digest:' "${component_report}" || true)"
+          component_cert="$(grep -iF 'certificate SHA-256 digest:' "${component_report}" | head -n 1 | sed 's/.*digest:[[:space:]]*//' || true)"
+          normalized_component_cert="$(tr -d ':' <<< "${component_cert}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+          if [[ "${component_signers}" != '1' ]]; then
+            echo "::error::Orbit Local component signer-count verification failed."
+            exit 1
+          fi
+          if [[ "${normalized_component_cert}" != "${normalized_expected_cert}" ]]; then
+            echo "::error::Orbit Local component signing certificate verification failed."
+            exit 1
+          fi
+
           output_dir="${GITHUB_WORKSPACE}/release-assets"
           output_apk="${output_dir}/Orbit-Assistant-v${EXPECTED_VERSION_NAME}.apk"
+          output_component="${output_dir}/Orbit-Local-v${EXPECTED_VERSION_NAME}.apk"
+          output_component_checksum="${output_component}.sha256"
           output_checksum="${output_apk}.sha256"
           output_manifest="${output_dir}/orbit-update.json"
           mkdir -p "${output_dir}"
           cp "${apk_path}" "${output_apk}"
+          cp "${component_apk}" "${output_component}"
           (
             cd "${output_dir}"
             sha256sum "$(basename "${output_apk}")" > "$(basename "${output_checksum}")"
+            sha256sum "$(basename "${output_component}")" > "$(basename "${output_component_checksum}")"
           )
 
           apk_sha256="$(sha256sum "${output_apk}" | awk '{print $1}')"
+          component_sha256="$(sha256sum "${output_component}" | awk '{print $1}')"
           export ACTUAL_PACKAGE="${actual_package}"
           export ACTUAL_VERSION_NAME="${actual_version_name}"
           export ACTUAL_VERSION_CODE="${actual_version_code}"
           export APK_ASSET_NAME="$(basename "${output_apk}")"
           export APK_SHA256="${apk_sha256}"
           export CERTIFICATE_SHA256="${EXPECTED_CERT_SHA256}"
+          export COMPONENT_PACKAGE="${component_package}"
+          export COMPONENT_VERSION_NAME="${component_version_name}"
+          export COMPONENT_VERSION_CODE="${component_version_code}"
+          export COMPONENT_ASSET_NAME="$(basename "${output_component}")"
+          export COMPONENT_SHA256="${component_sha256}"
+          export COMPONENT_SIZE="$(stat -c%s "${output_component}")"
+          export COMPONENT_PROTOCOL="${ORBIT_LOCAL_PROTOCOL}"
           export OUTPUT_MANIFEST="${output_manifest}"
           python3 - <<'PY'
           import json
           import os
           from pathlib import Path
 
+          # Schema stays 1, deliberately. Every Orbit already in the field reads exactly these
+          # top-level fields and updates normally; "component" is purely additive, and an older
+          # updater simply never looks at it.
           manifest = {
               "schema": 1,
               "packageName": os.environ["ACTUAL_PACKAGE"],
@@ -215,6 +268,16 @@ jobs:
               "apkAssetName": os.environ["APK_ASSET_NAME"],
               "apkSha256": os.environ["APK_SHA256"],
               "certificateSha256": os.environ["CERTIFICATE_SHA256"],
+              "component": {
+                  "packageName": os.environ["COMPONENT_PACKAGE"],
+                  "versionName": os.environ["COMPONENT_VERSION_NAME"],
+                  "versionCode": int(os.environ["COMPONENT_VERSION_CODE"]),
+                  "apkAssetName": os.environ["COMPONENT_ASSET_NAME"],
+                  "apkSha256": os.environ["COMPONENT_SHA256"],
+                  "apkSize": int(os.environ["COMPONENT_SIZE"]),
+                  "certificateSha256": os.environ["CERTIFICATE_SHA256"],
+                  "protocol": int(os.environ["COMPONENT_PROTOCOL"]),
+              },
           }
           Path(os.environ["OUTPUT_MANIFEST"]).write_text(
               json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
@@ -226,6 +289,8 @@ jobs:
           echo "Verified certificate SHA-256: ${EXPECTED_CERT_SHA256}"
           echo "apk_path=${output_apk}" >> "${GITHUB_OUTPUT}"
           echo "checksum_path=${output_checksum}" >> "${GITHUB_OUTPUT}"
+          echo "component_path=${output_component}" >> "${GITHUB_OUTPUT}"
+          echo "component_checksum_path=${output_component_checksum}" >> "${GITHUB_OUTPUT}"
           echo "manifest_path=${output_manifest}" >> "${GITHUB_OUTPUT}"
 
       - name: Generate release notes from changelog
@@ -293,6 +358,8 @@ jobs:
           path: |
             ${{ steps.verify.outputs.apk_path }}
             ${{ steps.verify.outputs.checksum_path }}
+            ${{ steps.verify.outputs.component_path }}
+            ${{ steps.verify.outputs.component_checksum_path }}
             ${{ steps.verify.outputs.manifest_path }}
           if-no-files-found: error
 
@@ -313,6 +380,8 @@ jobs:
           gh release create "${RELEASE_TAG}" \
             "${{ steps.verify.outputs.apk_path }}" \
             "${{ steps.verify.outputs.checksum_path }}" \
+            "${{ steps.verify.outputs.component_path }}" \
+            "${{ steps.verify.outputs.component_checksum_path }}" \
             "${{ steps.verify.outputs.manifest_path }}" \
             --repo "${GITHUB_REPOSITORY}" \
             --verify-tag \

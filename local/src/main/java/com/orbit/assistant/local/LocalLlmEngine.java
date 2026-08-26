@@ -1,4 +1,4 @@
-package com.orbit.assistant;
+package com.orbit.assistant.local;
 
 import android.content.Context;
 
@@ -9,16 +9,18 @@ import java.io.File;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.BooleanSupplier;
 
 /**
  * Orbit Local's inference runtime: a thin, defensive wrapper around Google's MediaPipe/LiteRT
  * LLM Inference API.
  *
- * <p>The loaded model is expensive (seconds to load, roughly the model's size in memory), so one
- * engine instance is kept per process and reused across turns. Requests run one at a time: local
- * generation saturates the device, and Orbit's request pipeline never issues concurrent turns
- * for one conversation anyway. Everything here runs off the main thread.
+ * <p>This class, and the native libraries behind it, are the entire reason the optional component
+ * exists. They used to live inside every Orbit installation whether or not local AI was ever
+ * enabled; now they ship only to people who chose to install Orbit Local.
+ *
+ * <p>The loaded model is expensive (seconds to load, roughly its size in memory), so one engine
+ * is kept per process and reused across turns. Requests run one at a time: local generation
+ * saturates the device, and Orbit never issues concurrent turns for one conversation anyway.
  */
 final class LocalLlmEngine {
 
@@ -38,21 +40,27 @@ final class LocalLlmEngine {
     private static final Object LOCK = new Object();
     private static LlmInference engine;
     private static String loadedModelPath;
+    /** Set by a cancel request from Orbit; polled between tokens. */
+    private static final AtomicBoolean CANCEL_REQUESTED = new AtomicBoolean(false);
 
     private LocalLlmEngine() {}
 
-    /** True once the model has been loaded in this process, without triggering a load. */
     static boolean isLoaded() {
         synchronized (LOCK) { return engine != null; }
     }
 
+    /** Asks the generation in progress, if any, to stop. */
+    static void requestCancel() {
+        CANCEL_REQUESTED.set(true);
+    }
+
     /**
-     * Runs one streaming generation. The callback is invoked on the engine thread; cancellation
-     * is polled between tokens and stops the underlying generation, returning whatever text had
+     * Runs one streaming generation. The callback is invoked on the engine thread; cancellation is
+     * polled between tokens and stops the underlying generation, returning whatever text had
      * already been produced through {@link StreamCallback#onDone}.
      */
-    static void generate(Context context, String fullPrompt, BooleanSupplier cancelled,
-                         StreamCallback callback) {
+    static void generate(Context context, String fullPrompt, StreamCallback callback) {
+        CANCEL_REQUESTED.set(false);
         EXEC.execute(() -> {
             LlmInferenceSession session = null;
             try {
@@ -67,7 +75,7 @@ final class LocalLlmEngine {
 
                 StringBuilder text = new StringBuilder();
                 AtomicBoolean finished = new AtomicBoolean(false);
-                AtomicBoolean cancelRequested = new AtomicBoolean(false);
+                AtomicBoolean cancelSent = new AtomicBoolean(false);
                 final LlmInferenceSession activeSession = session;
                 final Object doneSignal = new Object();
 
@@ -75,9 +83,9 @@ final class LocalLlmEngine {
                     if (finished.get()) return;
                     if (partial != null && !partial.isEmpty()) {
                         text.append(partial);
-                        if (!cancelRequested.get()) callback.onPartial(text.toString());
+                        if (!cancelSent.get()) callback.onPartial(text.toString());
                     }
-                    if (cancelled.getAsBoolean() && cancelRequested.compareAndSet(false, true)) {
+                    if (CANCEL_REQUESTED.get() && cancelSent.compareAndSet(false, true)) {
                         try { activeSession.cancelGenerateResponseAsync(); } catch (Throwable ignored) {}
                     }
                     if (done) {
@@ -92,8 +100,8 @@ final class LocalLlmEngine {
                     long deadline = System.currentTimeMillis() + 10 * 60_000L;
                     while (!finished.get() && System.currentTimeMillis() < deadline) {
                         doneSignal.wait(1000L);
-                        if (!finished.get() && cancelled.getAsBoolean()
-                                && cancelRequested.compareAndSet(false, true)) {
+                        if (!finished.get() && CANCEL_REQUESTED.get()
+                                && cancelSent.compareAndSet(false, true)) {
                             try { activeSession.cancelGenerateResponseAsync(); } catch (Throwable ignored) {}
                         }
                     }
@@ -108,6 +116,7 @@ final class LocalLlmEngine {
                 callback.onError(message == null || message.trim().isEmpty()
                         ? t.getClass().getSimpleName() : message);
             } finally {
+                CANCEL_REQUESTED.set(false);
                 if (session != null) {
                     try { session.close(); } catch (Throwable ignored) {}
                 }
@@ -117,7 +126,7 @@ final class LocalLlmEngine {
 
     private static LlmInference ensureLoaded(Context context) {
         synchronized (LOCK) {
-            File model = LocalModelStore.modelFile(context);
+            File model = ComponentModelStore.modelFile(context);
             String path = model.getAbsolutePath();
             if (engine != null && path.equals(loadedModelPath)) return engine;
             if (engine != null) {
@@ -127,7 +136,7 @@ final class LocalLlmEngine {
             }
             LlmInference.LlmInferenceOptions options = LlmInference.LlmInferenceOptions.builder()
                     .setModelPath(path)
-                    .setMaxTokens(LocalModelStore.MODEL_MAX_TOKENS)
+                    .setMaxTokens(ComponentModelStore.MODEL_MAX_TOKENS)
                     .build();
             engine = LlmInference.createFromOptions(context.getApplicationContext(), options);
             loadedModelPath = path;

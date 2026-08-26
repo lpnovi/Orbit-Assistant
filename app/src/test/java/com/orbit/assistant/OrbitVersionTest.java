@@ -132,13 +132,26 @@ public final class OrbitVersionTest {
     // ---- this installation ------------------------------------------------------------------------
 
     /**
-     * v0.7.7.4 itself is a Stable release. This pins that, so shipping a Beta versionName by
-     * accident fails the build rather than reaching a phone.
+     * Whatever Orbit ships as, its own version must parse. A build whose versionName Orbit cannot
+     * read would break update comparisons and the release workflow's tag check together, so this
+     * fails at build time rather than on a phone.
      */
-    @Test public void thisBuildIsStable() {
+    @Test public void thisBuildHasAVersionOrbitUnderstands() {
         assertTrue("BuildConfig version must be a valid Orbit version",
                 OrbitVersion.isValid(BuildConfig.VERSION_NAME));
-        assertFalse("v0.7.7.4 ships as Stable", OrbitVersion.installedIsBeta());
-        assertEquals(BuildConfig.VERSION_NAME, OrbitVersion.installedDisplayName());
+        assertEquals(OrbitVersion.displayName(BuildConfig.VERSION_NAME),
+                OrbitVersion.installedDisplayName());
+        assertEquals(OrbitVersion.isBeta(BuildConfig.VERSION_NAME), OrbitVersion.installedIsBeta());
+        assertTrue("its tag must be one the release workflow accepts",
+                OrbitVersion.isValidTag(OrbitVersion.tagFor(BuildConfig.VERSION_NAME)));
+    }
+
+    /** v0.7.7.5-beta.1 ships as a Beta, deliberately, for real-device validation before Stable. */
+    @Test public void thisBuildIsTheModularOrbitLocalBeta() {
+        assertTrue(OrbitVersion.installedIsBeta());
+        assertEquals("0.7.7.5", OrbitVersion.baseVersion(BuildConfig.VERSION_NAME));
+        assertEquals(1, OrbitVersion.betaNumber(BuildConfig.VERSION_NAME));
+        assertEquals("Orbit Assistant v0.7.7.5 Beta 1",
+                OrbitVersion.releaseTitle(BuildConfig.VERSION_NAME));
     }
 }

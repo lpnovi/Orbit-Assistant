@@ -49,8 +49,14 @@ public final class DeviceCapabilityCheck {
                 totalMem = info.totalMem;
             }
         } catch (Exception ignored) {}
+        // A model already present anywhere — the component's, or one an older Orbit downloaded and
+        // has not migrated yet — means the storage for it has already been found once, so the
+        // assessment must not warn about needing room it does not need.
+        OrbitLocalStatus status = OrbitLocalProvider.cachedStatus(c);
+        boolean modelPresent = (status != null && status.modelReady())
+                || LocalModelStore.hasLegacyModel(c);
         return assess(Build.SUPPORTED_ABIS, Build.VERSION.SDK_INT, totalMem,
-                LocalModelStore.freeStorageBytes(c), LocalModelStore.isReady(c));
+                LocalModelStore.freeStorageBytes(c), modelPresent);
     }
 
     /** Pure decision logic, separated so it can be tested without a device. */

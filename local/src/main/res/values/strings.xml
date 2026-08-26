@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Orbit Local</string>
+    <string name="orbit_local_bind_permission_label">Run Orbit Local AI</string>
+    <string name="orbit_local_bind_permission_description">Allows Orbit to run AI privately on this device.</string>
+</resources>

@@ -2,6 +2,9 @@ plugins {
     id 'com.android.application'
 }
 
+// The component is signed by exactly the same permanent Orbit release certificate as the main
+// app. That shared identity is what makes the signature-level bind permission meaningful, and
+// what lets each side verify the other before trusting it.
 def orbitSigningPropertiesFile = rootProject.file('orbit-signing.properties')
 def orbitSigningProperties = new Properties()
 if (orbitSigningPropertiesFile.exists()) {
@@ -25,20 +28,23 @@ def orbitReleaseSigningReady = [
 ].every { it != null && !it.isEmpty() }
 
 android {
-    namespace 'com.orbit.assistant'
+    namespace 'com.orbit.assistant.local'
     compileSdk 35
 
     defaultConfig {
-        applicationId 'com.orbit.assistant'
+        applicationId 'com.orbit.assistant.local'
         minSdk 29
         targetSdk 35
+        // Kept in lockstep with the main app for this release: Orbit installs the component built
+        // for its own release, so a mismatched pair cannot occur.
         versionCode 728
         versionName "0.7.7.5-beta.1"
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
-        // No ABI filter is needed here any more: with the inference runtime moved into the
-        // optional :local component, the main Orbit APK carries no native libraries at all.
-        // The filter now lives in local/build.gradle, where the native code actually is.
+        // The inference runtime ships native libraries per ABI. Only 64-bit ARM is packaged, and
+        // this is now the only APK in the project that carries them at all.
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
     }
 
     signingConfigs {
@@ -68,8 +74,8 @@ android {
     }
 
     sourceSets {
-        // One copy of the Orbit Local IPC contract, compiled into both sides. Duplicating the
-        // .aidl files would let the two ends of the interface drift apart silently.
+        // One copy of the IPC contract, compiled into both sides. Duplicating the .aidl files
+        // would let the two ends drift apart silently.
         main.aidl.srcDirs += ['../ipc']
     }
 
@@ -93,17 +99,11 @@ afterEvaluate {
     }
 }
 
-
 dependencies {
-    implementation "androidx.core:core:1.16.0"
     implementation "androidx.work:work-runtime:2.11.2"
-    implementation "com.tom-roush:pdfbox-android:2.0.27.0"
-    // Orbit Local's inference runtime deliberately does NOT live here. It ships in the
-    // optional :local component so an Orbit install without local AI never carries it.
-    // ReleaseModularityTest fails the build if tasks-genai returns to this module.
+    // The whole reason this module exists: the on-device inference runtime lives here and
+    // nowhere else, so an Orbit install without the component never carries it.
+    implementation "com.google.mediapipe:tasks-genai:0.10.35"
     testImplementation "junit:junit:4.13.2"
     testImplementation "org.robolectric:robolectric:4.16"
-    androidTestImplementation "androidx.test:core:1.6.1"
-    androidTestImplementation "androidx.test.ext:junit:1.2.1"
-    androidTestImplementation "androidx.test:runner:1.6.2"
 }
