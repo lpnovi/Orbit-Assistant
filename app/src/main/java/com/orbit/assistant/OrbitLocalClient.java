@@ -182,13 +182,25 @@ public final class OrbitLocalClient {
         void onStatus(OrbitLocalStatus status);
     }
 
+    /**
+     * One thread for every status read Orbit will ever make.
+     *
+     * <p>The Orbit Local screen polls while it is open, so status is the one call here that
+     * repeats. A single-threaded executor makes "no overlapping status readers" a property of the
+     * client rather than a rule each caller has to remember, and bounds the cost of a screen left
+     * open during a long download to exactly one thread.
+     */
+    private static final java.util.concurrent.ExecutorService STATUS_EXECUTOR =
+            java.util.concurrent.Executors.newSingleThreadExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "orbit-local-status");
+                thread.setDaemon(true);
+                return thread;
+            });
+
     /** {@link #status} off the main thread, for UI that must not block. */
     public static void statusAsync(Context context, StatusCallback callback) {
         Context app = context.getApplicationContext();
-        new Thread(() -> {
-            OrbitLocalStatus status = status(app);
-            callback.onStatus(status);
-        }, "orbit-local-status").start();
+        STATUS_EXECUTOR.execute(() -> callback.onStatus(status(app)));
     }
 
     // ---- model lifecycle -------------------------------------------------------------------------

@@ -127,9 +127,15 @@ public final class OrbitLocalTrustTest {
                 "a component asset from a different release");
     }
 
+    /**
+     * Written against the constant rather than a literal, so it keeps testing the rule after a
+     * protocol bump instead of quietly becoming a test that the current protocol is rejected.
+     */
     @Test public void anIncompatibleProtocolIsRejected() throws Exception {
-        rejects(manifest(component().put("protocol", 2)),
-                "a component speaking an interface Orbit does not understand");
+        rejects(manifest(component().put("protocol", OrbitLocalComponent.PROTOCOL_VERSION + 1)),
+                "a component speaking an interface Orbit does not understand yet");
+        rejects(manifest(component().put("protocol", OrbitLocalComponent.PROTOCOL_VERSION - 1)),
+                "a component speaking an interface Orbit has moved on from");
         rejects(manifest(component().put("protocol", 0)),
                 "a component with no declared protocol");
     }

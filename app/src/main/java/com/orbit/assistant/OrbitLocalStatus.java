@@ -9,22 +9,35 @@ import android.os.Bundle;
  * a key and an older reader simply will not ask for it. This class is where those loose keys
  * become something the rest of Orbit can use without knowing they came from another process.
  *
- * <p>Model states mirror the component's own, plus {@link #IMPORTING} for a migration in
- * progress. An unrecognised state string resolves to {@link #NOT_INSTALLED} rather than being
- * trusted — Orbit will not present a model as ready on the strength of a word it does not know.
+ * <p>Model states mirror the component's own. An unrecognised state string resolves to
+ * {@link #NOT_INSTALLED} rather than being trusted — Orbit will not present a model as ready on
+ * the strength of a word it does not know.
+ *
+ * <p>Protocol 2 split what used to be one overloaded word. {@link #PAUSED} now means a pause the
+ * user asked for and nothing else; a download that is queued, offline, or was cut short reports
+ * {@link #QUEUED}, {@link #WAITING_FOR_NETWORK} or {@link #INTERRUPTED}. That distinction is the
+ * whole reason Orbit can stop telling someone they paused a download they never touched.
  */
 public final class OrbitLocalStatus {
 
     public static final String NOT_INSTALLED = "NOT_INSTALLED";
-    public static final String PAUSED = "PAUSED";
+    /** Work exists and is waiting its turn. */
+    public static final String QUEUED = "QUEUED";
+    /** Work exists and is waiting for the device to come back online. */
+    public static final String WAITING_FOR_NETWORK = "WAITING_FOR_NETWORK";
     public static final String DOWNLOADING = "DOWNLOADING";
+    /** Stopped before finishing for a reason nobody chose. Resumable. */
+    public static final String INTERRUPTED = "INTERRUPTED";
+    /** The user asked for this, and only ever that. */
+    public static final String PAUSED = "PAUSED";
     public static final String VALIDATING = "VALIDATING";
     public static final String IMPORTING = "IMPORTING";
     public static final String READY = "READY";
     public static final String ERROR = "ERROR";
 
     private static final String[] KNOWN_STATES = {
-            NOT_INSTALLED, PAUSED, DOWNLOADING, VALIDATING, IMPORTING, READY, ERROR
+            NOT_INSTALLED, QUEUED, WAITING_FOR_NETWORK, DOWNLOADING, INTERRUPTED,
+            PAUSED, VALIDATING, IMPORTING, READY, ERROR
     };
 
     public final int protocol;
@@ -41,11 +54,18 @@ public final class OrbitLocalStatus {
     public final long modelSizeBytes;
     public final String modelError;
     public final long freeBytes;
+    /** Diagnostics only: what the component's background work was doing. */
+    public final String workState;
+    /** Diagnostics only: whether a pause was explicitly requested. */
+    public final boolean pauseRequested;
+    /** Diagnostics only: a short token naming why the last attempt stopped. */
+    public final String lastFailure;
 
     private OrbitLocalStatus(int protocol, String componentVersionName, long componentVersionCode,
                              String modelState, String modelId, String modelDisplayName,
                              long modelBytes, long modelTotalBytes, long modelSizeBytes,
-                             String modelError, long freeBytes) {
+                             String modelError, long freeBytes, String workState,
+                             boolean pauseRequested, String lastFailure) {
         this.protocol = protocol;
         this.componentVersionName = componentVersionName == null ? "" : componentVersionName;
         this.componentVersionCode = componentVersionCode;
@@ -58,6 +78,9 @@ public final class OrbitLocalStatus {
         this.modelSizeBytes = Math.max(0L, modelSizeBytes);
         this.modelError = modelError == null ? "" : modelError;
         this.freeBytes = freeBytes;
+        this.workState = workState == null ? "" : workState;
+        this.pauseRequested = pauseRequested;
+        this.lastFailure = lastFailure == null ? "" : lastFailure;
     }
 
     static OrbitLocalStatus from(Bundle bundle) {
@@ -73,7 +96,10 @@ public final class OrbitLocalStatus {
                 bundle.getLong("modelTotalBytes", 0L),
                 bundle.getLong("modelSizeBytes", 0L),
                 bundle.getString("modelError", ""),
-                bundle.getLong("freeBytes", -1L));
+                bundle.getLong("freeBytes", -1L),
+                bundle.getString("workState", ""),
+                bundle.getBoolean("pauseRequested", false),
+                bundle.getString("lastFailure", ""));
     }
 
     /** An unknown state is treated as nothing installed, never as something usable. */
@@ -88,9 +114,31 @@ public final class OrbitLocalStatus {
         return READY.equals(modelState);
     }
 
+    /** Something is actively happening to the model right now. */
     public boolean modelBusy() {
         return DOWNLOADING.equals(modelState) || VALIDATING.equals(modelState)
                 || IMPORTING.equals(modelState);
+    }
+
+    /**
+     * The download exists and is going somewhere, even if no bytes are moving this second.
+     *
+     * <p>What the Orbit Local screen keeps watching. A queued or offline download is still live
+     * work that will resume by itself, so the screen must keep looking at it rather than settling
+     * on a stale figure.
+     */
+    public boolean modelInFlight() {
+        return modelBusy() || QUEUED.equals(modelState) || WAITING_FOR_NETWORK.equals(modelState);
+    }
+
+    /** Stopped part-way with bytes worth keeping, whoever or whatever stopped it. */
+    public boolean modelResumable() {
+        return PAUSED.equals(modelState) || INTERRUPTED.equals(modelState);
+    }
+
+    /** Whether a progress bar belongs on screen for this state. */
+    public boolean showsProgress() {
+        return modelInFlight() || modelResumable();
     }
 
     /** Progress through the download or import, 0-1000, for the existing progress bar. */
@@ -104,6 +152,9 @@ public final class OrbitLocalStatus {
         switch (modelState) {
             case READY: return "Ready";
             case DOWNLOADING: return "Downloading";
+            case QUEUED: return "Preparing";
+            case WAITING_FOR_NETWORK: return "Waiting to connect";
+            case INTERRUPTED: return "Interrupted";
             case VALIDATING: return "Verifying";
             case IMPORTING: return "Moving";
             case PAUSED: return "Paused";

@@ -31,13 +31,28 @@ interface IOrbitLocalService {
      *
      * <p>A Bundle rather than a parcelable so a later protocol can add a key without breaking an
      * older reader. Keys are documented in Orbit's OrbitLocalStatus.
+     *
+     * <p>Cheap enough to poll while the Orbit Local screen is open: the component answers from its
+     * own preferences and file sizes, and consults WorkManager only when that answer could change
+     * the outcome.
      */
     Bundle status();
 
-    /** Starts or resumes the model download inside the component. Safe to call when running. */
+    /**
+     * Starts or resumes the model download inside the component.
+     *
+     * <p>Idempotent. Calling it while a download is genuinely running withdraws any standing pause
+     * request and changes nothing else, so a second tap can never produce a second download.
+     */
     void startModelDownload();
 
-    /** Stops a running download, keeping partial bytes so it can resume. */
+    /**
+     * The user asked to stop. Partial bytes are kept so it can resume.
+     *
+     * <p>The only call that may put the component into PAUSED. From protocol 2 that state means
+     * exactly one thing — someone chose it — and a lost network, an exhausted retry, a truncated
+     * stream, or an unanswerable WorkManager query report themselves as what they are instead.
+     */
     void pauseModelDownload();
 
     /** Stops a download and discards its partial bytes. */

@@ -184,11 +184,33 @@ public final class ReleaseModularityTest {
                 workflow.contains("Orbit-Assistant-v${EXPECTED_VERSION_NAME}.apk"));
     }
 
-    /** This release is the Stable promotion of the Betas that validated Modular Orbit Local. */
-    @Test public void thisReleaseIsStable() {
-        assertTrue("v0.7.7.5 must be a Stable version",
-                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.installedIsBeta());
+    /**
+     * This release is a Beta, and says so everywhere it is written down.
+     *
+     * <p>v0.7.7.6 fixes lifecycle failures that only a real Galaxy S25 Ultra can confirm — a
+     * removal that Samsung's package installer has to actually draw, and a download that has to
+     * survive a locked screen. Unit tests cannot validate either, so this ships for testing rather
+     * than as a finished release, and the release pipeline publishes it as a prerelease.
+     */
+    @Test public void thisReleaseIsABetaAwaitingDeviceValidation() {
+        assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
+                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
+    }
+
+    /**
+     * The IPC contract version Orbit speaks, the one the component answers with, and the one the
+     * release manifest publishes are one number in three files. A drift makes every install of the
+     * component fail its protocol check.
+     */
+    @Test public void bothSidesAndTheReleaseManifestAgreeOnTheProtocol() {
+        String expected = String.valueOf(OrbitLocalComponent.PROTOCOL_VERSION);
+        assertTrue("the component must implement the protocol Orbit speaks",
+                read("local/src/main/java/com/orbit/assistant/local/OrbitLocalService.java")
+                        .contains("PROTOCOL_VERSION = " + expected));
+        assertTrue("and the release manifest must publish it",
+                read(".github/workflows/release.yml")
+                        .contains("ORBIT_LOCAL_PROTOCOL: \"" + expected + "\""));
     }
 }

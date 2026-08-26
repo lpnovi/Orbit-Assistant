@@ -44,7 +44,7 @@ public final class OrbitLocalStateTest {
 
     @Test public void aFullStatusIsReadBack() {
         OrbitLocalStatus status = OrbitLocalStatus.from(bundle(OrbitLocalStatus.READY, 1_598_556_720L));
-        assertEquals(1, status.protocol);
+        assertEquals(OrbitLocalComponent.PROTOCOL_VERSION, status.protocol);
         assertEquals("0.7.7.5-beta.1", status.componentVersionName);
         assertEquals(OrbitLocalStatus.READY, status.modelState);
         assertTrue(status.modelReady());
@@ -66,8 +66,10 @@ public final class OrbitLocalStateTest {
 
     @Test public void everyKnownStateSurvivesTheRoundTrip() {
         for (String state : new String[]{OrbitLocalStatus.NOT_INSTALLED, OrbitLocalStatus.PAUSED,
-                OrbitLocalStatus.DOWNLOADING, OrbitLocalStatus.VALIDATING,
-                OrbitLocalStatus.IMPORTING, OrbitLocalStatus.READY, OrbitLocalStatus.ERROR}) {
+                OrbitLocalStatus.QUEUED, OrbitLocalStatus.WAITING_FOR_NETWORK,
+                OrbitLocalStatus.DOWNLOADING, OrbitLocalStatus.INTERRUPTED,
+                OrbitLocalStatus.VALIDATING, OrbitLocalStatus.IMPORTING, OrbitLocalStatus.READY,
+                OrbitLocalStatus.ERROR}) {
             assertEquals(state, OrbitLocalStatus.from(bundle(state, 0L)).modelState);
         }
     }
@@ -78,6 +80,27 @@ public final class OrbitLocalStateTest {
         assertTrue(OrbitLocalStatus.from(bundle(OrbitLocalStatus.IMPORTING, 1L)).modelBusy());
         assertFalse(OrbitLocalStatus.from(bundle(OrbitLocalStatus.PAUSED, 1L)).modelBusy());
         assertFalse(OrbitLocalStatus.from(bundle(OrbitLocalStatus.READY, 1L)).modelBusy());
+    }
+
+    /**
+     * Protocol 2 stopped one word standing in for four different situations.
+     *
+     * <p>A queued download, an offline one, and one that was cut short are all things that happen
+     * without anybody choosing them, and each now says so. PAUSED is left meaning the one thing it
+     * should always have meant.
+     */
+    @Test public void aPauseIsDistinguishableFromEverythingThatMerelyStopped() {
+        assertTrue(OrbitLocalStatus.from(bundle(OrbitLocalStatus.PAUSED, 1L)).modelResumable());
+        assertTrue(OrbitLocalStatus.from(bundle(OrbitLocalStatus.INTERRUPTED, 1L)).modelResumable());
+        assertFalse("a queued download is not stopped",
+                OrbitLocalStatus.from(bundle(OrbitLocalStatus.QUEUED, 1L)).modelResumable());
+        assertFalse("an offline download is not stopped either",
+                OrbitLocalStatus.from(bundle(OrbitLocalStatus.WAITING_FOR_NETWORK, 1L))
+                        .modelResumable());
+        assertEquals("Paused", OrbitLocalStatus.from(bundle(OrbitLocalStatus.PAUSED, 1L))
+                .stateLabel());
+        assertEquals("Interrupted", OrbitLocalStatus.from(bundle(OrbitLocalStatus.INTERRUPTED, 1L))
+                .stateLabel());
     }
 
     @Test public void progressIsBoundedAndSafeWithNoSize() {
@@ -221,7 +244,7 @@ public final class OrbitLocalStateTest {
 
     private static Bundle bundle(String state, long bytes) {
         Bundle bundle = new Bundle();
-        bundle.putInt("protocol", 1);
+        bundle.putInt("protocol", OrbitLocalComponent.PROTOCOL_VERSION);
         bundle.putString("componentVersionName", "0.7.7.5-beta.1");
         bundle.putLong("componentVersionCode", 728L);
         bundle.putString("modelState", state);

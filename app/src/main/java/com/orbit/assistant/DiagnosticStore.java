@@ -100,6 +100,27 @@ public final class DiagnosticStore {
         return out.toString();
     }
 
+    /**
+     * How far the last Orbit Local component uninstall got, and what threw if anything did.
+     *
+     * <p>Stage names and exception class names only — no filesystem paths, no model bytes, and
+     * nothing about any conversation. This exists because v0.7.7.5's removal failed completely
+     * silently on a real device: the platform refused the request without an exception and Orbit
+     * caught nothing, so there was no trace anywhere of a button that plainly did nothing.
+     */
+    public static void recordComponentUninstall(Context c, String stage, String detail) {
+        if (c == null) return;
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+                .putString("local_uninstall_stage", safe(stage))
+                .putString("local_uninstall_detail", safe(detail))
+                .putLong("local_uninstall_updated", System.currentTimeMillis())
+                .apply();
+    }
+
+    public static String lastComponentUninstallStage(Context c) {
+        return prefs(c).getString("local_uninstall_stage", "");
+    }
+
     public static void recordError(Context c, String error) {
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
                 .putString("last_error", safe(error))

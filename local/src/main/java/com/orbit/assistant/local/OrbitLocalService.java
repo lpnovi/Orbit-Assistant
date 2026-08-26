@@ -29,8 +29,16 @@ import java.util.Locale;
 public final class OrbitLocalService extends Service {
     private static final String TAG = "OrbitLocalService";
 
-    /** The IPC contract version. Bumped only when the interface's meaning changes. */
-    public static final int PROTOCOL_VERSION = 1;
+    /**
+     * The IPC contract version. Bumped only when the interface's meaning changes.
+     *
+     * <p>Raised to 2 in v0.7.7.6, because the meaning genuinely changed rather than merely grew:
+     * the model status gained QUEUED, WAITING_FOR_NETWORK and INTERRUPTED, and PAUSED narrowed to
+     * the one thing it should always have meant — a pause the user actually asked for. An older
+     * reader would resolve the new words to "not installed", and would keep reading PAUSED as
+     * though it still covered every stopped download.
+     */
+    public static final int PROTOCOL_VERSION = 2;
 
     /** The only package allowed to bind, whatever the permission system reports. */
     private static final String ORBIT_PACKAGE = "com.orbit.assistant";
@@ -51,6 +59,12 @@ public final class OrbitLocalService extends Service {
     public static final String KEY_MODEL_SIZE_BYTES = "modelSizeBytes";
     public static final String KEY_MODEL_ERROR = "modelError";
     public static final String KEY_FREE_BYTES = "freeBytes";
+    /** Protocol 2: what the component's background work is doing, for Orbit's Diagnostics. */
+    public static final String KEY_WORK_STATE = "workState";
+    /** Protocol 2: whether a pause was explicitly requested. The only source of PAUSED. */
+    public static final String KEY_PAUSE_REQUESTED = "pauseRequested";
+    /** Protocol 2: a short non-sensitive token naming why the last attempt stopped. */
+    public static final String KEY_LAST_FAILURE = "lastFailure";
 
     @Override public IBinder onBind(Intent intent) {
         return binder;
@@ -78,6 +92,15 @@ public final class OrbitLocalService extends Service {
             out.putLong(KEY_MODEL_SIZE_BYTES, ComponentModelStore.MODEL_SIZE_BYTES);
             out.putString(KEY_MODEL_ERROR, ComponentModelStore.errorMessage(c));
             out.putLong(KEY_FREE_BYTES, ComponentModelStore.freeStorageBytes(c));
+            // Diagnostics, not behaviour. Orbit shows these on its hidden Diagnostics page so a
+            // Beta report can say what the component actually believed, rather than leaving it to
+            // be inferred from a screenshot of the UI.
+            // The answer the state read above already consulted, rather than a second query. Orbit
+            // polls this call while its Orbit Local screen is open, and one cross-process question
+            // per status is enough.
+            out.putString(KEY_WORK_STATE, ComponentModelStore.lastObservedWorkState().name());
+            out.putBoolean(KEY_PAUSE_REQUESTED, ComponentModelStore.pauseRequested(c));
+            out.putString(KEY_LAST_FAILURE, ComponentModelStore.lastFailure(c));
             return out;
         }
 
@@ -88,9 +111,9 @@ public final class OrbitLocalService extends Service {
 
         @Override public void pauseModelDownload() {
             requireOrbitCaller();
-            Context c = getApplicationContext();
-            ComponentDownloadWorker.cancel(c);
-            ComponentModelStore.setState(c, ComponentModelStore.State.PAUSED, "");
+            // The only path in the component that may record a pause, because it is the only one
+            // a person's decision travels down.
+            ComponentDownloadWorker.pause(getApplicationContext());
         }
 
         @Override public void cancelModelDownload() {

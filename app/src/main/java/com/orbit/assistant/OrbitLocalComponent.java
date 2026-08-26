@@ -33,8 +33,11 @@ public final class OrbitLocalComponent {
      * <p>Deliberately independent of the app's semantic version: Orbit and the component can be
      * released at different versions and still understand each other. A component reporting a
      * different protocol is treated as needing an update, never used through a guessed interface.
+     *
+     * <p>2 since v0.7.7.6: the model status vocabulary grew, and PAUSED narrowed to mean only a
+     * pause the user asked for. See {@link OrbitLocalStatus}.
      */
-    public static final int PROTOCOL_VERSION = 1;
+    public static final int PROTOCOL_VERSION = 2;
     /** Orbit's permanent release certificate, the same pin the updater carries. */
     static final String CERTIFICATE_SHA256 =
             "7DAD619385DFF11EC731AA555F2B448A943C7391813D1A94DF1CB4232ECD41E3";

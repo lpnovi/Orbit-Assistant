@@ -636,6 +636,42 @@ Validated on real hardware across three Betas (`beta.1`-`beta.3`) and released a
   stays schema 1 with an additive `component` block, so the updater shipped in v0.7.7.4 is
   unaffected
 
+### 0.7.7.6 — Orbit Local lifecycle reliability
+A focused reliability patch on the work v0.7.7.5 shipped, opened as `beta.1` from two Galaxy S25
+Ultra recordings. No new features; the modular architecture is unchanged.
+
+- **Removal actually happens.** `Remove Orbit Local` did nothing at all: Orbit fired
+  `ACTION_DELETE` without holding `REQUEST_DELETE_PACKAGES`, which Android has required of any app
+  targeting API 28+ since Android 9. The platform refuses such a request by finishing its
+  uninstaller without drawing anything, so `startActivity` returned normally and a silent catch
+  discarded the rest. The permission is declared, and the request now goes through
+  `PackageInstaller.uninstall` with a status receiver
+- **Nothing is deleted before Android confirms it.** The old order deleted the model, the legacy
+  copy, and the installer cache and *then* asked Android to uninstall — so a cancelled confirmation
+  left a component installed with its 1.6 GB model already gone. Orbit now asks first, treats the
+  package manager as the only proof, and cleans up only after a confirmed absence
+- **Removal outcomes are distinguishable and never silent**: opened, cancelled, succeeded, refused,
+  or could not be launched. `Uninstall component` is a separate, narrower action from
+  `Remove Orbit Local`, and a standalone legacy model with no component has its own path
+- **PAUSED means a pause somebody asked for.** It had been standing in for a WorkManager query that
+  timed out, a dead network, an exhausted retry, and a truncated stream — which is how Orbit came to
+  report a download as paused while its `.part` file was still growing. `ComponentModelStore`
+  gains QUEUED, WAITING_FOR_NETWORK and INTERRUPTED, an explicit pause flag is the sole source of
+  PAUSED, and `WorkState.UNKNOWN` preserves the last known state rather than inventing a decision
+- **Pause → Resume is deterministic.** Unique work enqueued with `KEEP` let a cancellation that had
+  not settled swallow the Resume that followed it. Starting REPLACEs, a redundant tap on a running
+  download is a no-op, and a process-level lock stops a replacement worker overlapping the `.part`
+  file its predecessor is still writing
+- **Progress keeps moving.** `LocalAiActivity` decided whether to keep polling from the status it
+  had not replaced yet, so polling stopped one tick into a fresh download. The next read is
+  scheduled where the fresh status lands, one reader is outstanding at a time, and byte counts come
+  only from the component's real on-disk state
+- Protocol raised to 2, in lockstep across both APKs and the release manifest, because the status
+  vocabulary grew and PAUSED's meaning narrowed
+- Diagnostics gains an Orbit Local section: component state and version, uninstall stage and
+  result, model state and bytes, WorkManager state, whether a pause was explicitly requested, and
+  the last download failure category. No model contents, conversations, or paths
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever
@@ -651,10 +687,11 @@ genuinely unfinished remainder of the line, in the order the next patches should
 The long-term goal is unchanged: Orbit becomes a **hybrid, provider-agnostic Android assistant
 runtime** rather than an app tied to one model service.
 
-#### Near-term order, after v0.7.7.5
+#### Near-term order, after v0.7.7.6
 v0.7.7.4 shipped the Beta channel, so this order is now also the order these are expected to be
 *tested* in: a feature becomes a numbered Beta, is validated on a real device, and only then
-becomes a Stable release.
+becomes a Stable release. v0.7.7.6 is itself waiting on that validation, and nothing below starts
+until Orbit Local's install, download, and removal lifecycle is confirmed sound on hardware.
 
 1. **Orbit Local device actions** — a lightweight local intent/function model installed beside the
    chat model (the `ModelSpec` architecture already keeps their files and state independent). The

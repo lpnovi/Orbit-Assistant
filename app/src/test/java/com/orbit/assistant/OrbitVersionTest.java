@@ -147,17 +147,24 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * The 0.7.7.5 line shipped as Betas until Modular Orbit Local was validated on real hardware,
-     * and is now promoted to Stable. Kept as the counterpart of the Beta guard it replaces, so a
-     * later accidental return to a prerelease versionName fails here rather than on a phone.
+     * v0.7.7.6 Beta 1 fixes Orbit Local lifecycle failures that only a real phone can confirm —
+     * a package removal Samsung's installer has to actually draw, and a download that has to keep
+     * running with the screen off. So it ships as a Beta, and every place that says so agrees.
+     *
+     * <p>The counterpart of the Stable guard it replaces: this fails here rather than on a phone
+     * if a Beta versionName is published as a normal release, or the other way round.
      */
-    @Test public void thisBuildIsModularOrbitLocalStable() {
-        assertFalse(OrbitVersion.installedIsBeta());
-        assertTrue(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
-        assertEquals("0.7.7.5", OrbitVersion.baseVersion(BuildConfig.VERSION_NAME));
-        assertEquals("a Stable build carries no beta counter",
-                0, OrbitVersion.betaNumber(BuildConfig.VERSION_NAME));
-        assertEquals("Orbit Assistant v0.7.7.5",
+    @Test public void thisBuildIsAnOrbitLocalReliabilityBeta() {
+        assertTrue(OrbitVersion.installedIsBeta());
+        assertTrue(OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+        assertEquals("0.7.7.6", OrbitVersion.baseVersion(BuildConfig.VERSION_NAME));
+        assertEquals("a Beta build carries the counter it is named for",
+                1, OrbitVersion.betaNumber(BuildConfig.VERSION_NAME));
+        assertEquals("Orbit Assistant v0.7.7.6 Beta 1",
                 OrbitVersion.releaseTitle(BuildConfig.VERSION_NAME));
+        assertEquals("v0.7.7.6-beta.1", OrbitVersion.tagFor(BuildConfig.VERSION_NAME));
+        assertTrue("the release workflow must publish it as a prerelease",
+                OrbitVersion.isBetaTag(OrbitVersion.tagFor(BuildConfig.VERSION_NAME)));
     }
 }

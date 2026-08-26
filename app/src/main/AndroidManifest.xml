@@ -18,6 +18,21 @@
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!--
+      Required before Orbit may ask Android to remove the optional Orbit Local component.
+
+      Android has demanded this of any app targeting API 28 or above since Android 9; Orbit targets
+      35. Without it the platform's uninstaller logs the refusal and finishes without ever drawing
+      its confirmation, while startActivity returns as though all was well. That is exactly what
+      v0.7.7.5 did on a Galaxy S25 Ultra: Orbit's dialog closed, Android's never opened, and the
+      component stayed installed with nothing reported.
+
+      Normal protection level, so declaring it is all that is needed — there is no runtime prompt.
+      It only ever lets an app *ask*; Android still draws the confirmation and the user still
+      decides. Orbit aims it at one hardcoded package, com.orbit.assistant.local, and treats the
+      package manager's own answer afterwards as the only proof of what happened.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <!--
       Declared by the optional Orbit Local component at signature protection level, so Android
       grants it only because both APKs carry Orbit's permanent release certificate. Without it
       bindService to the component's service is refused outright, whatever the package visibility
@@ -141,6 +156,14 @@
         <receiver android:name=".LocationRoutineTriggerReceiver" android:exported="false" />
         <receiver android:name=".ReminderReceiver" android:exported="false" />
         <receiver android:name=".OrbitWidgetActionReceiver" android:exported="false" />
+        <!--
+          Where Android reports the result of an Orbit Local component uninstall.
+
+          Not exported: the package installer reaches it through a PendingIntent Orbit created
+          with an explicit component, which needs no exported surface. Nothing else can deliver
+          to it, and it acts only on a status naming com.orbit.assistant.local.
+        -->
+        <receiver android:name=".OrbitLocalUninstallReceiver" android:exported="false" />
         <receiver android:name=".AskOrbitWidgetProvider" android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />

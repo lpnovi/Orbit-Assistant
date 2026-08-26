@@ -56,11 +56,20 @@ public final class ComponentModelStoreTest {
         assertFalse(ComponentModelStore.isReady(context));
     }
 
+    /**
+     * A download that died with its process is resumable — and is called what it is.
+     *
+     * <p>Until v0.7.7.6 this state was reported as PAUSED, which told the user they had made a
+     * decision they never made. It is an interruption, so it says INTERRUPTED, and the partial
+     * bytes are kept exactly as before.
+     */
     @Test public void partialBytesFromADeadProcessBecomeResumable() throws Exception {
         write(ComponentModelStore.partFile(context), 4L);
         ComponentModelStore.setState(context, ComponentModelStore.State.DOWNLOADING, "");
         assertEquals("an interrupted download must offer resume, not restart",
-                ComponentModelStore.State.PAUSED, ComponentModelStore.state(context));
+                ComponentModelStore.State.INTERRUPTED, ComponentModelStore.state(context));
+        assertFalse("and must never claim the user paused it",
+                ComponentModelStore.pauseRequested(context));
         assertEquals(4L, ComponentModelStore.downloadedBytes(context));
     }
 

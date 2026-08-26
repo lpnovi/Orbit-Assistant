@@ -370,16 +370,9 @@ public final class OrbitLocalInstaller {
         }
     }
 
-    /** Asks Android to uninstall the component. Android owns the confirmation, and the outcome. */
-    public static void requestUninstall(Activity activity) {
-        try {
-            Intent uninstall = new Intent(Intent.ACTION_DELETE,
-                    Uri.parse("package:" + OrbitLocalComponent.PACKAGE));
-            activity.startActivity(uninstall);
-        } catch (Throwable t) {
-            Log.w(TAG, "uninstall request failed: " + t.getClass().getSimpleName());
-        }
-    }
+    // Removal lives in OrbitLocalUninstaller. It was here, as a fire-and-forget ACTION_DELETE
+    // wrapped in a silent catch, and that combination is what made "Remove Orbit Local" do nothing
+    // at all on a real device without so much as a message.
 
     // ---- the installer cache ----------------------------------------------------------------------
 

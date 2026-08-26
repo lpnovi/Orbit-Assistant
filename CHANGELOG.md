@@ -425,3 +425,12 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - The model and the component can be removed separately, and Orbit Local storage is itemised on its own screen.
   - Everything is signed and verified by Orbit's permanent certificate, and Orbit refuses any component it did not publish.
   - This is the finished release of the work validated on real hardware across the 0.7.7.5 Betas.
+
+- **v0.7.7.6-beta.1**: Fixes Remove Orbit Local doing nothing, and the model download appearing frozen or wrongly paused.
+  - Remove Orbit Local now actually opens Android's uninstall confirmation, instead of closing Orbit's dialog and stopping there.
+  - Nothing is deleted until Android confirms the component is gone, so cancelling the removal leaves your model and data untouched.
+  - Orbit now says what happened: removed, cancelled, or could not be started. It never fails silently.
+  - The download progress bar and megabyte count keep advancing while the screen is open, and pick up correctly when you return.
+  - Paused now means only that you paused it; a lost connection or an interrupted download says so in its own words.
+  - The component card gains a separate Uninstall component action, and Remove Orbit Local clears everything Orbit Local uses.
+  - This is a Beta build; the removal and download fixes still need confirming on a real device.

@@ -183,7 +183,56 @@ public final class DiagnosticsActivity extends Activity {
                 "\nLelo mode: " + Prefs.leloMode(this) +
                 "\nLast overlay launch: " + OverlayLaunchTrace.summary(this) +
                 "\nLast error: " + error +
+                orbitLocal(d) +
                 lastRoutinePlan(d);
+    }
+
+    /**
+     * Everything about Orbit Local that a Beta report needs and nothing that it does not.
+     *
+     * <p>Package state, versions, download state, byte counts, and the tokens the component uses
+     * for "why did this stop". No model contents, no conversation, no file paths. It exists
+     * because v0.7.7.5 shipped two failures that were invisible from the outside: a Remove button
+     * that silently did nothing, and a Paused label that was covering for a WorkManager query
+     * nobody could see the answer to.
+     */
+    private String orbitLocal(SharedPreferences d) {
+        OrbitLocalComponent.State componentState = OrbitLocalComponent.state(this);
+        String installedVersion = OrbitLocalComponent.installedVersionName(this);
+        long uninstallUpdated = d.getLong("local_uninstall_updated", 0L);
+        String uninstallDetail = d.getString("local_uninstall_detail", "");
+
+        // Read from the component's own last reported snapshot, so this never blocks this screen
+        // on a bind that may not be possible.
+        OrbitLocalStatus status = OrbitLocalProvider.cachedStatus(this);
+
+        return "\n\nOrbit Local" +
+                "\n  Component: " + OrbitLocalComponent.stateLabel(componentState) +
+                (installedVersion.isEmpty() ? "" : " · " + installedVersion
+                        + " (" + OrbitLocalComponent.installedVersionCode(this) + ")") +
+                "\n  Protocol Orbit speaks: " + OrbitLocalComponent.PROTOCOL_VERSION +
+                (status == null ? "" : "\n  Protocol component speaks: " + status.protocol) +
+                "\n  Can request uninstall: "
+                        + OrbitLocalUninstaller.canRequestUninstall(this) +
+                "\n  Last uninstall stage: " + (uninstallUpdated == 0L ? "none"
+                        : d.getString("local_uninstall_stage", "")
+                                + (uninstallDetail.isEmpty() ? "" : " (" + uninstallDetail + ")")) +
+                (uninstallUpdated == 0L ? "" : "\n  Last uninstall at: "
+                        + DateFormat.getDateTimeInstance().format(new Date(uninstallUpdated))) +
+                "\n  Pending removal: " + (LocalAiActivity.pendingRemovalScope(this).isEmpty()
+                        ? "none" : LocalAiActivity.pendingRemovalScope(this)) +
+                (status == null
+                        ? "\n  Model: component not reachable"
+                        : "\n  Model state: " + status.modelState +
+                          "\n  Model bytes present: " + status.modelBytes
+                                  + " of " + status.modelSizeBytes +
+                          "\n  Model bytes on disk: " + status.modelTotalBytes +
+                          "\n  WorkManager state: " + (status.workState.isEmpty()
+                                  ? "not reported" : status.workState) +
+                          "\n  Explicit pause requested: " + status.pauseRequested +
+                          "\n  Last download failure: " + (status.lastFailure.isEmpty()
+                                  ? "none" : status.lastFailure)) +
+                "\n  Earlier Orbit model data: " + LocalModelStore.legacyBytes(this) + " bytes";
     }
 
     /** Compact trace of the last Create with Orbit planning attempt. */

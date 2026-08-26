@@ -122,9 +122,13 @@ final class OrbitLocalProvider implements AiProvider {
         switch (status.modelState) {
             case OrbitLocalStatus.READY: return "Ready · works offline";
             case OrbitLocalStatus.DOWNLOADING: return "Downloading model…";
+            case OrbitLocalStatus.QUEUED: return "Starting model download…";
+            case OrbitLocalStatus.WAITING_FOR_NETWORK: return "Waiting for a connection";
             case OrbitLocalStatus.VALIDATING: return "Verifying model…";
             case OrbitLocalStatus.IMPORTING: return "Moving existing model…";
+            // Two different things, and only one of them is something the user did.
             case OrbitLocalStatus.PAUSED: return "Download paused";
+            case OrbitLocalStatus.INTERRUPTED: return "Download interrupted";
             case OrbitLocalStatus.ERROR: return "Needs attention";
             default: return "Model not installed";
         }
