@@ -92,21 +92,31 @@ public final class RoadmapActivity extends Activity {
         // What's New material. What remains here is the genuinely unfinished part of that line —
         // finishing OpenRouter chat, teaching the local model Orbit's device actions, and the
         // temporarily withdrawn Edit & resend action, which returns once resending is dependable.
+        //
+        // The cooking entries added in v0.7.7.3 are future-only by construction. That release
+        // shipped the deterministic kitchen maths - conversions, fractions, scaling, better timer
+        // labels - and none of it is described here. What is listed is the part that does not
+        // exist yet: the cooking session itself, its hands-free vocabulary, and the optional
+        // Orbit-owned timers that Android's Clock app is deliberately still the default for.
         addGroup(page, "NEXT UP", new String[][]{
                 {"OpenRouter chat", "Finish the OpenRouter provider: model choice and streaming chat, on the secure setup that already exists."},
                 {"Local device actions", "Orbit Local asking the same trusted Orbit actions the cloud providers use, starting with simple reversible controls."},
-                {"More branch points & conditions", "Several decision points in one Routine, and conditions beyond time and place."}
+                {"More branch points & conditions", "Several decision points in one Routine, and conditions beyond time and place."},
+                {"Cook with Orbit", "A cooking session you start on purpose and end when you're done, following a recipe with you step by step."}
         });
         addGroup(page, "PLANNED", new String[][]{
                 {"More local models", "A choice of on-device models sized to different phones and needs."},
                 {"Edit & resend, reliably", "The message action returns once editing and resending an earlier message is dependable."},
                 {"Deeper Android actions", "Broader device controls through supported Android surfaces."},
-                {"Stronger Custom Commands", "Personal phrases that accept variation and detail, beyond today's exact wording."}
+                {"Stronger Custom Commands", "Personal phrases that accept variation and detail, beyond today's exact wording."},
+                {"Kitchen hands-free", "Short spoken commands while cooking, on the Voice you already use: next, back, repeat, how much."},
+                {"Orbit-managed timers", "An optional alternative to your Clock app for several named timers at once. Off by default; your Clock app stays."}
         });
         addGroup(page, "EXPLORING", new String[][]{
                 {"Hybrid Auto", "Orbit choosing on-device or cloud by itself, from the task, what is available, and your preference."},
                 {"Proactive screen intelligence", "Helpful context-aware assistance that remains transparent and controllable."},
-                {"Image retrieval integrations", "Purpose-built image discovery with safe sources and clear attribution."}
+                {"Image retrieval integrations", "Purpose-built image discovery with safe sources and clear attribution."},
+                {"Hands-busy help beyond cooking", "The same guided sessions for repairs, cleaning, assembly, and anything else done with full hands."}
         });
 
         UiKit.applyTypography(page);

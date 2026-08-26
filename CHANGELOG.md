@@ -382,3 +382,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Orbit Local can no longer be chosen, or silently stay selected, without a ready model; Orbit falls back to ChatGPT so requests always have an answer.
   - The AI Providers screen now says features and capabilities vary by provider, and Orbit Local honestly notes its compact model gives simpler answers than cloud AI.
 
+- **v0.7.7.3**: Orbit now does kitchen maths itself, so conversions and scaled quantities come back instantly.
+  - Oven temperatures convert straight away: ask for 425°F in Celsius and Orbit answers on the spot, with no internet needed.
+  - Cups, spoons, fluid ounces, millilitres, ounces, pounds, grams and kilograms all convert instantly.
+  - Fractions are understood and answered in kind, so "double 3/4 cup" gives 1 1/2 cups rather than a long decimal.
+  - Recipe quantities scale naturally, including by serving count, such as a recipe for 6 brought down to 4.
+  - Cups into grams depends on the ingredient, so Orbit asks which one instead of quietly guessing.
+  - Timers still belong to your normal Clock app, and now take a useful name from what you said, such as Steak or Potatoes.
+

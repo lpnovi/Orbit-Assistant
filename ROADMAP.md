@@ -547,6 +547,32 @@
 - Replace "Orbit works the same whichever provider answers" with capability-honest messaging;
   Orbit Local now says its compact model gives simpler answers than cloud AI
 
+### 0.7.7.3 — Kitchen utilities
+Opens the cooking line. A deliberately small, deterministic foundation rather than a cooking mode:
+the arithmetic and the quantity model that later cooking intelligence will reuse.
+
+- Add `KitchenQuantity`: one exact rational quantity shared by every kitchen calculation, parsing
+  decimals, `3/4`, `1 1/2`, and Unicode vulgar fractions, and reading back as a measure a cook
+  owns a spoon for — so scaled amounts never surface as `1.1249999999999998`
+- Add `KitchenUnit`: volume and mass as separate dimensions with the exact legal factors (a cup is
+  473176473/2000000 ml, a pound is 45359237/100000 g), plus every ordinary spelling of each
+- Add `KitchenMath`: pure conversion, temperature, and scaling, plus the presentation rules —
+  metric reads as decimals, US measures as fractions, and an awkward spoon amount splits into the
+  spoons that exist (`1/3 cup = 5 tbsp + 1 tsp`). Every answer says whether it is exact or rounded
+- Add `KitchenMathRouter` to the provider-independent pipeline beside the memory, routine, device
+  and notification routers, so kitchen arithmetic is answered locally and offline whichever
+  provider is active, and `AiProvider` gains no knowledge of cooking
+- Deliberate restraint: only complete conversion or scaling grammar is intercepted. Technique,
+  substitutions, what to cook, and food safety all reach the provider untouched, and anything in
+  Orbit's device-command vocabulary is never read as arithmetic
+- Volume never silently becomes mass. With no ingredient named Orbit says what is missing in one
+  sentence; with one named the question goes to the provider rather than to an invented density
+- Improve cooking timer labels while leaving the timer itself alone: the named subject of the
+  request becomes the Clock app's label ("Steak", "Potatoes"), and Android's
+  `AlarmClock.ACTION_SET_TIMER` remains the one execution path
+- Merge a bare trailing duration back into the clause before it when splitting chained commands,
+  so "Timer for the potatoes, 20 minutes" is one request rather than two broken ones
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever
@@ -593,22 +619,94 @@ Orbit chooses provider and model from capability, task, availability, and user p
 Routing stays explainable and never silently overrides an explicit provider choice; a future
 setting has to opt into any automatic fallback.
 
+### Cooking, and the hands-busy principle
+
+**The principle.** Orbit should be exceptionally useful when the user's hands are busy. Cooking is
+the first real case, but nothing built for it should be built *around food*: a session that holds
+structured state, a step pointer, relevant timers, and a short hands-free vocabulary is the same
+shape for home repair, cleaning, assembling furniture, or following a procedure at a computer.
+Keep the session and voice infrastructure generic; keep only the recipe knowledge cooking-specific.
+
+v0.7.7.3 shipped the deterministic foundation — conversions, fractions, scaling, better timer
+labels — and is recorded above. What follows is future work.
+
+#### Cook with Orbit
+An explicit, temporary **cooking session**, not a permanent Kitchen tab and not a recipe app.
+Started deliberately — "cook with me", "start cooking mode", or an offer Orbit makes when a recipe
+is clearly present in the conversation or an attachment. Mentioning food never starts it.
+
+A session holds structured state: recipe title, current step, total steps, ingredient quantities,
+serving scale, the timers that belong to it, and any cooking notes. It lives inside the normal
+conversation system — no separate chat database.
+
+It should answer, without losing the recipe: current step, next, previous, repeat, "what am I doing
+now", "what comes next", "how much of that", "what temperature", and ordinary questions in between.
+Compact status in full chat and in the Side-button overlay, and a clean way to end the session.
+
+#### Kitchen hands-free
+Built on the existing Voice Beta architecture — the same recogniser, ownership, cancellation,
+follow-up, IME, and overlay/full-chat rules. No second speech stack. Inside an active cooking
+session only, a short command vocabulary for dirty hands: "next", "back", "repeat", "timer five
+minutes", "how much", "what temperature", "stop listening".
+
+Possible session-scoped option: keep the screen awake while actively cooking, restored automatically
+when the session ends. Opt-in and session-scoped — never a permanent wakelock.
+
+#### Recipe ingestion and intelligence
+Start a session from conversation text, a pasted recipe, a screenshot, a photo, the gallery, a PDF,
+the clipboard, the current screen, or a safely sourced page — all through the attachment and context
+infrastructure that already exists.
+
+Provider-backed, because these are semantic tasks the deterministic layer cannot do: extracting
+ingredients and ordered steps, scaling a whole recipe, substitutions, sequencing, what can be
+prepared while something else cooks, recovering from a mistake, adapting to a missing ingredient,
+planning backwards from a serving time, and answering questions about the active recipe.
+
+#### Food-safety assistance
+Internal temperatures, storage, reheating, doneness, spoilage, cross-contamination. Designed
+conservatively because it affects health: separate culinary preference from safety guidance, never
+imply a photo can prove food is safe, use trustworthy and current information, and say plainly when
+something is uncertain. Provider-backed unless a well-maintained authoritative local source exists.
+Not alarmist UI.
+
+#### Optional Orbit-managed timers
+Android's Clock stays the default and stays available permanently. A later setting — **Use
+Orbit-managed timers**, default off, explaining that Orbit otherwise starts timers in the system
+Clock app — would opt into several named timers at once, remaining-time queries, listing, pause and
+resume, adding and subtracting time, individual cancellation, compact timer cards in chat, overlay
+timer status, and a persistent notification. Where the OS allows it, Android 16 promoted Live
+Updates and Samsung Now Bar integration, with an ordinary notification as the fallback. OEM
+promotion eligibility varies, so user-facing copy must never promise it.
+
+Compile and target SDK move only when that work actually requires it, and only after checking the
+current Android requirements. Existing users keep Clock behaviour through any upgrade; the option
+is never the new default.
+
+#### Later possibilities, not committed
+Shopping lists from an active recipe, combining ingredients across recipes, saved recipes, pantry
+awareness, "what can I make with what I have". Not built until real use shows they earn their
+place. Orbit should first be excellent *during* cooking rather than become a meal planner.
+
 ### Next up
 - OpenRouter chat: finish the provider on the secure setup that already exists
 - Local device actions: Orbit Local asking Orbit's existing tools to run simple reversible
   controls
 - Conditions beyond time and location, and more than one branch point in a single routine
+- Cook with Orbit: an explicit temporary cooking session with step state, quantities, and timers
 
 ### Planned
 - More local models, sized to different phones and needs
 - Edit & resend returns to the message menu once editing and resending is dependable
 - Deeper Android actions
 - Custom Commands that accept variation and detail beyond today's exact wording
+- Kitchen hands-free voice inside an active cooking session
+- Optional Orbit-managed timers, off by default, with the Clock app permanently kept
 
 ### Exploring
 - Hybrid Auto: automatic local/cloud routing chosen from capability, task, and availability
 - Proactive screen intelligence
 - Image retrieval integrations with safe sourcing and attribution
+- Hands-busy assistance beyond cooking: repairs, cleaning, assembly, and other guided tasks
 
 ## 1.0 direction
 - Reliable daily-driver overlay and chat experience

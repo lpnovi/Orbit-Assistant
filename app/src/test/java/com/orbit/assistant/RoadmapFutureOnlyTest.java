@@ -36,6 +36,12 @@ public final class RoadmapFutureOnlyTest {
             // v0.7.7.0 shipped the provider layer, provider management, and the first Orbit Local.
             "Choice of AI provider",
             "More AI providers & models",
+            // v0.7.7.3 shipped the deterministic kitchen maths. Only the cooking session, its
+            // hands-free vocabulary, and optional Orbit-owned timers remain unbuilt.
+            "Kitchen conversions",
+            "Cooking conversions",
+            "Recipe scaling",
+            "Smarter timer labels",
     };
 
     private String roadmapText() {
@@ -85,6 +91,19 @@ public final class RoadmapFutureOnlyTest {
         assertTrue("the withdrawn Edit & resend action must be promised back",
                 text.contains("Edit & resend, reliably"));
         assertTrue(text.contains("Hybrid Auto"));
+    }
+
+    /**
+     * The cooking direction is genuinely ahead of Orbit, and one part of it carries a promise the
+     * page must keep making: Android's Clock app stays, and Orbit-managed timers are opt-in.
+     */
+    @Test public void theCookingDirectionIsListedAsFutureWork() {
+        String text = roadmapText();
+        assertTrue("the cooking session itself is unbuilt", text.contains("Cook with Orbit"));
+        assertTrue("hands-free cooking voice is unbuilt", text.contains("Kitchen hands-free"));
+        assertTrue("Orbit-owned timers are unbuilt", text.contains("Orbit-managed timers"));
+        assertTrue("the Clock app must not be presented as going away",
+                text.contains("Off by default") && text.contains("Clock app stays"));
     }
 
     @Test public void thePageStillSaysItIsFutureOnly() {

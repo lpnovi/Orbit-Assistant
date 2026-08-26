@@ -218,6 +218,87 @@ public final class LocalCommandRouter {
     /** "10 minute timer", "30 second timer" — the count said before the word. */
     private static final Pattern TIMER_BEFORE = Pattern.compile(
             "\\b(\\d+|[a-z]+)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)\\s+timer\\b");
+    /**
+     * A duration said somewhere after the word "timer", with the subject in between.
+     *
+     * <p>"Timer for the potatoes, 20 minutes" and "set a timer for the bread for 30 minutes" both
+     * put the name where the two patterns above expect the count. Only ever searched in the text
+     * that follows "timer", so a duration mentioned before it cannot be picked up by accident.
+     */
+    private static final Pattern TIMER_LOOSE = Pattern.compile(
+            "\\b(\\d+|[a-z]+)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)\\b");
+    /** Talking about an existing timer is not asking for a new one. */
+    private static final Pattern TIMER_NOT_A_NEW_REQUEST = Pattern.compile(
+            "\\b(cancel|cancelled|stop|stopped|pause|paused|resume|delete|remove|remaining|left|"
+                    + "how long|check|list|show)\\b");
+
+    /**
+     * "a timer for the potatoes" — what the timer is for, said after it.
+     *
+     * <p>The determiner is required, and that is the whole guard: "for the potatoes" names
+     * something, "for 10 minutes" is the duration, and only the first has one.
+     */
+    private static final Pattern TIMER_SUBJECT_AFTER = Pattern.compile(
+            "\\bfor\\s+(?:the|my|our|some)\\s+([a-z][a-z' -]{1,24}?)(?=\\s+\\d|\\s+for\\b|\\s+and\\b|$)");
+    /** "a steak timer" — what the timer is for, said in front of it. */
+    private static final Pattern TIMER_SUBJECT_BEFORE = Pattern.compile(
+            "\\b([a-z][a-z'-]{1,19})\\s+timer\\b");
+    /**
+     * Words that stand in front of "timer" without naming anything.
+     *
+     * <p>Counts are excluded separately through {@link LanguageNormalizer#wordNumber(String)}, so
+     * "a five minute timer" cannot end up labelled "Five".
+     */
+    private static final java.util.Set<String> TIMER_SUBJECT_STOP_WORDS =
+            new java.util.HashSet<>(java.util.Arrays.asList(
+                    "a", "an", "the", "my", "our", "your", "new", "another", "same", "that",
+                    "this", "it", "quick", "short", "long", "second", "seconds", "minute",
+                    "minutes", "hour", "hours", "min", "mins", "sec", "secs", "hr", "hrs",
+                    "and", "or", "set", "start", "begin", "make", "create", "run", "orbit",
+                    "countdown", "up", "also", "please", "for", "of", "to"));
+
+    /**
+     * What the user is timing, as a label for the Clock app, or "" when nothing was named.
+     *
+     * <p>Timing food is the common case for a phone timer, and a Clock notification that says
+     * "Steak" is far more useful than four identical ones that all say "Orbit timer". Only an
+     * explicitly named subject is used; nothing is inferred from the rest of the sentence.
+     */
+    static String timerSubject(String q) {
+        if (q == null || q.isEmpty()) return "";
+        Matcher after = TIMER_SUBJECT_AFTER.matcher(q);
+        while (after.find()) {
+            String named = cleanTimerSubject(after.group(1));
+            if (!named.isEmpty()) return named;
+        }
+        Matcher before = TIMER_SUBJECT_BEFORE.matcher(q);
+        while (before.find()) {
+            String word = before.group(1);
+            if (TIMER_SUBJECT_STOP_WORDS.contains(word)) continue;
+            if (LanguageNormalizer.wordNumber(word) > 0) continue;
+            String named = cleanTimerSubject(word);
+            if (!named.isEmpty()) return named;
+        }
+        return "";
+    }
+
+    /** Trims a named subject and gives it the sentence case a Clock label is written in. */
+    private static String cleanTimerSubject(String value) {
+        String name = value == null ? "" : value.trim();
+        name = name.replaceAll("\\s+", " ");
+        if (name.isEmpty() || name.length() > 24) return "";
+        // A subject made only of filler names nothing worth labelling.
+        String[] words = name.split(" ");
+        boolean meaningful = false;
+        for (String word : words) {
+            if (!TIMER_SUBJECT_STOP_WORDS.contains(word) && LanguageNormalizer.wordNumber(word) <= 0) {
+                meaningful = true;
+                break;
+            }
+        }
+        if (!meaningful) return "";
+        return Character.toUpperCase(name.charAt(0)) + name.substring(1);
+    }
 
     private static ParsedCommand parseTimer(String q) throws org.json.JSONException {
         Matcher m = TIMER_AFTER.matcher(q);
@@ -231,6 +312,16 @@ public final class LocalCommandRouter {
             if (m.find()) {
                 count = m.group(1);
                 unit = m.group(2);
+            }
+        }
+        if (count == null && !TIMER_NOT_A_NEW_REQUEST.matcher(q).find()) {
+            int after = q.indexOf("timer");
+            if (after >= 0) {
+                Matcher loose = TIMER_LOOSE.matcher(q.substring(after + "timer".length()));
+                if (loose.find()) {
+                    count = loose.group(1);
+                    unit = loose.group(2);
+                }
             }
         }
         if (count == null || unit == null) return null;
@@ -249,10 +340,15 @@ public final class LocalCommandRouter {
         String singularUnit = unit.startsWith("hour") || unit.startsWith("hr") ? "hour"
                 : unit.startsWith("min") ? "minute" : "second";
         String spokenDuration = RoutineActionCatalog.durationModifier(n, singularUnit);
+        // The timer itself is unchanged: Android's own Clock still owns it through SET_TIMER. Only
+        // the label improves, so a Clock notification can say what is actually cooking.
+        String subject = timerSubject(q);
+        String label = subject.isEmpty() ? "Orbit timer" : subject;
+        String forSubject = subject.isEmpty() ? "" : " for " + subject.toLowerCase(Locale.US);
         return new ParsedCommand(
-                action("SET_TIMER", new JSONObject().put("seconds", seconds).put("label", "Orbit timer")),
-                "Setting a " + spokenDuration + " timer.",
-                "set a " + spokenDuration + " timer");
+                action("SET_TIMER", new JSONObject().put("seconds", seconds).put("label", label)),
+                "Setting a " + spokenDuration + " timer" + forSubject + ".",
+                "set a " + spokenDuration + " timer" + forSubject);
     }
 
     /** Digits, or one of the small written numbers the shared normalizer knows. */
@@ -328,10 +424,20 @@ public final class LocalCommandRouter {
         for (String piece : pieces) {
             String part = piece == null ? "" : piece.trim();
             if (part.isEmpty()) continue;
+            // A bare duration is never a command on its own, so a separator in front of one was
+            // not separating two commands: "Timer for the potatoes, 20 minutes" is one request.
+            if (!out.isEmpty() && BARE_DURATION.matcher(part).matches()) {
+                out.set(out.size() - 1, out.get(out.size() - 1) + " " + part);
+                continue;
+            }
             out.add(part);
         }
         return out;
     }
+
+    /** "20 minutes", "30 seconds" — a length of time and nothing else. */
+    private static final Pattern BARE_DURATION = Pattern.compile(
+            "(?i)^(?:\\d+|[a-z]+)\\s*(?:seconds?|secs?|minutes?|mins?|hours?|hrs?)$");
 
     private static String chainIntro(List<String> spoken) {
         if (spoken == null || spoken.isEmpty()) return "Working on it.";

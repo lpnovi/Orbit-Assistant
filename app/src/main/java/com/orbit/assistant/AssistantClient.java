@@ -133,6 +133,16 @@ public final class AssistantClient {
             return;
         }
 
+        // Kitchen arithmetic is arithmetic: a conversion or a scaled quantity has one right
+        // answer, so Orbit gives it itself rather than paying a round trip to whichever provider
+        // is active. The router is deliberately narrow and hands anything needing judgement -
+        // substitutions, technique, food safety - straight through to the provider below.
+        AssistantReply kitchen = KitchenMathRouter.tryHandle(context, prompt);
+        if (kitchen != null) {
+            cb.onSuccess(kitchen);
+            return;
+        }
+
         final MemoryStore.Selection memorySelection =
                 MemoryStore.select(context, prompt, screenText, history);
         final MemoryStore.Suggestion memorySuggestion =

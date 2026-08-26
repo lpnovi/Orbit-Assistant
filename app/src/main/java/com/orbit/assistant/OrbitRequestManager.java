@@ -143,6 +143,7 @@ public final class OrbitRequestManager {
         // point is answering with none. Cloud providers keep the connectivity constraint so a
         // request survives a dead network instead of failing instantly.
         boolean offlineOk = MemoryCommandRouter.canHandle(prompt)
+                || KitchenMathRouter.canHandle(prompt)
                 || AiProviders.active(c).capabilities().offline;
         Constraints constraints = new Constraints.Builder()
                 .setRequiredNetworkType(offlineOk ? NetworkType.NOT_REQUIRED : NetworkType.CONNECTED)
