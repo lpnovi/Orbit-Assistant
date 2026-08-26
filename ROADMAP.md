@@ -573,6 +573,38 @@ the arithmetic and the quantity model that later cooking intelligence will reuse
 - Merge a bare trailing duration back into the clause before it when splitting chained commands,
   so "Timer for the potatoes, 20 minutes" is one request rather than two broken ones
 
+### 0.7.7.4 — Stable / Beta update channels
+Makes GitHub Releases a practical distribution system for testing as well as shipping, without a
+second update server, a second app, a second package name, or a weaker build.
+
+- Add `OrbitVersion` as the single authority on Orbit's version strings: `0.7.7.5` and
+  `0.7.7.5-beta.1`, their tags, their display form ("0.7.7.5 Beta 1"), and their ordering. A
+  malformed suffix (`-beta`, `-beta.0`, `-beta.zero`, `-test`) is not a Beta but an invalid version,
+  so an unofficial tag can never masquerade as an Orbit prerelease
+- Add the `update_channel` preference, defaulting to Stable for upgrades, fresh installs, and
+  restores alike, and deliberately excluded from every Backup & Restore key set — Beta enrolment is
+  a standing acceptance of risk belonging to the device it was made on
+- Keep the Stable path exactly as it was: GitHub's own `/releases/latest`, which by definition
+  already excludes drafts and prereleases
+- Add Beta discovery as a bounded scan of a recent release page, ordered highest-version-first with
+  a hard cap on manifest downloads, choosing the eligible candidate with the greatest `versionCode`
+- Require the tag shape and GitHub's prerelease flag to agree. A Beta tag published as a normal
+  release, or a Stable tag flagged as a prerelease, is refused in both channels
+- Beta includes Stable: an enrolled tester is offered the finished release when it lands, then the
+  next Beta, purely by `versionCode`
+- Never downgrade. Switching Beta → Stable while running a newer Beta build offers nothing and says
+  so, until a Stable release with a higher `versionCode` exists
+- Make update state channel-aware: a channel change drops the cached candidate, the notified-version
+  bookkeeping, and the check throttles, while deliberately preserving an install already in flight
+- Add the Orbit-styled Update channel selector and the one-time Join Beta confirmation, plus a
+  restrained BETA marker on Beta update cards and a Beta build pill in About & updates. The selected
+  channel and the installed build type are shown as the separate facts they are
+- Extend the one release workflow to both tag shapes: validated tag/source equality including the
+  suffix, GitHub's prerelease flag derived from the validated tag rather than hand-set, and the
+  readable release title. Every existing verification step is unchanged
+- Preserve `orbit-update.json` schema 1 and the existing APK asset naming, so the updater already
+  shipped in v0.7.7.3 can install v0.7.7.4 normally
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever
@@ -588,24 +620,34 @@ genuinely unfinished remainder of the line, in the order the next patches should
 The long-term goal is unchanged: Orbit becomes a **hybrid, provider-agnostic Android assistant
 runtime** rather than an app tied to one model service.
 
-#### Remaining 0.7.7 patches, in order
-1. Mature local model management — download UX polish, richer failure explanations, and
-   performance/battery tuning on real devices
-2. Local device actions — a lightweight local intent/function model installed beside the chat
-   model (the `ModelSpec` architecture already keeps their files and state independent). The
-   intended pipeline is fixed: user request → lightweight local intent/function model →
-   normalized Orbit tool request → existing Orbit tool execution layer → result. The local model
-   only ever *requests* existing Orbit tools — starting with simple reversible actions such as
-   flashlight, brightness, and volume — and never grows its own device-control logic; cloud and
-   local providers ultimately share the same tool execution layer
-3. Full OpenRouter support — streaming chat and model selection on top of the existing shell and
-   secure key storage, then tool calling where the chosen model supports it
-4. Expanded local-model choices, sized to different phones, on the same `LocalModelStore`
-   catalog architecture
-5. Provider-aware AI strength maturation — per-provider mode mapping beyond today's
-   show-or-hide behavior
-6. Automatic cloud/local routing groundwork inside `AiProviders`, which already owns the
-   capability and availability answers that decision needs
+#### Near-term order, after v0.7.7.4
+v0.7.7.4 shipped the Beta channel, so this order is now also the order these are expected to be
+*tested* in: a feature becomes `v0.7.7.5-beta.1`, is validated on a real device, and only then
+becomes a Stable release.
+
+1. **Modular Orbit Local** — the first feature to ship through the new Beta channel
+2. **Orbit Local device actions** — a lightweight local intent/function model installed beside the
+   chat model (the `ModelSpec` architecture already keeps their files and state independent). The
+   intended pipeline is fixed: user request → lightweight local intent/function model → normalized
+   Orbit tool request → existing Orbit tool execution layer → result. The local model only ever
+   *requests* existing Orbit tools — starting with simple reversible actions such as flashlight,
+   brightness, and volume — and never grows its own device-control logic; cloud and local providers
+   ultimately share the same tool execution layer
+3. **Better Routine conditions and additional branch capability** — conditions beyond time and
+   place, and more than one decision point in a single Routine
+4. **Cook with Orbit** — the explicit temporary cooking session described below
+5. **Kitchen hands-free** — the short spoken vocabulary inside an active cooking session
+6. **Recipe intelligence** — extraction, whole-recipe scaling, substitutions, and sequencing
+
+**OpenRouter is deferred.** Finishing OpenRouter chat requires a configured account to validate
+properly on a real device, and there is not one available, so shipping it would mean releasing an
+untested provider path. The secure setup groundwork from v0.7.7.0 — the configuration shell and
+Android Keystore-only API key storage — stays intact and unchanged, and the work resumes when an
+account exists to test it with.
+
+Also still open, unscheduled: expanded local-model choices on the same `LocalModelStore` catalog
+architecture, provider-aware AI strength maturation beyond today's show-or-hide behavior, and
+automatic cloud/local routing groundwork inside `AiProviders`.
 
 #### Long-term Hybrid Auto mode
 Orbit chooses provider and model from capability, task, availability, and user preference:
@@ -688,25 +730,33 @@ awareness, "what can I make with what I have". Not built until real use shows th
 place. Orbit should first be excellent *during* cooking rather than become a meal planner.
 
 ### Next up
-- OpenRouter chat: finish the provider on the secure setup that already exists
+- Modular Orbit Local, the first feature to be tested through the new Beta channel
 - Local device actions: Orbit Local asking Orbit's existing tools to run simple reversible
   controls
 - Conditions beyond time and location, and more than one branch point in a single routine
 - Cook with Orbit: an explicit temporary cooking session with step state, quantities, and timers
 
 ### Planned
+- Kitchen hands-free voice inside an active cooking session
+- Recipe intelligence: extraction, whole-recipe scaling, substitutions, and sequencing
 - More local models, sized to different phones and needs
 - Edit & resend returns to the message menu once editing and resending is dependable
 - Deeper Android actions
 - Custom Commands that accept variation and detail beyond today's exact wording
-- Kitchen hands-free voice inside an active cooking session
-- Optional Orbit-managed timers, off by default, with the Clock app permanently kept
+- Optional Orbit-managed timers, off by default, with the Android/Samsung Clock app permanently
+  kept as the default owner of timers
+- Food-safety assistance, designed conservatively because it affects health
+
+### Deferred
+- OpenRouter chat, until a configured account is available to validate it on a real device. The
+  secure setup groundwork and Keystore-only key storage remain intact
 
 ### Exploring
 - Hybrid Auto: automatic local/cloud routing chosen from capability, task, and availability
 - Proactive screen intelligence
 - Image retrieval integrations with safe sourcing and attribution
 - Hands-busy assistance beyond cooking: repairs, cleaning, assembly, and other guided tasks
+- Grocery lists, saved recipes, and pantry awareness, only if real use shows they earn their place
 
 ## 1.0 direction
 - Reliable daily-driver overlay and chat experience

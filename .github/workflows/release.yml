@@ -40,7 +40,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+(\.[0-9]+)+$ ]]; then
+          # Orbit publishes two tag shapes from this one workflow. A Stable tag is v0.7.7.5; a
+          # Beta tag is v0.7.7.5-beta.1, where the counter starts at one and carries no leading
+          # zero, so one build can never be described by two different tags.
+          stable_pattern='^v[0-9]+(\.[0-9]+)+$'
+          beta_pattern='^v[0-9]+(\.[0-9]+)+-beta\.[1-9][0-9]*$'
+          if [[ "${RELEASE_TAG}" =~ ${stable_pattern} ]]; then
+            release_channel="stable"
+          elif [[ "${RELEASE_TAG}" =~ ${beta_pattern} ]]; then
+            release_channel="beta"
+          else
             echo "::error::Requested release tag is malformed."
             exit 1
           fi
@@ -56,8 +65,25 @@ jobs:
             echo "::error::Release tag does not match the tagged source version."
             exit 1
           fi
+
+          # The user-facing title, and the exact string Orbit's own OrbitVersion helper produces.
+          if [[ "${release_channel}" == "beta" ]]; then
+            base_version="${source_version_name%%-beta.*}"
+            beta_number="${source_version_name##*-beta.}"
+            display_name="${base_version} Beta ${beta_number}"
+            prerelease_flag="true"
+          else
+            display_name="${source_version_name}"
+            prerelease_flag="false"
+          fi
+
+          echo "Release channel: ${release_channel}"
+          echo "Release title: Orbit Assistant v${display_name}"
           echo "version_name=${source_version_name}" >> "${GITHUB_OUTPUT}"
           echo "version_code=${source_version_code}" >> "${GITHUB_OUTPUT}"
+          echo "display_name=${display_name}" >> "${GITHUB_OUTPUT}"
+          echo "release_channel=${release_channel}" >> "${GITHUB_OUTPUT}"
+          echo "prerelease_flag=${prerelease_flag}" >> "${GITHUB_OUTPUT}"
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
@@ -207,6 +233,7 @@ jobs:
         shell: bash
         env:
           EXPECTED_VERSION_NAME: ${{ steps.source.outputs.version_name }}
+          RELEASE_DISPLAY_NAME: ${{ steps.source.outputs.display_name }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -214,6 +241,9 @@ jobs:
           from pathlib import Path
 
           version = os.environ['EXPECTED_VERSION_NAME']
+          # The changelog is keyed by the exact versionName, including any -beta.N suffix, so a
+          # Beta release still needs its own entry. Only the heading uses the friendlier form.
+          display = os.environ['RELEASE_DISPLAY_NAME']
           marker = f'- **v{version}**:'
           lines = Path('CHANGELOG.md').read_text(encoding='utf-8').splitlines()
 
@@ -235,7 +265,7 @@ jobs:
                   continue
               break
 
-          notes = f'## Orbit Assistant v{version}\n\n{summary}\n\n'
+          notes = f'## Orbit Assistant v{display}\n\n{summary}\n\n'
           if bullets:
               notes += "### What's new\n\n"
               notes += ''.join(f'- {bullet}\n' for bullet in bullets)
@@ -273,14 +303,22 @@ jobs:
           EXPECTED_VERSION_NAME: ${{ steps.source.outputs.version_name }}
         run: |
           set -euo pipefail
+          # A Beta tag is published as a GitHub prerelease and a Stable tag as a normal release.
+          # Orbit's updater refuses any release where those two disagree, so the flag is derived
+          # from the validated tag rather than passed in by hand.
+          prerelease_args=()
+          if [[ "${{ steps.source.outputs.prerelease_flag }}" == "true" ]]; then
+            prerelease_args+=(--prerelease)
+          fi
           gh release create "${RELEASE_TAG}" \
             "${{ steps.verify.outputs.apk_path }}" \
             "${{ steps.verify.outputs.checksum_path }}" \
             "${{ steps.verify.outputs.manifest_path }}" \
             --repo "${GITHUB_REPOSITORY}" \
             --verify-tag \
-            --title "Orbit Assistant v${EXPECTED_VERSION_NAME}" \
-            --notes-file "${{ steps.notes.outputs.notes_path }}"
+            --title "Orbit Assistant v${{ steps.source.outputs.display_name }}" \
+            --notes-file "${{ steps.notes.outputs.notes_path }}" \
+            "${prerelease_args[@]}"
 
       - name: Remove temporary release keystore
         if: always()

@@ -42,6 +42,11 @@ public final class RoadmapFutureOnlyTest {
             "Cooking conversions",
             "Recipe scaling",
             "Smarter timer labels",
+            // v0.7.7.4 shipped the Stable/Beta update channels themselves. The Beta channel may be
+            // referred to as a way future work will be delivered, but never offered as upcoming.
+            "Update channel",
+            "Stable / Beta updates",
+            "Choose your update channel",
     };
 
     private String roadmapText() {
@@ -104,6 +109,31 @@ public final class RoadmapFutureOnlyTest {
         assertTrue("Orbit-owned timers are unbuilt", text.contains("Orbit-managed timers"));
         assertTrue("the Clock app must not be presented as going away",
                 text.contains("Off by default") && text.contains("Clock app stays"));
+    }
+
+    /**
+     * OpenRouter is not abandoned and not imminent. It needs a real account to validate against,
+     * and until there is one the honest thing is to say so on the page rather than keep listing it
+     * as next up.
+     */
+    @Test public void openRouterIsShownAsDeferredRatherThanNext() {
+        String text = roadmapText();
+        assertTrue("the deferred group must exist", text.contains("DEFERRED"));
+        assertTrue("OpenRouter is still promised", text.contains("OpenRouter chat"));
+        assertTrue("and the reason is stated", text.contains("account to test it with"));
+        assertTrue("the existing secure groundwork is not being discarded",
+                text.contains("secure setup already in Orbit stays"));
+    }
+
+    /** The near-term order agreed for the 0.7.7 line, so the page and ROADMAP.md cannot drift. */
+    @Test public void theNearTermOrderIsListed() {
+        String text = roadmapText();
+        assertTrue(text.contains("Modular Orbit Local"));
+        assertTrue(text.contains("Local device actions"));
+        assertTrue(text.contains("More branch points & conditions"));
+        assertTrue(text.contains("Cook with Orbit"));
+        assertTrue(text.contains("Kitchen hands-free"));
+        assertTrue(text.contains("Recipe intelligence"));
     }
 
     @Test public void thePageStillSaysItIsFutureOnly() {

@@ -67,6 +67,16 @@ public final class Prefs {
     public static final String APP_FONT = "app_font";
     public static final String QUICK_SETTINGS_ROUTINE_ID = "quick_settings_routine_id";
     public static final String UPDATE_NOTIFICATIONS = "update_notifications";
+    /**
+     * Which Orbit releases this device is willing to be offered.
+     *
+     * <p>Deliberately absent from every Backup & Restore key set below. Beta enrolment is a
+     * standing acceptance of less-tested software, so it belongs to the device the user opted in
+     * on — restoring a backup onto a new phone must never quietly make it a Beta tester.
+     */
+    public static final String UPDATE_CHANNEL = "update_channel";
+    public static final String CHANNEL_STABLE = "stable";
+    public static final String CHANNEL_BETA = "beta";
     public static final String PAGE_TRANSITION = "page_transition";
     // Onboarding keys intentionally remain outside Backup & Restore. A backup cannot
     // restore account credentials, Android permissions, or default-assistant state.
@@ -250,6 +260,39 @@ public final class Prefs {
     public static boolean amoledMode(Context c) { return get(c).getBoolean(AMOLED_MODE, false); }
     public static String appFont(Context c) { return get(c).getString(APP_FONT, "orbit_default"); }
     public static boolean updateNotifications(Context c) { return get(c).getBoolean(UPDATE_NOTIFICATIONS, true); }
+
+    /**
+     * The selected update channel, always Stable unless this device explicitly opted in.
+     *
+     * <p>Anything unrecognised — an absent key on a device upgrading from an older Orbit, or a
+     * value that somehow got corrupted — resolves to Stable. There is no state in which a user
+     * ends up on Beta without having chosen it.
+     */
+    public static String updateChannel(Context c) {
+        return normalizeChannel(get(c).getString(UPDATE_CHANNEL, CHANNEL_STABLE));
+    }
+
+    public static String normalizeChannel(String channel) {
+        return CHANNEL_BETA.equals(channel) ? CHANNEL_BETA : CHANNEL_STABLE;
+    }
+
+    public static boolean betaChannel(Context c) {
+        return CHANNEL_BETA.equals(updateChannel(c));
+    }
+
+    /**
+     * Records the channel and clears the update state the old channel owned.
+     *
+     * <p>Written with {@code commit} rather than {@code apply}: the very next thing the caller does
+     * is start a fresh check, and that check must not race a channel value still sitting in memory.
+     */
+    public static boolean setUpdateChannel(Context c, String channel) {
+        String value = normalizeChannel(channel);
+        if (value.equals(updateChannel(c))) return true;
+        boolean saved = get(c).edit().putString(UPDATE_CHANNEL, value).commit();
+        if (saved) OrbitUpdater.onChannelChanged(c);
+        return saved;
+    }
     public static String quickSettingsRoutineId(Context c) {
         return get(c).getString(QUICK_SETTINGS_ROUTINE_ID, "").trim();
     }

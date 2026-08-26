@@ -245,7 +245,12 @@ public final class ReleaseNotesRepository {
 
     private static int[] parseVersion(String version) {
         if (version == null) return null;
-        Matcher matcher = Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)$").matcher(version.trim());
+        // What's New lists Stable releases, but Orbit itself may be a Beta build. Comparing against
+        // the Beta's base version is what makes "0.7.7.5 Beta 2" correctly regard the finished
+        // 0.7.7.5 notes as not newer, instead of failing to parse and hiding the whole screen.
+        String value = OrbitVersion.isBeta(version.trim())
+                ? OrbitVersion.baseVersion(version.trim()) : version.trim();
+        Matcher matcher = Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)$").matcher(value);
         if (!matcher.matches()) return null;
         try {
             return new int[]{Integer.parseInt(matcher.group(1)), Integer.parseInt(matcher.group(2)),

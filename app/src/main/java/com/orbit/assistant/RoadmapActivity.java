@@ -99,24 +99,29 @@ public final class RoadmapActivity extends Activity {
         // exist yet: the cooking session itself, its hands-free vocabulary, and the optional
         // Orbit-owned timers that Android's Clock app is deliberately still the default for.
         addGroup(page, "NEXT UP", new String[][]{
-                {"OpenRouter chat", "Finish the OpenRouter provider: model choice and streaming chat, on the secure setup that already exists."},
+                {"Modular Orbit Local", "A more flexible on-device setup, and the first Orbit feature you'll be able to try early on the Beta channel."},
                 {"Local device actions", "Orbit Local asking the same trusted Orbit actions the cloud providers use, starting with simple reversible controls."},
                 {"More branch points & conditions", "Several decision points in one Routine, and conditions beyond time and place."},
                 {"Cook with Orbit", "A cooking session you start on purpose and end when you're done, following a recipe with you step by step."}
         });
         addGroup(page, "PLANNED", new String[][]{
+                {"Kitchen hands-free", "Short spoken commands while cooking, on the Voice you already use: next, back, repeat, how much."},
+                {"Recipe intelligence", "Reading a whole recipe, scaling all of it at once, suggesting substitutions and a sensible order of work."},
                 {"More local models", "A choice of on-device models sized to different phones and needs."},
                 {"Edit & resend, reliably", "The message action returns once editing and resending an earlier message is dependable."},
                 {"Deeper Android actions", "Broader device controls through supported Android surfaces."},
                 {"Stronger Custom Commands", "Personal phrases that accept variation and detail, beyond today's exact wording."},
-                {"Kitchen hands-free", "Short spoken commands while cooking, on the Voice you already use: next, back, repeat, how much."},
                 {"Orbit-managed timers", "An optional alternative to your Clock app for several named timers at once. Off by default; your Clock app stays."}
+        });
+        addGroup(page, "DEFERRED", new String[][]{
+                {"OpenRouter chat", "On hold until there's an account to test it with properly. The secure setup already in Orbit stays exactly as it is."}
         });
         addGroup(page, "EXPLORING", new String[][]{
                 {"Hybrid Auto", "Orbit choosing on-device or cloud by itself, from the task, what is available, and your preference."},
                 {"Proactive screen intelligence", "Helpful context-aware assistance that remains transparent and controllable."},
                 {"Image retrieval integrations", "Purpose-built image discovery with safe sources and clear attribution."},
-                {"Hands-busy help beyond cooking", "The same guided sessions for repairs, cleaning, assembly, and anything else done with full hands."}
+                {"Hands-busy help beyond cooking", "The same guided sessions for repairs, cleaning, assembly, and anything else done with full hands."},
+                {"Food safety guidance", "Careful answers on cooking temperatures, storage and reheating, written to be trustworthy rather than alarming."}
         });
 
         UiKit.applyTypography(page);

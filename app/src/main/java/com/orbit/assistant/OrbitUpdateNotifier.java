@@ -34,12 +34,19 @@ public final class OrbitUpdateNotifier {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent pending = PendingIntent.getActivity(context, NOTIFICATION_ID, open,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        String text = "Orbit Assistant v" + release.versionName + " is available";
+        // A Beta build is named so the user can tell at a glance what they are being offered. A
+        // Stable release reaching a Beta-channel user is still an ordinary Orbit update and is
+        // announced as one.
+        boolean beta = release.isBeta();
+        String title = beta ? "Orbit Beta update available" : "Orbit update available";
+        String text = beta
+                ? "Orbit Assistant " + release.displayName() + " is available"
+                : "Orbit Assistant v" + release.versionName + " is available";
         Notification.Builder builder = Build.VERSION.SDK_INT >= 26
                 ? new Notification.Builder(context, CHANNEL)
                 : new Notification.Builder(context);
         builder.setSmallIcon(R.drawable.ic_orbit)
-                .setContentTitle("Orbit update available")
+                .setContentTitle(title)
                 .setContentText(text)
                 .setStyle(new Notification.BigTextStyle().bigText(text))
                 .setContentIntent(pending)
@@ -59,7 +66,7 @@ public final class OrbitUpdateNotifier {
         if (Build.VERSION.SDK_INT < 26) return;
         NotificationChannel channel = new NotificationChannel(
                 CHANNEL, "Orbit updates", NotificationManager.IMPORTANCE_DEFAULT);
-        channel.setDescription("Notifies you when a verified stable Orbit release is available.");
+        channel.setDescription("Notifies you when a verified Orbit release is available.");
         manager.createNotificationChannel(channel);
     }
 }

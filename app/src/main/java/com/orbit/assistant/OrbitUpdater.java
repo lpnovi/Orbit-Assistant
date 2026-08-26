@@ -37,6 +37,24 @@ public final class OrbitUpdater {
     private static final String REPOSITORY = "lpnovi/Orbit-Assistant";
     private static final String LATEST_RELEASE_API =
             "https://api.github.com/repos/" + REPOSITORY + "/releases/latest";
+    /**
+     * How many recent releases the Beta channel looks at.
+     *
+     * <p>Stable keeps GitHub's own {@code /releases/latest}, which already means "newest published
+     * non-prerelease" and needs no scanning. Beta cannot use it, because that endpoint is defined
+     * to skip prereleases, so it reads a bounded recent page instead — never the full history.
+     */
+    private static final int BETA_SCAN_PAGE_SIZE = 15;
+    /**
+     * How many of those releases may cost a manifest download.
+     *
+     * <p>The shortlist is ordered newest-version-first before any manifest is fetched, so the
+     * answer is almost always the first entry. This cap keeps a repository full of old releases
+     * from turning one update check into a dozen requests.
+     */
+    private static final int MAX_MANIFEST_FETCHES = 4;
+    private static final String RELEASES_LIST_API =
+            "https://api.github.com/repos/" + REPOSITORY + "/releases?per_page=" + BETA_SCAN_PAGE_SIZE;
     private static final String RELEASE_DOWNLOAD_BASE =
             "https://github.com/" + REPOSITORY + "/releases/download/";
     private static final String UPDATE_MANIFEST_NAME = "orbit-update.json";
@@ -45,10 +63,14 @@ public final class OrbitUpdater {
             "7D:AD:61:93:85:DF:F1:1E:C7:31:AA:55:5F:2B:44:8A:94:3C:73:91:81:3D:1A:94:DF:1C:B4:23:2E:CD:41:E3";
     private static final int SCHEMA = 1;
     private static final int MAX_JSON_BYTES = 256 * 1024;
+    /**
+     * A page of full release objects is far larger than a single one, so it gets its own ceiling.
+     * Still a hard bound — the response is read into memory and must never be unlimited.
+     */
+    private static final int MAX_RELEASE_LIST_BYTES = 1024 * 1024;
     private static final long MAX_APK_BYTES = 500L * 1024L * 1024L;
     private static final long ABANDONED_FILE_MS = 48L * 60L * 60L * 1000L;
     private static final long FOREGROUND_CHECK_SPACING_MS = 5L * 60L * 60L * 1000L;
-    private static final Pattern VERSION_PATTERN = Pattern.compile("^[0-9]+(?:\\.[0-9]+)+$");
     private static final Pattern SHA256_PATTERN = Pattern.compile("^[0-9a-fA-F]{64}$");
     private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool();
 
@@ -120,6 +142,16 @@ public final class OrbitUpdater {
             this.releaseNotes = releaseNotes == null ? "" : releaseNotes;
         }
 
+        /** Whether this release is a Beta prerelease, read from its own version. */
+        public boolean isBeta() {
+            return OrbitVersion.isBeta(versionName);
+        }
+
+        /** "0.7.7.5" or "0.7.7.5 Beta 1". */
+        public String displayName() {
+            return OrbitVersion.displayName(versionName);
+        }
+
         JSONObject toJson() throws Exception {
             return new JSONObject()
                     .put("tag", tag)
@@ -145,47 +177,212 @@ public final class OrbitUpdater {
     }
 
     public static CheckResult checkNow(Context context) throws Exception {
+        return checkNow(context, Prefs.updateChannel(context));
+    }
+
+    /**
+     * One update check, in one channel.
+     *
+     * <p>Stable is unchanged from every Orbit before this one: GitHub's own {@code
+     * /releases/latest}, which by definition returns the newest published non-prerelease. Beta adds
+     * a bounded scan of recent releases so it can see prereleases too, and then picks whichever
+     * eligible build carries the greatest {@code versionCode} — which is frequently a finished
+     * Stable release rather than another Beta.
+     */
+    static CheckResult checkNow(Context context, String channel) throws Exception {
         cleanupAbandonedDownloads(context, null);
+        String resolved = Prefs.normalizeChannel(channel);
+        Release parsed = Prefs.CHANNEL_BETA.equals(resolved)
+                ? findBestBetaChannelRelease()
+                : findLatestStableRelease();
+
+        Prefs.get(context).edit().putLong(PREF_LAST_CHECK_MS, System.currentTimeMillis()).apply();
+        if (parsed != null && parsed.versionCode > BuildConfig.VERSION_CODE) {
+            Prefs.get(context).edit()
+                    .putString(PREF_CACHED_RELEASE,
+                            parsed.toJson().put("channel", resolved).toString())
+                    .apply();
+            log("check_complete", "update_available_code_" + parsed.versionCode
+                    + "_channel_" + resolved);
+            return new CheckResult(true, parsed);
+        }
+        Prefs.get(context).edit().remove(PREF_CACHED_RELEASE).apply();
+        log("check_complete", "up_to_date_channel_" + resolved);
+        return new CheckResult(false, parsed);
+    }
+
+    /** The Stable path, byte for byte the behaviour Orbit has always had. */
+    private static Release findLatestStableRelease() throws Exception {
         log("check_started", "latest_stable_release");
         JSONObject releaseJson = readJson(LATEST_RELEASE_API, MAX_JSON_BYTES);
         if (releaseJson.optBoolean("draft", true) || releaseJson.optBoolean("prerelease", true)) {
             throw new UpdateException("The latest GitHub release is not a stable published release.");
         }
         String tag = releaseJson.optString("tag_name", "").trim();
-        if (!tag.matches("^v[0-9]+(?:\\.[0-9]+)+$")) {
+        if (!OrbitVersion.isStableTag(tag)) {
             throw new UpdateException("The latest Orbit release tag is malformed.");
         }
-        JSONArray assets = releaseJson.optJSONArray("assets");
-        if (assets == null) throw new UpdateException("The latest Orbit release has no assets.");
+        if (releaseJson.optJSONArray("assets") == null) {
+            throw new UpdateException("The latest Orbit release has no assets.");
+        }
+        JSONObject manifest = fetchManifest(releaseJson, tag);
+        return evaluateCandidate(releaseJson, manifest, Prefs.CHANNEL_STABLE);
+    }
 
+    /**
+     * The Beta path: the highest-versionCode eligible release among a bounded recent page.
+     *
+     * <p>Each candidate is validated exactly as strictly as a Stable one. A malformed, unofficial,
+     * or mislabelled release is skipped rather than accepted, and if nothing validates this returns
+     * null so the caller can say Orbit is already on the newest build it can see.
+     */
+    private static Release findBestBetaChannelRelease() throws Exception {
+        log("check_started", "beta_channel_release_scan");
+        JSONArray releases = readJsonArray(RELEASES_LIST_API, MAX_RELEASE_LIST_BYTES);
+        java.util.List<JSONObject> shortlist = shortlist(releases, Prefs.CHANNEL_BETA);
+
+        java.util.List<Release> valid = new java.util.ArrayList<>();
+        int fetches = 0;
+        for (JSONObject release : shortlist) {
+            if (fetches >= MAX_MANIFEST_FETCHES) break;
+            fetches++;
+            String tag = release.optString("tag_name", "").trim();
+            try {
+                JSONObject manifest = fetchManifest(release, tag);
+                valid.add(evaluateCandidate(release, manifest, Prefs.CHANNEL_BETA));
+            } catch (Exception e) {
+                // A malformed or unofficial release is skipped, never accepted best-effort.
+                log("candidate_rejected", diagnostic(e));
+            }
+        }
+        return bestByVersionCode(valid);
+    }
+
+    /**
+     * The releases worth spending a manifest download on, highest version first.
+     *
+     * <p>The ordering is only a search heuristic so the bounded budget is spent well. What is
+     * actually installed is still decided by {@code versionCode} in {@link #bestByVersionCode}.
+     */
+    static java.util.List<JSONObject> shortlist(JSONArray releases, String channel) {
+        java.util.List<JSONObject> out = new java.util.ArrayList<>();
+        if (releases == null) return out;
+        for (int i = 0; i < releases.length(); i++) {
+            JSONObject release = releases.optJSONObject(i);
+            if (structurallyEligible(release, channel)) out.add(release);
+        }
+        java.util.Collections.sort(out, (a, b) -> OrbitVersion.compareVersions(
+                OrbitVersion.versionFromTag(b.optString("tag_name", "").trim()),
+                OrbitVersion.versionFromTag(a.optString("tag_name", "").trim())));
+        return out;
+    }
+
+    /**
+     * The winner among validated candidates: the greatest {@code versionCode}, and nothing else.
+     *
+     * <p>Version <em>names</em> never decide this. A Beta user offered both {@code 0.7.7.5} and
+     * {@code 0.7.7.6-beta.1} takes whichever Android would actually treat as newer.
+     */
+    static Release bestByVersionCode(java.util.List<Release> candidates) {
+        Release best = null;
+        if (candidates == null) return null;
+        for (Release candidate : candidates) {
+            if (candidate == null) continue;
+            if (best == null || candidate.versionCode > best.versionCode) best = candidate;
+        }
+        return best;
+    }
+
+    /**
+     * The checks that need no network, so an obviously ineligible release costs nothing.
+     *
+     * <p>The important one is agreement: a {@code -beta.N} tag must be published as a GitHub
+     * prerelease, and a plain version tag must not be. A Beta tag released as a normal Stable
+     * release, or a Stable tag flagged as a prerelease, is a mislabelled release and Orbit refuses
+     * it in both channels rather than guessing which half was intended.
+     */
+    static boolean structurallyEligible(JSONObject release, String channel) {
+        if (release == null) return false;
+        if (release.optBoolean("draft", true)) return false;
+        String tag = release.optString("tag_name", "").trim();
+        if (!OrbitVersion.isValidTag(tag)) return false;
+        boolean prerelease = release.optBoolean("prerelease", true);
+        if (OrbitVersion.isBetaTag(tag) != prerelease) return false;
+        // Stable never accepts a prerelease, whatever its tag claims.
+        if (!Prefs.CHANNEL_BETA.equals(Prefs.normalizeChannel(channel)) && prerelease) return false;
+        return release.optJSONArray("assets") != null;
+    }
+
+    /**
+     * Full validation of one release against its manifest. Throws for anything that does not match.
+     *
+     * <p>Separated from the network so the rules can be exercised exactly, and so both channels are
+     * provably running the same ones.
+     */
+    static Release evaluateCandidate(JSONObject release, JSONObject manifest, String channel)
+            throws Exception {
+        if (!structurallyEligible(release, channel)) {
+            throw new UpdateException("The Orbit release is not an eligible published release.");
+        }
+        String tag = release.optString("tag_name", "").trim();
+        JSONArray assets = release.optJSONArray("assets");
         JSONObject manifestAsset = uniqueAsset(assets, UPDATE_MANIFEST_NAME);
         requireOfficialAssetUrl(manifestAsset, tag, UPDATE_MANIFEST_NAME);
-        JSONObject manifest = readJson(downloadUrl(tag, UPDATE_MANIFEST_NAME), MAX_JSON_BYTES);
-        Release parsed = validateManifestAndAssets(
-                tag, releaseJson.optString("body", ""), manifest, assets);
+        return validateManifestAndAssets(tag, release.optString("body", ""), manifest, assets);
+    }
 
-        Prefs.get(context).edit().putLong(PREF_LAST_CHECK_MS, System.currentTimeMillis()).apply();
-        if (parsed.versionCode > BuildConfig.VERSION_CODE) {
-            Prefs.get(context).edit().putString(PREF_CACHED_RELEASE, parsed.toJson().toString()).apply();
-            log("check_complete", "update_available_code_" + parsed.versionCode);
-            return new CheckResult(true, parsed);
-        }
-        Prefs.get(context).edit().remove(PREF_CACHED_RELEASE).apply();
-        log("check_complete", "up_to_date");
-        return new CheckResult(false, parsed);
+    private static JSONObject fetchManifest(JSONObject release, String tag) throws Exception {
+        JSONArray assets = release.optJSONArray("assets");
+        if (assets == null) throw new UpdateException("The Orbit release has no assets.");
+        JSONObject manifestAsset = uniqueAsset(assets, UPDATE_MANIFEST_NAME);
+        requireOfficialAssetUrl(manifestAsset, tag, UPDATE_MANIFEST_NAME);
+        return readJson(downloadUrl(tag, UPDATE_MANIFEST_NAME), MAX_JSON_BYTES);
+    }
+
+    /**
+     * Forgets everything the previous channel decided, without disturbing an install in flight.
+     *
+     * <p>A cached Beta candidate must not survive a switch to Stable, and Stable's
+     * already-notified bookkeeping must not silence the first Beta notification. Both are update
+     * <em>discovery</em> state, so both are dropped. The pending-installer record is deliberately
+     * left alone: if a verified APK is already on its way to Android's installer, changing a
+     * preference must not orphan it.
+     */
+    public static void onChannelChanged(Context context) {
+        if (context == null) return;
+        Prefs.get(context).edit()
+                .remove(PREF_CACHED_RELEASE)
+                .remove(PREF_NOTIFIED_CODE)
+                .remove(PREF_LAST_CHECK_MS)
+                .remove(PREF_LAST_FOREGROUND_CHECK_MS)
+                .commit();
+        OrbitUpdateNotifier.cancel(context);
+        log("channel_changed", Prefs.updateChannel(context));
     }
 
     public static Release loadCachedAvailable(Context context) {
         String raw = Prefs.get(context).getString(PREF_CACHED_RELEASE, "");
         if (raw.isEmpty()) return null;
+        boolean beta = Prefs.betaChannel(context);
         try {
             JSONObject o = new JSONObject(raw);
+            // A candidate found in the other channel is not evidence about this one.
+            if (!Prefs.updateChannel(context)
+                    .equals(Prefs.normalizeChannel(o.optString("channel", Prefs.CHANNEL_STABLE)))) {
+                Prefs.get(context).edit().remove(PREF_CACHED_RELEASE).apply();
+                return null;
+            }
             Release release = new Release(
                     o.getString("tag"), o.getString("versionName"), o.getLong("versionCode"),
                     o.getString("apkAssetName"), o.getString("apkSha256"),
                     o.getString("certificateSha256"), o.optLong("apkSize", -1L),
                     o.optString("releaseNotes", ""));
             validateReleaseFields(release);
+            // Belt and braces: Stable can never surface a Beta build, whatever the cache says.
+            if (release.isBeta() && !beta) {
+                Prefs.get(context).edit().remove(PREF_CACHED_RELEASE).apply();
+                return null;
+            }
             return release.versionCode > BuildConfig.VERSION_CODE ? release : null;
         } catch (Exception e) {
             Prefs.get(context).edit().remove(PREF_CACHED_RELEASE).apply();
@@ -483,8 +680,12 @@ public final class OrbitUpdater {
     }
 
     private static void validateReleaseFields(Release release) throws Exception {
-        if (release == null || !VERSION_PATTERN.matcher(release.versionName).matches() ||
-                !release.tag.equals("v" + release.versionName) || release.versionCode <= 0L) {
+        // Stable and Beta are both accepted here, and both must be exactly well-formed. A tag such
+        // as v0.7.7.5-beta.0 or v0.7.7.5-test is not an Orbit version at all, so it never reaches
+        // the point of having a download URL built for it.
+        if (release == null || !OrbitVersion.isValid(release.versionName) ||
+                !release.tag.equals(OrbitVersion.tagFor(release.versionName)) ||
+                release.versionCode <= 0L) {
             throw new UpdateException("The Orbit release version metadata is malformed.");
         }
         String expectedAsset = "Orbit-Assistant-v" + release.versionName + ".apk";
@@ -520,6 +721,15 @@ public final class OrbitUpdater {
     }
 
     private static JSONObject readJson(String url, int limit) throws Exception {
+        return new JSONObject(readJsonText(url, limit));
+    }
+
+    /** The releases collection endpoint answers with an array rather than an object. */
+    private static JSONArray readJsonArray(String url, int limit) throws Exception {
+        return new JSONArray(readJsonText(url, limit));
+    }
+
+    private static String readJsonText(String url, int limit) throws Exception {
         HttpURLConnection connection = open(url, "application/vnd.github+json, application/json");
         try {
             int status = connection.getResponseCode();
@@ -528,7 +738,7 @@ public final class OrbitUpdater {
                 throw new UpdateException("The update service returned HTTP " + status + ".");
             }
             byte[] bytes = readLimited(connection.getInputStream(), limit);
-            return new JSONObject(new String(bytes, StandardCharsets.UTF_8));
+            return new String(bytes, StandardCharsets.UTF_8);
         } finally {
             connection.disconnect();
         }
@@ -555,8 +765,7 @@ public final class OrbitUpdater {
     }
 
     private static String downloadUrl(String tag, String assetName) throws Exception {
-        if (!tag.matches("^v[0-9]+(?:\\.[0-9]+)+$") ||
-                !assetName.matches("^[A-Za-z0-9._-]+$")) {
+        if (!OrbitVersion.isValidTag(tag) || !assetName.matches("^[A-Za-z0-9._-]+$")) {
             throw new UpdateException("The Orbit release asset reference is malformed.");
         }
         return RELEASE_DOWNLOAD_BASE + tag + "/" + assetName;

@@ -390,3 +390,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Cups into grams depends on the ingredient, so Orbit asks which one instead of quietly guessing.
   - Timers still belong to your normal Clock app, and now take a useful name from what you said, such as Steak or Potatoes.
 
+- **v0.7.7.4**: You can now choose whether Orbit updates on the Stable channel or the new Beta channel.
+  - About & updates gains an Update channel setting: Stable stays the default and the recommended choice for everyone.
+  - Beta is an explicit opt-in that offers new Orbit builds earlier, before they become normal releases.
+  - Joining Beta asks first, and explains plainly that early builds may contain bugs or unfinished behaviour.
+  - You can return to Stable whenever you like, and Orbit will never downgrade a newer build you already have installed.
+  - Beta and Stable updates are the same app, signed and verified by Orbit's permanent certificate exactly the same way.
+
