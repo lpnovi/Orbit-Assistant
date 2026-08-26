@@ -605,9 +605,8 @@ second update server, a second app, a second package name, or a weaker build.
 - Preserve `orbit-update.json` schema 1 and the existing APK asset naming, so the updater already
   shipped in v0.7.7.3 can install v0.7.7.4 normally
 
-### 0.7.7.5-beta.1 — Modular Orbit Local (in Beta validation)
-**Not completed history yet.** Published as a prerelease for real-device validation; it becomes
-`0.7.7.5` Stable only after that testing is satisfactory.
+### 0.7.7.5 — Modular Orbit Local
+Validated on real hardware across three Betas (`beta.1`-`beta.3`) and released as `0.7.7.5` Stable.
 
 - Add the optional `:local` Gradle module, package `com.orbit.assistant.local`, and move
   `com.google.mediapipe:tasks-genai` and the inference engine into it. The main Orbit APK no longer
@@ -652,25 +651,23 @@ genuinely unfinished remainder of the line, in the order the next patches should
 The long-term goal is unchanged: Orbit becomes a **hybrid, provider-agnostic Android assistant
 runtime** rather than an app tied to one model service.
 
-#### Near-term order, after v0.7.7.4
+#### Near-term order, after v0.7.7.5
 v0.7.7.4 shipped the Beta channel, so this order is now also the order these are expected to be
-*tested* in: a feature becomes `v0.7.7.5-beta.1`, is validated on a real device, and only then
+*tested* in: a feature becomes a numbered Beta, is validated on a real device, and only then
 becomes a Stable release.
 
-1. **Finish Modular Orbit Local Beta validation** — `0.7.7.5-beta.1` is published; it becomes
-   `0.7.7.5` Stable once real-device testing is satisfactory, or `beta.2` if it is not
-2. **Orbit Local device actions** — a lightweight local intent/function model installed beside the
+1. **Orbit Local device actions** — a lightweight local intent/function model installed beside the
    chat model (the `ModelSpec` architecture already keeps their files and state independent). The
    intended pipeline is fixed: user request → lightweight local intent/function model → normalized
    Orbit tool request → existing Orbit tool execution layer → result. The local model only ever
    *requests* existing Orbit tools — starting with simple reversible actions such as flashlight,
    brightness, and volume — and never grows its own device-control logic; cloud and local providers
    ultimately share the same tool execution layer
-3. **Better Routine conditions and additional branch capability** — conditions beyond time and
+2. **Better Routine conditions and additional branch capability** — conditions beyond time and
    place, and more than one decision point in a single Routine
-4. **Cook with Orbit** — the explicit temporary cooking session described below
-5. **Kitchen hands-free** — the short spoken vocabulary inside an active cooking session
-6. **Recipe intelligence** — extraction, whole-recipe scaling, substitutions, and sequencing
+3. **Cook with Orbit** — the explicit temporary cooking session described below
+4. **Kitchen hands-free** — the short spoken vocabulary inside an active cooking session
+5. **Recipe intelligence** — extraction, whole-recipe scaling, substitutions, and sequencing
 
 **OpenRouter is deferred.** Finishing OpenRouter chat requires a configured account to validate
 properly on a real device, and there is not one available, so shipping it would mean releasing an
@@ -763,7 +760,6 @@ awareness, "what can I make with what I have". Not built until real use shows th
 place. Orbit should first be excellent *during* cooking rather than become a meal planner.
 
 ### Next up
-- Finish Modular Orbit Local Beta validation on a real device, then promote it to Stable
 - Local device actions: Orbit Local asking Orbit's existing tools to run simple reversible
   controls
 - Conditions beyond time and location, and more than one branch point in a single routine

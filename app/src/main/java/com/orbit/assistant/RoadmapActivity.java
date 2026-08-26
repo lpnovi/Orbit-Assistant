@@ -98,8 +98,12 @@ public final class RoadmapActivity extends Activity {
         // labels - and none of it is described here. What is listed is the part that does not
         // exist yet: the cooking session itself, its hands-free vocabulary, and the optional
         // Orbit-owned timers that Android's Clock app is deliberately still the default for.
+        //
+        // One more entry left in v0.7.7.5, which promoted Modular Orbit Local from Beta to Stable.
+        // "Modular Orbit Local" is now shipped work and belongs to What's New, so only the part of
+        // that line which does not exist yet - teaching Orbit Local Orbit's device actions -
+        // remains listed below.
         addGroup(page, "NEXT UP", new String[][]{
-                {"Modular Orbit Local", "In Beta testing now: Orbit Local as an optional add-on, so Orbit itself stays small. Becomes a normal release once it's proven on real phones."},
                 {"Local device actions", "Orbit Local asking the same trusted Orbit actions the cloud providers use, starting with simple reversible controls."},
                 {"More branch points & conditions", "Several decision points in one Routine, and conditions beyond time and place."},
                 {"Cook with Orbit", "A cooking session you start on purpose and end when you're done, following a recipe with you step by step."}

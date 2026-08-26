@@ -184,11 +184,11 @@ public final class ReleaseModularityTest {
                 workflow.contains("Orbit-Assistant-v${EXPECTED_VERSION_NAME}.apk"));
     }
 
-    /** This release ships as a Beta, deliberately, for real-device validation before Stable. */
-    @Test public void thisReleaseIsABeta() {
-        assertTrue("v0.7.7.5-beta.1 must be a Beta version",
-                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
-        assertTrue(OrbitVersion.installedIsBeta());
+    /** This release is the Stable promotion of the Betas that validated Modular Orbit Local. */
+    @Test public void thisReleaseIsStable() {
+        assertTrue("v0.7.7.5 must be a Stable version",
+                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.installedIsBeta());
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
     }
 }

@@ -47,6 +47,9 @@ public final class RoadmapFutureOnlyTest {
             "Update channel",
             "Stable / Beta updates",
             "Choose your update channel",
+            // v0.7.7.5 promoted Modular Orbit Local from Beta to Stable, so the component itself
+            // is shipped work. Teaching it Orbit's device actions is what genuinely remains.
+            "Modular Orbit Local",
     };
 
     private String roadmapText() {
@@ -125,10 +128,10 @@ public final class RoadmapFutureOnlyTest {
                 text.contains("secure setup already in Orbit stays"));
     }
 
-    /** The near-term order agreed for the 0.7.7 line, so the page and ROADMAP.md cannot drift. */
+    /** The near-term order agreed for the 0.7.7 line, so the page and ROADMAP.md cannot drift.
+     *  Modular Orbit Local left this list in v0.7.7.5, which shipped it. */
     @Test public void theNearTermOrderIsListed() {
         String text = roadmapText();
-        assertTrue(text.contains("Modular Orbit Local"));
         assertTrue(text.contains("Local device actions"));
         assertTrue(text.contains("More branch points & conditions"));
         assertTrue(text.contains("Cook with Orbit"));

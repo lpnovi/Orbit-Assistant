@@ -147,16 +147,17 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * The 0.7.7.5 line ships as Betas until Modular Orbit Local is validated on real hardware.
-     * Written against the build's own beta number so each Beta does not need this edited, while
-     * still failing if the line is promoted to Stable without a deliberate change here.
+     * The 0.7.7.5 line shipped as Betas until Modular Orbit Local was validated on real hardware,
+     * and is now promoted to Stable. Kept as the counterpart of the Beta guard it replaces, so a
+     * later accidental return to a prerelease versionName fails here rather than on a phone.
      */
-    @Test public void thisBuildIsAModularOrbitLocalBeta() {
-        assertTrue(OrbitVersion.installedIsBeta());
+    @Test public void thisBuildIsModularOrbitLocalStable() {
+        assertFalse(OrbitVersion.installedIsBeta());
+        assertTrue(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
         assertEquals("0.7.7.5", OrbitVersion.baseVersion(BuildConfig.VERSION_NAME));
-        int beta = OrbitVersion.betaNumber(BuildConfig.VERSION_NAME);
-        assertTrue("a Beta counter starts at one", beta >= 1);
-        assertEquals("Orbit Assistant v0.7.7.5 Beta " + beta,
+        assertEquals("a Stable build carries no beta counter",
+                0, OrbitVersion.betaNumber(BuildConfig.VERSION_NAME));
+        assertEquals("Orbit Assistant v0.7.7.5",
                 OrbitVersion.releaseTitle(BuildConfig.VERSION_NAME));
     }
 }
