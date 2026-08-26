@@ -268,19 +268,101 @@ public final class OrbitLocalInstaller {
         }
     }
 
-    /** Hands the verified APK to Android's own installer. The user still confirms it. */
-    public static void launchInstaller(Activity activity, File apk) throws Exception {
-        File root = componentDirectory(activity).getCanonicalFile();
-        File candidate = apk.getCanonicalFile();
-        if (!candidate.getPath().startsWith(root.getPath() + File.separator) || !candidate.isFile()) {
-            throw new InstallException("The verified component file is unavailable.");
+    /** The MIME type Android's package installer registers for. */
+    static final String APK_MIME_TYPE = "application/vnd.android.package-archive";
+    /** The FileProvider authority declared in Orbit's manifest as ${applicationId}.fileprovider. */
+    static String fileProviderAuthority(Context context) {
+        return context.getPackageName() + ".fileprovider";
+    }
+
+    /**
+     * The steps of the handoff, so a failure says which one broke.
+     *
+     * <p>In v0.7.7.5-beta.1 every one of these collapsed into a single "Android could not open the
+     * package installer", which was true of only the last of them. The APK had in fact downloaded
+     * and verified perfectly; {@code FILEPROVIDER_URI} was what failed, because the component's
+     * cache directory was missing from {@code file_paths.xml}. Naming the stage is what turns a
+     * Beta report into a diagnosis.
+     */
+    enum InstallStage {
+        APK_MISSING("The verified component file is no longer available. Download it again."),
+        OUTSIDE_COMPONENT_DIRECTORY("The verified component file is unavailable."),
+        FILEPROVIDER_URI("Orbit could not share the component with Android's installer."),
+        NO_INSTALLER("This device has no package installer available."),
+        START_ACTIVITY("Android could not open the package installer.");
+
+        final String message;
+
+        InstallStage(String message) {
+            this.message = message;
         }
-        Uri uri = FileProvider.getUriForFile(
-                activity, activity.getPackageName() + ".fileprovider", candidate);
-        Intent install = new Intent(Intent.ACTION_VIEW)
-                .setDataAndType(uri, "application/vnd.android.package-archive")
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        activity.startActivity(install);
+    }
+
+    /**
+     * Hands the verified APK to Android's own installer. The user still confirms it.
+     *
+     * <p>Structurally identical to {@link OrbitUpdater#launchPackageInstaller} — the same
+     * ACTION_VIEW, the same APK MIME type, the same read-permission grant, the same FileProvider
+     * authority. That path has installed Orbit's own updates for many releases, so this one
+     * deliberately matches it rather than inventing a second mechanism.
+     */
+    public static void launchInstaller(Activity activity, File apk) throws Exception {
+        InstallStage stage = InstallStage.APK_MISSING;
+        try {
+            if (apk == null || !apk.isFile()) throw new InstallException(stage.message);
+
+            stage = InstallStage.OUTSIDE_COMPONENT_DIRECTORY;
+            File root = componentDirectory(activity).getCanonicalFile();
+            File candidate = apk.getCanonicalFile();
+            // Unchanged from Beta 1: only a file inside Orbit's own component cache may ever be
+            // offered for installation, whatever path the caller passed in.
+            if (!candidate.getPath().startsWith(root.getPath() + File.separator)
+                    || !candidate.isFile()) {
+                throw new InstallException(stage.message);
+            }
+
+            stage = InstallStage.FILEPROVIDER_URI;
+            Uri uri = FileProvider.getUriForFile(
+                    activity, fileProviderAuthority(activity), candidate);
+
+            Intent install = new Intent(Intent.ACTION_VIEW)
+                    .setDataAndType(uri, APK_MIME_TYPE)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+            stage = InstallStage.NO_INSTALLER;
+            if (install.resolveActivity(activity.getPackageManager()) == null) {
+                throw new InstallException(stage.message);
+            }
+
+            stage = InstallStage.START_ACTIVITY;
+            activity.startActivity(install);
+            log(activity, InstallStage.START_ACTIVITY, null);
+        } catch (Throwable t) {
+            log(activity, stage, t);
+            throw t instanceof InstallException ? (InstallException) t
+                    : new InstallException(stage.message);
+        }
+    }
+
+    /**
+     * Records which stage the handoff reached, and what threw.
+     *
+     * <p>The exception class and stage go to logcat and to Orbit's Diagnostics page, where a Beta
+     * tester can read them. The user-facing message stays the short sentence on the stage, and no
+     * filesystem path ever reaches the UI.
+     */
+    private static void log(Context context, InstallStage stage, Throwable failure) {
+        String detail = "stage=" + stage.name()
+                + (failure == null ? " result=ok" : " cause=" + failure.getClass().getSimpleName());
+        Log.i(TAG, "component_installer " + detail);
+        if (failure != null) {
+            try {
+                DiagnosticStore.recordError(context.getApplicationContext(),
+                        "Orbit Local component installer: " + detail);
+            } catch (Throwable ignored) {
+                // Diagnostics must never be the reason an install fails.
+            }
+        }
     }
 
     /** Asks Android to uninstall the component. Android owns the confirmation, and the outcome. */

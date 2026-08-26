@@ -506,7 +506,11 @@ public final class LocalAiActivity extends Activity {
         try {
             OrbitLocalInstaller.launchInstaller(this, apk);
         } catch (Exception e) {
-            installMessage = "Android could not open the package installer.";
+            // The installer now reports which step of the handoff failed, so show that rather than
+            // one message that was only ever accurate for the last of them.
+            String message = e.getMessage();
+            installMessage = message == null || message.trim().isEmpty()
+                    ? "Android could not open the package installer." : message;
             rebuild();
         }
     }

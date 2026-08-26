@@ -1,5 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Every directory Orbit may hand to another app through FileProvider, and nothing else.
+
+  Deliberately one narrow entry per purpose rather than a single path="." over the whole cache.
+  A content URI granted from here is readable by whichever app receives the Intent, so the cost of
+  over-exposing is real and the benefit of a wildcard is only convenience.
+
+  A directory missing from this list is not a soft failure: FileProvider throws when asked for a
+  URI it has no configured root for, which is exactly how the Orbit Local component installer
+  failed in v0.7.7.5-beta.1 — the APK downloaded and verified correctly, then could not be handed
+  to Android's package installer at all. Anything added to Orbit that must reach another app needs
+  its directory declared here and covered by FileProviderPathsTest.
+-->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Verified main-app update APKs: OrbitUpdater.updateDirectory(). -->
     <cache-path name="orbit_updates" path="updates/" />
+    <!-- Photos captured through Orbit's attachment picker. -->
     <cache-path name="orbit_picker_camera" path="orbit_picker_camera/" />
+    <!-- Verified optional Orbit Local component APKs: OrbitLocalInstaller.componentDirectory(). -->
+    <cache-path name="orbit_local_component" path="orbit-local/" />
 </paths>

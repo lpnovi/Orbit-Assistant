@@ -405,3 +405,9 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Everything is still signed and verified by Orbit's permanent certificate, and Orbit refuses any component it did not publish.
   - This is a Beta build for real-device testing; local AI needs validating on hardware before this becomes a stable release.
 
+- **v0.7.7.5-beta.2**: Fixes Orbit Local component installation failing right before Android's installer could open.
+  - Setting up Orbit Local downloaded and verified the component correctly, then stopped at the final handover step. That step now works.
+  - The component download stays narrowly shared through Orbit's own secure file provider, with nothing else exposed.
+  - Installation problems now say which step failed, which makes Beta reports far easier to act on.
+  - No changes to the local AI model, cloud providers, or anything else in Orbit.
+
