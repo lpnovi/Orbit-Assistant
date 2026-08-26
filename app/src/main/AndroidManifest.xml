@@ -17,8 +17,30 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!--
+      Declared by the optional Orbit Local component at signature protection level, so Android
+      grants it only because both APKs carry Orbit's permanent release certificate. Without it
+      bindService to the component's service is refused outright, whatever the package visibility
+      rules say: visibility decides whether Orbit can see the package, this decides whether Orbit
+      is allowed to talk to it.
+    -->
+    <uses-permission android:name="com.orbit.assistant.permission.BIND_ORBIT_LOCAL" />
 
     <queries>
+        <!--
+          The optional Orbit Local component, named exactly and on its own.
+
+          Orbit targets an Android where package visibility is filtered by default: without this,
+          getPackageInfo for the component throws NameNotFoundException even when the package is
+          installed and Android has just reported "Install success". That is exactly how
+          v0.7.7.5-beta.2 came to show "Not installed" for a component sitting on the device.
+
+          Deliberately one <package> entry and never QUERY_ALL_PACKAGES. Orbit needs to see its own
+          optional component and nothing else. Visibility is not trust: OrbitLocalComponent still
+          requires the exact package, Orbit's permanent signing certificate, the matching version,
+          and a compatible protocol before a single request crosses the boundary.
+        -->
+        <package android:name="com.orbit.assistant.local" />
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>

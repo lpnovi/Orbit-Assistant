@@ -37,8 +37,8 @@ android {
         targetSdk 35
         // Kept in lockstep with the main app for this release: Orbit installs the component built
         // for its own release, so a mismatched pair cannot occur.
-        versionCode 729
-        versionName "0.7.7.5-beta.2"
+        versionCode 730
+        versionName "0.7.7.5-beta.3"
 
         // The inference runtime ships native libraries per ABI. Only 64-bit ARM is packaged, and
         // this is now the only APK in the project that carries them at all.

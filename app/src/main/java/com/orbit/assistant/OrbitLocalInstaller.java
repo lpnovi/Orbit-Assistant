@@ -100,6 +100,11 @@ public final class OrbitLocalInstaller {
                 Expected expected = Expected.from(manifest);
 
                 File directory = componentDirectory(app);
+                // Nothing already in this directory can help a fresh download, and an old Beta's
+                // component APK is 35 MB of pure waste from the moment this build exists. Clear
+                // the whole directory before writing into it rather than layering another file on
+                // top of whatever previous attempts left behind.
+                cleanup(app);
                 part = new File(directory, expected.assetName + ".part");
                 output = new File(directory, expected.assetName);
                 safeDelete(part);
@@ -376,11 +381,80 @@ public final class OrbitLocalInstaller {
         }
     }
 
-    /** Removes downloaded component installers once they are no longer needed. */
+    // ---- the installer cache ----------------------------------------------------------------------
+
+    /**
+     * How long an installer nobody used is kept before it counts as abandoned.
+     *
+     * <p>The same 48 hours the main updater applies to its own downloads, and for the same reason:
+     * a cancelled install should not cost the user another 35 MB on the next attempt, but it also
+     * should not sit in the cache forever.
+     */
+    private static final long ABANDONED_INSTALLER_MS = 48L * 60L * 60L * 1000L;
+
+    /**
+     * Removes every downloaded component installer. Used when Orbit Local is being removed outright.
+     *
+     * <p>Only ever touches {@code cache/orbit-local/}. The installed package belongs to Android and
+     * the model belongs to the component; neither is reachable from here.
+     */
     public static void cleanup(Context context) {
         File[] files = componentDirectory(context).listFiles();
         if (files == null) return;
         for (File file : files) safeDelete(file);
+    }
+
+    /**
+     * Clears the installer cache once the component is confirmed installed.
+     *
+     * <p>Called only after {@link OrbitLocalComponent} has read the real package back from the
+     * package manager, never because Orbit asked Android to install something. At that point the
+     * downloaded APK is a pure duplicate of a package Android is already storing, so keeping it
+     * would mean charging the user twice for the same 35 MB.
+     */
+    public static void cleanupAfterInstall(Context context) {
+        cleanup(context);
+    }
+
+    /**
+     * Drops component installers that are no longer worth keeping.
+     *
+     * <p>{@code cache/orbit-local/} holds temporary handoff files, not a history of every Beta.
+     * The policy is deliberately narrow and deterministic:
+     *
+     * <ul>
+     *   <li>{@code keep} is never touched — that is the file being handed to Android right now.
+     *   <li>An APK named for any other Orbit version is obsolete the moment this build runs: Orbit
+     *       only ever installs its own release's component. Removed.
+     *   <li>A {@code .part} file is an interrupted download that will be started again from zero.
+     *       Removed.
+     *   <li>This version's own verified installer is kept, so Retry after a cancelled install costs
+     *       nothing, until it passes {@link #ABANDONED_INSTALLER_MS} unused.
+     * </ul>
+     */
+    public static void prune(Context context, File keep) {
+        File[] files = componentDirectory(context).listFiles();
+        if (files == null) return;
+        String current = assetName();
+        long now = System.currentTimeMillis();
+        for (File file : files) {
+            if (file == null || !file.isFile()) continue;
+            if (keep != null && sameFile(file, keep)) continue;
+            if (!current.equals(file.getName())) {
+                // An old Beta's component, or a half-finished download of any version.
+                safeDelete(file);
+                continue;
+            }
+            if (now - file.lastModified() > ABANDONED_INSTALLER_MS) safeDelete(file);
+        }
+    }
+
+    private static boolean sameFile(File a, File b) {
+        try {
+            return a.getCanonicalPath().equals(b.getCanonicalPath());
+        } catch (Exception e) {
+            return a.getAbsolutePath().equals(b.getAbsolutePath());
+        }
     }
 
     static File componentDirectory(Context context) {

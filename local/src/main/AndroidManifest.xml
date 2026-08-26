@@ -15,6 +15,18 @@
         android:label="@string/orbit_local_bind_permission_label"
         android:description="@string/orbit_local_bind_permission_description" />
 
+    <!--
+      The other half of the trust check, and the mirror of the <package> entry in Orbit's own
+      manifest. OrbitLocalService re-verifies every caller by reading Orbit's signing certificate
+      back from the package manager, which is a query that package visibility filtering can refuse.
+      Binding does grant the two packages implicit visibility of each other, but a security check
+      should not depend on an implicit grant to work, so the component names the one package it
+      will ever accept. One entry, and never QUERY_ALL_PACKAGES.
+    -->
+    <queries>
+        <package android:name="com.orbit.assistant" />
+    </queries>
+
     <application
         android:allowBackup="false"
         android:label="@string/app_name"

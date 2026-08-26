@@ -411,3 +411,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Installation problems now say which step failed, which makes Beta reports far easier to act on.
   - No changes to the local AI model, cloud providers, or anything else in Orbit.
 
+- **v0.7.7.5-beta.3**: Fixes Orbit failing to recognise the Orbit Local component after Android successfully installs it.
+  - Android reported the component installed while Orbit still showed Not installed. Orbit can now see its own component.
+  - Returning from Android's installer refreshes the component straight away, with no restart or reinstall needed.
+  - Old component downloads are cleaned up, so installer files from earlier Betas no longer pile up in Orbit's storage.
+  - The secure installer handover added in the previous Beta is unchanged, and Orbit still refuses any component it did not publish.
+  - This is a Beta build; Orbit Local still needs real-device validation before it becomes a stable release.
+

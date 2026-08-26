@@ -77,7 +77,7 @@ public final class LocalAiActivity extends Activity {
         }
         // Coming back from Android's installer or uninstaller: what actually happened is
         // whatever the package manager now reports, never what Orbit asked for.
-        OrbitLocalProvider.invalidateStatus();
+        reconcileComponentInstall();
         reconcileProviderSelection();
         if (waitingForInstallPermission && readyComponentApk != null
                 && OrbitUpdater.canRequestPackageInstalls(this)) {
@@ -86,6 +86,41 @@ public final class LocalAiActivity extends Activity {
         }
         main.removeCallbacks(refresh);
         refresh.run();
+    }
+
+    /**
+     * Re-reads the component from the package manager, and settles everything that follows from it.
+     *
+     * <p>This is the fix for the v0.7.7.5-beta.2 device report where Android said "Install success"
+     * and Orbit still said "Not installed". The manifest change is what lets the query see the
+     * package at all; this is what makes Orbit ask again at the one moment it matters, instead of
+     * carrying forward whatever it believed before the installer opened.
+     *
+     * <p>Deliberately keyed on the observed package, not on a remembered "install requested" flag.
+     * A cancelled install and a successful one are indistinguishable from Orbit's side except by
+     * asking Android, so Orbit asks: the cancelled case simply reports the component still missing
+     * and keeps the verified download for Retry, and the successful case is the only thing that
+     * ever clears the installer cache.
+     */
+    private void reconcileComponentInstall() {
+        OrbitLocalProvider.invalidateStatus();
+        if (installing) return; // A download owns the cache directory until it finishes.
+
+        OrbitLocalComponent.State state = OrbitLocalComponent.state(this);
+        if (state == OrbitLocalComponent.State.INSTALLED) {
+            // Confirmed by the package manager, so the downloaded APK is now a duplicate of a
+            // package Android is storing itself, and the pending install is genuinely over.
+            waitingForInstallPermission = false;
+            readyComponentApk = null;
+            installMessage = "";
+            OrbitLocalInstaller.cleanupAfterInstall(this);
+            return;
+        }
+        // Still not usable: drop any stale binding to a component that changed underneath Orbit,
+        // and clear out installers that can no longer be handed to Android — old Beta APKs and
+        // interrupted downloads — while keeping this version's verified one for Retry.
+        OrbitLocalClient.disconnect(this);
+        OrbitLocalInstaller.prune(this, readyComponentApk);
     }
 
     @Override protected void onPause() {
