@@ -9,6 +9,20 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <!--
+      Orbit's direct Calendar control (ADD_CALENDAR_EVENTS).
+
+      Declared here, but deliberately never requested during onboarding or installation. Orbit
+      asks for these at the moment a Calendar action is actually approved, and a denial produces
+      zero writes rather than a partially applied schedule.
+
+      READ_CALENDAR is not optional alongside WRITE_CALENDAR: Orbit has to see which calendars are
+      writable before it can choose one, and has to read back what it inserted before it is allowed
+      to claim an event was added. It is also what makes duplicate detection possible, so importing
+      the same schedule twice converges on one copy of each event instead of two.
+    -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
@@ -100,6 +114,16 @@
         <activity android:name=".ScreenSelectionActivity" android:exported="false"
             android:excludeFromRecents="true" />
         <activity android:name=".AttachmentPickerActivity" android:exported="false"
+            android:excludeFromRecents="true" android:theme="@style/Theme.Orbit.Bridge" />
+        <!--
+          Where Orbit asks Android for Calendar permission.
+
+          An invisible bridge, because the Side-button overlay is a VoiceInteractionSession and
+          cannot request runtime permissions itself. Both surfaces therefore reach the same Android
+          prompt through this Activity, and both learn the real grant result rather than assuming
+          that opening the prompt succeeded.
+        -->
+        <activity android:name=".CalendarPermissionActivity" android:exported="false"
             android:excludeFromRecents="true" android:theme="@style/Theme.Orbit.Bridge" />
         <activity android:name=".SettingsActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".AiProvidersActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />

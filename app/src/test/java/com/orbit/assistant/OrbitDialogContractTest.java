@@ -253,6 +253,8 @@ public final class OrbitDialogContractTest {
                 "app/src/main/java/com/orbit/assistant/OrbitLocalInstaller.java");
         String pickerBridge = ComponentUninstallTest.readRepositoryFile(
                 "app/src/main/java/com/orbit/assistant/AttachmentPickerActivity.java");
+        String calendarBridge = ComponentUninstallTest.readRepositoryFile(
+                "app/src/main/java/com/orbit/assistant/CalendarPermissionActivity.java");
         String manifest = ComponentUninstallTest.readRepositoryFile(
                 "app/src/main/AndroidManifest.xml");
 
@@ -272,8 +274,16 @@ public final class OrbitDialogContractTest {
         assertTrue(pickerBridge.contains("requestPermissions("));
         assertFalse(componentInstaller.contains("new AlertDialog.Builder"));
         assertFalse(pickerBridge.contains("new AlertDialog.Builder"));
-        assertTrue("invisible picker and widget bridges keep their dedicated non-page theme",
-                count(manifest, "android:theme=\"@style/Theme.Orbit.Bridge\"") == 2);
+
+        // Calendar permission is Android's window, exactly like the picker's. Orbit's own
+        // confirmation happens before this bridge opens and never overlaps it.
+        assertTrue(calendarBridge.contains("requestPermissions("));
+        assertFalse("Orbit must not draw its own Calendar permission prompt",
+                calendarBridge.contains("new AlertDialog.Builder"));
+        assertFalse(calendarBridge.contains("styleOrbitDialog"));
+
+        assertTrue("invisible picker, calendar, and widget bridges keep their dedicated non-page theme",
+                count(manifest, "android:theme=\"@style/Theme.Orbit.Bridge\"") == 3);
     }
 
     // ---- resource and popup motion --------------------------------------------------------------

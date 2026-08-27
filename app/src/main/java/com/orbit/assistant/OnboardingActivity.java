@@ -53,7 +53,8 @@ public final class OnboardingActivity extends Activity {
     private int step;
     private boolean manual;
     private boolean resumedOnce;
-    private boolean relayExpanded;
+    /** Whether the collapsed "More provider options" area is open. */
+    private boolean advancedExpanded;
     private boolean completionCelebrationPlayed;
     private String appliedAppearance = "";
     private FrameLayout completionMarkHost;
@@ -93,14 +94,18 @@ public final class OnboardingActivity extends Activity {
         manual = getIntent() != null && getIntent().getBooleanExtra(EXTRA_MANUAL, false);
         if (savedInstanceState != null) {
             step = savedInstanceState.getInt("step", 0);
-            relayExpanded = savedInstanceState.getBoolean("relayExpanded", false);
+            advancedExpanded = savedInstanceState.getBoolean("advancedExpanded", false);
             completionCelebrationPlayed = savedInstanceState.getBoolean(
                     "completionCelebrationPlayed", false);
         }
         else if (manual) step = 0;
         else step = OnboardingState.currentStep(this);
-        if (savedInstanceState == null && Prefs.PROVIDER_RELAY.equals(Prefs.provider(this)))
-            relayExpanded = true;
+        // Someone already on an advanced provider should not have to go looking for it.
+        if (savedInstanceState == null
+                && (Prefs.PROVIDER_RELAY.equals(Prefs.provider(this))
+                        || Prefs.PROVIDER_OPENROUTER.equals(Prefs.provider(this)))) {
+            advancedExpanded = true;
+        }
         persistStep();
         render();
     }
@@ -119,7 +124,7 @@ public final class OnboardingActivity extends Activity {
 
     @Override protected void onSaveInstanceState(Bundle outState) {
         outState.putInt("step", step);
-        outState.putBoolean("relayExpanded", relayExpanded);
+        outState.putBoolean("advancedExpanded", advancedExpanded);
         outState.putBoolean("completionCelebrationPlayed", completionCelebrationPlayed);
         super.onSaveInstanceState(outState);
     }
@@ -265,60 +270,201 @@ public final class OnboardingActivity extends Activity {
         page.addView(note);
     }
 
+    /**
+     * Provider setup, presented as one page with a clear hierarchy rather than as a longer flow.
+     *
+     * <p>Orbit genuinely has four backends now, and the old copy described only two of them, one
+     * of which it still presented as an OpenAI-API fallback. A first-run page cannot explain all
+     * four without becoming a settings screen, so this shows the recommended choice, the optional
+     * on-device one, and collapses everything advanced.
+     *
+     * <p>Availability, status text, and what each provider can and cannot do all come from
+     * {@link AiProviders} rather than from a second set of hardcoded facts here. Onboarding writes
+     * the curated sentences; the provider layer decides whether they are currently true.
+     */
     private void buildConnect(LinearLayout page) {
         addTitle(page, "Connect Orbit",
-                "ChatGPT is the recommended connection. Advanced users can instead use Orbit's existing private HTTPS-relay fallback.");
-        boolean connected = ChatGptAuth.isSignedIn(this);
-        boolean chatGptActive = Prefs.PROVIDER_CHATGPT.equals(Prefs.provider(this));
+                "Choose how Orbit thinks. ChatGPT is the recommended full experience. Orbit Local is optional, private, and can be added later.");
+        page.addView(chatGptCard(), cardLp());
+        page.addView(orbitLocalCard(), cardLp());
+
+        Button more = quietButton(advancedExpanded
+                ? "Hide more provider options" : "More provider options");
+        more.setOnClickListener(v -> {
+            advancedExpanded = !advancedExpanded;
+            render();
+        });
+        page.addView(more, buttonLp());
+
+        if (advancedExpanded) {
+            page.addView(openRouterCard(), cardLp());
+            buildRelayFallback(page);
+        }
+    }
+
+    /** The recommended provider. Its existing secure device-code sign-in is untouched. */
+    private LinearLayout chatGptCard() {
+        AiProvider provider = AiProviders.byId(Prefs.PROVIDER_CHATGPT);
+        boolean connected = provider.status(this) == AiProvider.Status.READY;
+        boolean active = Prefs.PROVIDER_CHATGPT.equals(Prefs.provider(this));
+
         LinearLayout card = card();
-        TextView state = UiKit.text(this,
-                connected ? "✓ Connected to ChatGPT" : "○ Not connected yet",
-                16, connected ? UiKit.SUCCESS : UiKit.TEXT, true);
-        card.addView(state);
+        card.addView(providerHeading(provider.displayName(), "Recommended"));
+        card.addView(providerStatusLine(connected, provider.statusDetail(this)));
+        addCardDescription(card,
+                "Orbit's fullest experience: stronger answers, hosted web search, screen and image context, and device-action planning.");
+        addCapabilityLine(card, provider);
+
         TextView help = UiKit.text(this, connected
-                ? "Orbit will keep using the existing securely stored session."
+                ? "Orbit keeps using the securely stored session already on this phone."
                 : "Your browser handles authorization. Orbit never asks for your ChatGPT password.",
-                13, UiKit.MUTED, false);
-        help.setPadding(0, UiKit.dp(this, 7), 0, UiKit.dp(this, 13));
+                12, UiKit.MUTED, false);
+        help.setPadding(0, 0, 0, UiKit.dp(this, 12));
         card.addView(help);
+
         Button action = primaryButton(connected
-                ? (chatGptActive ? "ChatGPT account active" : "Use ChatGPT account")
+                ? (active ? "ChatGPT active" : "Use ChatGPT")
                 : "Sign in with ChatGPT");
-        action.setEnabled(!connected || !chatGptActive);
-        action.setAlpha(connected && chatGptActive ? .68f : 1f);
+        action.setEnabled(!connected || !active);
+        action.setAlpha(connected && active ? .68f : 1f);
         action.setOnClickListener(v -> {
             if (connected) {
-                Prefs.get(this).edit().putString(Prefs.PROVIDER, Prefs.PROVIDER_CHATGPT).apply();
+                AiProviders.select(this, Prefs.PROVIDER_CHATGPT);
                 render();
             } else startChatGptLogin();
         });
         card.addView(action, new LinearLayout.LayoutParams(-1, UiKit.dp(this, 48)));
-        page.addView(card, cardLp());
+        return card;
+    }
 
-        Button fallback = quietButton(relayExpanded ? "Hide OpenAI API fallback" :
-                "Configure OpenAI API fallback");
-        fallback.setOnClickListener(v -> {
-            relayExpanded = !relayExpanded;
-            render();
+    /**
+     * The optional on-device provider.
+     *
+     * <p>Never forced, and never a second downloader: setup opens the dedicated Orbit Local screen
+     * that already owns the component install, the model download, and their progress, and this
+     * page simply reflects whatever state that screen left behind when the user returns.
+     */
+    private LinearLayout orbitLocalCard() {
+        AiProvider provider = AiProviders.byId(Prefs.PROVIDER_LOCAL);
+        AiProvider.Status status = provider.status(this);
+        boolean ready = status == AiProvider.Status.READY;
+        boolean active = ready && Prefs.PROVIDER_LOCAL.equals(Prefs.provider(this));
+        boolean supported = status != AiProvider.Status.UNSUPPORTED;
+
+        LinearLayout card = card();
+        card.addView(providerHeading(provider.displayName(), "Optional"));
+        card.addView(providerStatusLine(ready, provider.statusDetail(this)));
+        addCardDescription(card,
+                "Runs privately on this phone and keeps working offline once it is set up. It uses a small model, so answers are simpler than cloud AI.");
+        addCapabilityLine(card, provider);
+
+        String missing = missingCapabilitySentence(provider.capabilities());
+        if (!missing.isEmpty() && supported) {
+            TextView limits = UiKit.text(this, missing, 12, UiKit.MUTED, false);
+            limits.setLineSpacing(0, 1.12f);
+            limits.setPadding(0, 0, 0, UiKit.dp(this, 12));
+            card.addView(limits);
+        }
+
+        if (!supported) return card;
+
+        Button action = primaryButton(active ? "Orbit Local active"
+                : ready ? "Use Orbit Local" : "Set up Orbit Local");
+        action.setEnabled(!active);
+        action.setAlpha(active ? .68f : 1f);
+        action.setOnClickListener(v -> {
+            if (ready) {
+                AiProviders.select(this, Prefs.PROVIDER_LOCAL);
+                render();
+            } else {
+                // The one screen that owns the 35 MB component and the model download. Setup
+                // returns here, and onResume re-reads the real state.
+                startActivity(new Intent(this, LocalAiActivity.class));
+            }
         });
-        page.addView(fallback, buttonLp());
+        card.addView(action, new LinearLayout.LayoutParams(-1, UiKit.dp(this, 48)));
+        return card;
+    }
 
-        if (relayExpanded) buildRelayFallback(page);
+    /**
+     * OpenRouter, described as what it actually is today.
+     *
+     * <p>Its key can be stored and its chat path deliberately does not run, so this says so
+     * plainly instead of presenting it as a provider a first-time user could pick and use.
+     */
+    private LinearLayout openRouterCard() {
+        AiProvider provider = AiProviders.byId(Prefs.PROVIDER_OPENROUTER);
+        LinearLayout card = card();
+        card.addView(providerHeading(provider.displayName(), "Experimental"));
+        card.addView(providerStatusLine(false, provider.statusDetail(this)));
+        addCardDescription(card,
+                "Setup only for now. An OpenRouter key can be saved securely, but Orbit cannot use it for chat yet, so it is not selectable as a provider.");
+        Button manage = secondaryButton("Open provider settings");
+        manage.setOnClickListener(v -> startActivity(new Intent(this, AiProvidersActivity.class)));
+        card.addView(manage, new LinearLayout.LayoutParams(-1, UiKit.dp(this, 46)));
+        return card;
+    }
+
+    private LinearLayout providerHeading(String name, String tag) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.addView(UiKit.text(this, name, 17, UiKit.TEXT, true),
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        TextView pill = UiKit.text(this, tag, 11, UiKit.accent(this), true);
+        pill.setBackground(UiKit.outlined(UiKit.SURFACE_2,
+                UiKit.withAlpha(UiKit.accent(this), 82), 99, this));
+        pill.setPadding(UiKit.dp(this, 10), UiKit.dp(this, 4), UiKit.dp(this, 10), UiKit.dp(this, 4));
+        row.addView(pill);
+        return row;
+    }
+
+    private TextView providerStatusLine(boolean ready, String detail) {
+        TextView status = UiKit.text(this, (ready ? "✓ " : "○ ") + detail, 13,
+                ready ? UiKit.SUCCESS : UiKit.TEXT, true);
+        status.setPadding(0, UiKit.dp(this, 7), 0, 0);
+        return status;
+    }
+
+    /** Positive capabilities, read from the provider layer so this copy cannot go stale. */
+    private void addCapabilityLine(LinearLayout card, AiProvider provider) {
+        java.util.List<String> chips = AiProvidersActivity.capabilityChips(provider.capabilities());
+        if (chips.isEmpty()) return;
+        TextView line = UiKit.text(this, String.join(" · ", chips), 12,
+                UiKit.withAlpha(UiKit.TEXT, 205), false);
+        line.setLineSpacing(0, 1.12f);
+        line.setPadding(0, 0, 0, UiKit.dp(this, 10));
+        card.addView(line);
+    }
+
+    /**
+     * One honest sentence about what a provider cannot do yet, derived from its declared
+     * capabilities rather than written down a second time here.
+     */
+    static String missingCapabilitySentence(AiCapabilities caps) {
+        if (caps == null) return "";
+        java.util.List<String> missing = new java.util.ArrayList<>();
+        if (!caps.hostedWebSearch) missing.add("web search");
+        if (!caps.images) missing.add("screens and images");
+        if (!caps.deviceActions) missing.add("device actions");
+        if (!caps.routinePlanning) missing.add("Routine planning");
+        if (missing.isEmpty()) return "";
+        StringBuilder out = new StringBuilder("Not available in this mode yet: ");
+        for (int i = 0; i < missing.size(); i++) {
+            if (i > 0) out.append(i == missing.size() - 1 ? ", or " : ", ");
+            out.append(missing.get(i));
+        }
+        return out.append(".").toString();
     }
 
     private void buildRelayFallback(LinearLayout page) {
         LinearLayout relayCard = card();
-        relayCard.addView(UiKit.text(this, "OpenAI API relay fallback", 16, UiKit.TEXT, true));
+        relayCard.addView(providerHeading("Private API relay", "Advanced"));
+        boolean configured = Prefs.relayConfigured(this);
+        boolean relayActive = Prefs.PROVIDER_RELAY.equals(Prefs.provider(this)) && configured;
+        relayCard.addView(providerStatusLine(configured, relayActive
+                ? "Active provider" : configured ? "Relay saved" : "Relay URL required"));
         addCardDescription(relayCard,
-                "For advanced users. Orbit can use a private HTTPS relay connected to the OpenAI API. Your OpenAI API key remains on your relay server rather than inside Orbit.");
-        TextView status = UiKit.text(this,
-                Prefs.PROVIDER_RELAY.equals(Prefs.provider(this)) && Prefs.relayConfigured(this)
-                        ? "✓ API fallback is the active provider"
-                        : Prefs.relayConfigured(this) ? "Relay saved; ChatGPT remains active"
-                        : "Relay not configured",
-                12, Prefs.relayConfigured(this) ? UiKit.SUCCESS : UiKit.MUTED, true);
-        status.setPadding(0, 0, 0, UiKit.dp(this, 10));
-        relayCard.addView(status);
+                "For advanced users running their own HTTPS relay. Orbit talks to your server; your API key stays on it and never enters Orbit.");
 
         EditText url = field("https://your-relay.example.com", Prefs.backendUrl(this), false);
         relayCard.addView(url, new LinearLayout.LayoutParams(-1, UiKit.dp(this, 52)));
@@ -327,7 +473,7 @@ public final class OnboardingActivity extends Activity {
         tokenLp.topMargin = UiKit.dp(this, 9);
         relayCard.addView(token, tokenLp);
 
-        Button save = secondaryButton("Save and use API fallback");
+        Button save = secondaryButton("Save and use private relay");
         LinearLayout.LayoutParams saveLp = new LinearLayout.LayoutParams(-1, UiKit.dp(this, 46));
         saveLp.topMargin = UiKit.dp(this, 11);
         relayCard.addView(save, saveLp);
@@ -344,20 +490,14 @@ public final class OnboardingActivity extends Activity {
                     Toast.makeText(this, error, Toast.LENGTH_LONG).show();
                     return;
                 }
-                Prefs.get(this).edit().putString(Prefs.PROVIDER, Prefs.PROVIDER_RELAY).apply();
-                Toast.makeText(this, "API fallback saved and selected", Toast.LENGTH_SHORT).show();
+                AiProviders.select(this, Prefs.PROVIDER_RELAY);
+                Toast.makeText(this, "Private relay saved and selected", Toast.LENGTH_SHORT).show();
                 render();
             } catch (Exception error) {
                 showMessage("Could not save relay settings",
                         "Orbit could not securely save the optional relay access token.");
             }
         });
-
-        TextView future = UiKit.text(this,
-                "More provider options, including Claude and Gemini, are planned for future Orbit versions.",
-                11, UiKit.MUTED, false);
-        future.setPadding(0, UiKit.dp(this, 11), 0, 0);
-        relayCard.addView(future);
         page.addView(relayCard, cardLp());
     }
 

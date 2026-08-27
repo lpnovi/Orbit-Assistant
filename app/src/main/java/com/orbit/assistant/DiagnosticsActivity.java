@@ -183,8 +183,34 @@ public final class DiagnosticsActivity extends Activity {
                 "\nLelo mode: " + Prefs.leloMode(this) +
                 "\nLast overlay launch: " + OverlayLaunchTrace.summary(this) +
                 "\nLast error: " + error +
+                requestFlow(d) +
+                CalendarDiagnostics.report(this) +
                 orbitLocal(d) +
                 lastRoutinePlan(d);
+    }
+
+    /**
+     * How Orbit's request pipeline is behaving, for the two duplication failures 0.7.7.7 exists
+     * to close: one gesture producing two submissions, and one submission producing two answers.
+     *
+     * <p>Counts and identities only. Prompt text, reply text, conversation contents, and anything
+     * else the user typed or heard never reach this store; the shortened request id is the only
+     * thing that ties a line here to a specific turn, and it is Orbit's own random id.
+     */
+    private String requestFlow(SharedPreferences d) {
+        return "\n\nRequest flow" +
+                "\n  Accepted submissions: " + d.getInt("submissions_accepted", 0) +
+                "\n  Suppressed duplicate submissions: " + d.getInt("submissions_suppressed", 0) +
+                "\n  Last submission source: " + orNone(d.getString("submission_source", "")) +
+                "\n  Last suppression reason: " + orNone(d.getString("submission_suppressed_reason", "")) +
+                "\n  Completions committed: " + d.getInt("completions_committed", 0) +
+                "\n  Completions ignored (already terminal): "
+                        + d.getInt("completions_ignored", 0) +
+                "\n  Active requests: " + PendingRequestStore.active(this).size();
+    }
+
+    private String orNone(String value) {
+        return value == null || value.trim().isEmpty() ? "none" : value;
     }
 
     /**

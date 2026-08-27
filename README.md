@@ -7,7 +7,7 @@ Orbit is built for Android 10 and newer. Development is active, and releases are
 ## Highlights
 
 - **System-level access:** Use Orbit as Android's default assistant from the Side button or assistant gesture, or open the full companion chat.
-- **Multiple AI providers:** Choose what Orbit thinks with from one AI Providers screen. Connect a ChatGPT account through the Codex device-code flow, use the optional private OpenAI API relay fallback, or run Orbit Local. Cloud providers offer Auto, Fast, Balanced, or Deep intelligence modes.
+- **Multiple AI providers:** Choose what Orbit thinks with from one AI Providers screen. Connect a ChatGPT account through the Codex device-code flow, run Orbit Local, or point Orbit at your own private HTTPS API relay. Cloud providers offer Auto, Fast, Balanced, or Deep intelligence modes.
 - **Orbit Local (on-device AI):** Optionally download a compact, checksum-verified language model (about 1.6 GB) and chat privately on the phone itself — no account, and no internet once installed. Device actions and screen understanding stay with cloud providers for now.
 - **Screen understanding:** Attach configurable screen text and screenshots, use one-tap full-screen context, or precisely Crop and Mark up a Screen Selection.
 - **Voice Beta:** Speak requests and optionally hear responses while retaining the normal text workflow.
@@ -15,6 +15,7 @@ Orbit is built for Android 10 and newer. Development is active, and releases are
 - **Consistent composers:** Camera, Gallery, File, Screen, and Clipboard attachment access plus Voice Beta are available from the same Attach / text / mic / Send layout across both chat surfaces.
 - **Inline response images:** Orbit can natively display a valid public HTTPS image source included in a response; it does not independently search for or invent image URLs.
 - **Local Android actions:** Control supported device settings and actions through Orbit's existing confirmation and capability checks.
+- **Calendar control:** Ask Orbit to put a schedule on your calendar and it writes the events itself through Android's Calendar Provider, after one confirmation naming the destination calendar. Orbit checks for events you already have, verifies what it wrote, and reports the real counts rather than claiming success.
 - **Routines and automation:** Build saved action chains with IF conditions, time and location triggers, Routine Templates, Custom Commands, and configurable Quick Settings tiles. Pin the routines you use most to keep them at the top of the list.
 - **Orbit Extensions:** Add reviewed configurable Routine actions—including securely configured Discord Webhook and ntfy integrations—without loading executable plugin code or exposing Orbit personal data.
 - **Home-screen widgets:** Open a ready-to-type chat, run one selected saved Routine, or configure a small set of safe Quick Actions directly from the launcher.
@@ -57,7 +58,7 @@ Curated public screenshots will be added here later. No private device or user s
 
 ## Development status
 
-Orbit is actively developed. Future areas under consideration include full OpenRouter support, local device actions and more on-device models for Orbit Local, Hybrid Auto cloud/local routing, richer automation and branching, image retrieval integrations, deeper Android actions, and advanced Voice work. These are directions rather than fixed promises or dates.
+Orbit is actively developed. Future areas under consideration include full OpenRouter support, local device actions and more on-device models for Orbit Local, calendar awareness beyond adding events, Hybrid Auto cloud/local routing, richer automation and branching, image retrieval integrations, deeper Android actions, and advanced Voice work. These are directions rather than fixed promises or dates.
 
 The declarative Extensions v1/v2 format and security model are documented in [docs/EXTENSIONS.md](docs/EXTENSIONS.md).
 

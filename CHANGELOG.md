@@ -453,3 +453,12 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Pause and Resume behave deterministically without overlapping workers or stalled replacement downloads.
   - Diagnostics now reports useful Orbit Local component, removal, model, progress, and failure state without exposing private data.
   - Orbit-owned warnings and confirmations use consistent restrained motion without Samsung's previous jumpy window entrance.
+
+- **v0.7.7.7-beta.1**: Orbit can now put events on your calendar itself, and one send no longer turns into two.
+  - Ask Orbit to add a schedule and it looks it up, asks once, then writes every event to your calendar.
+  - Orbit reports only what the calendar actually accepted: how many events were added, skipped, or failed.
+  - Events with no announced start time become all-day Time TBA entries on the right date, never invented times.
+  - Adding the same schedule twice keeps one copy of each event, and cancelling or denying permission adds nothing.
+  - One tap of Send now creates exactly one request, and a single question can no longer receive two answers.
+  - The Connect Orbit setup page now covers ChatGPT, Orbit Local, OpenRouter, and a private relay honestly.
+  - This is a Beta build; calendar writing still needs confirming on a real device.

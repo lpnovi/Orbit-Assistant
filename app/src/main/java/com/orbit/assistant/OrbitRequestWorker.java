@@ -40,9 +40,17 @@ public final class OrbitRequestWorker extends Worker {
         if (item == null) return Result.success();
         // Covers a request that already finished and one the user stopped before this ran at all.
         if (PendingRequestStore.isTerminal(item.status)) return Result.success();
+        // And the case WorkManager creates on its own: this worker was re-run after the process
+        // died, and the turn's one completion has already been claimed. Asking the model again
+        // here is exactly how one visible user message ended up with two similar answers.
+        if (item.committed) {
+            RequestTrace.lifecycle(id, "rerun-abandoned");
+            return Result.success();
+        }
         if (cancelled(c, id)) return Result.success();
 
         PendingRequestStore.markRunning(c, id);
+        RequestTrace.lifecycle(id, "running");
         OrbitRequestManager.dispatchStarted(id);
 
         ConversationStore.Conversation chat = ConversationStore.load(c, item.conversationId);
@@ -134,6 +142,7 @@ public final class OrbitRequestWorker extends Worker {
         OrbitRequestManager.completeIfNotCancelled(c, id, () -> {
             ConversationStore.appendMessage(c, item.conversationId, message);
             PendingRequestStore.markDone(c, id);
+            RequestTrace.lifecycle(id, "completed");
             AttachmentStore.delete(item.screenshotPath);
             OrbitRequestManager.dispatchSuccess(id, reply);
             if (Prefs.backgroundNotifications(c) && !UiPresence.isVisible()) {

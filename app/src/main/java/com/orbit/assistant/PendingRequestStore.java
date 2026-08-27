@@ -31,10 +31,29 @@ public final class PendingRequestStore {
         public final String id, conversationId, prompt, screenText, screenshotPath, status, error, intelligenceMode, trustedTaskContext;
         public final long createdAt, updatedAt;
         public final boolean voiceRequest, draftReply, explicitAttachment;
+        /**
+         * True once this request's one and only completion has been claimed.
+         *
+         * <p>Separate from {@link #status} on purpose. Status is what the request looks like;
+         * this is the irreversible fact that an answer for it has already been written. It is
+         * claimed synchronously, before the answer is appended, so a worker re-run by WorkManager
+         * after a process death cannot produce a second assistant message for one user turn.
+         */
+        public final boolean committed;
 
         public Item(String id, String conversationId, String prompt, String screenText, String screenshotPath,
                     String status, String error, long createdAt, long updatedAt, boolean voiceRequest, boolean draftReply,
                     String intelligenceMode, boolean explicitAttachment, String trustedTaskContext) {
+            this(id, conversationId, prompt, screenText, screenshotPath, status, error, createdAt,
+                    updatedAt, voiceRequest, draftReply, intelligenceMode, explicitAttachment,
+                    trustedTaskContext, false);
+        }
+
+        public Item(String id, String conversationId, String prompt, String screenText, String screenshotPath,
+                    String status, String error, long createdAt, long updatedAt, boolean voiceRequest, boolean draftReply,
+                    String intelligenceMode, boolean explicitAttachment, String trustedTaskContext,
+                    boolean committed) {
+            this.committed = committed;
             this.id = id;
             this.conversationId = conversationId;
             this.prompt = prompt;
@@ -118,6 +137,41 @@ public final class PendingRequestStore {
         return DONE.equals(status) || FAILED.equals(status) || CANCELLED.equals(status);
     }
 
+    /**
+     * Claims the one completion this request is allowed, returning true only for the first caller.
+     *
+     * <p>This is the durable half of the invariant "one accepted submission produces at most one
+     * persisted assistant completion". The claim is written with {@code commit()} rather than
+     * {@code apply()} so it is on disk before the answer is appended: if the process dies in
+     * between, the retried worker sees the claim and abandons the turn instead of asking the model
+     * again and appending a second, similar-looking answer.
+     *
+     * <p>Refused for a request that has already been claimed, and for one that is already
+     * terminal, which covers a completion arriving after the user stopped the request.
+     */
+    public static synchronized boolean claimCompletion(Context c, String id) {
+        if (c == null || id == null || id.isEmpty()) return false;
+        List<Item> all = readAll(c);
+        for (int x = 0; x < all.size(); x++) {
+            Item i = all.get(x);
+            if (!i.id.equals(id)) continue;
+            if (i.committed || isTerminal(i.status)) return false;
+            all.set(x, new Item(i.id, i.conversationId, i.prompt, i.screenText, i.screenshotPath,
+                    i.status, i.error, i.createdAt, System.currentTimeMillis(), i.voiceRequest,
+                    i.draftReply, i.intelligenceMode, i.explicitAttachment, i.trustedTaskContext,
+                    true));
+            writeAll(c, all, true);
+            return true;
+        }
+        return false;
+    }
+
+    /** True once this request's completion has been claimed, in this process or an earlier one. */
+    public static synchronized boolean isCommitted(Context c, String id) {
+        Item item = load(c, id);
+        return item != null && item.committed;
+    }
+
     /** Durable cancellation check, readable by the worker after the UI is long gone. */
     public static synchronized boolean isCancelled(Context c, String id) {
         Item item = load(c, id);
@@ -139,7 +193,7 @@ public final class PendingRequestStore {
             if (!i.id.equals(id)) continue;
             all.set(x, new Item(i.id, i.conversationId, i.prompt, i.screenText, i.screenshotPath,
                     status, error, i.createdAt, now, i.voiceRequest, i.draftReply,
-                    i.intelligenceMode, i.explicitAttachment, i.trustedTaskContext));
+                    i.intelligenceMode, i.explicitAttachment, i.trustedTaskContext, i.committed));
             break;
         }
         trim(all);
@@ -165,13 +219,19 @@ public final class PendingRequestStore {
                         o.optBoolean("voiceRequest"), o.optBoolean("draftReply"),
                         o.optString("intelligenceMode", Prefs.MODE_BALANCED),
                         o.optBoolean("explicitAttachment", false),
-                        o.optString("trustedTaskContext", "")));
+                        o.optString("trustedTaskContext", ""),
+                        o.optBoolean("committed", false)));
             }
         } catch (Exception ignored) {}
         return result;
     }
 
     private static void writeAll(Context c, List<Item> all) {
+        writeAll(c, all, false);
+    }
+
+    /** {@code sync} writes through before returning, for a claim that must survive a crash. */
+    private static void writeAll(Context c, List<Item> all, boolean sync) {
         JSONArray arr = new JSONArray();
         try {
             for (Item i : all) {
@@ -181,9 +241,12 @@ public final class PendingRequestStore {
                         .put("voiceRequest", i.voiceRequest).put("draftReply", i.draftReply)
                         .put("intelligenceMode", i.intelligenceMode)
                         .put("explicitAttachment", i.explicitAttachment)
-                        .put("trustedTaskContext", i.trustedTaskContext));
+                        .put("trustedTaskContext", i.trustedTaskContext)
+                        .put("committed", i.committed));
             }
         } catch (Exception ignored) {}
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putString(KEY, arr.toString()).apply();
+        SharedPreferences.Editor edit = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+                .edit().putString(KEY, arr.toString());
+        if (sync) edit.commit(); else edit.apply();
     }
 }

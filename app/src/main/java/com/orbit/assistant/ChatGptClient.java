@@ -38,6 +38,7 @@ public final class ChatGptClient {
     private static final ExecutorService EXEC = Executors.newCachedThreadPool();
     private static final Set<String> ALLOWED_ACTIONS = new HashSet<>(Arrays.asList(
             "OPEN_APP", "OPEN_SETTINGS", "SET_ALARM", "SET_TIMER", "SET_REMINDER", "CREATE_EVENT",
+            "ADD_CALENDAR_EVENTS",
             "NAVIGATE", "DIAL", "DIAL_CONTACT", "SMS", "SMS_CONTACT", "WEB_SEARCH",
             "OPEN_URL", "SHARE", "COPY", "FLASHLIGHT", "SET_VOLUME",
             "SET_BRIGHTNESS", "SET_DND", "OPEN_INTERNET_PANEL", "OPEN_BLUETOOTH_SETTINGS"
@@ -55,13 +56,18 @@ public final class ChatGptClient {
             "Whenever hosted web search is actually used, include one best supporting source URL at the very end on its own line using exactly Source: https://... . This source line is mandatory when search is used because Orbit converts it into a native tappable source control. " +
             "Use concise Markdown when structure improves the answer, including headings, lists, tables, quotes, links, and fenced code. Only use Markdown image syntax when you already have a real concrete public HTTPS image URL. Never invent or guess image URLs; answer with text when no usable image URL is available. " +
             "When the user asks for multiple device actions, return one action object per step in the correct execution order. Prefer the smallest action plan that fully satisfies the request. " +
-            "For calls, SMS and calendar, Orbit opens the relevant Android UI; do not falsely claim something was sent or saved. " +
+            "For calls and SMS, Orbit opens the relevant Android UI; do not falsely claim something was sent. " +
+            "Calendar has two different actions and they are not interchangeable. CREATE_EVENT opens Android's event composer for the user to review and save, and suits a single event the user wants to edit first. ADD_CALENDAR_EVENTS is Orbit writing events into the phone's calendar itself, and is the correct action whenever the user asks you to put a schedule, a fixture list, or several dates on their calendar. Return ADD_CALENDAR_EVENTS once with every event in its events array, never one action per event, and never twelve CREATE_EVENT actions. Always set requiresConfirmation true for ADD_CALENDAR_EVENTS. " +
+            "You do not perform the calendar write and you cannot know whether it succeeded. Never state that events were added, saved, created, or are now on the calendar. Before the action runs, say only what you found and what you can do, for example: I found Michigan's 12 regular-season games and can add them to your calendar. The phone asks for confirmation, writes the events, checks the result, and reports the real counts itself. " +
+            "For ADD_CALENDAR_EVENTS give ordinary calendar values and never epoch milliseconds. Each event takes title, date as YYYY-MM-DD, and optionally hour (0-23), minute, timezone as an IANA id such as America/Detroit, durationMinutes, allDay, timeTba, location, description, and sourceUrl. If a start time is genuinely not announced yet, set timeTba true and omit hour and minute so Orbit records a correct all-day entry; never invent 9:00 AM, noon, or any other placeholder time. If the date itself is unknown, leave that event out entirely rather than guessing. Use a real timezone id or omit the field; never invent one. Keep a batch to 50 events or fewer. " +
+            "When the user asks for a public schedule such as a sports season, use hosted web search to get the current authoritative schedule first, keep the mandatory Source line, and then return one ADD_CALENDAR_EVENTS action built from what you found. Web research is not the calendar action; it only supplies the dates. " +
             "When the user asks to be reminded at a future date/time, use SET_REMINDER once the date and time are known. If either is missing, ask a short clarification. Never merely promise that a reminder was set without returning the SET_REMINDER action. Use the user's local timezone and 24-hour hour values in the action parameters. " +
             "Return ONLY valid JSON. The text field MUST be the first field in the object so Orbit can stream it safely while you generate. Use exactly this top-level shape: " +
             "{\"text\":\"natural-language response\",\"actions\":[{\"type\":\"ACTION\",\"params\":{},\"requiresConfirmation\":false}]}. " +
             "Available actions and parameters: " +
             "OPEN_APP {app}; OPEN_SETTINGS {}; SET_ALARM {hour,minute,label}; SET_TIMER {seconds,label}; " +
-            "SET_REMINDER {message,year,month,day,hour,minute}; CREATE_EVENT {title,description,beginMillis,endMillis}; NAVIGATE {query}; DIAL {number}; DIAL_CONTACT {name}; " +
+            "SET_REMINDER {message,year,month,day,hour,minute}; CREATE_EVENT {title,description,beginMillis,endMillis}; " +
+            "ADD_CALENDAR_EVENTS {events:[{title,date,hour,minute,timezone,durationMinutes,allDay,timeTba,location,description,sourceUrl}]}; NAVIGATE {query}; DIAL {number}; DIAL_CONTACT {name}; " +
             "SMS {number,body}; SMS_CONTACT {name,body}; SET_VOLUME {percent}; SET_BRIGHTNESS {percent}; SET_DND {enabled}; OPEN_INTERNET_PANEL {}; OPEN_BLUETOOTH_SETTINGS {}; " +
             "WEB_SEARCH {query}; OPEN_URL {url}; SHARE {text}; COPY {text}; FLASHLIGHT {on}. " +
             "If no phone action is needed, actions must be an empty array. Keep ordinary assistant answers concise unless the user asks for detail. Never use an em dash (—) in any response. Use commas, parentheses, colons, semicolons, or ordinary hyphens instead.";

@@ -672,6 +672,54 @@ Validated on a Galaxy S25 Ultra across three Betas (`beta.1`-`beta.3`) and relea
   result, model state and bytes, WorkManager state, whether a pause was explicitly requested, and
   the last download failure category. No model contents, conversations, or paths
 
+### 0.7.7.7 — Real Calendar control and one-answer requests
+
+Orbit exposed `CREATE_EVENT`, which only ever opened Android's event composer. Asked on a real
+device to "put the Michigan football schedule on my calendar", Orbit produced confident text saying
+it was adding the games and persisted nothing at all. The same device reports also exposed two
+request-duplication failures, so this release closes both.
+
+- **A real Calendar writer.** `ADD_CALENDAR_EVENTS` is a second, deliberately distinct action:
+  `CREATE_EVENT` still opens Android's composer for a single event the user wants to edit, while
+  `ADD_CALENDAR_EVENTS` has Orbit persist a whole batch through `CalendarContract` itself. No Google
+  Calendar OAuth; it works with whatever writable calendars the device already exposes, including
+  Google- and Samsung-backed ones
+- **The implementation is a component, not a switch case.** `OrbitCalendarStore` owns writable
+  calendar discovery, target resolution, and the remembered choice; `CalendarActionExecutor` owns
+  validation, date/time/timezone conversion, duplicate detection, insertion, read-back verification,
+  and result wording. `DeviceActionExecutor` stays a routing layer, so a future local action model
+  reuses the same writer rather than a second Calendar path
+- **Only execution may claim success.** A model may say what it found and what it can do; the counts
+  in "Added 12 events to Personal." come from the provider after each inserted row has been read
+  back. The ChatGPT, relay, and server prompts all state this explicitly
+- **Nothing is invented.** An event whose start time is genuinely unannounced becomes an all-day
+  entry marked Time TBA on the correct date, written with `CalendarContract`'s documented UTC
+  all-day semantics so timezone conversion cannot move it onto an adjacent day. Impossible dates and
+  unknown timezone ids are rejected rather than normalized into something plausible and wrong
+- **Permission at the moment of use.** `READ_CALENDAR`/`WRITE_CALENDAR` are declared but never
+  requested during onboarding or installation. `CalendarPermissionActivity` is an invisible bridge
+  so the Side-button overlay, which cannot request runtime permissions itself, reaches the same
+  Android prompt as full chat. A denial produces zero writes, enforced in the executor rather than
+  in either surface
+- **One confirmation for a batch**, naming its destination — `Add 12 events to Personal?` — with a
+  date range, the first few events, and the count of Time TBA entries. Multiple writable calendars
+  gain a Change control; the choice is remembered locally as an id, never as calendar contents
+- **Idempotent enough to retry.** Before inserting, Orbit looks for an equivalent event on the
+  target calendar by normalized title, all-day state, and local day, and skips confirmed matches
+  without ever modifying or deleting an existing user event
+- **One send, one request.** The shared `SubmissionGate` replaces the full-chat send path's complete
+  absence of a gate: an in-flight claim, a durable identity check against active requests, and a
+  short timing window as secondary defense. The keyboard's Send key now follows the same Stop state
+  as the visible control
+- **One request, one answer.** `PendingRequestStore.claimCompletion` is a durable, synchronously
+  written claim taken before an answer is appended, so a worker WorkManager re-runs after a process
+  death abandons the turn instead of asking the model again and appending a second reply to one
+  visible user message
+- **Provider-aware onboarding.** The Connect Orbit step now presents ChatGPT as recommended, Orbit
+  Local as optional with its real component/model state, and collapses OpenRouter and the renamed
+  Private API relay behind More provider options. Availability and status come from `AiProviders`
+  rather than a second set of hardcoded strings, and setup stays seven steps
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever
@@ -687,11 +735,18 @@ genuinely unfinished remainder of the line, in the order the next patches should
 The long-term goal is unchanged: Orbit becomes a **hybrid, provider-agnostic Android assistant
 runtime** rather than an app tied to one model service.
 
-#### Near-term order, after v0.7.7.6
+#### Near-term order, after v0.7.7.7
 v0.7.7.4 shipped the Beta channel, so this order is now also the order these are expected to be
 *tested* in: a feature becomes a numbered Beta, is validated on a real device, and only then
-becomes a Stable release. v0.7.7.6 completed that device-validation cycle, so the remaining work
-below is now the next product direction.
+becomes a Stable release.
+
+v0.7.7.7 deliberately took its Beta slot for real Calendar control and request-duplication
+reliability, ahead of the Orbit Local device-action model that previously held first place. A real
+device showed Orbit confidently claiming to add a schedule while writing nothing, and the same
+reports exposed one send producing two requests; both were worth more than another provider
+feature. The Orbit Local device-action plan is unchanged and simply moves down one place, and it
+now has something to reuse: the direct Calendar writer lives in Orbit's common device-action layer,
+so a local action model reaches calendars through the same component rather than a second path.
 
 1. **Orbit Local device actions** — a lightweight local intent/function model installed beside the
    chat model (the `ModelSpec` architecture already keeps their files and state independent). The
@@ -699,12 +754,16 @@ below is now the next product direction.
    Orbit tool request → existing Orbit tool execution layer → result. The local model only ever
    *requests* existing Orbit tools — starting with simple reversible actions such as flashlight,
    brightness, and volume — and never grows its own device-control logic; cloud and local providers
-   ultimately share the same tool execution layer
-2. **Better Routine conditions and additional branch capability** — conditions beyond time and
+   ultimately share the same tool execution layer. Until it exists, Orbit Local declares
+   `deviceActions(false)` and says so plainly rather than pretending otherwise
+2. **Calendar maturation** — reading the calendar as context ("what does my Saturday look like"),
+   editing and removing events Orbit itself created, and recurring events. Deliberately not in
+   v0.7.7.7, which never modifies or deletes an existing user event
+3. **Better Routine conditions and additional branch capability** — conditions beyond time and
    place, and more than one decision point in a single Routine
-3. **Cook with Orbit** — the explicit temporary cooking session described below
-4. **Kitchen hands-free** — the short spoken vocabulary inside an active cooking session
-5. **Recipe intelligence** — extraction, whole-recipe scaling, substitutions, and sequencing
+4. **Cook with Orbit** — the explicit temporary cooking session described below
+5. **Kitchen hands-free** — the short spoken vocabulary inside an active cooking session
+6. **Recipe intelligence** — extraction, whole-recipe scaling, substitutions, and sequencing
 
 **OpenRouter is deferred.** Finishing OpenRouter chat requires a configured account to validate
 properly on a real device, and there is not one available, so shipping it would mean releasing an

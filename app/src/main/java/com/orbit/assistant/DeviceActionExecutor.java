@@ -127,6 +127,15 @@ public final class DeviceActionExecutor {
                     result = Result.success("Calendar event composer opened");
                     break;
                 }
+                case "ADD_CALENDAR_EVENTS": {
+                    // Deliberately distinct from CREATE_EVENT above. That opens Android's event
+                    // composer and the user presses Save; this is Orbit persisting the events
+                    // itself and then reading them back before it is allowed to say so. The whole
+                    // implementation lives in CalendarActionExecutor, so this stays a routing
+                    // layer and a future local action model can reuse the same writer.
+                    result = CalendarActionExecutor.execute(c, p);
+                    break;
+                }
                 case "NAVIGATE": {
                     String query = p.optString("query", p.optString("destination", ""));
                     Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=" + Uri.encode(query)));

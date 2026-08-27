@@ -359,11 +359,19 @@ public class ChatActivity extends Activity {
         send.setBackground(UiKit.ripple(UiKit.accent(this), UiKit.onAccent(this), 18, this));
         // One control, one footprint. While a reply is being generated the same button becomes
         // Stop rather than a second button appearing beside it.
-        send.setOnClickListener(v -> { if (showingStop) stopGenerating(); else submit(false); });
+        send.setOnClickListener(v -> {
+            if (showingStop) stopGenerating();
+            else submit(false, SubmissionGate.SOURCE_BUTTON);
+        });
         composer.addView(send, new LinearLayout.LayoutParams(UiKit.dp(this, 44), UiKit.dp(this, 44)));
         input.setOnEditorActionListener((v, actionId, event) -> {
-            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND) { submit(false); return true; }
-            return false;
+            if (actionId != android.view.inputmethod.EditorInfo.IME_ACTION_SEND) return false;
+            // The keyboard's Send key follows the same rule as the visible control, including
+            // while that control is showing Stop. Previously it went straight to submit and could
+            // start a second turn behind a reply that was already generating.
+            if (showingStop) stopGenerating();
+            else submit(false, SubmissionGate.SOURCE_IME);
+            return true;
         });
         // Send reads as available only when there is actually something to send.
         input.addTextChangedListener(new android.text.TextWatcher() {
@@ -643,11 +651,38 @@ public class ChatActivity extends Activity {
     }
 
     private void submit(boolean voiceRequest) {
+        submit(voiceRequest, voiceRequest ? SubmissionGate.SOURCE_VOICE : SubmissionGate.SOURCE_BUTTON);
+    }
+
+    /**
+     * One human send gesture becomes exactly one accepted submission.
+     *
+     * <p>The gate is asked before anything is written, because everything below this point is
+     * irreversible: the user message is appended to history, saved, rendered, and enqueued. Three
+     * different things can reach here for one gesture, most awkwardly the voice controller's final
+     * transcript arriving a few hundred milliseconds after the user has already pressed Send, and
+     * none of them may start a second turn.
+     */
+    private void submit(boolean voiceRequest, String source) {
         String q = input.getText().toString().trim();
         ComposerAttachment attached = pendingAttachment;
         if (q.isEmpty() && attached == null) return;
         if (q.isEmpty()) q = defaultAttachmentPrompt(attached);
 
+        SubmissionGate.Decision decision = SubmissionGate.offer(this, conversationId, q, source);
+        if (!decision.accepted) {
+            // A suppressed gesture leaves the composer exactly as it was, so nothing the user
+            // typed is lost to a duplicate they never intended to send.
+            return;
+        }
+        try {
+            acceptedSubmit(q, voiceRequest, attached);
+        } finally {
+            SubmissionGate.settle(conversationId);
+        }
+    }
+
+    private void acceptedSubmit(String q, boolean voiceRequest, ComposerAttachment attached) {
         traceComposer("submit.before-clear");
         clearComposerInPlace();
         // The revised message has gone through the ordinary Send path, so the editing state has
@@ -780,16 +815,7 @@ public class ChatActivity extends Activity {
         }
         final int assistantIndex = Math.max(0, history.size() - 1);
         OrbitActionEngine.execute(this, actions,
-                (action, onAllow, onCancel) -> {
-                    AlertDialog dialog = new AlertDialog.Builder(this)
-                            .setTitle("Let Orbit do this?")
-                            .setMessage(action == null ? "Device action" : action.type.replace('_', ' '))
-                            .setNegativeButton("Cancel", (d, w) -> onCancel.run())
-                            .setPositiveButton("Continue", (d, w) -> onAllow.run())
-                            .create();
-                    styleOrbitDialog(dialog);
-                    dialog.show();
-                },
+                this::confirmAction,
                 new OrbitActionEngine.Listener() {
                     @Override public void onStep(AssistantReply.Action action, DeviceActionExecutor.Result result, int index, int total) {
                         ActionResultStore.record(ChatActivity.this, conversationId, assistantIndex,
@@ -804,6 +830,83 @@ public class ChatActivity extends Activity {
                         });
                     }
                 });
+    }
+
+    /**
+     * The one confirmation an approved action passes through.
+     *
+     * <p>A Calendar batch gets its own wording because agreeing to it means agreeing to a
+     * destination as well as to a list, and because twelve separate dialogs for a twelve-game
+     * schedule would be unusable. Everything else keeps the confirmation Orbit already had.
+     */
+    private void confirmAction(AssistantReply.Action action, Runnable onAllow, Runnable onCancel) {
+        if (CalendarActionExecutor.isCalendarWrite(action)) {
+            confirmCalendarBatch(action, onAllow, onCancel);
+            return;
+        }
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Let Orbit do this?")
+                .setMessage(action == null ? "Device action" : action.type.replace('_', ' '))
+                .setNegativeButton("Cancel", (d, w) -> onCancel.run())
+                .setPositiveButton("Continue", (d, w) -> onAllow.run())
+                .create();
+        styleOrbitDialog(dialog);
+        dialog.show();
+    }
+
+    /** One confirmation for the whole batch, naming the calendar it would land in. */
+    private void confirmCalendarBatch(AssistantReply.Action action, Runnable onAllow,
+                                      Runnable onCancel) {
+        CalendarConfirmation.Preview preview = CalendarConfirmation.of(this, action);
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle(preview.title)
+                .setMessage(preview.detail())
+                .setNegativeButton("Cancel", (d, w) -> onCancel.run())
+                // Approval first, then Android's Calendar prompt, then the write. Nothing is
+                // persisted until CalendarActionExecutor has both a confirmation and permission.
+                .setPositiveButton("Add", (d, w) ->
+                        CalendarActionGate.afterApproval(this, action, onAllow));
+        if (preview.canChangeCalendar) {
+            builder.setNeutralButton("Change calendar", (d, w) ->
+                    chooseCalendarThen(() -> confirmCalendarBatch(action, onAllow, onCancel),
+                            onCancel));
+        }
+        AlertDialog dialog = builder.create();
+        styleOrbitDialog(dialog);
+        dialog.show();
+    }
+
+    /**
+     * Lets the user pick the destination calendar, then returns to the confirmation.
+     *
+     * <p>Permission is resolved first when it is missing, because the list of writable calendars
+     * cannot be read without it. Dismissing the chooser returns to the confirmation unchanged
+     * rather than silently keeping whatever Orbit would have guessed.
+     */
+    private void chooseCalendarThen(Runnable onChosen, Runnable onCancel) {
+        CalendarActionGate.afterApproval(this,
+                new AssistantReply.Action(CalendarActionExecutor.ACTION_TYPE, null, true),
+                () -> runOnUiThread(() -> {
+                    List<OrbitCalendarStore.Target> targets =
+                            OrbitCalendarStore.writableCalendars(this);
+                    if (targets.isEmpty()) {
+                        onChosen.run();
+                        return;
+                    }
+                    String[] labels = CalendarConfirmation.calendarChoices(targets);
+                    AlertDialog dialog = new AlertDialog.Builder(this)
+                            .setTitle("Add events to")
+                            .setItems(labels, (d, which) -> {
+                                if (which >= 0 && which < targets.size()) {
+                                    OrbitCalendarStore.rememberTarget(this, targets.get(which).id);
+                                }
+                                onChosen.run();
+                            })
+                            .setNegativeButton("Cancel", (d, w) -> onCancel.run())
+                            .create();
+                    styleOrbitDialog(dialog);
+                    dialog.show();
+                }));
     }
 
     private void addPersistedActionCards(int assistantIndex) {
@@ -859,7 +962,7 @@ public class ChatActivity extends Activity {
         if (DeviceActionExecutor.STATUS_PERMISSION.equals(entry.status)
                 && OrbitPermissionHelper.supportsSetupFor(action)) {
             Button grant = actionCardControlButton("Grant access", UiKit.accent(this));
-            grant.setOnClickListener(v -> OrbitPermissionHelper.openSetupForAction(this, action));
+            grant.setOnClickListener(v -> grantAccessFor(entry, action));
             LinearLayout.LayoutParams grantLp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 30));
             grantLp.setMargins(UiKit.dp(this, 10), 0, 0, 0);
@@ -879,6 +982,27 @@ public class ChatActivity extends Activity {
             detailView.setPadding(0, UiKit.dp(this, 3), 0, 0);
             card.addView(detailView);
         }
+    }
+
+    /**
+     * Recovers an action that stopped for a missing permission.
+     *
+     * <p>For a Calendar write the approved batch is still on disk, in {@link ActionResultStore},
+     * so once Android actually grants access the same events are written and the card is replaced
+     * with the real outcome. Nothing is retried on a denial: the executor re-checks permission and
+     * the card simply keeps saying access is needed.
+     */
+    private void grantAccessFor(ActionResultStore.Entry entry, AssistantReply.Action action) {
+        if (!CalendarActionExecutor.isCalendarWrite(action)) {
+            OrbitPermissionHelper.openSetupForAction(this, action);
+            return;
+        }
+        CalendarActionGate.afterApproval(this, action, () -> runOnUiThread(() -> {
+            if (!OrbitCalendarStore.hasAccess(this)) return;
+            DeviceActionExecutor.Result result = DeviceActionExecutor.executeDetailed(this, action);
+            ActionResultStore.replace(this, conversationId, entry.id, action, result);
+            render();
+        }));
     }
 
     private Button actionCardControlButton(String text, int color) {
@@ -915,6 +1039,8 @@ public class ChatActivity extends Activity {
             case "SET_REMINDER": return "Reminder · " + p.optString("message", "Reminder");
             case "SET_ALARM": return "Alarm";
             case "NAVIGATE": return "Navigate · " + p.optString("query", p.optString("destination", "Destination"));
+            case "CREATE_EVENT": return "Calendar composer · " + p.optString("title", "Event");
+            case CalendarActionExecutor.ACTION_TYPE: return CalendarConfirmation.cardTitle(action);
             default:
                 String raw = type.toLowerCase(java.util.Locale.US).replace('_', ' ');
                 return raw.isEmpty() ? "Device action" : raw.substring(0, 1).toUpperCase(java.util.Locale.US) + raw.substring(1);

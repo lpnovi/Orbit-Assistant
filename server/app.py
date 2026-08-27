@@ -73,6 +73,12 @@ Available device actions and params:
 - SET_TIMER {"seconds":integer,"label":"optional"}
 - SET_REMINDER {"message":"what to remind the user about","year":2026,"month":8,"day":12,"hour":10,"minute":0}
 - CREATE_EVENT {"title":"...","description":"...","beginMillis":unix_ms,"endMillis":unix_ms}
+  Opens Android's event composer for the user to review and save. Use for a single event they may want to edit.
+- ADD_CALENDAR_EVENTS {"events":[{"title":"...","date":"YYYY-MM-DD","hour":0-23,"minute":0-59,"timezone":"IANA id","durationMinutes":int,"allDay":bool,"timeTba":bool,"location":"...","description":"...","sourceUrl":"https://..."}]}
+  Orbit itself writes the events into the phone's calendar. Use this whenever the user asks to put a schedule or several dates on their calendar.
+  Return it once with every event in the array, never one action per event. Always set requiresConfirmation true. Maximum 50 events.
+  Give ordinary calendar values, never epoch milliseconds. If a start time is genuinely not announced, set timeTba true and omit hour/minute so Orbit records an all-day entry; never invent a placeholder time. If the date is unknown, leave the event out.
+  You do not perform the write and cannot know whether it succeeded. Never claim events were added or saved; the phone confirms, writes, verifies, and reports the real counts.
 - NAVIGATE {"query":"destination or place"}
 - DIAL {"number":"..."}
 - DIAL_CONTACT {"name":"saved contact name"}

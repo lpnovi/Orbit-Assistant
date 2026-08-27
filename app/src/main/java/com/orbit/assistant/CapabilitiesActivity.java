@@ -21,6 +21,7 @@ public final class CapabilitiesActivity extends Activity {
     private static final int REQ_LOCATION = 871;
     private static final int REQ_CAMERA = 872;
     private static final int REQ_CONTACTS = 873;
+    private static final int REQ_CALENDAR = 876;
     private static final int REQ_ROUTINE_FINE_LOCATION = 874;
     private static final int REQ_ROUTINE_BACKGROUND_LOCATION = 875;
 
@@ -34,6 +35,8 @@ public final class CapabilitiesActivity extends Activity {
     private Button flashlightManage;
     private TextView contactsState;
     private Button contactsManage;
+    private TextView calendarState;
+    private Button calendarManage;
     private TextView brightnessState;
     private TextView dndState;
     private Button brightnessSetup;
@@ -131,6 +134,10 @@ public final class CapabilitiesActivity extends Activity {
         actions.addView(status("Timers & alarms", true));
         actions.addView(status("Open apps", true));
         actions.addView(runtimePermissionRow("Contact lookup", Manifest.permission.READ_CONTACTS, REQ_CONTACTS));
+        // Orbit writes events itself once this is granted, rather than only opening the composer.
+        // Nothing here requests it on its own; the row exists so the state is visible and
+        // manageable, and Orbit still asks at the moment a Calendar action is confirmed.
+        actions.addView(runtimePermissionRow("Calendar events", Manifest.permission.WRITE_CALENDAR, REQ_CALENDAR));
         actions.addView(status("Chained action engine", true));
         actions.addView(specialAccessRow("Brightness control", true));
         actions.addView(specialAccessRow("Do Not Disturb control", false));
@@ -188,10 +195,18 @@ public final class CapabilitiesActivity extends Activity {
         } else if (requestCode == REQ_CONTACTS) {
             contactsState = state;
             contactsManage = manage;
+        } else if (requestCode == REQ_CALENDAR) {
+            calendarState = state;
+            calendarManage = manage;
         }
 
-        manage.setOnClickListener(v -> CapabilityAccessHelper.requestOrManageRuntimePermission(
-                this, permission, requestCode));
+        if (requestCode == REQ_CALENDAR) {
+            manage.setOnClickListener(v ->
+                    CapabilityAccessHelper.requestOrManageCalendar(this, requestCode));
+        } else {
+            manage.setOnClickListener(v -> CapabilityAccessHelper.requestOrManageRuntimePermission(
+                    this, permission, requestCode));
+        }
         refreshRuntimeAccessRows();
         return row;
     }
@@ -224,6 +239,9 @@ public final class CapabilitiesActivity extends Activity {
         refreshRuntimeRow(locationState, locationManage, permission(Manifest.permission.ACCESS_COARSE_LOCATION));
         refreshRuntimeRow(flashlightState, flashlightManage, permission(Manifest.permission.CAMERA));
         refreshRuntimeRow(contactsState, contactsManage, permission(Manifest.permission.READ_CONTACTS));
+        // Both halves are needed before Orbit can choose a calendar and verify what it wrote,
+        // so a partial grant reads as "Needs access" rather than as ready.
+        refreshRuntimeRow(calendarState, calendarManage, OrbitCalendarStore.hasAccess(this));
     }
 
     private void refreshRuntimeRow(TextView state, Button manage, boolean ready) {
@@ -373,7 +391,8 @@ public final class CapabilitiesActivity extends Activity {
             refreshRoutineAutomationRows();
         }
         if (requestCode == REQ_MICROPHONE || requestCode == REQ_LOCATION ||
-                requestCode == REQ_CAMERA || requestCode == REQ_CONTACTS) {
+                requestCode == REQ_CAMERA || requestCode == REQ_CONTACTS ||
+                requestCode == REQ_CALENDAR) {
             refreshRuntimeAccessRows();
         }
     }

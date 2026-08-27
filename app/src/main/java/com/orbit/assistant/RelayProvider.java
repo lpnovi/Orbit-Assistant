@@ -122,6 +122,7 @@ final class RelayProvider implements AiProvider {
                 payload.put("history", h);
                 payload.put("capabilities", new JSONArray(new String[]{
                         "OPEN_APP", "OPEN_SETTINGS", "SET_ALARM", "SET_TIMER", "SET_REMINDER", "CREATE_EVENT",
+                        "ADD_CALENDAR_EVENTS",
                         "NAVIGATE", "DIAL", "DIAL_CONTACT", "SMS", "SMS_CONTACT", "WEB_SEARCH", "OPEN_URL", "SHARE", "COPY", "FLASHLIGHT",
                         "SET_VOLUME", "SET_BRIGHTNESS", "SET_DND", "OPEN_INTERNET_PANEL", "OPEN_BLUETOOTH_SETTINGS"
                 }));

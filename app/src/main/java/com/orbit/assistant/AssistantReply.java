@@ -52,7 +52,11 @@ public final class AssistantReply {
         public Action(String type, JSONObject params, boolean confirm) {
             this.type = type == null ? "" : type;
             this.params = params == null ? new JSONObject() : params;
-            this.requiresConfirmation = confirm;
+            // Some actions are too consequential to let their confirmation be optional. A model
+            // that forgets requiresConfirmation, a restored backup, or a hand-built action must
+            // not be able to reach a calendar write unconfirmed, so the requirement is a property
+            // of the action itself rather than something each execution path remembers to check.
+            this.requiresConfirmation = confirm || CalendarActionExecutor.alwaysConfirms(this.type);
         }
     }
 }

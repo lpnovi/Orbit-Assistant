@@ -103,8 +103,14 @@ public final class RoadmapActivity extends Activity {
         // "Modular Orbit Local" is now shipped work and belongs to What's New, so only the part of
         // that line which does not exist yet - teaching Orbit Local Orbit's device actions -
         // remains listed below.
+        //
+        // v0.7.7.7 shipped Orbit writing calendar events itself, so adding a schedule is What's
+        // New material and is not offered here. What is listed below is only the part of calendar
+        // work that genuinely does not exist yet: reading your calendar back as context, and
+        // changing or removing events Orbit created. That release never touches an existing event.
         addGroup(page, "NEXT UP", new String[][]{
                 {"Local device actions", "Orbit Local asking the same trusted Orbit actions the cloud providers use, starting with simple reversible controls."},
+                {"Calendar awareness", "Orbit reading your day back to you, and changing or removing events it added for you."},
                 {"More branch points & conditions", "Several decision points in one Routine, and conditions beyond time and place."},
                 {"Cook with Orbit", "A cooking session you start on purpose and end when you're done, following a recipe with you step by step."}
         });

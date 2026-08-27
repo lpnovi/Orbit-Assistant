@@ -71,19 +71,36 @@ public final class OrbitRequestManager {
     /**
      * The one gate every irreversible completion step passes through.
      *
-     * <p>{@code completion} runs only if the user has not stopped the request, and runs while the
-     * request's cancellation lock is held, so a Stop arriving at the same instant either lands
-     * first and skips the work entirely or waits and then finds the request already finished.
-     * There is no interleaving, which is what keeps a stopped request from persisting an answer,
-     * running response actions, posting a completion notification, or speaking.
+     * <p>{@code completion} runs only if the user has not stopped the request <em>and</em> no
+     * completion for it has already been written, and runs while the request's cancellation lock
+     * is held. A Stop arriving at the same instant either lands first and skips the work entirely
+     * or waits and then finds the request already finished. There is no interleaving, which is
+     * what keeps a stopped request from persisting an answer, running response actions, posting a
+     * completion notification, or speaking.
      *
-     * @return true if the completion ran. False means the user's Stop won.
+     * <p>The completion claim is the other half, and it is what enforces
+     * "one accepted submission produces one request id produces at most one persisted assistant
+     * completion". It is durable, so a worker WorkManager re-runs after a process death finds the
+     * turn already answered instead of asking the model again and appending a second, similar
+     * reply to a single visible user message. A callback that fires twice is refused for the same
+     * reason, without anyone having to compare response text.
+     *
+     * @return true if the completion ran. False means the user's Stop won, or this request had
+     *         already been answered.
      */
     public static boolean completeIfNotCancelled(Context c, String requestId, Runnable completion) {
         if (requestId == null || requestId.isEmpty() || completion == null) return false;
         synchronized (completionLock(requestId)) {
-            if (isCancelled(c, requestId)) return false;
+            if (isCancelled(c, requestId)) {
+                RequestTrace.completion(c, requestId, false, "cancelled");
+                return false;
+            }
+            if (c != null && !PendingRequestStore.claimCompletion(c, requestId)) {
+                RequestTrace.completion(c, requestId, false, "already-completed");
+                return false;
+            }
             completion.run();
+            RequestTrace.completion(c, requestId, true, "");
             return true;
         }
     }
@@ -154,8 +171,12 @@ public final class OrbitRequestManager {
                 .addTag("orbit-ai")
                 .addTag("orbit-conversation-" + conversationId)
                 .build();
+        // KEEP, not REPLACE: the unique name is derived from a request id that was just created,
+        // so nothing can already be enqueued under it. Should anything ever collide, keeping the
+        // existing work is the answer that cannot produce a second run of the same turn.
         WorkManager.getInstance(c.getApplicationContext()).enqueueUniqueWork(
                 uniqueWorkName(item.id), ExistingWorkPolicy.KEEP, work);
+        RequestTrace.lifecycle(item.id, "queued");
         return item.id;
     }
 
@@ -190,7 +211,10 @@ public final class OrbitRequestManager {
         String partial;
         synchronized (completionLock(requestId)) {
             PendingRequestStore.Item current = PendingRequestStore.load(c, requestId);
-            if (current == null || PendingRequestStore.isTerminal(current.status)) return false;
+            // committed as well as terminal: an answer that has been claimed is already being
+            // written, so there is nothing left for a Stop to prevent.
+            if (current == null || current.committed
+                    || PendingRequestStore.isTerminal(current.status)) return false;
             // Refuse deltas and completions from this point on, before anything else can observe
             // a half-cancelled request.
             CANCELLED.add(requestId);
@@ -255,11 +279,20 @@ public final class OrbitRequestManager {
         return list != null && !list.isEmpty();
     }
 
+    /**
+     * Attaches a surface to an existing request.
+     *
+     * <p>A recreated Activity or a reopened overlay attaches here rather than starting anything.
+     * Listening is purely observational: it cannot enqueue work and it cannot persist an answer,
+     * so any number of surfaces may watch one request and the request still produces exactly one
+     * completion.
+     */
     public static void addListener(String requestId, Listener listener) {
         if (requestId == null || listener == null) return;
         // A stopped request has nothing left to report, so nothing new attaches to it.
         if (isCancelled(requestId)) return;
         LISTENERS.computeIfAbsent(requestId, k -> new CopyOnWriteArrayList<>()).addIfAbsent(listener);
+        RequestTrace.listener(requestId, true);
     }
 
     public static void removeListener(String requestId, Listener listener) {
@@ -268,6 +301,7 @@ public final class OrbitRequestManager {
         if (list == null) return;
         list.remove(listener);
         if (list.isEmpty()) LISTENERS.remove(requestId);
+        RequestTrace.listener(requestId, false);
     }
 
     static void dispatchStarted(String id) {

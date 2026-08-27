@@ -25,6 +25,25 @@ public final class CapabilityAccessHelper {
         else activity.requestPermissions(new String[]{permission}, requestCode);
     }
 
+    /**
+     * Calendar needs both halves at once.
+     *
+     * <p>Android grants runtime permissions per request, not per group, so asking for only
+     * WRITE_CALENDAR would leave Orbit able to insert an event and unable to see which calendar to
+     * put it in or to read back what it wrote. Both are therefore requested together, and the row
+     * only reads as ready when both are actually held.
+     */
+    public static void requestOrManageCalendar(Activity activity, int requestCode) {
+        if (activity == null) return;
+        if (OrbitCalendarStore.hasAccess(activity)) {
+            openAppDetails(activity);
+            return;
+        }
+        activity.requestPermissions(new String[]{
+                Manifest.permission.READ_CALENDAR,
+                Manifest.permission.WRITE_CALENDAR}, requestCode);
+    }
+
     public static void requestOrManageNotifications(Activity activity, int requestCode) {
         if (activity == null) return;
         if (Build.VERSION.SDK_INT >= 33 &&
