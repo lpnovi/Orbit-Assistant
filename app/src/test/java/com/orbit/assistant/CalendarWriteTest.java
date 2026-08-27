@@ -166,7 +166,7 @@ public final class CalendarWriteTest {
     @Test public void theOnlyWritableCalendarIsUsedWithoutAsking() {
         personalOnly();
         assertNotNull(OrbitCalendarStore.resolveTarget(context));
-        assertFalse(OrbitCalendarStore.needsChooser(context));
+        assertFalse(CalendarTargetResolver.state(context).needsChoice());
 
         DeviceActionExecutor.Result result = run(batch(game("Game", "2026-09-05", 12, 0)));
         assertTrue(result.message, result.success);
@@ -188,7 +188,7 @@ public final class CalendarWriteTest {
                 3L, "Work", "work@example.com", "other@example.com", CONTRIBUTOR, false));
 
         assertNull(OrbitCalendarStore.resolveTarget(context));
-        assertTrue(OrbitCalendarStore.needsChooser(context));
+        assertTrue(CalendarTargetResolver.state(context).needsChoice());
 
         DeviceActionExecutor.Result result = run(michiganSchedule());
         assertEquals(DeviceActionExecutor.STATUS_UNAVAILABLE, result.status);

@@ -13,6 +13,7 @@ import org.json.JSONObject;
 
 import java.time.DateTimeException;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -54,6 +55,15 @@ public final class CalendarActionExecutor {
     public static final int MAX_DURATION_MINUTES = 24 * 60;
     /** How an all-day event whose start time is genuinely unknown is marked. */
     public static final String TBA_MARKER = "Time TBA";
+    /**
+     * The one refusal a surface can recover from without asking the model for anything again.
+     *
+     * <p>Matched exactly by the persisted action card, so it can offer "Choose calendar" for this
+     * case and only this case. "No writable calendar exists" is deliberately a different sentence:
+     * nothing the user could pick would fix that one.
+     */
+    public static final String NO_TARGET_CHOSEN =
+            "Choose which calendar Orbit should use before adding these events.";
 
     private static final int MAX_TITLE_CHARS = 240;
     private static final int MAX_TEXT_CHARS = 1000;
@@ -62,8 +72,43 @@ public final class CalendarActionExecutor {
 
     private CalendarActionExecutor() {}
 
+    /**
+     * How a start time is written out for a person to read.
+     *
+     * <p>A preview that says 19:30 to someone whose phone says 7:30 PM is not so much wrong as not
+     * theirs, and the start time is the one number people actually check before agreeing. The
+     * device's own setting decides, so this is an injected style rather than a fixed pattern.
+     */
+    public interface ClockStyle { String time(int hour, int minute); }
+
+    /** The clock this device is actually configured for. */
+    public static ClockStyle clockStyle(Context c) {
+        return clockStyle(c != null && android.text.format.DateFormat.is24HourFormat(c));
+    }
+
+    /** The same choice made explicitly, so both formats stay testable without a device. */
+    public static ClockStyle clockStyle(boolean use24Hour) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(
+                use24Hour ? "H:mm" : "h:mm a", Locale.getDefault());
+        return (hour, minute) -> LocalTime.of(hour, minute).format(formatter);
+    }
+
     public static boolean isCalendarWrite(AssistantReply.Action action) {
         return action != null && alwaysConfirms(action.type);
+    }
+
+    /**
+     * True for a persisted Calendar card that stopped only because no destination was chosen.
+     *
+     * <p>This is the recoverable failure: the batch is already approved and already on disk, and
+     * picking a calendar is the entire remaining step. Every other failure keeps its plain card,
+     * because offering a chooser would not fix any of them.
+     */
+    public static boolean needsTargetChoice(AssistantReply.Action action, String status,
+                                            String message) {
+        return isCalendarWrite(action)
+                && DeviceActionExecutor.STATUS_UNAVAILABLE.equals(status)
+                && message != null && message.contains(NO_TARGET_CHOSEN);
     }
 
     /**
@@ -142,10 +187,15 @@ public final class CalendarActionExecutor {
             return out.toString();
         }
 
-        public String shortLabel() {
-            String when = date.format(DateTimeFormatter.ofPattern("MMM d", Locale.US));
+        /**
+         * One preview line. An all-day Time TBA entry never gets an invented clock time, because
+         * the whole point of the marker is that the start is not known yet.
+         */
+        public String shortLabel(ClockStyle clock) {
+            String when = date.format(DateTimeFormatter.ofPattern("MMM d", Locale.getDefault()));
             if (allDay) return when + " · " + title + (timeTba ? " (" + TBA_MARKER + ")" : "");
-            return when + " " + String.format(Locale.US, "%d:%02d", hour, minute) + " · " + title;
+            ClockStyle style = clock == null ? clockStyle(true) : clock;
+            return when + " " + style.time(hour, minute) + " · " + title;
         }
     }
 
@@ -338,7 +388,7 @@ public final class CalendarActionExecutor {
         if (target == null) {
             String reason = writable.isEmpty()
                     ? "No writable calendar is set up on this phone, so Orbit has nowhere to add these events."
-                    : "Choose which calendar Orbit should use before adding these events.";
+                    : NO_TARGET_CHOSEN;
             CalendarDiagnostics.recordBlocked(c,
                     writable.isEmpty() ? "no writable calendar" : "no target chosen", plan.size());
             return DeviceActionExecutor.Result.unavailable(reason);

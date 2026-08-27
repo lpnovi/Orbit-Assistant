@@ -1292,6 +1292,62 @@ public final class UiKit {
         return t;
     }
 
+    /** The chevron a selector field uses to say it opens something. */
+    public static final String SELECTOR_CHEVRON = "▾";
+
+    /**
+     * A selectable field: a small caption above the current value, with a chevron when tapping it
+     * opens a choice.
+     *
+     * <p>Orbit's answer to a Spinner. A stock spinner drags in its own white popup, its own text
+     * colours, and its own motion, none of which belong to this design system; this reads as one
+     * of Orbit's own surfaces and hands the actual choosing to {@link #showOrbitMenu}. It is a
+     * field rather than a button on purpose, so it sits inside a confirmation as something being
+     * agreed to rather than competing with Cancel and Add for attention.
+     *
+     * <p>A non-interactive field still shows its value and drops the chevron, because "there is
+     * only one calendar" and "you have not chosen yet" should not look like the same thing.
+     */
+    public static LinearLayout selectorField(Context c, String caption, String value,
+                                             boolean interactive, View.OnClickListener onOpen) {
+        LinearLayout field = new LinearLayout(c);
+        field.setOrientation(LinearLayout.VERTICAL);
+        field.setPadding(dp(c, 12), dp(c, 8), dp(c, 12), dp(c, 9));
+        int accent = accent(c);
+        field.setBackground(interactive
+                ? rippleOutlined(SURFACE_2, withAlpha(accent, 96), accent, 14, c)
+                : outlined(SURFACE_2, withAlpha(MUTED, 70), 14, c));
+
+        TextView captionView = text(c, caption, 11, MUTED, false);
+        field.addView(captionView);
+
+        LinearLayout valueRow = new LinearLayout(c);
+        valueRow.setOrientation(LinearLayout.HORIZONTAL);
+        valueRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        TextView valueView = text(c, value, 14, interactive ? TEXT : MUTED, true);
+        valueView.setSingleLine(true);
+        valueView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        valueRow.addView(valueView, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        if (interactive) {
+            TextView chevron = text(c, SELECTOR_CHEVRON, 14, accent, true);
+            chevron.setPadding(dp(c, 8), 0, 0, 0);
+            valueRow.addView(chevron);
+        }
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowLp.topMargin = dp(c, 2);
+        field.addView(valueRow, rowLp);
+
+        if (interactive && onOpen != null) {
+            pressScale(field);
+            field.setOnClickListener(onOpen);
+        } else {
+            field.setClickable(false);
+        }
+        return field;
+    }
+
     /**
      * A binary setting presented Orbit's way: the label, an optional supporting line, and an
      * {@link OrbitSwitch} on the trailing edge.

@@ -173,8 +173,9 @@ public final class CalendarConfirmationTest {
 
         assertEquals("Add 12 events to Personal?", preview.title);
         assertEquals(12, preview.eventCount);
-        assertTrue("the destination has to be visible before agreeing",
-                preview.detail().contains("Calendar: Personal"));
+        assertEquals("the destination is a field of its own, not a line of prose",
+                "Personal", preview.selectorLabel);
+        assertTrue("and Add may run, because Orbit knows where these go", preview.canAdd());
         assertTrue(preview.detail().contains("Sep 5 - Sep 16, 2026"));
         assertTrue("a few real events, not a bare count",
                 preview.detail().contains("Michigan game 1"));

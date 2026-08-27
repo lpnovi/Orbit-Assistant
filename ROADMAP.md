@@ -702,8 +702,17 @@ request-duplication failures, so this release closes both.
   Android prompt as full chat. A denial produces zero writes, enforced in the executor rather than
   in either surface
 - **One confirmation for a batch**, naming its destination — `Add 12 events to Personal?` — with a
-  date range, the first few events, and the count of Time TBA entries. Multiple writable calendars
-  gain a Change control; the choice is remembered locally as an id, never as calendar contents
+  date range, the first few events, and the count of Time TBA entries. The destination is a
+  selectable Calendar field inside the confirmation rather than a button competing with Cancel and
+  Add; the choice is remembered locally as an id, never as calendar contents
+- **Permission before description, not after approval** (0.7.7.7-beta.2, from real-device Beta
+  testing). Beta 1 built the first-ever confirmation from a provider that had not been unlocked yet,
+  so it offered no destination, no chooser, and then failed at the executor; repeating the request
+  worked only because permission was by then held. `CalendarTargetResolver` fixes the ordering for
+  both surfaces: resolve permission, re-read the provider, resolve the target, then draw. Add is
+  inert while the destination is genuinely ambiguous, and a card stranded without one recovers
+  through `Choose calendar` rather than re-asking the model. Previews follow the device's own
+  12/24-hour setting
 - **Idempotent enough to retry.** Before inserting, Orbit looks for an equivalent event on the
   target calendar by normalized title, all-day state, and local day, and skips confirmed matches
   without ever modifying or deleting an existing user event

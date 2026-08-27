@@ -159,9 +159,9 @@ public final class OrbitVersionTest {
         assertEquals("0.7.7.7", OrbitVersion.baseVersion(BuildConfig.VERSION_NAME));
         assertTrue("a Beta build carries a real beta counter",
                 OrbitVersion.betaNumber(BuildConfig.VERSION_NAME) >= 1);
-        assertEquals("Orbit Assistant v0.7.7.7 Beta 1",
+        assertEquals("Orbit Assistant v0.7.7.7 Beta 2",
                 OrbitVersion.releaseTitle(BuildConfig.VERSION_NAME));
-        assertEquals("v0.7.7.7-beta.1", OrbitVersion.tagFor(BuildConfig.VERSION_NAME));
+        assertEquals("v0.7.7.7-beta.2", OrbitVersion.tagFor(BuildConfig.VERSION_NAME));
         assertTrue("the release workflow must publish it as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(BuildConfig.VERSION_NAME)));
         assertTrue("and it must still outrank the Stable release it follows",

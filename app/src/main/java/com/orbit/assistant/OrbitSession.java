@@ -2485,6 +2485,15 @@ public class OrbitSession extends VoiceInteractionSession {
             grantLp.setMargins(UiKit.dp(c, 10), 0, 0, 0);
             titleRow.addView(grant, grantLp);
         }
+        if (result != null
+                && CalendarActionExecutor.needsTargetChoice(action, result.status, result.message)) {
+            Button choose = actionCardControlButton("Choose calendar", UiKit.accent(c));
+            choose.setOnClickListener(v -> chooseCalendarForCard(v, card, action, entry));
+            LinearLayout.LayoutParams chooseLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(c, 30));
+            chooseLp.setMargins(UiKit.dp(c, 10), 0, 0, 0);
+            titleRow.addView(choose, chooseLp);
+        }
         card.addView(titleRow);
 
         String detail = result == null ? "" : result.message;
@@ -2499,6 +2508,38 @@ public class OrbitSession extends VoiceInteractionSession {
             detailView.setPadding(0, UiKit.dp(c, 3), 0, 0);
             card.addView(detailView);
         }
+    }
+
+    /**
+     * Recovers a Calendar card that stopped only because no destination was chosen.
+     *
+     * <p>The overlay's half of the same recovery full chat offers. The approved batch is still on
+     * disk, so nothing is asked of the model again; the user picks a calendar and the same events
+     * are written, with the executor's duplicate protection making the retry safe.
+     */
+    private void chooseCalendarForCard(View anchor, LinearLayout card,
+                                       AssistantReply.Action action,
+                                       ActionResultStore.Entry entry) {
+        Context c = getContext();
+        CalendarTargetResolver.prepare(c, state -> main.post(() -> {
+            // One calendar, or a clear default, needs no question. No writable calendar at all is
+            // retried too, so the card restates that plainly rather than opening an empty list.
+            if (!state.canChoose()) {
+                retryCalendarCard(card, action, entry);
+                return;
+            }
+            chooseCalendarFrom(anchor, state, chosen -> retryCalendarCard(card, action, entry));
+        }));
+    }
+
+    private void retryCalendarCard(LinearLayout card, AssistantReply.Action action,
+                                   ActionResultStore.Entry entry) {
+        Context c = getContext();
+        DeviceActionExecutor.Result result = DeviceActionExecutor.executeDetailed(c, action);
+        ActionResultStore.Entry updated = entry == null ? null
+                : ActionResultStore.replace(c, conversationId, entry.id, action, result);
+        renderActionCard(card, action, result, updated == null ? entry : updated);
+        scrollBottom();
     }
 
     private static boolean isFlashlightAction(AssistantReply.Action action) {
@@ -2545,10 +2586,29 @@ public class OrbitSession extends VoiceInteractionSession {
      * genuinely more than one writable calendar to move it to.
      */
     private void showActionConfirmation(AssistantReply.Action action, Runnable yes, Runnable no) {
+        if (!CalendarActionExecutor.isCalendarWrite(action)) {
+            drawActionConfirmation(action, null, yes, no);
+            return;
+        }
+        // Permission and calendar discovery first, exactly as in full chat. Reading the provider
+        // before the grant returns an empty device, and a confirmation built from that has no
+        // destination to show and no list to choose from.
+        CalendarTargetResolver.prepare(getContext(),
+                state -> main.post(() -> drawActionConfirmation(action, state, yes, no)));
+    }
+
+    /** The confirmation sheet itself, with the destination as an editable field inside it. */
+    private void drawActionConfirmation(AssistantReply.Action action,
+                                        CalendarTargetResolver.State state,
+                                        Runnable yes, Runnable no) {
         Context c = getContext();
+        if (messages == null) {
+            no.run();
+            return;
+        }
         boolean calendarWrite = CalendarActionExecutor.isCalendarWrite(action);
         CalendarConfirmation.Preview preview = calendarWrite
-                ? CalendarConfirmation.of(c, action) : null;
+                ? CalendarConfirmation.of(c, action, state) : null;
 
         LinearLayout box = new LinearLayout(c);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -2557,66 +2617,79 @@ public class OrbitSession extends VoiceInteractionSession {
         TextView t = UiKit.text(c, preview == null
                 ? "Allow " + actionTitle(action) + "?" : preview.title, 14, UiKit.TEXT, true);
         box.addView(t);
-        if (preview != null && !preview.detail().isEmpty()) {
-            TextView detail = UiKit.text(c, preview.detail(), 12, UiKit.MUTED, false);
+        TextView detail = null;
+        if (preview != null) {
+            detail = UiKit.text(c, preview.detail(), 12, UiKit.MUTED, false);
             detail.setLineSpacing(0, 1.12f);
             detail.setPadding(0, UiKit.dp(c, 6), 0, 0);
             box.addView(detail);
         }
+        // The overlay draws the same destination field as full chat, in its own sheet idiom.
+        FrameLayout selectorSlot = null;
+        if (preview != null) {
+            selectorSlot = new FrameLayout(c);
+            LinearLayout.LayoutParams slotLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            slotLp.topMargin = UiKit.dp(c, 10);
+            box.addView(selectorSlot, slotLp);
+        }
+
         LinearLayout row = new LinearLayout(c);
         row.setGravity(Gravity.END);
-        Button change = null;
-        if (preview != null && preview.canChangeCalendar) {
-            change = tinyTextButton("Change");
-            row.addView(change);
-        }
         Button cancel = tinyTextButton("Cancel");
         Button allow = tinyTextButton(calendarWrite ? "Add" : "Allow");
         allow.setTextColor(UiKit.accent(c));
         row.addView(cancel); row.addView(allow);
-        box.addView(row);
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowLp.topMargin = UiKit.dp(c, preview == null ? 0 : 4);
+        box.addView(row, rowLp);
         messages.addView(box, bubbleLp(Gravity.START, UiKit.dp(c, 330)));
         scrollBottom();
         cancel.setOnClickListener(v -> { messages.removeView(box); no.run(); });
-        if (change != null) {
-            final Button anchor = change;
-            change.setOnClickListener(v -> {
-                messages.removeView(box);
-                chooseCalendarThen(anchor,
-                        () -> showActionConfirmation(action, yes, no), no);
-            });
-        }
         allow.setOnClickListener(v -> {
             messages.removeView(box);
-            // Approval first, then Android's Calendar prompt, then the write. Ordinary actions
-            // pass straight through; only a Calendar write pauses here.
+            // Approval first, then the write. Ordinary actions pass straight through; a Calendar
+            // write passes the gate as a backstop even though permission is already resolved.
             CalendarActionGate.afterApproval(c, action, () -> main.post(yes));
         });
+
+        if (preview == null) return;
+        // Rebuilt in place when the destination changes, so the batch preview stays on screen.
+        final CalendarTargetResolver.State[] current = {state};
+        final TextView detailView = detail;
+        final FrameLayout slot = selectorSlot;
+        final Runnable[] refresh = new Runnable[1];
+        refresh[0] = () -> {
+            CalendarConfirmation.Preview live = CalendarConfirmation.of(c, action, current[0]);
+            t.setText(live.title);
+            detailView.setText(live.detail());
+            slot.removeAllViews();
+            slot.addView(UiKit.selectorField(c, "Calendar", live.selectorLabel,
+                    live.canChangeCalendar, v -> chooseCalendarFrom(v, current[0], chosen -> {
+                        current[0] = chosen;
+                        refresh[0].run();
+                    })));
+            // An ambiguous destination is a question, not an error; Add waits for the answer.
+            allow.setEnabled(live.canAdd());
+            allow.setAlpha(live.canAdd() ? 1f : 0.45f);
+        };
+        refresh[0].run();
     }
 
-    /** Picks the destination calendar from Orbit's own menu, then returns to the confirmation. */
-    private void chooseCalendarThen(View anchor, Runnable onChosen, Runnable onCancel) {
+    /** Picks the destination calendar from Orbit's own menu and reports the new state. */
+    private void chooseCalendarFrom(View anchor, CalendarTargetResolver.State state,
+                                    CalendarTargetResolver.Ready onChosen) {
         Context c = getContext();
-        CalendarActionGate.afterApproval(c,
-                new AssistantReply.Action(CalendarActionExecutor.ACTION_TYPE, null, true),
-                () -> main.post(() -> {
-                    java.util.List<OrbitCalendarStore.Target> targets =
-                            OrbitCalendarStore.writableCalendars(c);
-                    if (targets.isEmpty() || messages == null) {
-                        onChosen.run();
-                        return;
-                    }
-                    View menuAnchor = anchor != null && anchor.getWindowToken() != null
-                            ? anchor : messages;
-                    UiKit.showOrbitMenu(c, menuAnchor,
-                            CalendarConfirmation.calendarChoices(targets), -1,
-                            (index, label) -> {
-                                if (index >= 0 && index < targets.size()) {
-                                    OrbitCalendarStore.rememberTarget(c, targets.get(index).id);
-                                }
-                                onChosen.run();
-                            });
-                }));
+        if (state == null || state.writable.isEmpty() || onChosen == null) return;
+        java.util.List<OrbitCalendarStore.Target> targets = state.writable;
+        View menuAnchor = anchor != null && anchor.getWindowToken() != null ? anchor : messages;
+        if (menuAnchor == null) return;
+        UiKit.showOrbitMenu(c, menuAnchor, CalendarTargetResolver.choices(state),
+                CalendarTargetResolver.selectedIndex(state), (index, label) -> {
+                    if (index < 0 || index >= targets.size()) return;
+                    onChosen.onReady(CalendarTargetResolver.choose(c, targets.get(index)));
+                });
     }
 
     private void initSpeech() {

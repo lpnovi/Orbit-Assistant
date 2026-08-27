@@ -462,3 +462,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - One tap of Send now creates exactly one request, and a single question can no longer receive two answers.
   - The Connect Orbit setup page now covers ChatGPT, Orbit Local, OpenRouter, and a private relay honestly.
   - This is a Beta build; calendar writing still needs confirming on a real device.
+- **v0.7.7.7-beta.2**: Your first calendar request now finishes in one go, with the destination shown as a field you can change.
+  - Orbit asks for Calendar access before showing the confirmation, then checks which calendars you really have.
+  - You no longer have to send the same calendar request twice for it to work.
+  - The confirmation now has a Calendar field showing where events will go; tap it to pick a different calendar.
+  - Add waits until a calendar is chosen, instead of failing afterwards with no way to fix it.
+  - Event times in the preview now follow your phone's 12-hour or 24-hour setting.
+  - A calendar card that lost its destination can be recovered with Choose calendar, without asking Orbit again.

@@ -157,19 +157,9 @@ public final class OrbitCalendarStore {
         return primary;
     }
 
-    /**
-     * True when Orbit should ask which calendar to use before writing: more than one writable
-     * calendar, and no clear default among them.
-     */
-    public static boolean needsChooser(Context c) {
-        List<Target> writable = writableCalendars(c);
-        return writable.size() > 1 && resolveTarget(writable, storedTargetId(c)) == null;
-    }
-
-    /** True when the user has a real choice to change, whatever the current target is. */
-    public static boolean hasChoice(Context c) {
-        return writableCalendars(c).size() > 1;
-    }
+    // Whether Orbit must ask which calendar to use is answered by CalendarTargetResolver.State,
+    // which reads permission, discovery, and resolution as one snapshot. Keeping a second set of
+    // live lookups here would be a parallel answer that could disagree with the one on screen.
 
     // ---- remembering the choice ---------------------------------------------------------------
 

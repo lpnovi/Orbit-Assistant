@@ -5,10 +5,11 @@ import android.content.Context;
 /**
  * The step between "the user approved this Calendar write" and "the write may run".
  *
- * <p>Orbit asks for Calendar permission at exactly this moment: after the user has confirmed a
- * specific batch, and never during onboarding or installation. The approved action is held here,
- * in this process, while Android's prompt is open, and continues only once the prompt has closed
- * and reported a real answer.
+ * <p>Orbit asks for Calendar permission only when a real Calendar action is in hand, never during
+ * onboarding or installation. By the time an approved batch reaches this gate the surfaces have
+ * normally resolved permission already, while preparing the confirmation; this remains as the
+ * backstop for every other route into an approved Calendar action — a restored request, a widget,
+ * a routine — so none of them can reach the executor without the prompt having been offered.
  *
  * <p>Note what this class does <em>not</em> do: it does not decide whether the write is allowed.
  * On a denial it still continues to the executor, because {@link CalendarActionExecutor} re-checks
@@ -32,17 +33,6 @@ public final class CalendarActionGate {
             continuation.run();
             return;
         }
-        if (OrbitCalendarStore.hasAccess(context)) {
-            continuation.run();
-            return;
-        }
-        final Context app = context.getApplicationContext() == null
-                ? context : context.getApplicationContext();
-        String token = CalendarAccessBridge.register(granted -> continuation.run());
-        if (!CalendarPermissionActivity.start(context, token)) {
-            // Android could not open the prompt. Deliver a denial rather than leaving the approved
-            // action waiting forever; the executor then reports that permission is required.
-            CalendarAccessBridge.deliver(token, OrbitCalendarStore.hasAccess(app));
-        }
+        CalendarTargetResolver.ensureAccess(context, continuation);
     }
 }

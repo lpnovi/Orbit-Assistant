@@ -854,59 +854,98 @@ public class ChatActivity extends Activity {
         dialog.show();
     }
 
-    /** One confirmation for the whole batch, naming the calendar it would land in. */
+    /**
+     * One confirmation for the whole batch, naming the calendar it would land in.
+     *
+     * <p>Permission and calendar discovery are resolved <em>before</em> anything is drawn. That
+     * ordering is the fix for the first-use dead end: asking the provider which calendars exist
+     * while Orbit still lacks Calendar permission returns an empty list, and a confirmation built
+     * from that emptiness offers no destination and no way to pick one, only to fail at the
+     * executor a moment later. Granting permission here is not approval to write; it only makes
+     * the real state readable in time to be shown.
+     */
     private void confirmCalendarBatch(AssistantReply.Action action, Runnable onAllow,
                                       Runnable onCancel) {
-        CalendarConfirmation.Preview preview = CalendarConfirmation.of(this, action);
-        AlertDialog.Builder builder = new AlertDialog.Builder(this)
-                .setTitle(preview.title)
-                .setMessage(preview.detail())
-                .setNegativeButton("Cancel", (d, w) -> onCancel.run())
-                // Approval first, then Android's Calendar prompt, then the write. Nothing is
-                // persisted until CalendarActionExecutor has both a confirmation and permission.
-                .setPositiveButton("Add", (d, w) ->
-                        CalendarActionGate.afterApproval(this, action, onAllow));
-        if (preview.canChangeCalendar) {
-            builder.setNeutralButton("Change calendar", (d, w) ->
-                    chooseCalendarThen(() -> confirmCalendarBatch(action, onAllow, onCancel),
-                            onCancel));
+        CalendarTargetResolver.prepare(this, state ->
+                runOnUiThread(() -> showCalendarBatchDialog(action, state, onAllow, onCancel)));
+    }
+
+    /** The confirmation itself, with the destination as an editable field inside it. */
+    private void showCalendarBatchDialog(AssistantReply.Action action,
+                                         CalendarTargetResolver.State state,
+                                         Runnable onAllow, Runnable onCancel) {
+        if (isFinishing() || isDestroyed()) {
+            onCancel.run();
+            return;
         }
-        AlertDialog dialog = builder.create();
-        styleOrbitDialog(dialog);
+        final CalendarTargetResolver.State[] current = {state};
+        CalendarConfirmation.Preview initial = CalendarConfirmation.of(this, action, state);
+
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setPadding(UiKit.dp(this, 24), UiKit.dp(this, 4), UiKit.dp(this, 24), UiKit.dp(this, 8));
+        TextView detail = UiKit.text(this, initial.detail(), 13, UiKit.TEXT, false);
+        detail.setLineSpacing(0, 1.15f);
+        body.addView(detail);
+        FrameLayout selectorSlot = new FrameLayout(this);
+        LinearLayout.LayoutParams slotLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        slotLp.topMargin = UiKit.dp(this, 13);
+        body.addView(selectorSlot, slotLp);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(initial.title)
+                .setView(body)
+                .setNegativeButton("Cancel", (d, w) -> onCancel.run())
+                // Approval first, then the write. Nothing is persisted until
+                // CalendarActionExecutor has both a confirmation and permission.
+                .setPositiveButton("Add", (d, w) ->
+                        CalendarActionGate.afterApproval(this, action, onAllow))
+                .setOnCancelListener(d -> onCancel.run())
+                .create();
+
+        // Rebuilt in place on every change of destination, so choosing a calendar updates the
+        // question and the Add button without the batch preview disappearing and coming back.
+        final Runnable[] refresh = new Runnable[1];
+        refresh[0] = () -> {
+            CalendarConfirmation.Preview preview =
+                    CalendarConfirmation.of(this, action, current[0]);
+            dialog.setTitle(preview.title);
+            detail.setText(preview.detail());
+            selectorSlot.removeAllViews();
+            selectorSlot.addView(UiKit.selectorField(this, "Calendar", preview.selectorLabel,
+                    preview.canChangeCalendar, v -> chooseCalendarFrom(v, current[0], chosen -> {
+                        current[0] = chosen;
+                        refresh[0].run();
+                    })));
+            Button add = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            if (add != null) {
+                // An ambiguous destination is a question, not an error. Add stays inert until it
+                // is answered rather than falling through to the executor to produce a red card.
+                add.setEnabled(preview.canAdd());
+                add.setAlpha(preview.canAdd() ? 1f : 0.45f);
+            }
+        };
+
+        styleOrbitDialog(dialog, refresh[0]);
         dialog.show();
     }
 
     /**
-     * Lets the user pick the destination calendar, then returns to the confirmation.
+     * Opens Orbit's own calendar list from the selector field and reports the new state.
      *
-     * <p>Permission is resolved first when it is missing, because the list of writable calendars
-     * cannot be read without it. Dismissing the chooser returns to the confirmation unchanged
-     * rather than silently keeping whatever Orbit would have guessed.
+     * <p>Permission has already been resolved by the time any field offering a choice exists, so
+     * this only reads and remembers. Dismissing the list leaves the confirmation exactly as it was.
      */
-    private void chooseCalendarThen(Runnable onChosen, Runnable onCancel) {
-        CalendarActionGate.afterApproval(this,
-                new AssistantReply.Action(CalendarActionExecutor.ACTION_TYPE, null, true),
-                () -> runOnUiThread(() -> {
-                    List<OrbitCalendarStore.Target> targets =
-                            OrbitCalendarStore.writableCalendars(this);
-                    if (targets.isEmpty()) {
-                        onChosen.run();
-                        return;
-                    }
-                    String[] labels = CalendarConfirmation.calendarChoices(targets);
-                    AlertDialog dialog = new AlertDialog.Builder(this)
-                            .setTitle("Add events to")
-                            .setItems(labels, (d, which) -> {
-                                if (which >= 0 && which < targets.size()) {
-                                    OrbitCalendarStore.rememberTarget(this, targets.get(which).id);
-                                }
-                                onChosen.run();
-                            })
-                            .setNegativeButton("Cancel", (d, w) -> onCancel.run())
-                            .create();
-                    styleOrbitDialog(dialog);
-                    dialog.show();
-                }));
+    private void chooseCalendarFrom(View anchor, CalendarTargetResolver.State state,
+                                    CalendarTargetResolver.Ready onChosen) {
+        if (state == null || state.writable.isEmpty() || onChosen == null) return;
+        List<OrbitCalendarStore.Target> targets = state.writable;
+        UiKit.showOrbitMenu(this, anchor, CalendarTargetResolver.choices(state),
+                CalendarTargetResolver.selectedIndex(state), (index, label) -> {
+                    if (index < 0 || index >= targets.size()) return;
+                    onChosen.onReady(CalendarTargetResolver.choose(this, targets.get(index)));
+                });
     }
 
     private void addPersistedActionCards(int assistantIndex) {
@@ -968,6 +1007,14 @@ public class ChatActivity extends Activity {
             grantLp.setMargins(UiKit.dp(this, 10), 0, 0, 0);
             titleRow.addView(grant, grantLp);
         }
+        if (CalendarActionExecutor.needsTargetChoice(action, entry.status, entry.message)) {
+            Button choose = actionCardControlButton("Choose calendar", UiKit.accent(this));
+            choose.setOnClickListener(v -> chooseCalendarForCard(v, entry, action));
+            LinearLayout.LayoutParams chooseLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 30));
+            chooseLp.setMargins(UiKit.dp(this, 10), 0, 0, 0);
+            titleRow.addView(choose, chooseLp);
+        }
         card.addView(titleRow);
 
         String detail = entry.message == null ? "" : entry.message;
@@ -999,10 +1046,43 @@ public class ChatActivity extends Activity {
         }
         CalendarActionGate.afterApproval(this, action, () -> runOnUiThread(() -> {
             if (!OrbitCalendarStore.hasAccess(this)) return;
-            DeviceActionExecutor.Result result = DeviceActionExecutor.executeDetailed(this, action);
-            ActionResultStore.replace(this, conversationId, entry.id, action, result);
-            render();
+            retryCalendarCard(entry, action);
         }));
+    }
+
+    /**
+     * Recovers a Calendar card that stopped only because no destination was chosen.
+     *
+     * <p>This happens when the target state changed after the batch was approved — the chosen
+     * account was removed, or a restored action resumed against a different set of calendars. The
+     * approved events are still on disk, so the model is never asked to research anything again;
+     * the user picks a calendar and the same batch is written.
+     */
+    private void chooseCalendarForCard(View anchor, ActionResultStore.Entry entry,
+                                       AssistantReply.Action action) {
+        CalendarTargetResolver.prepare(this, state -> runOnUiThread(() -> {
+            // One calendar, or a clear default, needs no question: retry straight away. No
+            // writable calendar at all is retried too, so the card restates that plainly rather
+            // than opening an empty list.
+            if (!state.canChoose()) {
+                retryCalendarCard(entry, action);
+                return;
+            }
+            chooseCalendarFrom(anchor, state, chosen -> retryCalendarCard(entry, action));
+        }));
+    }
+
+    /**
+     * Re-runs an already-approved Calendar batch.
+     *
+     * <p>Safe to repeat because {@link CalendarActionExecutor} recognises events that are already
+     * there and skips them, so a retry converges on one copy of each event rather than doubling
+     * anything that did get written.
+     */
+    private void retryCalendarCard(ActionResultStore.Entry entry, AssistantReply.Action action) {
+        DeviceActionExecutor.Result result = DeviceActionExecutor.executeDetailed(this, action);
+        ActionResultStore.replace(this, conversationId, entry.id, action, result);
+        render();
     }
 
     private Button actionCardControlButton(String text, int color) {
@@ -1865,6 +1945,11 @@ public class ChatActivity extends Activity {
 
     private void styleOrbitDialog(AlertDialog dialog) {
         UiKit.styleOrbitDialog(dialog, this, false);
+    }
+
+    /** Same styling and entrance motion, with one pass over the dialog's own views once shown. */
+    private void styleOrbitDialog(AlertDialog dialog, Runnable afterShown) {
+        UiKit.styleOrbitDialog(dialog, this, false, afterShown);
     }
 
     private void tintDialogText(View view) {
