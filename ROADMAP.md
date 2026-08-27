@@ -637,8 +637,8 @@ Validated on real hardware across three Betas (`beta.1`-`beta.3`) and released a
   unaffected
 
 ### 0.7.7.6 — Orbit Local lifecycle reliability
-A focused reliability patch on the work v0.7.7.5 shipped, opened as `beta.1` from two Galaxy S25
-Ultra recordings. No new features; the modular architecture is unchanged.
+Validated on a Galaxy S25 Ultra across three Betas (`beta.1`-`beta.3`) and released as
+`0.7.7.6` Stable. No new features; the modular architecture is unchanged.
 
 - **Removal actually happens.** `Remove Orbit Local` did nothing at all: Orbit fired
   `ACTION_DELETE` without holding `REQUEST_DELETE_PACKAGES`, which Android has required of any app
@@ -690,8 +690,8 @@ runtime** rather than an app tied to one model service.
 #### Near-term order, after v0.7.7.6
 v0.7.7.4 shipped the Beta channel, so this order is now also the order these are expected to be
 *tested* in: a feature becomes a numbered Beta, is validated on a real device, and only then
-becomes a Stable release. v0.7.7.6 is itself waiting on that validation, and nothing below starts
-until Orbit Local's install, download, and removal lifecycle is confirmed sound on hardware.
+becomes a Stable release. v0.7.7.6 completed that device-validation cycle, so the remaining work
+below is now the next product direction.
 
 1. **Orbit Local device actions** — a lightweight local intent/function model installed beside the
    chat model (the `ModelSpec` architecture already keeps their files and state independent). The

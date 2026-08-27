@@ -184,18 +184,11 @@ public final class ReleaseModularityTest {
                 workflow.contains("Orbit-Assistant-v${EXPECTED_VERSION_NAME}.apk"));
     }
 
-    /**
-     * This release is a Beta, and says so everywhere it is written down.
-     *
-     * <p>v0.7.7.6 fixes lifecycle failures that only a real Galaxy S25 Ultra can confirm — a
-     * removal that Samsung's package installer has to actually draw, and a download that has to
-     * survive a locked screen. Unit tests cannot validate either, so this ships for testing rather
-     * than as a finished release, and the release pipeline publishes it as a prerelease.
-     */
-    @Test public void thisReleaseIsABetaAwaitingDeviceValidation() {
-        assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
-                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+    /** The Galaxy S25 Ultra validation cycle is complete, so this release is Stable. */
+    @Test public void thisReleaseIsStableAfterDeviceValidation() {
+        assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
+                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.installedIsBeta());
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
     }
 

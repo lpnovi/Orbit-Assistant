@@ -445,3 +445,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Dialog panels now appear at their final centered size, then subtly fade and settle without scaling the Android window itself.
   - Popup menus keep their existing motion, and confirmations still yield cleanly before Android's uninstall surface opens.
   - Reduced-motion, Accent, AMOLED, app-font, destructive-action, Back, and outside-touch behavior remain unchanged.
+
+- **v0.7.7.6**: Makes Orbit Local removal and downloads reliable, with polished dialog motion validated on Galaxy S25 Ultra.
+  - Remove Orbit Local now completes reliably and never deletes data before Android confirms that the component is gone.
+  - Separate component and model removal controls clearly explain what each action removes while keeping Orbit itself installed.
+  - Download progress remains current, and paused, waiting, interrupted, and failed states now describe what actually happened.
+  - Pause and Resume behave deterministically without overlapping workers or stalled replacement downloads.
+  - Diagnostics now reports useful Orbit Local component, removal, model, progress, and failure state without exposing private data.
+  - Orbit-owned warnings and confirmations use consistent restrained motion without Samsung's previous jumpy window entrance.

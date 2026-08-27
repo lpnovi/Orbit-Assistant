@@ -147,24 +147,21 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * v0.7.7.6 Beta 3 keeps the Orbit Local lifecycle fixes in device testing while correcting
-     * Orbit-owned dialog entrance motion. So it remains a Beta, and every place that says so
-     * agrees.
-     *
-     * <p>The counterpart of the Stable guard it replaces: this fails here rather than on a phone
-     * if a Beta versionName is published as a normal release, or the other way round.
+     * The 0.7.7.6 line shipped as Betas until its Orbit Local reliability and dialog motion were
+     * validated on a Galaxy S25 Ultra, and is now promoted to Stable. This guard makes an
+     * accidental return to prerelease metadata fail before publication.
      */
-    @Test public void thisBuildIsAnOrbitLocalReliabilityBeta() {
-        assertTrue(OrbitVersion.installedIsBeta());
-        assertTrue(OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+    @Test public void thisBuildIsOrbitLocalReliabilityStable() {
+        assertFalse(OrbitVersion.installedIsBeta());
+        assertFalse(OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
+        assertTrue(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
         assertEquals("0.7.7.6", OrbitVersion.baseVersion(BuildConfig.VERSION_NAME));
-        assertEquals("a Beta build carries the counter it is named for",
-                3, OrbitVersion.betaNumber(BuildConfig.VERSION_NAME));
-        assertEquals("Orbit Assistant v0.7.7.6 Beta 3",
+        assertEquals("a Stable build carries no beta counter",
+                0, OrbitVersion.betaNumber(BuildConfig.VERSION_NAME));
+        assertEquals("Orbit Assistant v0.7.7.6",
                 OrbitVersion.releaseTitle(BuildConfig.VERSION_NAME));
-        assertEquals("v0.7.7.6-beta.3", OrbitVersion.tagFor(BuildConfig.VERSION_NAME));
-        assertTrue("the release workflow must publish it as a prerelease",
+        assertEquals("v0.7.7.6", OrbitVersion.tagFor(BuildConfig.VERSION_NAME));
+        assertFalse("the release workflow must publish it as Stable",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(BuildConfig.VERSION_NAME)));
     }
 }

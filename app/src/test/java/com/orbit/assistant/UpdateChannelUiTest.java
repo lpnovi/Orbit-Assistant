@@ -65,9 +65,8 @@ public final class UpdateChannelUiTest {
     /**
      * The channel and the installed build are different things, and About &amp; updates shows both.
      *
-     * <p>The pill describes the APK that is running, which is why it is correct for it to appear
-     * on this Beta build even though the update channel still defaults to Stable — the two are not
-     * the same fact.
+     * <p>The pill describes the APK that is running, so it appears only on a Beta build even when
+     * the update channel remains Stable — the two are not the same fact.
      */
     @Test public void theInstalledBuildTypeIsShownSeparatelyFromTheChannel() {
         Activity activity = open();
