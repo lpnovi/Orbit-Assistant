@@ -1167,7 +1167,7 @@ public final class LocalAiActivity extends Activity {
         return card;
     }
 
-    private void confirmRemoveOrbitLocal() {
+    void confirmRemoveOrbitLocal() {
         long freed = OrbitLocalComponent.installedApkBytes(this)
                 + (status == null ? 0L : status.modelTotalBytes)
                 + LocalModelStore.legacyBytes(this);
@@ -1185,9 +1185,15 @@ public final class LocalAiActivity extends Activity {
                         + "\n\nAndroid asks you to confirm next. Nothing is deleted unless you "
                         + "confirm it there.")
                 .setNegativeButton("Cancel", null)
-                .setPositiveButton("Remove Orbit Local", (d, w) -> removeOrbitLocal(SCOPE_EVERYTHING))
+                .setPositiveButton("Remove Orbit Local", null)
                 .create();
-        UiKit.styleOrbitDialog(dialog, this, true);
+        UiKit.styleOrbitDialog(dialog, this, true, () -> {
+            Button remove = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            if (remove != null) {
+                remove.setOnClickListener(v -> UiKit.handoffOrbitDialogToSystemSurface(
+                        dialog, () -> removeOrbitLocal(SCOPE_EVERYTHING)));
+            }
+        });
         dialog.show();
     }
 
@@ -1261,7 +1267,7 @@ public final class LocalAiActivity extends Activity {
      * component's own private app storage, so Android takes it along with the package. Pretending
      * the model could be kept would be a promise the platform's storage model cannot honour.
      */
-    private void confirmUninstallComponent() {
+    void confirmUninstallComponent() {
         long modelBytes = status == null ? 0L : status.modelTotalBytes;
         String modelWarning = modelBytes > 0L
                 ? "\n\nThe local AI model is stored inside the component, so Android removes the "
@@ -1277,9 +1283,15 @@ public final class LocalAiActivity extends Activity {
                         + "\n\nAndroid asks you to confirm next. Nothing is deleted unless you "
                         + "confirm it there.")
                 .setNegativeButton("Cancel", null)
-                .setPositiveButton("Uninstall component", (d, w) -> removeOrbitLocal(SCOPE_COMPONENT))
+                .setPositiveButton("Uninstall component", null)
                 .create();
-        UiKit.styleOrbitDialog(dialog, this, true);
+        UiKit.styleOrbitDialog(dialog, this, true, () -> {
+            Button uninstall = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            if (uninstall != null) {
+                uninstall.setOnClickListener(v -> UiKit.handoffOrbitDialogToSystemSurface(
+                        dialog, () -> removeOrbitLocal(SCOPE_COMPONENT)));
+            }
+        });
         dialog.show();
     }
 

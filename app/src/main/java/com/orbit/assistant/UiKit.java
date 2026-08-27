@@ -482,6 +482,28 @@ public final class UiKit {
         });
     }
 
+    /**
+     * Ends an Orbit-owned confirmation before opening an Android-owned surface.
+     *
+     * <p>The dialog has already used {@link #styleOrbitDialog} for its entrance. Only this one
+     * exit is made instant, because the package installer, permission controller, or picker owns
+     * the next window and its animation. Letting both windows animate at once produces the
+     * double-scale handoff seen on Samsung devices; copying or restyling the system surface would
+     * be both brittle and outside Orbit's ownership.
+     */
+    public static void handoffOrbitDialogToSystemSurface(AlertDialog dialog,
+                                                          Runnable openSystemSurface) {
+        if (openSystemSurface == null) return;
+        if (dialog == null) {
+            openSystemSurface.run();
+            return;
+        }
+        Window window = dialog.getWindow();
+        if (window != null) window.setWindowAnimations(0);
+        dialog.dismiss();
+        new Handler(Looper.getMainLooper()).post(openSystemSurface);
+    }
+
     /** Corrects only low-contrast inherited OEM colors, preserving readable accent/muted text. */
     private static void ensureReadableDialogText(View view) {
         if (view == null) return;

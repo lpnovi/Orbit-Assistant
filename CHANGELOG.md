@@ -434,3 +434,9 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Paused now means only that you paused it; a lost connection or an interrupted download says so in its own words.
   - The component card gains a separate Uninstall component action, and Remove Orbit Local clears everything Orbit Local uses.
   - This is a Beta build; the removal and download fixes still need confirming on a real device.
+
+- **v0.7.7.6-beta.2**: Makes Orbit-owned warning and confirmation motion consistent throughout the app.
+  - Orbit Local removal confirmations keep Orbit's restrained fade-and-scale, then yield cleanly before Android's own confirmation appears.
+  - Android installer, permission, and picker surfaces remain native and unchanged because those windows belong to the system.
+  - Dialog and popup safeguards now catch missing styling, missing display, and conflicting motion before release.
+  - Accent, AMOLED, app-font, reduced-motion, keyboard, Back, and outside-touch behavior are unchanged.
