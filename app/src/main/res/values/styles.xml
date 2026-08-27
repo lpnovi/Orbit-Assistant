@@ -65,4 +65,9 @@
         <item name="android:windowExitAnimation">@anim/orbit_popup_exit</item>
     </style>
 
+    <!-- Dialog entrance motion is view-level in UiKit so WindowManager never scales its bounds. -->
+    <style name="OrbitDialogWindowAnimation">
+        <item name="android:windowExitAnimation">@anim/orbit_dialog_exit</item>
+    </style>
+
 </resources>

@@ -440,3 +440,8 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Android installer, permission, and picker surfaces remain native and unchanged because those windows belong to the system.
   - Dialog and popup safeguards now catch missing styling, missing display, and conflicting motion before release.
   - Accent, AMOLED, app-font, reduced-motion, keyboard, Back, and outside-touch behavior are unchanged.
+
+- **v0.7.7.6-beta.3**: Removes the jump from Orbit-owned dialog entrances while preserving their restrained motion.
+  - Dialog panels now appear at their final centered size, then subtly fade and settle without scaling the Android window itself.
+  - Popup menus keep their existing motion, and confirmations still yield cleanly before Android's uninstall surface opens.
+  - Reduced-motion, Accent, AMOLED, app-font, destructive-action, Back, and outside-touch behavior remain unchanged.

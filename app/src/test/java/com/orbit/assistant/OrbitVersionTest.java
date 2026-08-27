@@ -147,9 +147,9 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * v0.7.7.6 Beta 2 keeps the Orbit Local lifecycle fixes in device testing while making the
-     * Orbit-owned confirmation-to-system-uninstaller handoff consistent. So it remains a Beta,
-     * and every place that says so agrees.
+     * v0.7.7.6 Beta 3 keeps the Orbit Local lifecycle fixes in device testing while correcting
+     * Orbit-owned dialog entrance motion. So it remains a Beta, and every place that says so
+     * agrees.
      *
      * <p>The counterpart of the Stable guard it replaces: this fails here rather than on a phone
      * if a Beta versionName is published as a normal release, or the other way round.
@@ -160,10 +160,10 @@ public final class OrbitVersionTest {
         assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
         assertEquals("0.7.7.6", OrbitVersion.baseVersion(BuildConfig.VERSION_NAME));
         assertEquals("a Beta build carries the counter it is named for",
-                2, OrbitVersion.betaNumber(BuildConfig.VERSION_NAME));
-        assertEquals("Orbit Assistant v0.7.7.6 Beta 2",
+                3, OrbitVersion.betaNumber(BuildConfig.VERSION_NAME));
+        assertEquals("Orbit Assistant v0.7.7.6 Beta 3",
                 OrbitVersion.releaseTitle(BuildConfig.VERSION_NAME));
-        assertEquals("v0.7.7.6-beta.2", OrbitVersion.tagFor(BuildConfig.VERSION_NAME));
+        assertEquals("v0.7.7.6-beta.3", OrbitVersion.tagFor(BuildConfig.VERSION_NAME));
         assertTrue("the release workflow must publish it as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(BuildConfig.VERSION_NAME)));
     }

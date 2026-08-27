@@ -53,6 +53,8 @@ import android.graphics.drawable.ColorDrawable;
 
 public final class UiKit {
     private static final long ORBIT_POPUP_EXIT_MS = 85L;
+    static final long ORBIT_DIALOG_ENTER_MS = 115L;
+    static final float ORBIT_DIALOG_ENTER_SCALE = 0.985f;
     private static final int NORMAL_BG = Color.rgb(10, 12, 17);
     public static int BG = NORMAL_BG;
     public static final int SURFACE = Color.rgb(22, 25, 33);
@@ -407,14 +409,66 @@ public final class UiKit {
         }
     }
 
-    /** Applies Orbit's established window motion before an app-owned dialog is shown. */
+    /**
+     * Prepares an app-owned dialog before it is shown.
+     *
+     * <p>PopupWindow motion belongs to WindowManager, but AlertDialog geometry must already be
+     * final when its window appears. In particular, scaling the dialog window can trigger a
+     * visible positioning/relayout hop on Samsung. The window therefore owns only a fade-only
+     * exit; Orbit's entrance transform is applied to the decor view inside that stable window.
+     */
     public static void prepareOrbitDialog(AlertDialog dialog, Drawable background) {
         if (dialog == null || dialog.getWindow() == null) return;
         Window window = dialog.getWindow();
-        window.setWindowAnimations(R.style.OrbitPopupAnimation);
+        window.setWindowAnimations(R.style.OrbitDialogWindowAnimation);
         if (background != null) window.setBackgroundDrawable(background);
-        window.getDecorView().setForceDarkAllowed(false);
-        watchTypography(window.getDecorView());
+        View decor = window.getDecorView();
+        decor.setForceDarkAllowed(false);
+        watchTypography(decor);
+        decor.animate().cancel();
+        decor.setTranslationX(0f);
+        decor.setTranslationY(0f);
+        if (animationsEnabled()) {
+            // This happens before Dialog.show(), so the first submitted frame cannot flash at 1x.
+            decor.setAlpha(0f);
+            decor.setScaleX(ORBIT_DIALOG_ENTER_SCALE);
+            decor.setScaleY(ORBIT_DIALOG_ENTER_SCALE);
+        } else {
+            finishOrbitDialogEntrance(decor);
+        }
+    }
+
+    /** Runs the canonical entrance on laid-out content without changing WindowManager geometry. */
+    private static void animateOrbitDialogEntrance(AlertDialog dialog) {
+        if (dialog == null || dialog.getWindow() == null) return;
+        View decor = dialog.getWindow().getDecorView();
+        if (!animationsEnabled()) {
+            finishOrbitDialogEntrance(decor);
+            return;
+        }
+        decor.postOnAnimation(() -> {
+            if (!dialog.isShowing()) return;
+            decor.setPivotX(decor.getWidth() / 2f);
+            decor.setPivotY(decor.getHeight() / 2f);
+            decor.animate().cancel();
+            decor.animate()
+                    .alpha(1f)
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(ORBIT_DIALOG_ENTER_MS)
+                    .setInterpolator(new DecelerateInterpolator())
+                    .start();
+        });
+    }
+
+    private static void finishOrbitDialogEntrance(View decor) {
+        if (decor == null) return;
+        decor.animate().cancel();
+        decor.setAlpha(1f);
+        decor.setScaleX(1f);
+        decor.setScaleY(1f);
+        decor.setTranslationX(0f);
+        decor.setTranslationY(0f);
     }
 
     /** Immediately applies the selected font after Android inflates dialog actions/title views. */
@@ -479,6 +533,7 @@ public final class UiKit {
                 positive.setTextColor(Color.rgb(239, 105, 105));
             }
             if (afterShown != null) afterShown.run();
+            animateOrbitDialogEntrance(dialog);
         });
     }
 
@@ -1334,7 +1389,8 @@ public final class UiKit {
     // whole app accelerates and settles at the same rate. Screen-to-screen navigation is the one
     // piece the framework owns rather than this class: it mirrors MOTION_STANDARD from
     // res/anim/orbit_activity_*.xml, wired up through Theme.Orbit's windowAnimationStyle. Orbit
-    // dialogs and popup menus share R.style.OrbitPopupAnimation.
+    // PopupWindow keeps its WindowManager animation. AlertDialog uses stable window geometry and
+    // animates its already-created decor view through styleOrbitDialog instead.
     /** Immediate feedback: press states, small swaps. */
     public static final long MOTION_FAST = 120L;
     /** Standard transition: reordering, state changes. */

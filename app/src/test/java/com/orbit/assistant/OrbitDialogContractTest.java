@@ -11,6 +11,8 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.view.View;
+import android.view.WindowManager;
 import android.widget.TextView;
 
 import org.junit.After;
@@ -93,11 +95,16 @@ public final class OrbitDialogContractTest {
                 .create();
         UiKit.styleOrbitDialog(dialog, activity, false);
         dialog.show();
-        ShadowLooper.idleMainLooper();
+
+        View decor = dialog.getWindow().getDecorView();
+        assertCanonicalEntranceIsPrepared(dialog, decor);
+        WindowGeometry before = WindowGeometry.of(dialog);
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks();
 
         assertTrue(dialog.isShowing());
-        assertEquals(R.style.OrbitPopupAnimation,
-                dialog.getWindow().getAttributes().windowAnimations);
+        assertCanonicalEntranceFinished(decor);
+        assertEquals("Orbit's content animation must not change the dialog window bounds",
+                before, WindowGeometry.of(dialog));
         assertFalse(dialog.getWindow().getDecorView().isForceDarkAllowed());
         assertEquals("normal actions follow the live Accent",
                 UiKit.accent(activity), dialog.getButton(AlertDialog.BUTTON_POSITIVE)
@@ -120,11 +127,12 @@ public final class OrbitDialogContractTest {
                 .create();
         UiKit.styleOrbitDialog(dialog, activity, true);
         dialog.show();
-        ShadowLooper.idleMainLooper();
+        View decor = dialog.getWindow().getDecorView();
+        assertCanonicalEntranceIsPrepared(dialog, decor);
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks();
 
         assertTrue(dialog.isShowing());
-        assertEquals(R.style.OrbitPopupAnimation,
-                dialog.getWindow().getAttributes().windowAnimations);
+        assertCanonicalEntranceFinished(decor);
         assertEquals(UiKit.DANGER,
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).getCurrentTextColor());
         assertEquals(UiKit.accent(activity),
@@ -146,13 +154,14 @@ public final class OrbitDialogContractTest {
                 .create();
         UiKit.styleOrbitDialog(dialog, activity, false);
         dialog.show();
-        ShadowLooper.idleMainLooper();
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks();
 
         assertTrue("turning animations off must never prevent a dialog from appearing",
                 dialog.isShowing());
-        assertEquals("the framework window style remains the one authority; Android applies scale 0",
-                R.style.OrbitPopupAnimation,
+        assertEquals("dialogs keep the geometry-stable, fade-only exit style",
+                R.style.OrbitDialogWindowAnimation,
                 dialog.getWindow().getAttributes().windowAnimations);
+        assertCanonicalEntranceFinished(dialog.getWindow().getDecorView());
     }
 
     // ---- the exact Galaxy warning and its system handoff --------------------------------------
@@ -162,13 +171,13 @@ public final class OrbitDialogContractTest {
                 Robolectric.buildActivity(LocalAiActivity.class).setup();
         try {
             localController.get().confirmRemoveOrbitLocal();
-            ShadowLooper.idleMainLooper();
             AlertDialog dialog = ShadowAlertDialog.getLatestAlertDialog();
             assertNotNull(dialog);
             assertEquals("Remove Orbit Local?", Shadows.shadowOf(dialog).getTitle().toString());
             assertTrue("the Orbit warning must actually reach the screen", dialog.isShowing());
-            assertEquals(R.style.OrbitPopupAnimation,
-                    dialog.getWindow().getAttributes().windowAnimations);
+            assertCanonicalEntranceIsPrepared(dialog, dialog.getWindow().getDecorView());
+            ShadowLooper.runUiThreadTasksIncludingDelayedTasks();
+            assertCanonicalEntranceFinished(dialog.getWindow().getDecorView());
             assertEquals(UiKit.DANGER,
                     dialog.getButton(AlertDialog.BUTTON_POSITIVE).getCurrentTextColor());
 
@@ -187,14 +196,14 @@ public final class OrbitDialogContractTest {
                 Robolectric.buildActivity(LocalAiActivity.class).setup();
         try {
             localController.get().confirmUninstallComponent();
-            ShadowLooper.idleMainLooper();
             AlertDialog dialog = ShadowAlertDialog.getLatestAlertDialog();
             assertNotNull(dialog);
             assertEquals("Uninstall the component?",
                     Shadows.shadowOf(dialog).getTitle().toString());
             assertTrue(dialog.isShowing());
-            assertEquals(R.style.OrbitPopupAnimation,
-                    dialog.getWindow().getAttributes().windowAnimations);
+            assertCanonicalEntranceIsPrepared(dialog, dialog.getWindow().getDecorView());
+            ShadowLooper.runUiThreadTasksIncludingDelayedTasks();
+            assertCanonicalEntranceFinished(dialog.getWindow().getDecorView());
             assertEquals(UiKit.DANGER,
                     dialog.getButton(AlertDialog.BUTTON_POSITIVE).getCurrentTextColor());
 
@@ -202,6 +211,32 @@ public final class OrbitDialogContractTest {
             assertEquals(0, dialog.getWindow().getAttributes().windowAnimations);
             assertFalse(dialog.isShowing());
             ShadowLooper.idleMainLooper();
+        } finally {
+            localController.pause().stop().destroy();
+        }
+    }
+
+    @Test public void deleteModelWarningUsesTheSharedStableWindowEntrance() throws Exception {
+        ActivityController<LocalAiActivity> localController =
+                Robolectric.buildActivity(LocalAiActivity.class).setup();
+        try {
+            Method confirm = LocalAiActivity.class
+                    .getDeclaredMethod("confirmDeleteModel", boolean.class);
+            confirm.setAccessible(true);
+            confirm.invoke(localController.get(), false);
+
+            AlertDialog dialog = ShadowAlertDialog.getLatestAlertDialog();
+            assertNotNull(dialog);
+            assertEquals("Remove Qwen 2.5 (1.5B)?",
+                    Shadows.shadowOf(dialog).getTitle().toString());
+            assertTrue(dialog.isShowing());
+            assertCanonicalEntranceIsPrepared(dialog, dialog.getWindow().getDecorView());
+            WindowGeometry before = WindowGeometry.of(dialog);
+            ShadowLooper.runUiThreadTasksIncludingDelayedTasks();
+            assertCanonicalEntranceFinished(dialog.getWindow().getDecorView());
+            assertEquals(before, WindowGeometry.of(dialog));
+            assertEquals(UiKit.DANGER,
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).getCurrentTextColor());
         } finally {
             localController.pause().stop().destroy();
         }
@@ -243,13 +278,17 @@ public final class OrbitDialogContractTest {
 
     // ---- resource and popup motion --------------------------------------------------------------
 
-    @Test public void canonicalMotionResourcesStayRestrained() {
+    @Test public void popupAndDialogMotionResourcesStaySeparateAndRestrained() {
         String styles = ComponentUninstallTest.readRepositoryFile(
                 "app/src/main/res/values/styles.xml");
         String enter = ComponentUninstallTest.readRepositoryFile(
                 "app/src/main/res/anim/orbit_popup_enter.xml");
         String exit = ComponentUninstallTest.readRepositoryFile(
                 "app/src/main/res/anim/orbit_popup_exit.xml");
+        String dialogExit = ComponentUninstallTest.readRepositoryFile(
+                "app/src/main/res/anim/orbit_dialog_exit.xml");
+        String uiKit = ComponentUninstallTest.readRepositoryFile(
+                "app/src/main/java/com/orbit/assistant/UiKit.java");
 
         assertTrue(styles.contains("<style name=\"OrbitPopupAnimation\">"));
         assertTrue(styles.contains("@anim/orbit_popup_enter"));
@@ -263,7 +302,16 @@ public final class OrbitDialogContractTest {
         String motion = (enter + exit).toLowerCase();
         assertFalse("dialog motion must not bounce", motion.contains("bounce"));
         assertFalse("dialog motion must not overshoot", motion.contains("overshoot"));
-        assertFalse("dialog windows must not stretch or slide", motion.contains("<translate"));
+        assertFalse("popup windows must not stretch or slide", motion.contains("<translate"));
+
+        assertTrue(styles.contains("<style name=\"OrbitDialogWindowAnimation\">"));
+        assertTrue(styles.contains("@anim/orbit_dialog_exit"));
+        assertFalse("the AlertDialog window exit must not scale", dialogExit.contains("<scale"));
+        assertFalse("the AlertDialog window exit must not move", dialogExit.contains("<translate"));
+        assertTrue("the dialog window must not reuse PopupWindow's scale animation",
+                uiKit.contains("window.setWindowAnimations(R.style.OrbitDialogWindowAnimation)"));
+        assertTrue("the canonical entrance belongs to the dialog decor view",
+                uiKit.contains("animateOrbitDialogEntrance(dialog)"));
     }
 
     @Test public void popupWindowsUseTheSharedMotionAndDialogHandoff() {
@@ -441,6 +489,26 @@ public final class OrbitDialogContractTest {
         return found;
     }
 
+    private static void assertCanonicalEntranceIsPrepared(AlertDialog dialog, View decor) {
+        assertEquals("AlertDialog must not use PopupWindow's geometry-changing animation",
+                R.style.OrbitDialogWindowAnimation,
+                dialog.getWindow().getAttributes().windowAnimations);
+        assertEquals("dialog content must be hidden before its first visible frame",
+                0f, decor.getAlpha(), 0.0001f);
+        assertEquals(UiKit.ORBIT_DIALOG_ENTER_SCALE, decor.getScaleX(), 0.0001f);
+        assertEquals(UiKit.ORBIT_DIALOG_ENTER_SCALE, decor.getScaleY(), 0.0001f);
+        assertEquals(0f, decor.getTranslationX(), 0.0001f);
+        assertEquals(0f, decor.getTranslationY(), 0.0001f);
+    }
+
+    private static void assertCanonicalEntranceFinished(View decor) {
+        assertEquals(1f, decor.getAlpha(), 0.0001f);
+        assertEquals(1f, decor.getScaleX(), 0.0001f);
+        assertEquals(1f, decor.getScaleY(), 0.0001f);
+        assertEquals(0f, decor.getTranslationX(), 0.0001f);
+        assertEquals(0f, decor.getTranslationY(), 0.0001f);
+    }
+
     /** Removes comments and literals without changing offsets or line numbers. */
     private static String stripNonCode(String source) {
         StringBuilder out = new StringBuilder(source.length());
@@ -500,6 +568,46 @@ public final class OrbitDialogContractTest {
         DialogCreation(String variable, int afterCreate) {
             this.variable = variable;
             this.afterCreate = afterCreate;
+        }
+    }
+
+    private static final class WindowGeometry {
+        final int x;
+        final int y;
+        final int width;
+        final int height;
+        final int gravity;
+
+        private WindowGeometry(WindowManager.LayoutParams attributes) {
+            x = attributes.x;
+            y = attributes.y;
+            width = attributes.width;
+            height = attributes.height;
+            gravity = attributes.gravity;
+        }
+
+        static WindowGeometry of(AlertDialog dialog) {
+            return new WindowGeometry(dialog.getWindow().getAttributes());
+        }
+
+        @Override public boolean equals(Object other) {
+            if (!(other instanceof WindowGeometry)) return false;
+            WindowGeometry geometry = (WindowGeometry) other;
+            return x == geometry.x && y == geometry.y && width == geometry.width
+                    && height == geometry.height && gravity == geometry.gravity;
+        }
+
+        @Override public int hashCode() {
+            int result = x;
+            result = 31 * result + y;
+            result = 31 * result + width;
+            result = 31 * result + height;
+            return 31 * result + gravity;
+        }
+
+        @Override public String toString() {
+            return "WindowGeometry{x=" + x + ", y=" + y + ", width=" + width
+                    + ", height=" + height + ", gravity=" + gravity + "}";
         }
     }
 }
