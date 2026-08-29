@@ -600,6 +600,10 @@ public class OrbitSession extends VoiceInteractionSession {
         messageScroll.setFillViewport(false);
         messages = new LinearLayout(c);
         messages.setOrientation(LinearLayout.VERTICAL);
+        // This is where the real-device clipping was seen: the sheet stacks header, conversation,
+        // and composer, so the conversation clipped mid-glyph against both. Same treatment as full
+        // chat, and it fades into the sheet's own gradient rather than any fixed colour.
+        UiKit.applyConversationEdgeFade(messageScroll, messages);
         messageScroll.addView(messages, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(
@@ -3192,7 +3196,7 @@ public class OrbitSession extends VoiceInteractionSession {
         int fill = error ? Color.rgb(70, 34, 40) : user ? UiKit.userBubbleFill(c, classicFill) : UiKit.assistantBubbleFill(c, classicFill);
         int textColor = error ? Color.rgb(255, 177, 177) : UiKit.onBubble(fill);
         TextView bubble = UiKit.text(c, text, Prefs.chatTextSp(c, 14), textColor, false);
-        bubble.setLineSpacing(0, 1.13f);
+        UiKit.applyBubbleTextMetrics(bubble);
         bubble.setPadding(UiKit.dp(c, 13), UiKit.dp(c, 10), UiKit.dp(c, 13), UiKit.dp(c, 10));
         bubble.setBackground(UiKit.rounded(fill, 18, c));
         return bubble;

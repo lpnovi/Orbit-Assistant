@@ -239,6 +239,9 @@ public class ChatActivity extends Activity {
         messages = new LinearLayout(this);
         messages.setOrientation(LinearLayout.VERTICAL);
         messages.setPadding(0, UiKit.dp(this, 16), 0, UiKit.dp(this, 18));
+        // The conversation is a sibling of the header and the composer, so without this it ends at
+        // a hard rectangle and long answers are cut mid-line at both boundaries.
+        UiKit.applyConversationEdgeFade(scroll, messages);
         scroll.addView(messages, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         conversation.addView(scroll, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -438,7 +441,7 @@ public class ChatActivity extends Activity {
         if (user) {
             TextView bubble = UiKit.text(this, visible, Prefs.chatTextSp(this, 15),
                     UiKit.onBubble(fill), false);
-            bubble.setLineSpacing(0, 1.08f);
+            UiKit.applyBubbleTextMetrics(bubble);
             bubble.setPadding(UiKit.dp(this, 15), UiKit.dp(this, 12), UiKit.dp(this, 15), UiKit.dp(this, 12));
             bubble.setBackground(UiKit.rounded(fill, 18, this));
             MessageActions.bindUser(bubble, rawVisible, () -> beginEditResend(rawVisible), null);
@@ -750,7 +753,7 @@ public class ChatActivity extends Activity {
                         streamingBubble = UiKit.text(ChatActivity.this, "",
                                 Prefs.chatTextSp(ChatActivity.this, 15),
                                 UiKit.onBubble(fill), false);
-                        streamingBubble.setLineSpacing(0, 1.08f);
+                        UiKit.applyBubbleTextMetrics(streamingBubble);
                         streamingBubble.setPadding(UiKit.dp(ChatActivity.this, 15), UiKit.dp(ChatActivity.this, 12), UiKit.dp(ChatActivity.this, 15), UiKit.dp(ChatActivity.this, 12));
                         streamingBubble.setBackground(UiKit.rounded(fill, 18, ChatActivity.this));
                         messages.addView(streamingBubble, bubbleLp(Gravity.START, UiKit.dp(ChatActivity.this, 310)));

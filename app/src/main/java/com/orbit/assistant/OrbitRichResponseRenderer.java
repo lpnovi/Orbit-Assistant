@@ -64,6 +64,7 @@ public final class OrbitRichResponseRenderer {
             bubble.addView(text(context, source, chatSize(context, compact ? 14 : 15),
                     UiKit.onBubble(bubbleFill), false));
         }
+        trimTrailingBlockSpacing(bubble);
         if (!prefersWideLayout(source)) {
             for (int i = 0; i < bubble.getChildCount(); i++) {
                 View child = bubble.getChildAt(i);
@@ -200,14 +201,16 @@ public final class OrbitRichResponseRenderer {
     private static TextView richText(Context c, String value, float size, int color, boolean bold,
                                      int surface) {
         TextView view = text(c, "", size, color, bold);
-        CharSequence rendered = OrbitMarkdown.renderInline(c, value, color);
+        // Inline code is tinted from the surface it lands on, so the same reply reads correctly on
+        // a classic bubble, an accent one, a pastel one, and on AMOLED.
+        CharSequence rendered = OrbitMarkdown.renderInline(c, value, color, surface);
         view.setText(rendered);
         view.setMovementMethod(LinkMovementMethod.getInstance());
         view.setLinksClickable(true);
         // Coloured against the surface this text actually sits on. Using the raw accent here made
         // links invisible whenever the accent and the bubble fill were the same colour.
         view.setLinkTextColor(UiKit.linkColorOn(c, surface));
-        view.setLineSpacing(0, 1.12f);
+        UiKit.applyBubbleTextMetrics(view);
         return view;
     }
 
@@ -417,6 +420,33 @@ public final class OrbitRichResponseRenderer {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.setMargins(0, 0, 0, UiKit.dp(c, bottomDp));
         out.addView(child, lp);
+    }
+
+    /**
+     * Block spacing separates blocks. It must not hang off the bottom of the last one.
+     *
+     * <p>Every block was added with a bottom margin, the final one included, so a rich assistant
+     * bubble carried that margin below its last line <em>on top of</em> the bubble's own symmetric
+     * vertical padding. The bubble therefore always had more empty space under its text than above
+     * it — a small "chin" — which is invisible in a long answer and unmissable in a one-line one
+     * such as "13.5", where nothing else fills the bubble.
+     *
+     * <p>This is why the user bubble sitting directly above looked correctly balanced: it is a
+     * plain TextView with the same symmetric padding and no trailing margin. The two paths were
+     * never using different font metrics, different {@code includeFontPadding}, or different
+     * padding values — one of them simply had an extra gap after its content.
+     */
+    private static void trimTrailingBlockSpacing(LinearLayout bubble) {
+        for (int i = bubble.getChildCount() - 1; i >= 0; i--) {
+            View child = bubble.getChildAt(i);
+            if (child.getVisibility() == View.GONE) continue;
+            ViewGroup.LayoutParams lp = child.getLayoutParams();
+            if (lp instanceof LinearLayout.LayoutParams) {
+                ((LinearLayout.LayoutParams) lp).bottomMargin = 0;
+                child.setLayoutParams(lp);
+            }
+            return;
+        }
     }
 
     private static float chatSize(Context context, float defaultSp) {

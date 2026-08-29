@@ -42,6 +42,7 @@ import android.widget.LinearLayout;
 import android.widget.FrameLayout;
 import android.widget.PopupWindow;
 import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import java.io.File;
 import java.util.Locale;
 import java.util.Map;
@@ -742,6 +743,88 @@ public final class UiKit {
         root.requestApplyInsets();
     }
 
+    /**
+     * How far a conversation dissolves before it reaches fixed chrome.
+     *
+     * <p>Restrained on purpose. This is an edge treatment, not an effect: long enough that a line
+     * of text stops being cut in half by a hard boundary, short enough that it never reads as a
+     * vignette over the reply.
+     */
+    public static final float CONVERSATION_FADE_DP = 30f;
+
+    /**
+     * The least breathing room a conversation keeps at each end.
+     *
+     * <p>Deliberately much smaller than the fade. It is not what makes the first and last lines
+     * readable — the fade's strength falls to nothing at both scroll extremes, so those lines are
+     * already never obscured. This exists only so a bubble is not flush against the chrome, and it
+     * is kept small because the overlay's conversation is a few hundred dp tall and cannot afford
+     * to spend a quarter of itself on padding.
+     */
+    public static final float CONVERSATION_EDGE_INSET_DP = 10f;
+
+    /**
+     * Line rhythm shared by every chat bubble, user and assistant, in both surfaces.
+     *
+     * <p>These used to be four separate literals that had drifted apart (1.08, 1.12, 1.13), so a
+     * user message and the reply beneath it were set on subtly different rhythms for no reason
+     * anyone had chosen. One value, applied through {@link #applyBubbleTextMetrics}, keeps them
+     * matched whichever Orbit font and chat text size are selected.
+     */
+    public static final float CHAT_LINE_SPACING = 1.12f;
+
+    /**
+     * The vertical text metrics every chat bubble shares.
+     *
+     * <p>Deliberately does not touch {@code includeFontPadding}. The reserve a font asks for above
+     * its ascent and below its descent is what keeps tall accents and deep descenders from being
+     * clipped, it is identical for the user and assistant paths, and Orbit's selectable serif font
+     * needs more of it than the default one does. Vertical balance inside a bubble is a question
+     * of the padding and margins around the text, not of taking that reserve away.
+     */
+    public static void applyBubbleTextMetrics(TextView text) {
+        if (text == null) return;
+        text.setLineSpacing(0, CHAT_LINE_SPACING);
+    }
+
+    /**
+     * Softens where a conversation meets the header above it and the composer below it.
+     *
+     * <p>Both surfaces used to end at a hard rectangle: the message ScrollView is a sibling of the
+     * header and the composer, so it clipped mid-glyph at both edges and a long answer looked like
+     * it was being read through a slot rather than scrolling underneath Orbit's chrome.
+     *
+     * <p>This uses the platform's own vertical fading edges rather than gradient overlays, for
+     * three reasons that matter here. They fade content to <em>transparent</em> instead of
+     * painting a colour over it, so the conversation dissolves into whatever is actually behind
+     * it — the AMOLED true black, the overlay sheet's accent gradient, any theme — with no colour
+     * derived, guessed, or hard-coded, and nothing to keep in sync when the accent changes. They
+     * are drawn, not laid out, so there is no extra view to intercept touches, swallow a text
+     * selection, block a message action, or need repositioning when the keyboard opens, the
+     * attachment tray appears, or the overlay is stretched. And their strength is derived from
+     * scroll position, so the fade is absent at the very top and the very bottom: every line can
+     * always be scrolled fully into clear view, which a fixed scrim over the edges could not
+     * promise.
+     *
+     * <p>The content view is only given {@link #CONVERSATION_EDGE_INSET_DP} as a floor, so a bubble
+     * is never flush against the chrome. It deliberately is not padded by the fade's own depth:
+     * that would spend a large share of the overlay's short conversation on empty space to solve a
+     * problem the fade does not have.
+     */
+    public static void applyConversationEdgeFade(ScrollView scroll, View content) {
+        if (scroll == null) return;
+        Context c = scroll.getContext();
+        scroll.setVerticalFadingEdgeEnabled(true);
+        scroll.setHorizontalFadingEdgeEnabled(false);
+        scroll.setFadingEdgeLength(dp(c, CONVERSATION_FADE_DP));
+        if (content == null) return;
+        int inset = dp(c, CONVERSATION_EDGE_INSET_DP);
+        content.setPadding(content.getPaddingLeft(),
+                Math.max(content.getPaddingTop(), inset),
+                content.getPaddingRight(),
+                Math.max(content.getPaddingBottom(), inset));
+    }
+
     public static int dp(Context c, float value) {
         return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value, c.getResources().getDisplayMetrics()));
     }
@@ -838,6 +921,32 @@ public final class UiKit {
             if (contrastRatio(mixed, background) >= LINK_MIN_CONTRAST) return mixed;
         }
         return readable;
+    }
+
+    /**
+     * How far an inline code pill is lifted away from the surface behind it.
+     *
+     * <p>Enough to read as a distinct object at a glance on every bubble Orbit offers; little
+     * enough that a sentence with four code terms in it still reads as a sentence.
+     */
+    private static final float INLINE_CODE_TINT_SHARE = 0.13f;
+
+    /**
+     * The fill for an inline code pill drawn on {@code surface}.
+     *
+     * <p>Derived, never fixed. It is the surface itself moved a small share of the way toward
+     * whichever ink actually contrasts with it, so the pill lightens on a dark classic bubble and
+     * darkens on a pastel or bright accent one, and follows AMOLED, Dynamic accent, and any
+     * user-chosen bubble colour without any of them being enumerated here. The old fixed grey
+     * could not do that: on a light bubble it was a dark hole, and on a slate one it vanished.
+     */
+    public static int inlineCodeTint(int surface) {
+        return blend(bestInkOn(surface), surface, INLINE_CODE_TINT_SHARE);
+    }
+
+    /** Readable ink for text sitting on {@link #inlineCodeTint}. */
+    public static int inlineCodeInk(int surface) {
+        return bestInkOn(inlineCodeTint(surface));
     }
 
     /**

@@ -115,7 +115,8 @@ public final class OrbitRequestWorker extends Worker {
         // Stopping a request is not a failure. Cancelling interrupts this worker, which surfaces
         // here as an ordinary error, so the same gate the success path uses decides whether
         // anything visible gets written at all.
-        OrbitRequestManager.completeIfNotCancelled(c, id, () -> {
+        OrbitRequestManager.completeIfNotCancelled(c, id, CompletionSource.WORKER_ERROR,
+                getRunAttemptCount(), () -> {
             ConversationStore.appendMessage(c, item.conversationId, new AssistantClient.History("assistant", visible));
             PendingRequestStore.markFailed(c, id, visible);
             DiagnosticStore.recordError(c, visible);
@@ -139,7 +140,8 @@ public final class OrbitRequestWorker extends Worker {
      */
     private void commit(Context c, PendingRequestStore.Item item, String id,
                         AssistantClient.History message, AssistantReply reply, String notificationText) {
-        OrbitRequestManager.completeIfNotCancelled(c, id, () -> {
+        OrbitRequestManager.completeIfNotCancelled(c, id, CompletionSource.WORKER_RESPONSE,
+                getRunAttemptCount(), () -> {
             ConversationStore.appendMessage(c, item.conversationId, message);
             PendingRequestStore.markDone(c, id);
             RequestTrace.lifecycle(id, "completed");

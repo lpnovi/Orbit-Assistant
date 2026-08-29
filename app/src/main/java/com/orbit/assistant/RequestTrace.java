@@ -24,6 +24,14 @@ public final class RequestTrace {
     private static final String KEY_REASON = "submission_suppressed_reason";
     private static final String KEY_COMMITTED = "completions_committed";
     private static final String KEY_IGNORED = "completions_ignored";
+    private static final String KEY_IGNORED_DUPLICATE = "completions_ignored_duplicate";
+    private static final String KEY_LAST_IGNORED = "completion_ignored_detail";
+    private static final String KEY_LAST_IGNORED_AT = "completion_ignored_at";
+
+    /** The request had already been answered. This is the case worth investigating. */
+    static final String REASON_ALREADY_COMPLETED = "already-completed";
+    /** The user stopped the request. Expected, and not a duplicate of anything. */
+    static final String REASON_CANCELLED = "cancelled";
 
     private RequestTrace() {}
 
@@ -56,18 +64,68 @@ public final class RequestTrace {
                 + " id=" + shortId(requestId));
     }
 
-    /**
-     * Whether an answer was actually written, or refused because this request had already
-     * finished. The second case is the one that proves the completion invariant is holding.
-     */
-    static void completion(Context c, String requestId, boolean committed, String reason) {
-        ComposerTrace.event("request." + (committed ? "completion-committed" : "completion-ignored")
+    /** An answer that was actually written. */
+    static void completionCommitted(Context c, String requestId, CompletionSource source,
+                                    int workAttempt) {
+        ComposerTrace.event("request.completion-committed"
                 + " id=" + shortId(requestId)
-                + (committed ? "" : " reason=" + safeToken(reason)));
+                + " src=" + token(source)
+                + attemptEvent(workAttempt));
         if (c == null) return;
         SharedPreferences prefs = DiagnosticStore.prefs(c);
-        String key = committed ? KEY_COMMITTED : KEY_IGNORED;
-        prefs.edit().putInt(key, prefs.getInt(key, 0) + 1).apply();
+        prefs.edit().putInt(KEY_COMMITTED, prefs.getInt(KEY_COMMITTED, 0) + 1).apply();
+    }
+
+    /**
+     * A completion that was refused, and enough about it to find out why next time.
+     *
+     * <p>Beta 1 counted these as one number labelled "already terminal", which turned out to be
+     * two unrelated events wearing one label. Refusing a completion because the user pressed Stop
+     * is ordinary and expected; refusing one because the request had already been answered is the
+     * defence-in-depth case that says a second completion attempt really happened. A single
+     * counter mixing them could never tell anyone which had occurred, so the duplicate case now
+     * has its own count and the most recent refusal records where it came from.
+     *
+     * <p>Shape only, as everywhere else in this file: a shortened copy of Orbit's own random
+     * request id, the name of the calling code path, WorkManager's attempt number, and the state
+     * the request was already in. No prompt, no answer, no conversation, no calendar contents.
+     */
+    static void completionIgnored(Context c, String requestId, CompletionSource source,
+                                  int workAttempt, String priorState, String reason) {
+        ComposerTrace.event("request.completion-ignored"
+                + " id=" + shortId(requestId)
+                + " src=" + token(source)
+                + attemptEvent(workAttempt)
+                + " was=" + safeToken(priorState)
+                + " reason=" + safeToken(reason));
+        if (c == null) return;
+        SharedPreferences prefs = DiagnosticStore.prefs(c);
+        SharedPreferences.Editor edit = prefs.edit()
+                .putInt(KEY_IGNORED, prefs.getInt(KEY_IGNORED, 0) + 1)
+                .putString(KEY_LAST_IGNORED, token(source)
+                        + " · req " + shortId(requestId)
+                        + " · was " + safeToken(priorState)
+                        + attemptSuffix(workAttempt)
+                        + " · " + safeToken(reason))
+                .putLong(KEY_LAST_IGNORED_AT, System.currentTimeMillis());
+        if (REASON_ALREADY_COMPLETED.equals(reason)) {
+            edit.putInt(KEY_IGNORED_DUPLICATE, prefs.getInt(KEY_IGNORED_DUPLICATE, 0) + 1);
+        }
+        edit.apply();
+    }
+
+    /** WorkManager's own retry counter, when the caller is a worker and therefore has one. */
+    private static String attemptSuffix(int workAttempt) {
+        return workAttempt < 0 ? "" : " · attempt " + workAttempt;
+    }
+
+    /** The same number in the live trace buffer's {@code key=value} vocabulary. */
+    private static String attemptEvent(int workAttempt) {
+        return workAttempt < 0 ? "" : " attempt=" + workAttempt;
+    }
+
+    private static String token(CompletionSource source) {
+        return source == null ? CompletionSource.UNKNOWN.token : source.token;
     }
 
     /** Enough of a request id to follow one turn through the trace, and no more. */

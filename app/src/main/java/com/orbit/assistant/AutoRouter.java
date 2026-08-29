@@ -14,10 +14,42 @@ import java.util.regex.Pattern;
 /**
  * Local, explainable task router used only when the user selects Auto.
  * It never sends a second AI request just to choose a model.
+ *
+ * <p>Three kinds of evidence decide a request, in descending order of authority:
+ *
+ * <ol>
+ *   <li><b>Reasoning dimensions</b> — {@link ReasoningDimension}, the distinct kinds of hard
+ *       thinking the user actually asked for. Several at once is what earns Deep.</li>
+ *   <li><b>Task shape</b> — the broad analytical/planning/drafting/summary buckets, which are what
+ *       separate Fast from Balanced.</li>
+ *   <li><b>Context</b> — attachments, notifications, and whatever app happened to be on screen.
+ *       Useful, but never allowed to re-characterise a request whose own words are already
+ *       clearly difficult.</li>
+ * </ol>
+ *
+ * <p>Length is deliberately weak evidence and one polite "think carefully" is deliberately weaker
+ * still: neither can reach Deep on its own.
  */
 public final class AutoRouter {
     private static final Pattern PDF_PAGES =
             Pattern.compile("PDF page count:\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * How many distinct reasoning dimensions make a request decisively Deep.
+     *
+     * <p>One is ordinary work. Two is a hard question. Three or more means the answer has to stay
+     * correct across several concerns at once, which is the only thing Deep is for.
+     */
+    static final int DECISIVE_DIMENSIONS = 3;
+
+    /** Points each distinct reasoning dimension contributes. */
+    private static final int POINTS_PER_DIMENSION = 3;
+
+    /** Extra weight once dimensions combine, on a prompt long enough to have really asked. */
+    private static final int COMBINATION_BONUS = 4;
+
+    /** A prompt at least this long has room to genuinely state a multi-part problem. */
+    private static final int SUBSTANTIVE_CHARS = 140;
 
     private AutoRouter() {}
 
@@ -25,11 +57,16 @@ public final class AutoRouter {
         public final String mode;
         public final int confidence;
         public final String reason;
+        /** The distinct kinds of hard reasoning detected in the prompt, in declaration order. */
+        public final List<ReasoningDimension> dimensions;
 
-        Decision(String mode, int confidence, String reason) {
+        Decision(String mode, int confidence, String reason, List<ReasoningDimension> dimensions) {
             this.mode = Prefs.normalizeMode(mode);
             this.confidence = Math.max(0, Math.min(100, confidence));
             this.reason = reason == null ? "" : reason;
+            this.dimensions = dimensions == null
+                    ? Collections.emptyList()
+                    : Collections.unmodifiableList(new ArrayList<>(dimensions));
         }
     }
 
@@ -49,6 +86,15 @@ public final class AutoRouter {
         List<String> balancedReasons = new ArrayList<>();
         List<String> deepReasons = new ArrayList<>();
 
+        // What kinds of hard thinking the user actually asked for. This is the strongest signal
+        // Orbit has, because it comes from the request itself rather than from its surroundings.
+        List<ReasoningDimension> dimensions = ReasoningDimension.detect(p);
+        int dimensionCount = dimensions.size();
+        boolean substantive = p.length() >= SUBSTANTIVE_CHARS;
+        // Once a request shows this many independent kinds of difficulty, its own words decide the
+        // mode. Whatever app was in the foreground is incidental and stops contributing.
+        boolean promptDominates = dimensionCount >= DECISIVE_DIMENSIONS;
+
         boolean analytical = containsAny(p,
                 "analyze", "analysis", "critique", "evaluate", "compare", "contrast",
                 "methodology", "rubric", "evidence", "citation", "citations",
@@ -58,6 +104,12 @@ public final class AutoRouter {
                 "think deeply", "deep analysis", "in depth", "in-depth",
                 "be thorough", "thoroughly", "reason carefully", "work this out carefully",
                 "detailed analysis", "comprehensive");
+        // Politeness, not evidence. "Think carefully" and "step by step" are asked for constantly
+        // and cost nothing to type, so on their own they move a request barely at all; they only
+        // add weight once the prompt has already shown real reasoning dimensions.
+        boolean depthHint = containsAny(p,
+                "think carefully", "think this through", "take your time",
+                "step by step", "step-by-step", "reason through");
         boolean planning = containsAny(p,
                 "plan", "strategy", "roadmap", "step by step", "best approach",
                 "what should i do", "decision", "recommendation");
@@ -65,7 +117,10 @@ public final class AutoRouter {
                 "draft", "reply", "respond", "rewrite", "rephrase", "write a");
         boolean summary = containsAny(p,
                 "summarize", "summary", "key points", "what matters", "tl;dr");
-        boolean casual = containsAny(p,
+        // Whole words only. Substring matching quietly classified anything containing "hi" -
+        // "this", "which", "think" - as small talk, which sent ordinary short questions to Fast
+        // for a reason that had nothing to do with them.
+        boolean casual = containsWord(p,
                 "hi", "hello", "hey", "how are you", "thanks", "thank you",
                 "lol", "lmao", "what's up", "whats up");
         boolean quickFact = p.matches("^(what|who|when|where|define|is|are|can|does|do)\\b.*")
@@ -79,6 +134,8 @@ public final class AutoRouter {
             fastReasons.add("short straightforward prompt");
         }
 
+        // Length is the weakest evidence there is: a rambling message is not a hard one. It is
+        // kept only as a small tiebreaker and can never reach Deep by itself.
         if (p.length() > 300) {
             deep += 2;
             deepReasons.add("long prompt");
@@ -86,6 +143,12 @@ public final class AutoRouter {
         if (p.length() > 700) {
             deep += 3;
             deepReasons.add("very detailed prompt");
+        }
+
+        if (dimensionCount > 0) {
+            deep += dimensionCount * POINTS_PER_DIMENSION;
+            if (promptDominates && substantive) deep += COMBINATION_BONUS;
+            if (depthHint) deep += 1;
         }
 
         if (analytical) {
@@ -153,13 +216,15 @@ public final class AutoRouter {
             }
         }
 
-        // Screen classifier gives a useful signal when the side-button assistant
-        // is invoked over another app.
+        // Screen classifier gives a useful signal when the side-button assistant is invoked over
+        // another app. It is suppressed for a request that has already shown several reasoning
+        // dimensions: the launcher being classified as a document is not a reason to answer an
+        // architecture question as though it were ordinary document work.
         SharedPreferences d = DiagnosticStore.prefs(c);
         String category = d.getString("context_category", AppProfileStore.CATEGORY_GENERIC);
         int contextConfidence = d.getInt("context_confidence", 0);
 
-        if (contextConfidence >= 55 && screen.length() > 0) {
+        if (!promptDominates && contextConfidence >= 55 && screen.length() > 0) {
             if (AppProfileStore.CATEGORY_DOCUMENT.equals(category) ||
                     AppProfileStore.CATEGORY_ARTICLE.equals(category)) {
                 balanced += 3;
@@ -180,14 +245,14 @@ public final class AutoRouter {
             }
         }
 
-        if (screenshot != null && !explicitAttachment) {
+        if (!promptDominates && screenshot != null && !explicitAttachment) {
             balanced += 2;
             balancedReasons.add("screen image context");
         }
         if (screen.length() > 10000 && !pdf) {
             deep += 2;
             deepReasons.add("large screen context");
-        } else if (screen.length() > 1200 && !explicitAttachment) {
+        } else if (!promptDominates && screen.length() > 1200 && !explicitAttachment) {
             balanced += 2;
             balancedReasons.add("substantial screen context");
         }
@@ -236,6 +301,16 @@ public final class AutoRouter {
             second = Math.max(fast, deep);
         }
 
+        // When several reasoning dimensions are what carried the decision, say which ones. A
+        // report that reads "complex architecture + concurrency and race analysis + multi-option
+        // evaluation" explains the choice; "planning or decision task" did not.
+        if (Prefs.MODE_DEEP.equals(mode) && dimensionCount > 0) {
+            List<String> named = new ArrayList<>();
+            for (ReasoningDimension dimension : dimensions) named.add(dimension.label);
+            named.addAll(reasons);
+            reasons = named;
+        }
+
         if (reasons.isEmpty()) {
             reasons = new ArrayList<>();
             reasons.add(Prefs.MODE_BALANCED.equals(mode)
@@ -248,10 +323,11 @@ public final class AutoRouter {
         int margin = Math.max(0, top - second);
         int confidence = Math.min(97, 62 + margin * 5);
         if (explicitDepth && Prefs.MODE_DEEP.equals(mode)) confidence = Math.max(confidence, 94);
+        if (promptDominates && Prefs.MODE_DEEP.equals(mode)) confidence = Math.max(confidence, 88);
         if ((casual || quickFact) && Prefs.MODE_FAST.equals(mode)) confidence = Math.max(confidence, 90);
         if (Prefs.MODE_BALANCED.equals(mode) && margin <= 1) confidence = Math.min(confidence, 68);
 
-        return new Decision(mode, confidence, joinReasons(reasons));
+        return new Decision(mode, confidence, joinReasons(reasons), dimensions);
     }
 
     private static HistorySignal historySignal(List<AssistantClient.History> history, String prompt) {
@@ -306,6 +382,28 @@ public final class AutoRouter {
     private static boolean containsAny(String s, String... needles) {
         for (String n : needles) if (s.contains(n)) return true;
         return false;
+    }
+
+    /** Substring matching, but only where a word actually starts and ends. */
+    private static boolean containsWord(String s, String... needles) {
+        if (s == null || s.isEmpty()) return false;
+        for (String n : needles) {
+            int from = 0;
+            while (true) {
+                int at = s.indexOf(n, from);
+                if (at < 0) break;
+                boolean startsWord = at == 0 || !isWordChar(s.charAt(at - 1));
+                int after = at + n.length();
+                boolean endsWord = after >= s.length() || !isWordChar(s.charAt(after));
+                if (startsWord && endsWord) return true;
+                from = at + 1;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isWordChar(char ch) {
+        return Character.isLetterOrDigit(ch) || ch == '\'';
     }
 
     private static String normalize(String s) {

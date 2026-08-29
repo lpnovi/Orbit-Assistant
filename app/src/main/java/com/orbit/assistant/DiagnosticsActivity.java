@@ -198,14 +198,25 @@ public final class DiagnosticsActivity extends Activity {
      * thing that ties a line here to a specific turn, and it is Orbit's own random id.
      */
     private String requestFlow(SharedPreferences d) {
+        long ignoredAt = d.getLong("completion_ignored_at", 0L);
+        String ignoredDetail = ignoredAt == 0
+                ? "None recorded"
+                : d.getString("completion_ignored_detail", "") + " · "
+                        + DateFormat.getTimeInstance().format(new Date(ignoredAt));
         return "\n\nRequest flow" +
                 "\n  Accepted submissions: " + d.getInt("submissions_accepted", 0) +
                 "\n  Suppressed duplicate submissions: " + d.getInt("submissions_suppressed", 0) +
                 "\n  Last submission source: " + orNone(d.getString("submission_source", "")) +
                 "\n  Last suppression reason: " + orNone(d.getString("submission_suppressed_reason", "")) +
                 "\n  Completions committed: " + d.getInt("completions_committed", 0) +
-                "\n  Completions ignored (already terminal): "
-                        + d.getInt("completions_ignored", 0) +
+                // Split apart deliberately. The old single line was labelled "already terminal"
+                // but also counted every completion refused because the user pressed Stop, which
+                // is ordinary. Only the duplicate count below means a second completion attempt
+                // genuinely reached the guard.
+                "\n  Completions refused: " + d.getInt("completions_ignored", 0) +
+                "\n  Of those, already answered: "
+                        + d.getInt("completions_ignored_duplicate", 0) +
+                "\n  Last refused completion: " + ignoredDetail +
                 "\n  Active requests: " + PendingRequestStore.active(this).size();
     }
 

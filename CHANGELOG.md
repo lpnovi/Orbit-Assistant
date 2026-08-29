@@ -469,3 +469,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Add waits until a calendar is chosen, instead of failing afterwards with no way to fix it.
   - Event times in the preview now follow your phone's 12-hour or 24-hour setting.
   - A calendar card that lost its destination can be recovered with Choose calendar, without asking Orbit again.
+- **v0.7.7.7-beta.3**: Auto now recognises genuinely hard questions, and long answers read properly end to end.
+  - Auto reaches Deep when a request really combines several kinds of hard reasoning, not just because it is long.
+  - Everyday questions, comparisons, and coding help stay on the faster models exactly as before.
+  - Diagnostics now names the signals behind an Auto decision instead of one vague label.
+  - Long replies fade softly into the header and composer rather than being cut off mid-line.
+  - Inline `code` terms are drawn as subtle rounded chips tinted to your bubble colour.
+  - Short answers now sit centred in their bubble, with no extra gap underneath.

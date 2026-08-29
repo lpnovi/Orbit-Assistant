@@ -157,6 +157,16 @@ public final class OrbitMarkdown {
 
     /** Headings, emphasis, lists, inline/code blocks, and safe HTTP(S) links. */
     public static CharSequence render(Context context, String source) {
+        return render(context, source, UiKit.SURFACE);
+    }
+
+    /**
+     * As {@link #render(Context, String)}, told which colour the text will actually sit on.
+     *
+     * <p>Code styling is derived from that surface rather than fixed, so the same reply reads
+     * correctly on a classic bubble, an accent-coloured one, a pastel one, and on AMOLED.
+     */
+    public static CharSequence render(Context context, String source, int surface) {
         SpannableStringBuilder output = new SpannableStringBuilder();
         if (source == null || source.trim().isEmpty()) return output;
         String[] lines = source.replace("\r", "").split("\n", -1);
@@ -170,13 +180,13 @@ public final class OrbitMarkdown {
             int start = output.length();
             if (codeBlock) {
                 output.append(raw);
-                applyCode(context, output, start, output.length());
+                applyBlockCode(output, start, output.length(), surface);
             } else {
                 Matcher heading = HEADING.matcher(trimmed);
                 Matcher bullet = BULLET.matcher(trimmed);
                 Matcher numbered = NUMBERED.matcher(trimmed);
                 if (heading.matches()) {
-                    appendInline(context, output, heading.group(2));
+                    appendInline(context, output, heading.group(2), surface);
                     if (output.length() > start) {
                         output.setSpan(new StyleSpan(Typeface.BOLD), start, output.length(),
                                 Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
@@ -187,12 +197,12 @@ public final class OrbitMarkdown {
                     }
                 } else if (bullet.matches()) {
                     output.append("•  ");
-                    appendInline(context, output, bullet.group(1));
+                    appendInline(context, output, bullet.group(1), surface);
                 } else if (numbered.matches()) {
                     output.append(numbered.group(1)).append("  ");
-                    appendInline(context, output, numbered.group(2));
+                    appendInline(context, output, numbered.group(2), surface);
                 } else if (!trimmed.matches("^[-*_]{3,}$")) {
-                    appendInline(context, output, trimmed);
+                    appendInline(context, output, trimmed, surface);
                 }
             }
             output.append('\n');
@@ -205,8 +215,14 @@ public final class OrbitMarkdown {
 
     /** Inline-only Markdown for native rich-message blocks. */
     public static CharSequence renderInline(Context context, String source, int foreground) {
+        return renderInline(context, source, foreground, UiKit.SURFACE);
+    }
+
+    /** Inline-only Markdown, styled for the bubble or card colour behind it. */
+    public static CharSequence renderInline(Context context, String source, int foreground,
+                                            int surface) {
         SpannableStringBuilder output = new SpannableStringBuilder();
-        appendInline(context, output, source == null ? "" : source);
+        appendInline(context, output, source == null ? "" : source, surface);
         return output;
     }
 
@@ -224,7 +240,8 @@ public final class OrbitMarkdown {
                 .replaceAll("\\n{3,}", "\n\n").trim();
     }
 
-    private static void appendInline(Context context, SpannableStringBuilder output, String line) {
+    private static void appendInline(Context context, SpannableStringBuilder output, String line,
+                                     int surface) {
         Matcher matcher = INLINE.matcher(line);
         int cursor = 0;
         while (matcher.find()) {
@@ -248,21 +265,42 @@ public final class OrbitMarkdown {
                         Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
             } else {
                 output.append(matcher.group(8));
-                applyCode(context, output, start, output.length());
+                applyInlineCode(context, output, start, output.length(), surface);
             }
             cursor = matcher.end();
         }
         output.append(line, cursor, line.length());
     }
 
-    private static void applyCode(Context context, SpannableStringBuilder output,
-                                  int start, int end) {
+    /**
+     * One `term` inside a sentence.
+     *
+     * <p>Short runs — which is what inline code nearly always is — get {@link InlineCodeSpan}: a
+     * rounded pill sized to the word itself and tinted from the surface behind it. A long run keeps
+     * the flat treatment, because a replacement span cannot be broken across lines and anything
+     * long enough to need wrapping must be allowed to wrap. Both paths derive their colours from
+     * the same surface, so the two never look like different features.
+     */
+    private static void applyInlineCode(Context context, SpannableStringBuilder output,
+                                        int start, int end, int surface) {
+        if (end <= start) return;
+        if (context != null && InlineCodeSpan.fits(output.subSequence(start, end))) {
+            output.setSpan(InlineCodeSpan.on(context, surface), start, end,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            return;
+        }
+        applyBlockCode(output, start, end, surface);
+    }
+
+    /** Flat, wrappable code styling: fenced blocks, and inline runs too long to be a pill. */
+    private static void applyBlockCode(SpannableStringBuilder output, int start, int end,
+                                       int surface) {
         if (end <= start) return;
         output.setSpan(new TypefaceSpan("monospace"), start, end,
                 Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-        output.setSpan(new ForegroundColorSpan(UiKit.TEXT), start, end,
+        output.setSpan(new ForegroundColorSpan(UiKit.inlineCodeInk(surface)), start, end,
                 Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-        output.setSpan(new BackgroundColorSpan(UiKit.SURFACE_2), start, end,
+        output.setSpan(new BackgroundColorSpan(UiKit.inlineCodeTint(surface)), start, end,
                 Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
     }
 }

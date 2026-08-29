@@ -89,20 +89,51 @@ public final class OrbitRequestManager {
      *         already been answered.
      */
     public static boolean completeIfNotCancelled(Context c, String requestId, Runnable completion) {
+        return completeIfNotCancelled(c, requestId, CompletionSource.UNKNOWN, -1, completion);
+    }
+
+    /**
+     * As above, told which code path is calling and which WorkManager attempt it is on.
+     *
+     * <p>The guard itself is unchanged and stays unconditional — this only records who arrived at
+     * it. A refused completion previously left nothing behind but a counter, so the one seen on a
+     * real device could not be attributed to anything; now the refusal names its own origin.
+     *
+     * @param workAttempt WorkManager's run attempt for a worker caller, or -1 where there is none.
+     */
+    public static boolean completeIfNotCancelled(Context c, String requestId,
+                                                 CompletionSource source, int workAttempt,
+                                                 Runnable completion) {
         if (requestId == null || requestId.isEmpty() || completion == null) return false;
         synchronized (completionLock(requestId)) {
             if (isCancelled(c, requestId)) {
-                RequestTrace.completion(c, requestId, false, "cancelled");
+                RequestTrace.completionIgnored(c, requestId, source, workAttempt,
+                        priorState(c, requestId), RequestTrace.REASON_CANCELLED);
                 return false;
             }
             if (c != null && !PendingRequestStore.claimCompletion(c, requestId)) {
-                RequestTrace.completion(c, requestId, false, "already-completed");
+                RequestTrace.completionIgnored(c, requestId, source, workAttempt,
+                        priorState(c, requestId), RequestTrace.REASON_ALREADY_COMPLETED);
                 return false;
             }
             completion.run();
-            RequestTrace.completion(c, requestId, true, "");
+            RequestTrace.completionCommitted(c, requestId, source, workAttempt);
             return true;
         }
+    }
+
+    /**
+     * What the request already was when a completion for it was refused.
+     *
+     * <p>Read only on the refusal path, which is rare, so the disk read costs nothing that
+     * matters. "committed" is reported separately from the status because they answer different
+     * questions: the status is how the request ended, and the claim is whether an answer for it
+     * had already been written.
+     */
+    private static String priorState(Context c, String requestId) {
+        PendingRequestStore.Item item = c == null ? null : PendingRequestStore.load(c, requestId);
+        if (item == null) return "missing";
+        return item.committed ? "committed-" + item.status : item.status;
     }
 
     /** True once the user's Stop has been accepted for this request, in this process. */
