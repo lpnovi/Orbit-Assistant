@@ -673,6 +673,9 @@ Validated on a Galaxy S25 Ultra across three Betas (`beta.1`-`beta.3`) and relea
   the last download failure category. No model contents, conversations, or paths
 
 ### 0.7.7.7 — Real Calendar control and one-answer requests
+Validated on a Galaxy S25 Ultra across four Betas (`beta.1`-`beta.4`) and released as `0.7.7.7`
+Stable. The final acceptance run reproduced the background-worker overlap on the device and
+confirmed the replacement runs were superseded before either could answer twice.
 
 Orbit exposed `CREATE_EVENT`, which only ever opened Android's event composer. Asked on a real
 device to "put the Michigan football schedule on my calendar", Orbit produced confident text saying

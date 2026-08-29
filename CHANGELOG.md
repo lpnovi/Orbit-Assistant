@@ -483,3 +483,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - A background request interrupted by the system no longer asks the model a second time for the same answer.
   - An interrupted request can no longer report a failure for something that had not failed.
   - Diagnostics now names both sides when two background runs meet, and counts runs correctly.
+
+- **v0.7.7.7**: Orbit now writes real calendar events itself, answers each question exactly once, and reads more comfortably.
+  - Ask Orbit to add a schedule and it looks it up, confirms once, then writes the events to your calendar.
+  - Orbit reports only what the calendar accepted, keeps one copy of repeated events, and marks unannounced times as Time TBA.
+  - Your first calendar request finishes in one go, with a Calendar field you can change that Orbit then remembers.
+  - One tap of Send makes one request, and an interrupted background request never adds a second answer or a false failure.
+  - Auto reaches Deep for genuinely hard questions, and setup now presents every provider with its real state.
+  - Conversation edges fade softly, inline `code` reads as a tinted chip, and short answers sit centred in their bubble.
