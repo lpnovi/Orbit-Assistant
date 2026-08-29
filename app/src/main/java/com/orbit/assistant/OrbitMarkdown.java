@@ -265,7 +265,11 @@ public final class OrbitMarkdown {
                         Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
             } else {
                 output.append(matcher.group(8));
-                applyInlineCode(context, output, start, output.length(), surface);
+                // Taken from the source line, on either side of the backticks, so the pill knows
+                // whether it is about to be followed by a full stop or opened by a bracket. The
+                // characters are read for their category only and are never carried any further.
+                applyInlineCode(context, output, start, output.length(), surface,
+                        charAt(line, matcher.start() - 1), charAt(line, matcher.end()));
             }
             cursor = matcher.end();
         }
@@ -280,16 +284,27 @@ public final class OrbitMarkdown {
      * the flat treatment, because a replacement span cannot be broken across lines and anything
      * long enough to need wrapping must be allowed to wrap. Both paths derive their colours from
      * the same surface, so the two never look like different features.
+     *
+     * <p>{@code before} and {@code after} are the characters the run sits between in the source
+     * line. A pill measures and draws itself, so its padding decides where the next character
+     * begins; handing it its neighbours is what lets a full stop sit against the term instead of a
+     * word-space away from it. The wrappable fallback needs none of this — it is an ordinary
+     * background span and adds no width at all.
      */
     private static void applyInlineCode(Context context, SpannableStringBuilder output,
-                                        int start, int end, int surface) {
+                                        int start, int end, int surface, char before, char after) {
         if (end <= start) return;
         if (context != null && InlineCodeSpan.fits(output.subSequence(start, end))) {
-            output.setSpan(InlineCodeSpan.on(context, surface), start, end,
+            output.setSpan(InlineCodeSpan.on(context, surface, before, after), start, end,
                     Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
             return;
         }
         applyBlockCode(output, start, end, surface);
+    }
+
+    /** The character at an index, or {@link InlineCodeSpan#NOTHING} where the line has run out. */
+    private static char charAt(String line, int index) {
+        return index < 0 || index >= line.length() ? InlineCodeSpan.NOTHING : line.charAt(index);
     }
 
     /** Flat, wrappable code styling: fenced blocks, and inline runs too long to be a pill. */

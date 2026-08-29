@@ -37,6 +37,7 @@ public final class OrbitRequestWorker extends Worker {
         if (id == null || id.isEmpty()) return Result.failure();
         Context c = getApplicationContext();
         PendingRequestStore.Item item = PendingRequestStore.load(c, id);
+        RequestTrace.workerStarted(id, attempt(), state(item));
         if (item == null) return Result.success();
         // Covers a request that already finished and one the user stopped before this ran at all.
         if (PendingRequestStore.isTerminal(item.status)) return Result.success();
@@ -48,6 +49,35 @@ public final class OrbitRequestWorker extends Worker {
             return Result.success();
         }
         if (cancelled(c, id)) return Result.success();
+
+        // An earlier execution of this same request may still be alive in this process. WorkManager
+        // never runs one unique work item twice at once, so if the claim is already held it can
+        // only mean that execution was stopped and its thread has not returned yet — and for a
+        // cloud provider it will not return until its HTTP response arrives, because nothing
+        // cancels it. It still holds a live model request and will finish it, so standing down
+        // here is what stops one user turn being asked of the model twice.
+        if (!OrbitRequestManager.beginWorkerAttempt(id)) {
+            RequestTrace.attemptSuperseded(c, id, attempt(), RequestTrace.STAGE_ALREADY_RUNNING);
+            // Retry, never success: if the execution in flight dies with the process instead of
+            // committing, this reschedule is what still answers the request.
+            return Result.retry();
+        }
+        try {
+            return execute(c, item, id);
+        } finally {
+            OrbitRequestManager.endWorkerAttempt(id);
+        }
+    }
+
+    /** The body of one execution, with the in-process claim above held for all of it. */
+    private Result execute(Context c, PendingRequestStore.Item item, String id) {
+        // Stopped before a single question was asked. WorkManager has already re-enqueued this
+        // work, so anything done from here is thrown away; asking the model would only be paying
+        // twice for the answer the next execution is about to fetch.
+        if (superseded()) {
+            RequestTrace.attemptSuperseded(c, id, attempt(), RequestTrace.STAGE_BEFORE_REQUEST);
+            return Result.retry();
+        }
 
         PendingRequestStore.markRunning(c, id);
         RequestTrace.lifecycle(id, "running");
@@ -103,11 +133,28 @@ public final class OrbitRequestWorker extends Worker {
 
         if (error == null) error = "Orbit could not finish this response.";
         String friendly = error.replace("—", "-");
-        // Network/process/capacity disruptions get one durable retry before becoming
-        // a visible chat error. Hosted-search overloads already received the quick
-        // in-process fallback above, so this is the final safety net.
+
+        // A stopped execution's "error" may be nothing but the stop itself. The cancellation
+        // signal Orbit hands the provider is `isStopped() || user pressed Stop`, and Orbit Local
+        // honours it by cancelling generation, which comes back here as an ordinary failure.
+        // Writing that as a visible answer would be wrong twice over: the request has not failed,
+        // and the write would claim its one completion and pre-empt the execution WorkManager has
+        // already scheduled to replace this one.
+        if (superseded()) {
+            RequestTrace.attemptSuperseded(c, id, attempt(), RequestTrace.STAGE_ERROR_DISCARDED);
+            return Result.retry();
+        }
+
+        // Network/process/capacity disruptions get one durable retry before becoming a visible
+        // chat error. Hosted-search overloads already received the quick in-process fallback
+        // above, so this is the final safety net. The count is a start count rather than a retry
+        // count (see WorkerAttempt), so this reads as "only a first execution may ask for one
+        // more" — deliberately conservative: a request that has already been restarted for any
+        // reason does not accumulate extra retries on top.
         if (getRunAttemptCount() < 1 && looksTransient(friendly)) {
-            return cancelled(c, id) ? Result.success() : Result.retry();
+            if (cancelled(c, id)) return Result.success();
+            RequestTrace.retryRequested(id, attempt(), "transient");
+            return Result.retry();
         }
         String visible = friendly.startsWith("Orbit could not finish")
                 ? friendly
@@ -116,7 +163,7 @@ public final class OrbitRequestWorker extends Worker {
         // here as an ordinary error, so the same gate the success path uses decides whether
         // anything visible gets written at all.
         OrbitRequestManager.completeIfNotCancelled(c, id, CompletionSource.WORKER_ERROR,
-                getRunAttemptCount(), () -> {
+                attempt(), () -> {
             ConversationStore.appendMessage(c, item.conversationId, new AssistantClient.History("assistant", visible));
             PendingRequestStore.markFailed(c, id, visible);
             DiagnosticStore.recordError(c, visible);
@@ -137,11 +184,19 @@ public final class OrbitRequestWorker extends Worker {
      * nothing at all. Because the visible dispatch is inside the lock too, a cancelled request can
      * never reach a listener, which is what keeps response actions, the completion notification,
      * and a spoken reply from running for an answer the user stopped waiting for.
+     *
+     * <p>Deliberately not refused when this execution has been stopped. A model reply already in
+     * hand is a correct answer to this request id, and the completion claim guarantees at most one
+     * of them is ever written; throwing a paid-for answer away to honour an abstract notion of
+     * obsolescence would only make the user wait for the same answer twice. What Beta 4 removes is
+     * the overlap that produced two replies in the first place, not the right of whichever
+     * execution holds one to write it.
      */
     private void commit(Context c, PendingRequestStore.Item item, String id,
                         AssistantClient.History message, AssistantReply reply, String notificationText) {
+        RequestTrace.responseReady(id, attempt(), state(PendingRequestStore.load(c, id)));
         OrbitRequestManager.completeIfNotCancelled(c, id, CompletionSource.WORKER_RESPONSE,
-                getRunAttemptCount(), () -> {
+                attempt(), () -> {
             ConversationStore.appendMessage(c, item.conversationId, message);
             PendingRequestStore.markDone(c, id);
             RequestTrace.lifecycle(id, "completed");
@@ -156,6 +211,34 @@ public final class OrbitRequestWorker extends Worker {
     /** True once the user's Stop has been accepted, in this process or a previous one. */
     private boolean cancelled(Context c, String id) {
         return OrbitRequestManager.isCancelled(c, id);
+    }
+
+    /**
+     * True once WorkManager has taken this execution's turn away and given it to another one.
+     *
+     * <p>Distinct from {@link #cancelled}, and the distinction is the whole point. A cancelled
+     * request is finished and must produce nothing; a superseded execution is a live request whose
+     * work has been handed to a replacement, so it must produce nothing <em>here</em> while the
+     * request itself goes on. Conflating the two is how a stopped execution came to write a
+     * visible failure for a request that had not failed.
+     *
+     * <p>Stopping does not end the thread: WorkManager sets this flag, re-enqueues the work and
+     * starts the next execution, and {@code doWork()} keeps running until it returns of its own
+     * accord. Everything past this point is therefore checked rather than assumed.
+     */
+    private boolean superseded() {
+        return isStopped();
+    }
+
+    /** What WorkManager can say about this execution, for the trace and the completion gate. */
+    private WorkerAttempt attempt() {
+        return WorkerAttempt.of(getRunAttemptCount(), isStopped());
+    }
+
+    /** A request's state as one diagnostics token, with the completion claim folded in. */
+    private static String state(PendingRequestStore.Item item) {
+        if (item == null) return "missing";
+        return item.committed ? "committed-" + item.status : item.status;
     }
 
     private RequestOutcome performRequest(Context c, PendingRequestStore.Item item,

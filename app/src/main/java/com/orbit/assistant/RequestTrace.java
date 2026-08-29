@@ -27,11 +27,21 @@ public final class RequestTrace {
     private static final String KEY_IGNORED_DUPLICATE = "completions_ignored_duplicate";
     private static final String KEY_LAST_IGNORED = "completion_ignored_detail";
     private static final String KEY_LAST_IGNORED_AT = "completion_ignored_at";
+    private static final String KEY_SUPERSEDED = "worker_attempts_superseded";
+    private static final String KEY_LAST_SUPERSEDED = "worker_superseded_detail";
+    private static final String KEY_LAST_SUPERSEDED_AT = "worker_superseded_at";
 
     /** The request had already been answered. This is the case worth investigating. */
     static final String REASON_ALREADY_COMPLETED = "already-completed";
     /** The user stopped the request. Expected, and not a duplicate of anything. */
     static final String REASON_CANCELLED = "cancelled";
+
+    /** A worker attempt found an earlier one still executing the same request in this process. */
+    static final String STAGE_ALREADY_RUNNING = "already-running";
+    /** WorkManager stopped this attempt before it had asked the model anything. */
+    static final String STAGE_BEFORE_REQUEST = "before-request";
+    /** A stopped attempt came back with a failure, which is not a failure of the request. */
+    static final String STAGE_ERROR_DISCARDED = "error-discarded";
 
     private RequestTrace() {}
 
@@ -58,6 +68,53 @@ public final class RequestTrace {
         ComposerTrace.event("request." + safeToken(stage) + " id=" + shortId(requestId));
     }
 
+    /**
+     * A worker execution beginning, and what it found already true of the request.
+     *
+     * <p>The pair is the point. A run number on its own cannot say whether two executions
+     * overlapped; a run number plus the state that run found — queued, running, already
+     * committed — can.
+     */
+    static void workerStarted(String requestId, WorkerAttempt attempt, String state) {
+        ComposerTrace.event("request.worker-start id=" + shortId(requestId)
+                + attemptEvent(attempt) + " was=" + safeToken(state));
+    }
+
+    /** A model reply reaching the worker, and the state the request was in when it arrived. */
+    static void responseReady(String requestId, WorkerAttempt attempt, String state) {
+        ComposerTrace.event("request.worker-response id=" + shortId(requestId)
+                + attemptEvent(attempt) + " was=" + safeToken(state));
+    }
+
+    /** The worker asking WorkManager to run this request again, and why. */
+    static void retryRequested(String requestId, WorkerAttempt attempt, String reason) {
+        ComposerTrace.event("request.worker-retry id=" + shortId(requestId)
+                + attemptEvent(attempt) + " reason=" + safeToken(reason));
+    }
+
+    /**
+     * A worker attempt that stood down instead of finishing the request.
+     *
+     * <p>This is the event Beta 3 had no way to see. A stopped {@code Worker} keeps running —
+     * WorkManager sets the flag, re-enqueues the work, and starts the next attempt while the old
+     * thread is still inside its provider call — so two executions of one request can overlap, and
+     * whichever reached the completion gate second was refused with nothing recorded about the
+     * other. An attempt that stands down names itself, its run number, and the point at which it
+     * did so, so the next occurrence identifies both sides.
+     */
+    static void attemptSuperseded(Context c, String requestId, WorkerAttempt attempt, String stage) {
+        ComposerTrace.event("request.worker-superseded id=" + shortId(requestId)
+                + attemptEvent(attempt) + " at=" + safeToken(stage));
+        if (c == null) return;
+        SharedPreferences prefs = DiagnosticStore.prefs(c);
+        prefs.edit()
+                .putInt(KEY_SUPERSEDED, prefs.getInt(KEY_SUPERSEDED, 0) + 1)
+                .putString(KEY_LAST_SUPERSEDED, "req " + shortId(requestId)
+                        + attemptSuffix(attempt) + " · " + safeToken(stage))
+                .putLong(KEY_LAST_SUPERSEDED_AT, System.currentTimeMillis())
+                .apply();
+    }
+
     /** A surface attaching to or leaving a request it does not own. */
     public static void listener(String requestId, boolean attached) {
         ComposerTrace.event("request.listener-" + (attached ? "attach" : "detach")
@@ -66,11 +123,11 @@ public final class RequestTrace {
 
     /** An answer that was actually written. */
     static void completionCommitted(Context c, String requestId, CompletionSource source,
-                                    int workAttempt) {
+                                    WorkerAttempt attempt) {
         ComposerTrace.event("request.completion-committed"
                 + " id=" + shortId(requestId)
                 + " src=" + token(source)
-                + attemptEvent(workAttempt));
+                + attemptEvent(attempt));
         if (c == null) return;
         SharedPreferences prefs = DiagnosticStore.prefs(c);
         prefs.edit().putInt(KEY_COMMITTED, prefs.getInt(KEY_COMMITTED, 0) + 1).apply();
@@ -87,15 +144,16 @@ public final class RequestTrace {
      * has its own count and the most recent refusal records where it came from.
      *
      * <p>Shape only, as everywhere else in this file: a shortened copy of Orbit's own random
-     * request id, the name of the calling code path, WorkManager's attempt number, and the state
-     * the request was already in. No prompt, no answer, no conversation, no calendar contents.
+     * request id, the name of the calling code path, which run of the work it was on and whether
+     * that run had been stopped, and the state the request was already in. No prompt, no answer,
+     * no conversation, no calendar contents.
      */
     static void completionIgnored(Context c, String requestId, CompletionSource source,
-                                  int workAttempt, String priorState, String reason) {
+                                  WorkerAttempt attempt, String priorState, String reason) {
         ComposerTrace.event("request.completion-ignored"
                 + " id=" + shortId(requestId)
                 + " src=" + token(source)
-                + attemptEvent(workAttempt)
+                + attemptEvent(attempt)
                 + " was=" + safeToken(priorState)
                 + " reason=" + safeToken(reason));
         if (c == null) return;
@@ -105,7 +163,7 @@ public final class RequestTrace {
                 .putString(KEY_LAST_IGNORED, token(source)
                         + " · req " + shortId(requestId)
                         + " · was " + safeToken(priorState)
-                        + attemptSuffix(workAttempt)
+                        + attemptSuffix(attempt)
                         + " · " + safeToken(reason))
                 .putLong(KEY_LAST_IGNORED_AT, System.currentTimeMillis());
         if (REASON_ALREADY_COMPLETED.equals(reason)) {
@@ -114,14 +172,23 @@ public final class RequestTrace {
         edit.apply();
     }
 
-    /** WorkManager's own retry counter, when the caller is a worker and therefore has one. */
-    private static String attemptSuffix(int workAttempt) {
-        return workAttempt < 0 ? "" : " · attempt " + workAttempt;
+    /**
+     * Which execution of the work this was, in the report's own words.
+     *
+     * <p>Beta 3 printed this as "attempt 3" and called it WorkManager's retry counter, which it is
+     * not: the count is incremented on every start, so it also counts restarts after a system
+     * interruption or a process death. Orbit itself asks for at most one retry per request, so
+     * anything above "run 2" is a restart Orbit did not request — which is exactly the signal
+     * worth reading. See {@link WorkerAttempt}.
+     */
+    private static String attemptSuffix(WorkerAttempt attempt) {
+        return attempt == null || !attempt.known() ? "" : " · " + attempt.describe();
     }
 
-    /** The same number in the live trace buffer's {@code key=value} vocabulary. */
-    private static String attemptEvent(int workAttempt) {
-        return workAttempt < 0 ? "" : " attempt=" + workAttempt;
+    /** The same facts in the live trace buffer's {@code key=value} vocabulary. */
+    private static String attemptEvent(WorkerAttempt attempt) {
+        if (attempt == null || !attempt.known()) return "";
+        return " run=" + attempt.runNumber() + (attempt.stopped ? " stopped=true" : "");
     }
 
     private static String token(CompletionSource source) {

@@ -476,3 +476,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Long replies fade softly into the header and composer rather than being cut off mid-line.
   - Inline `code` terms are drawn as subtle rounded chips tinted to your bubble colour.
   - Short answers now sit centred in their bubble, with no extra gap underneath.
+- **v0.7.7.7-beta.4**: Finishes the reading polish from Beta 3 and stops one question being asked twice.
+  - The fade at the top and bottom of a conversation is much softer, so text stays readable far closer to the edge.
+  - Punctuation after an inline `code` term now sits against it instead of floating a space away.
+  - Code chips keep their rounded shape, bubble tint, and breathing room in ordinary prose.
+  - A background request interrupted by the system no longer asks the model a second time for the same answer.
+  - An interrupted request can no longer report a failure for something that had not failed.
+  - Diagnostics now names both sides when two background runs meet, and counts runs correctly.

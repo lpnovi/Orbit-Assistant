@@ -133,7 +133,9 @@ public final class CompletionProvenanceTest {
         assertTrue("which code path arrived: " + detail,
                 detail.contains(CompletionSource.WORKER_RESPONSE.token));
         assertTrue("which request: " + detail, detail.contains(RequestTrace.shortId(item.id)));
-        assertTrue("which WorkManager attempt: " + detail, detail.contains("attempt 2"));
+        // Reported as a run number, not as "attempt 2". WorkManager increments the count on every
+        // start, so a raw count of 2 is the third execution of the work; see WorkerAttempt.
+        assertTrue("which run of the work: " + detail, detail.contains("run 3"));
         assertTrue("what it was already: " + detail, detail.contains("committed-done"));
         assertTrue("and why it was refused: " + detail,
                 detail.contains(RequestTrace.REASON_ALREADY_COMPLETED));

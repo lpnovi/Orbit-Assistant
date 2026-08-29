@@ -89,37 +89,91 @@ public final class OrbitRequestManager {
      *         already been answered.
      */
     public static boolean completeIfNotCancelled(Context c, String requestId, Runnable completion) {
-        return completeIfNotCancelled(c, requestId, CompletionSource.UNKNOWN, -1, completion);
+        return completeIfNotCancelled(c, requestId, CompletionSource.UNKNOWN,
+                WorkerAttempt.NONE, completion);
+    }
+
+    /** As above, told which code path is calling and which run of the work it is on. */
+    public static boolean completeIfNotCancelled(Context c, String requestId,
+                                                 CompletionSource source, int workRun,
+                                                 Runnable completion) {
+        return completeIfNotCancelled(c, requestId, source, WorkerAttempt.of(workRun), completion);
     }
 
     /**
-     * As above, told which code path is calling and which WorkManager attempt it is on.
+     * As above, told which code path is calling and everything WorkManager can say about the
+     * worker execution it is calling from.
      *
      * <p>The guard itself is unchanged and stays unconditional — this only records who arrived at
      * it. A refused completion previously left nothing behind but a counter, so the one seen on a
-     * real device could not be attributed to anything; now the refusal names its own origin.
+     * real device could not be attributed to anything; now the refusal names its own origin, its
+     * run number, and whether that run had already been stopped.
      *
-     * @param workAttempt WorkManager's run attempt for a worker caller, or -1 where there is none.
+     * @param attempt the calling worker's run and stopped state, or {@link WorkerAttempt#NONE}
+     *                where there is no worker.
      */
     public static boolean completeIfNotCancelled(Context c, String requestId,
-                                                 CompletionSource source, int workAttempt,
+                                                 CompletionSource source, WorkerAttempt attempt,
                                                  Runnable completion) {
         if (requestId == null || requestId.isEmpty() || completion == null) return false;
         synchronized (completionLock(requestId)) {
             if (isCancelled(c, requestId)) {
-                RequestTrace.completionIgnored(c, requestId, source, workAttempt,
+                RequestTrace.completionIgnored(c, requestId, source, attempt,
                         priorState(c, requestId), RequestTrace.REASON_CANCELLED);
                 return false;
             }
             if (c != null && !PendingRequestStore.claimCompletion(c, requestId)) {
-                RequestTrace.completionIgnored(c, requestId, source, workAttempt,
+                RequestTrace.completionIgnored(c, requestId, source, attempt,
                         priorState(c, requestId), RequestTrace.REASON_ALREADY_COMPLETED);
                 return false;
             }
             completion.run();
-            RequestTrace.completionCommitted(c, requestId, source, workAttempt);
+            RequestTrace.completionCommitted(c, requestId, source, attempt);
             return true;
         }
+    }
+
+    /**
+     * Request ids a worker execution is currently running in this process.
+     *
+     * <p>This exists because stopping a {@code Worker} does not stop it. WorkManager sets the
+     * stopped flag, re-enqueues the work and lets the next execution start, but the thread already
+     * inside {@code doWork()} runs until it returns on its own — and for a cloud provider that
+     * means it stays blocked on an HTTP response that nothing is going to cancel. Two executions of
+     * one request then overlap, both ask the model, and whichever reaches the completion gate
+     * second is refused. The user never saw two answers, because
+     * {@link PendingRequestStore#claimCompletion} makes that impossible, but Orbit paid for two.
+     *
+     * <p>Deliberately in-process and deliberately not durable. It is not a lock and not a
+     * substitute for the completion claim: it exists only for the window in which two threads of
+     * one process are alive on the same request, which is precisely the window WorkManager creates.
+     * After a process death there is no such window and the set is empty again, which is the
+     * correct answer rather than a lost one.
+     */
+    private static final java.util.Set<String> RUNNING_ATTEMPTS = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Claims this request for the calling worker execution.
+     *
+     * <p>WorkManager will not run one unique work item twice at once, so a second execution
+     * arriving here while the first is still registered can only mean the first was stopped and
+     * has not noticed yet. The newcomer stands down rather than starting a second model call; the
+     * execution already in flight still holds a live provider request and will finish it.
+     *
+     * @return false if an earlier execution of this request is still running in this process.
+     */
+    static boolean beginWorkerAttempt(String requestId) {
+        return requestId != null && !requestId.isEmpty() && RUNNING_ATTEMPTS.add(requestId);
+    }
+
+    /** Releases the claim. Always called from a {@code finally}, including on the abandon paths. */
+    static void endWorkerAttempt(String requestId) {
+        if (requestId != null) RUNNING_ATTEMPTS.remove(requestId);
+    }
+
+    /** Whether a worker execution is running this request in this process right now. */
+    public static boolean hasRunningWorkerAttempt(String requestId) {
+        return requestId != null && RUNNING_ATTEMPTS.contains(requestId);
     }
 
     /**
@@ -302,6 +356,7 @@ public final class OrbitRequestManager {
         PARTIALS.clear();
         CANCELLED.clear();
         COMPLETION_LOCKS.clear();
+        RUNNING_ATTEMPTS.clear();
         workCanceller = null;
     }
 

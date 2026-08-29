@@ -749,17 +749,29 @@ public final class UiKit {
      * <p>Restrained on purpose. This is an edge treatment, not an effect: long enough that a line
      * of text stops being cut in half by a hard boundary, short enough that it never reads as a
      * vignette over the reply.
+     *
+     * <p>The first version of this was 30dp. It fixed the hard cut but overshot in the other
+     * direction on the device: a chat line is roughly 17-20dp tall at Orbit's default sizes, so a
+     * 30dp ramp always had most of one line dimmed and the next one already going, which reads as
+     * a dark band rather than as text passing behind the chrome. It showed worst above the
+     * composer, because a long answer keeps content below the fold and the bottom edge therefore
+     * sits at full strength the whole time the top edge is still off.
+     *
+     * <p>18dp is deliberately just under one line. At most one line is ever in transition, the
+     * line above it stays fully readable, and the ramp is still long enough that no glyph is
+     * sliced by a hard boundary. This is an intensity value, not a mechanism: how the fade is
+     * produced, and every property that depends on it, is unchanged.
      */
-    public static final float CONVERSATION_FADE_DP = 30f;
+    public static final float CONVERSATION_FADE_DP = 18f;
 
     /**
      * The least breathing room a conversation keeps at each end.
      *
-     * <p>Deliberately much smaller than the fade. It is not what makes the first and last lines
-     * readable — the fade's strength falls to nothing at both scroll extremes, so those lines are
-     * already never obscured. This exists only so a bubble is not flush against the chrome, and it
-     * is kept small because the overlay's conversation is a few hundred dp tall and cannot afford
-     * to spend a quarter of itself on padding.
+     * <p>Deliberately smaller than the fade, and unchanged by its retuning. It is not what makes
+     * the first and last lines readable — the fade's strength falls to nothing at both scroll
+     * extremes, so those lines are already never obscured. This exists only so a bubble is not
+     * flush against the chrome, and it is kept small because the overlay's conversation is a few
+     * hundred dp tall and cannot afford to spend a large share of itself on padding.
      */
     public static final float CONVERSATION_EDGE_INSET_DP = 10f;
 

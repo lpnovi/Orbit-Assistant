@@ -122,6 +122,40 @@ public final class AssistantBubbleBalanceTest {
         }
     }
 
+    /**
+     * The endings the chin could come back on.
+     *
+     * <p>The trailing gap is a property of the last block, so what that block <em>is</em> matters.
+     * Beta 4 changed how an inline code pill measures itself, which is a last-block concern, so
+     * every shape an answer can end on is covered here rather than only the short one that was
+     * reported.
+     */
+    @Test public void everyEndingShapeIsBalanced() {
+        String[] endings = {
+                "Yes",
+                "The request moves to READY and then finishes normally.",
+                "Steps:\n\n- first\n- second\n- third",
+                "It is keyed by `requestId`.",
+                "`READY`",
+                "Here:\n\n```\nint x = 1;\n```",
+                "Done.",
+                "Are you sure?",
+                "First paragraph here.\n\nAnd a second one that ends in `code`.",
+        };
+        for (String ending : endings) {
+            assertBalanced("full chat: " + ending, bubble(ending, false));
+            assertBalanced("overlay: " + ending, bubble(ending, true));
+        }
+    }
+
+    /** Inline code is a span inside a block, so it must not add a block of trailing space. */
+    @Test public void anAnswerEndingInInlineCodeHasNoChin() {
+        assertEquals("a one-block answer has nothing to separate itself from",
+                0, trailingGap(bubble("It is keyed by `requestId`.", false)));
+        assertEquals(0, trailingGap(bubble("`READY`", false)));
+        assertBalanced("inline code at the very end", bubble("It ends on `READY`", false));
+    }
+
     // ---- longer answers must not be squeezed to achieve it ----------------------------------------
 
     @Test public void multiBlockAnswersKeepTheirInternalSpacing() {

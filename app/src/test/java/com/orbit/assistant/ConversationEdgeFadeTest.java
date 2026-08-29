@@ -92,12 +92,37 @@ public final class ConversationEdgeFadeTest {
     }
 
     /**
-     * The overlay's conversation is only a few hundred dp tall, so the inset must stay a small
-     * fraction of the fade rather than matching it.
+     * The fade's depth, which is the one thing Beta 4 changed about this treatment.
+     *
+     * <p>Beta 3 shipped 30dp. It fixed the hard cut, but on the device it read as a dark band
+     * rather than as text passing behind the chrome, because 30dp is deeper than a line of chat
+     * text: one line was always dimmed and the next was already going. That was most obvious above
+     * the composer, where the bottom edge sits at full strength for as long as there is anything
+     * left to scroll.
+     *
+     * <p>Asserted as a relationship rather than as a number, because the number is a design value.
+     * The fade has to be deeper than the conversation's own breathing room, or it is a cut and not
+     * a ramp; and it has to stay on the same spacing scale as that inset rather than growing into
+     * an effect layered over the reply. 30dp fails the upper bound, which is the regression this
+     * exists to catch.
      */
-    @Test public void theInsetDoesNotEatTheOverlayConversation() {
-        assertTrue("padding both ends by the fade depth would cost 60dp of a 240dp sheet",
-                UiKit.CONVERSATION_EDGE_INSET_DP * 2 < UiKit.CONVERSATION_FADE_DP);
+    @Test public void theFadeIsARampAndNotAVignette() {
+        assertTrue("a fade shallower than the conversation's own inset is a cut, not a ramp",
+                UiKit.CONVERSATION_FADE_DP > UiKit.CONVERSATION_EDGE_INSET_DP);
+        assertTrue("an edge treatment must stay on the layout's spacing scale, not become an effect",
+                UiKit.CONVERSATION_FADE_DP <= UiKit.CONVERSATION_EDGE_INSET_DP * 2);
+    }
+
+    /**
+     * Both surfaces get the same treatment from the same call, so the overlay and the full chat
+     * cannot drift apart as the value is tuned.
+     */
+    @Test public void bothSurfacesFadeByTheSameAmount() {
+        ScrollView overlay = faded(new LinearLayout(context));
+        ScrollView fullChat = faded(new LinearLayout(context));
+        assertEquals(overlay.getVerticalFadingEdgeLength(), fullChat.getVerticalFadingEdgeLength());
+        assertEquals(UiKit.dp(context, UiKit.CONVERSATION_FADE_DP),
+                overlay.getVerticalFadingEdgeLength());
     }
 
     @Test public void existingBreathingRoomIsNeverReduced() {

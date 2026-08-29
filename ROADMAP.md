@@ -724,6 +724,12 @@ request-duplication failures, so this release closes both.
   written claim taken before an answer is appended, so a worker WorkManager re-runs after a process
   death abandons the turn instead of asking the model again and appending a second reply to one
   visible user message
+- **One request, one model call.** The guard above stays permanent, but the overlap that kept
+  triggering it is closed at the source: stopping a `Worker` does not end its thread, so a stopped
+  execution and its replacement could both reach the provider. An in-process claim per request id
+  makes the newcomer stand down, a stopped execution no longer starts a model call it cannot use,
+  and a stopped execution's error is no longer written as a visible failure for a request that has
+  not failed. Diagnostics reports WorkManager's count as the start count it actually is
 - **Provider-aware onboarding.** The Connect Orbit step now presents ChatGPT as recommended, Orbit
   Local as optional with its real component/model state, and collapses OpenRouter and the renamed
   Private API relay behind More provider options. Availability and status come from `AiProviders`

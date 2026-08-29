@@ -7,6 +7,7 @@ import static org.junit.Assert.assertTrue;
 
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.text.Spanned;
 import android.text.style.BackgroundColorSpan;
 import android.text.style.ForegroundColorSpan;
@@ -161,6 +162,161 @@ public final class InlineCodeStyleTest {
         assertTrue("a pastel bubble sinks its code pill instead",
                 luminance(UiKit.inlineCodeTint(UiKit.PASTEL_PINK)) < luminance(UiKit.PASTEL_PINK));
         assertTrue(luminance(UiKit.inlineCodeTint(Color.WHITE)) < luminance(Color.WHITE));
+    }
+
+    // ---- punctuation ----------------------------------------------------------------------------
+
+    /** The pill a rendered sentence actually produced, so these exercise the real wiring. */
+    private InlineCodeSpan pillIn(String markdown) {
+        InlineCodeSpan[] pills = spans(render(markdown, UiKit.SURFACE), InlineCodeSpan.class);
+        assertEquals("expected exactly one pill in: " + markdown, 1, pills.length);
+        return pills[0];
+    }
+
+    private static Paint prosePaint() {
+        Paint paint = new Paint();
+        paint.setTextSize(40f);
+        return paint;
+    }
+
+    private int measured(InlineCodeSpan pill, String text) {
+        return pill.getSize(prosePaint(), text, 0, text.length(), null);
+    }
+
+    /**
+     * The reported case. A pill measures and draws itself, so its trailing padding is what decides
+     * where the next character starts. With one padding value on both sides, the full stop after
+     * {@code `requestId`} began a word-space away from the last letter, and the sentence read as
+     * "requestId ." on the device.
+     */
+    @Test public void punctuationAfterACodeTermSitsAgainstIt() {
+        for (String tail : new String[]{".", ",", ":", ";", "!", "?", ")", "]", "}",
+                "’", "”", "%", "/", "-"}) {
+            InlineCodeSpan attached = pillIn("Keyed by `requestId`" + tail);
+            assertTrue("a '" + tail + "' must not be held off by a word-space of padding",
+                    attached.trailPadding() < attached.leadPadding());
+        }
+    }
+
+    /** Brackets and quotes that open onto a code term close up on the other side. */
+    @Test public void punctuationBeforeACodeTermSitsAgainstItToo() {
+        for (String head : new String[]{"(", "[", "{", "‘", "“", "/", "-"}) {
+            InlineCodeSpan attached = pillIn("Keyed by " + head + "`requestId`");
+            assertTrue("a '" + head + "' must not be held off by a word-space of padding",
+                    attached.leadPadding() < attached.trailPadding());
+        }
+        InlineCodeSpan both = pillIn("Keyed by (`requestId`).");
+        assertEquals("a term wrapped in brackets tightens on both sides",
+                both.leadPadding(), both.trailPadding(), 0.001f);
+    }
+
+    /**
+     * The other half of the fix, and the reason this is not "remove the horizontal padding". A
+     * pill in ordinary prose still needs its full breathing room, or the fill crowds the glyphs.
+     */
+    @Test public void aCodeTermInProseKeepsItsFullBreathingRoom() {
+        InlineCodeSpan prose = pillIn("The `READY` state is next.");
+        InlineCodeSpan punctuated = pillIn("The next state is `READY`.");
+        assertEquals("prose on both sides is the unmodified case",
+                prose.leadPadding(), prose.trailPadding(), 0.001f);
+        assertTrue("tightening must be a reduction from the prose value, not the prose value",
+                punctuated.trailPadding() < prose.trailPadding());
+        assertEquals("the side that still meets prose is untouched",
+                prose.leadPadding(), punctuated.leadPadding(), 0.001f);
+    }
+
+    /** Tightened, never removed: a zero-padding pill would print its fill over the glyphs. */
+    @Test public void noSideOfThePillEverLosesItsPaddingEntirely() {
+        for (String markdown : new String[]{
+                "See `READY`.", "See (`READY`)!", "`READY`,", "-`READY`-",
+                "See `READY` next", "`READY`"}) {
+            InlineCodeSpan pill = pillIn(markdown);
+            assertTrue(markdown + ": leading padding must survive", pill.leadPadding() >= 1f);
+            assertTrue(markdown + ": trailing padding must survive", pill.trailPadding() >= 1f);
+        }
+    }
+
+    /** A run that starts or ends the line has no neighbour, and keeps the prose value. */
+    @Test public void aRunAtTheEdgeOfALineKeepsTheProseValue() {
+        InlineCodeSpan alone = pillIn("`READY`");
+        InlineCodeSpan prose = pillIn("The `READY` state is next.");
+        assertEquals(prose.leadPadding(), alone.leadPadding(), 0.001f);
+        assertEquals(prose.trailPadding(), alone.trailPadding(), 0.001f);
+    }
+
+    /** Letters, digits, spaces and nothing at all are prose, and keep the prose value. */
+    @Test public void onlyPunctuationCountsAsAttached() {
+        char[] ordinary = {'a', 'Z', '0', ' ', InlineCodeSpan.NOTHING};
+        for (char c : ordinary) {
+            assertFalse(c + " is not sentence punctuation", InlineCodeSpan.closesAgainstCode(c));
+            assertFalse(c + " does not open onto a term", InlineCodeSpan.opensAgainstCode(c));
+        }
+        assertTrue(InlineCodeSpan.closesAgainstCode('.'));
+        assertTrue(InlineCodeSpan.opensAgainstCode('('));
+        assertFalse("an opening bracket does not close against the term before it",
+                InlineCodeSpan.closesAgainstCode('('));
+        assertFalse("a full stop does not open onto the term after it",
+                InlineCodeSpan.opensAgainstCode('.'));
+    }
+
+    // ---- measurement -----------------------------------------------------------------------------
+
+    /**
+     * The tightening has to reach the measured width, because that width is the whole mechanism:
+     * the layout places the next character at the pill's trailing edge and nowhere else.
+     */
+    @Test public void theTighteningIsVisibleInTheMeasuredWidth() {
+        InlineCodeSpan prose = pillIn("The `READY` state is next.");
+        InlineCodeSpan punctuated = pillIn("The next state is `READY`.");
+        assertTrue("a pill followed by a full stop must measure narrower",
+                measured(punctuated, "READY") < measured(prose, "READY"));
+    }
+
+    /**
+     * Measurement and drawing must agree exactly. They now share one width, so the fill's trailing
+     * edge and the next character's origin cannot end up a sub-pixel apart.
+     */
+    @Test public void theMeasuredWidthIsStableAndPadded() {
+        InlineCodeSpan pill = pillIn("Keyed by `requestId`.");
+        int first = measured(pill, "requestId");
+        assertEquals("the width must be stable across calls", first, measured(pill, "requestId"));
+        assertTrue("padding is part of the measured width",
+                first >= Math.round(pill.leadPadding() + pill.trailPadding()));
+    }
+
+    /**
+     * A paragraph containing inline code sits on exactly the same line rhythm as one without it.
+     * The pill is inset within the line box rather than pushing it open, so it must leave the font
+     * metrics it is handed completely alone.
+     */
+    @Test public void aPillNeverChangesTheLineHeight() {
+        InlineCodeSpan pill = pillIn("Keyed by `requestId`.");
+        Paint.FontMetricsInt metrics = new Paint.FontMetricsInt();
+        metrics.ascent = -30;
+        metrics.descent = 8;
+        metrics.top = -34;
+        metrics.bottom = 10;
+        metrics.leading = 2;
+        pill.getSize(prosePaint(), "requestId", 0, 9, metrics);
+        assertEquals("line height must be untouched", -30, metrics.ascent);
+        assertEquals(8, metrics.descent);
+        assertEquals(-34, metrics.top);
+        assertEquals(10, metrics.bottom);
+        assertEquals(2, metrics.leading);
+    }
+
+    /** Punctuation spacing is a property of the run, not of the selected font. */
+    @Test public void theTighteningHoldsForEveryOrbitFont() {
+        for (String font : new String[]{"orbit_default", "times_new_roman", "monospace",
+                "condensed", "light"}) {
+            Prefs.get(context).edit().putString(Prefs.APP_FONT, font).commit();
+            InlineCodeSpan punctuated = pillIn("The next state is `READY`.");
+            InlineCodeSpan prose = pillIn("The `READY` state is next.");
+            assertTrue(font + ": a full stop must still sit against the term",
+                    punctuated.trailPadding() < prose.trailPadding());
+            assertEquals(font + ": the prose side is unaffected",
+                    prose.leadPadding(), punctuated.leadPadding(), 0.001f);
+        }
     }
 
     // ---- nothing else changed ---------------------------------------------------------------------

@@ -203,6 +203,11 @@ public final class DiagnosticsActivity extends Activity {
                 ? "None recorded"
                 : d.getString("completion_ignored_detail", "") + " · "
                         + DateFormat.getTimeInstance().format(new Date(ignoredAt));
+        long supersededAt = d.getLong("worker_superseded_at", 0L);
+        String supersededDetail = supersededAt == 0
+                ? "None recorded"
+                : d.getString("worker_superseded_detail", "") + " · "
+                        + DateFormat.getTimeInstance().format(new Date(supersededAt));
         return "\n\nRequest flow" +
                 "\n  Accepted submissions: " + d.getInt("submissions_accepted", 0) +
                 "\n  Suppressed duplicate submissions: " + d.getInt("submissions_suppressed", 0) +
@@ -217,6 +222,11 @@ public final class DiagnosticsActivity extends Activity {
                 "\n  Of those, already answered: "
                         + d.getInt("completions_ignored_duplicate", 0) +
                 "\n  Last refused completion: " + ignoredDetail +
+                // A stopped worker keeps running, so two executions of one request can overlap.
+                // These are the ones that stood down instead of asking the model a second time,
+                // which is what a refusal used to be the only evidence of.
+                "\n  Superseded worker runs: " + d.getInt("worker_attempts_superseded", 0) +
+                "\n  Last superseded run: " + supersededDetail +
                 "\n  Active requests: " + PendingRequestStore.active(this).size();
     }
 
