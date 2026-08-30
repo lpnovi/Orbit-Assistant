@@ -107,6 +107,8 @@ public class OrbitSession extends VoiceInteractionSession {
     private Button selectScreenButton;
     private LinearLayout thinkingIndicator;
     private OrbitThinkingView thinkingOrbital;
+    /** Non-null only while Thinking updates are on and a request is running. */
+    private ThinkingStatusView thinkingStatus;
 
     private String screenText = "";
     private String foregroundPackage = "";
@@ -1769,6 +1771,21 @@ public class OrbitSession extends VoiceInteractionSession {
                         requestConversationId.equals(uiRequestConversationId);
             }
 
+            /**
+             * A status update for the request this sheet is currently showing.
+             *
+             * <p>Guarded by the same {@code ownsCurrentUi} identity check every other callback
+             * here uses, so a status from an earlier request can never appear under a newer one
+             * after the user starts a second conversation or reopens the overlay.
+             */
+            @Override public void onThinking(String requestId, ThinkingUpdate update) {
+                if (update == null) return;
+                main.post(() -> {
+                    if (!ownsCurrentUi() || !sessionVisible) return;
+                    showThinkingStatus(update);
+                });
+            }
+
             @Override public void onDelta(String requestId, String text) {
                 if (text == null || text.isEmpty()) return;
                 main.post(() -> {
@@ -1855,6 +1872,7 @@ public class OrbitSession extends VoiceInteractionSession {
             detachThinkingIndicator(thinkingIndicator, thinkingOrbital);
             thinkingIndicator = null;
             thinkingOrbital = null;
+            thinkingStatus = null;
         }
         if (messages == null) return;
         Context c = getContext();
@@ -1874,9 +1892,50 @@ public class OrbitSession extends VoiceInteractionSession {
                 UiKit.dp(c, 26), UiKit.dp(c, 26)));
         thinkingOrbital.start();
 
+        // Off by default and off here unless the user asked for it: the overlay then looks and
+        // measures exactly as it does today.
+        if (Prefs.thinkingUpdates(c)) {
+            thinkingStatus = new ThinkingStatusView(c, thinkingFill);
+            thinkingStatus.attachTo(thinkingIndicator, "Orbit is thinking");
+            // Fixed width and two reserved lines of height, both settled before any text arrives.
+            // The sheet sits over another app and its composer is right below this row, so the
+            // row is the size it will keep: no update can resize the sheet or move the composer.
+            LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(
+                    ThinkingStatusView.stableWidth(c),
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+            statusLp.setMarginStart(UiKit.dp(c, 9));
+            thinkingIndicator.addView(thinkingStatus, statusLp);
+            // Reopening the sheet on a request that is still running should not blank a status
+            // that is still true, so the last one for that request is put back.
+            ThinkingUpdate current = latestThinkingForCurrentRequest();
+            showThinkingStatus(current != null ? current
+                    : ThinkingUpdate.progress(ThinkingUpdate.Stage.WORKING));
+        }
         messages.addView(thinkingIndicator, bubbleLp(Gravity.START, UiKit.dp(c, 72)));
         UiKit.enterContent(thinkingIndicator);
         scrollBottom();
+    }
+
+    /** Shows one update, if the overlay currently has a status line to show it on. */
+    private void showThinkingStatus(ThinkingUpdate update) {
+        if (thinkingStatus != null) thinkingStatus.setStatus(update);
+    }
+
+    /**
+     * The last status belonging to a request that is genuinely still running for this
+     * conversation, or null.
+     *
+     * <p>Resolved through the pending store rather than from anything remembered in this sheet, so
+     * the id is the durable one and a status can only be restored for a request that really is
+     * still in flight.
+     */
+    private ThinkingUpdate latestThinkingForCurrentRequest() {
+        for (PendingRequestStore.Item item :
+                PendingRequestStore.activeForConversation(getContext(), conversationId)) {
+            ThinkingUpdate update = OrbitRequestManager.latestThinking(item.id);
+            if (update != null) return update;
+        }
+        return null;
     }
 
     /**
@@ -1886,8 +1945,13 @@ public class OrbitSession extends VoiceInteractionSession {
     private void stopThinkingIndicator() {
         final LinearLayout row = thinkingIndicator;
         final OrbitThinkingView orbital = thinkingOrbital;
+        final ThinkingStatusView status = thinkingStatus;
         thinkingIndicator = null;
         thinkingOrbital = null;
+        thinkingStatus = null;
+        // Cleared first, so the answer never lands beneath a stale status line. Every route out
+        // of a request - answer, error, stop, cancellation - comes through here.
+        if (status != null) status.clearStatus();
         if (row == null) return;
         if (orbital != null) orbital.settle();
         if (!UiKit.animationsEnabled()) {

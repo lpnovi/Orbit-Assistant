@@ -23,6 +23,11 @@ final class ChatGptProvider implements AiProvider {
             .reasoningLevels(true)
             .hostedWebSearch(true)
             .routinePlanning(true)
+            // The ChatGPT path speaks a Responses-shaped event stream, which defines
+            // user-facing reasoning-summary events. Whether the account backend behind it
+            // honours a summary request is observed at runtime by ReasoningSummarySupport;
+            // this states only that the protocol carries them and Orbit knows how to read one.
+            .reasoningSummaries(true)
             .build();
 
     @Override public String id() { return Prefs.PROVIDER_CHATGPT; }
@@ -54,7 +59,7 @@ final class ChatGptProvider implements AiProvider {
         ChatGptClient.send(context, request.prompt, request.screenText, request.screenshot,
                 request.history, request.intelligenceMode, request.explicitAttachment,
                 request.notificationContext, request.memoryContext, request.trustedTaskContext,
-                callback);
+                request.thinkingUpdates, callback);
     }
 
     @Override public void plan(Context context, String planningPrompt, String intelligenceMode,

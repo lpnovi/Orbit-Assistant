@@ -24,6 +24,19 @@ public final class OrbitRequestManager {
     public interface Listener {
         default void onStarted(String requestId) {}
         default void onDelta(String requestId, String delta) {}
+        /**
+         * A short, safe status update for a request that is still running.
+         *
+         * <p>Purely observational, and the request id is what makes it safe: a surface compares it
+         * against the request it is currently showing and ignores anything else, so an update from
+         * a request the user has moved on from can never appear under a newer one. That comparison
+         * is on identity, never on text.
+         *
+         * <p>An implementation may only display this. It must not enqueue, retry, complete,
+         * persist, or execute anything, and nothing in the manager will let it: this channel has
+         * no path to the completion gate.
+         */
+        default void onThinking(String requestId, ThinkingUpdate update) {}
         default void onSuccess(String requestId, AssistantReply reply) {}
         default void onError(String requestId, String message) {}
         /**
@@ -47,6 +60,17 @@ public final class OrbitRequestManager {
      * the whole partial answer, which is what a stopped request keeps.
      */
     private static final ConcurrentHashMap<String, String> PARTIALS = new ConcurrentHashMap<>();
+    /**
+     * The newest status update per running request, so a surface that attaches mid-flight has
+     * something to show at once instead of a blank line under a spinning indicator.
+     *
+     * <p>Deliberately in memory only, deliberately one entry per request, and deliberately cleared
+     * by {@link #forget} and by {@link #cancel} the moment a request becomes terminal. It is not
+     * conversation state: it never reaches {@link ConversationStore}, a notification, a backup, or
+     * a model, and losing all of it to process death is the correct outcome rather than a bug. The
+     * answer is durable; commentary about producing it does not need to be.
+     */
+    private static final ConcurrentHashMap<String, ThinkingUpdate> PROGRESS = new ConcurrentHashMap<>();
     /**
      * In-process record of stopped requests. The durable copy lives in {@link PendingRequestStore};
      * this exists so a delta or completion already in flight is refused without a disk read.
@@ -303,6 +327,9 @@ public final class OrbitRequestManager {
             // Refuse deltas and completions from this point on, before anything else can observe
             // a half-cancelled request.
             CANCELLED.add(requestId);
+            // A stopped request must not leave a stale status behind, and nothing may resurrect
+            // one afterwards: dispatchThinking refuses a cancelled id from this instant.
+            PROGRESS.remove(requestId);
             PendingRequestStore.markCancelled(c, requestId);
             partial = takePartial(requestId);
             // The manager is the single owner of partial persistence: whatever had streamed is
@@ -354,6 +381,7 @@ public final class OrbitRequestManager {
     static void resetForTest() {
         LISTENERS.clear();
         PARTIALS.clear();
+        PROGRESS.clear();
         CANCELLED.clear();
         COMPLETION_LOCKS.clear();
         RUNNING_ATTEMPTS.clear();
@@ -400,6 +428,31 @@ public final class OrbitRequestManager {
         if (delta != null && !delta.isEmpty()) PARTIALS.put(id, delta);
         for (Listener l : listeners(id)) try { l.onDelta(id, delta); } catch (Exception ignored) {}
     }
+    /**
+     * Offers one status update to whoever is watching this request.
+     *
+     * <p>Refused for a stopped request, exactly as a delta is, so a Stop silences the status line
+     * as immediately as it silences the answer. Nothing here touches the completion gate, the
+     * pending store, the conversation, or WorkManager; the only effects are the snapshot below and
+     * the listener calls.
+     */
+    static void dispatchThinking(String id, ThinkingUpdate update) {
+        if (update == null || isCancelled(id)) return;
+        if (id != null) PROGRESS.put(id, update);
+        for (Listener l : listeners(id)) try { l.onThinking(id, update); } catch (Exception ignored) {}
+    }
+
+    /**
+     * The last status this request produced, or null when it has produced none or has finished.
+     *
+     * <p>Exists for the handoff between the overlay and full chat inside one process: opening the
+     * other surface on a running request should not blank a status line that is still true.
+     */
+    public static ThinkingUpdate latestThinking(String requestId) {
+        if (requestId == null || isCancelled(requestId)) return null;
+        return PROGRESS.get(requestId);
+    }
+
     static void dispatchSuccess(String id, AssistantReply reply) {
         if (isCancelled(id)) { forget(id); return; }
         for (Listener l : listeners(id)) try { l.onSuccess(id, reply); } catch (Exception ignored) {}
@@ -418,6 +471,9 @@ public final class OrbitRequestManager {
     private static void forget(String id) {
         LISTENERS.remove(id);
         PARTIALS.remove(id);
+        // A terminal request has no status left to report, and every path out of a request
+        // passes through here or through cancel, so this is where a status line stops existing.
+        PROGRESS.remove(id);
         COMPLETION_LOCKS.remove(id);
     }
     private static List<Listener> listeners(String id) {

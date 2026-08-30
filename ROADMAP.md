@@ -738,6 +738,46 @@ request-duplication failures, so this release closes both.
   Private API relay behind More provider options. Availability and status come from `AiProviders`
   rather than a second set of hardcoded strings, and setup stays seven steps
 
+### 0.7.7.8 — Thinking updates
+Shipped as `0.7.7.8-beta.1` and awaiting Galaxy S25 Ultra validation. This release deliberately
+took the Beta slot ahead of Orbit Local device actions, which are unchanged and simply move down
+one place. A long Deep request told the user only that something was happening; the orbital
+indicator says a request is running and nothing more, and on a request that takes twenty seconds
+that is not enough.
+
+- **An optional status line, off by default.** Settings > AI & account > Intelligence gains a
+  **Thinking updates** switch. With it off, the thinking row is exactly what `0.7.7.7` shipped: the
+  orbital indicator alone, no summary requested from any provider, and no extra output paid for
+- **Two sources, kept apart on purpose.** `ThinkingUpdate` distinguishes a provider-published
+  reasoning *summary* from Orbit describing its own execution. Only the provider factory can mint
+  the former, so no Orbit code path can present its own wording as the model's
+- **Never raw chain-of-thought.** Orbit reads only the `response.reasoning_summary_*` events, which
+  are the summary a backend produces for display in answer to `reasoning.summary`. Reasoning text
+  itself and encrypted reasoning content are not read, here or anywhere else, and the event match
+  is anchored so a future event name cannot widen it by accident
+- **Honest Orbit-progress fallback.** Every stage has a real producer: screen context genuinely
+  attached, the resolved model a request was actually sent to, the hosted search tool reporting
+  that it began and finished, and local generation running on the phone. Where Orbit knows nothing
+  more specific the honest answer is "Thinking…" and the animation carries the rest
+- **Provider-agnostic, and honest about the differences.** `AiCapabilities.reasoningSummaries` says
+  which providers can carry a summary at all, and `ReasoningSummarySupport` observes at runtime
+  whether the ChatGPT backend really honours the request, falling back for free on a refusal rather
+  than surfacing an error for an optional status line
+- **Coalesced, not streamed character by character.** `ThinkingUpdateStream` spaces updates, holds
+  back fragments, and freezes a summary paragraph's opening line, so the status reads as a few
+  coherent phrases rather than a caption rewriting itself under the reader
+- **Stable geometry in the overlay.** Fixed width and two reserved lines of height, both settled
+  before any text arrives, so no update can resize the sheet or move the composer beneath it
+- **Ephemeral by construction.** Nothing is appended to `ConversationStore`, sent back as an
+  assistant turn, spoken, notified, backed up, or written to Diagnostics or `RequestTrace`.
+  Diagnostics records counts, a source token, and timestamps, and has no field for the text
+- **Observational only.** The progress channel cannot enqueue, retry, complete, or persist
+  anything. `SubmissionGate`, request identity, the WorkManager execution claim, superseded-worker
+  protection, `PendingRequestStore.claimCompletion`, and `OrbitRequestManager.completeIfNotCancelled`
+  are untouched, and stale updates are refused by request id rather than by comparing text
+- **Auto is untouched.** Fast still means Luna and low, Balanced Terra and medium, Deep Sol and
+  high. Asking for a summary never raises reasoning effort and never delays an answer
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever
@@ -753,7 +793,7 @@ genuinely unfinished remainder of the line, in the order the next patches should
 The long-term goal is unchanged: Orbit becomes a **hybrid, provider-agnostic Android assistant
 runtime** rather than an app tied to one model service.
 
-#### Near-term order, after v0.7.7.7
+#### Near-term order, after v0.7.7.8
 v0.7.7.4 shipped the Beta channel, so this order is now also the order these are expected to be
 *tested* in: a feature becomes a numbered Beta, is validated on a real device, and only then
 becomes a Stable release.
@@ -765,6 +805,11 @@ reports exposed one send producing two requests; both were worth more than anoth
 feature. The Orbit Local device-action plan is unchanged and simply moves down one place, and it
 now has something to reuse: the direct Calendar writer lives in Orbit's common device-action layer,
 so a local action model reaches calendars through the same component rather than a second path.
+
+v0.7.7.8 then took the following Beta slot for Thinking updates, a focused UX release rather than a
+provider one. It is small, it is optional, and it is off by default, so it was worth taking ahead of
+the larger runtime work rather than behind it. Orbit Local device actions remain unstarted and
+unchanged at the head of this list, and the release below them is untouched.
 
 1. **Orbit Local device actions** — a lightweight local intent/function model installed beside the
    chat model (the `ModelSpec` architecture already keeps their files and state independent). The

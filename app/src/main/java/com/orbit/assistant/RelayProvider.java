@@ -44,6 +44,9 @@ final class RelayProvider implements AiProvider {
             .reasoningLevels(true)
             .hostedWebSearch(false)
             .routinePlanning(true)
+            // The relay contract has no progress or summary channel: it answers once, whole.
+            // Orbit-progress states are all a relay turn can honestly show.
+            .reasoningSummaries(false)
             .build();
 
     @Override public String id() { return Prefs.PROVIDER_RELAY; }

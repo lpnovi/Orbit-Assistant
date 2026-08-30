@@ -162,11 +162,12 @@ public final class ChatGptClient {
                 return;
             }
 
-            // No delta forwarding: partial planner JSON is never shown anywhere.
+            // No delta forwarding: partial planner JSON is never shown anywhere. Planning has no
+            // visible thinking indicator either, so it never asks for or reads summaries.
             SseResult stream = readSse(conn.getInputStream(), new AssistantClient.Callback() {
                 @Override public void onSuccess(AssistantReply reply) {}
                 @Override public void onError(String message) {}
-            });
+            }, false);
             if (stream.output == null || stream.output.trim().isEmpty()) {
                 cb.onError("ChatGPT connected but returned no planning response. Try again.");
                 return;
@@ -213,11 +214,29 @@ public final class ChatGptClient {
                             boolean explicitAttachment, String notificationContext,
                             String memoryContext, String trustedTaskContext,
                             AssistantClient.Callback cb) {
+        send(context, prompt, screenText, screenshot, history, intelligenceMode, explicitAttachment,
+                notificationContext, memoryContext, trustedTaskContext, false, cb);
+    }
+
+    /**
+     * As above, told whether the user has Thinking updates on for this turn.
+     *
+     * <p>The flag does two things and nothing else: it decides whether the request asks the
+     * backend for a reasoning <em>summary</em>, and whether the stream reader turns summary and
+     * hosted-search events into status updates. Model, reasoning effort, tools, instructions, and
+     * every other request parameter are identical either way, so a Fast request stays Fast and no
+     * answer is made slower to give the animation something to say.
+     */
+    public static void send(Context context, String prompt, String screenText, Bitmap screenshot,
+                            List<AssistantClient.History> history, String intelligenceMode,
+                            boolean explicitAttachment, String notificationContext,
+                            String memoryContext, String trustedTaskContext,
+                            boolean thinkingUpdates, AssistantClient.Callback cb) {
         ChatGptAuth.getValidTokens(context, false, new ChatGptAuth.TokenCallback() {
             @Override public void onSuccess(SecureStore.ChatGptTokens tokens) {
                 EXEC.execute(() -> doSend(context, prompt, screenText, screenshot, history,
                         intelligenceMode, explicitAttachment, notificationContext, memoryContext,
-                        trustedTaskContext, tokens, false, cb));
+                        trustedTaskContext, thinkingUpdates, tokens, false, cb));
             }
             @Override public void onError(String message) { cb.onError(message); }
         });
@@ -227,13 +246,16 @@ public final class ChatGptClient {
                                List<AssistantClient.History> history, String intelligenceMode,
                                boolean explicitAttachment, String notificationContext,
                                String memoryContext, String trustedTaskContext,
-                               SecureStore.ChatGptTokens tokens,
+                               boolean thinkingUpdates, SecureStore.ChatGptTokens tokens,
                                boolean alreadyRefreshed, AssistantClient.Callback cb) {
         HttpURLConnection conn = null;
+        // Summaries are asked for only when the user wants them and only while the backend has
+        // not already refused them on this device.
+        final boolean askForSummary = thinkingUpdates && ReasoningSummarySupport.mayRequest(context);
         try {
             JSONObject body = requestBody(context, prompt, screenText, screenshot, history,
                     intelligenceMode, explicitAttachment, notificationContext, memoryContext,
-                    trustedTaskContext);
+                    trustedTaskContext, askForSummary);
             conn = (HttpURLConnection) new URL(RESPONSES_URL).openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(15000);
@@ -261,7 +283,7 @@ public final class ChatGptClient {
                     @Override public void onSuccess(SecureStore.ChatGptTokens fresh) {
                         EXEC.execute(() -> doSend(context, prompt, screenText, screenshot, history,
                                 intelligenceMode, explicitAttachment, notificationContext, memoryContext,
-                                trustedTaskContext, fresh, true, cb));
+                                trustedTaskContext, thinkingUpdates, fresh, true, cb));
                     }
                     @Override public void onError(String message) { cb.onError(message); }
                 });
@@ -269,12 +291,36 @@ public final class ChatGptClient {
             }
             if (code < 200 || code >= 300) {
                 String err = ChatGptAuth.readAll(conn.getErrorStream());
+                // A backend that will not accept the summary request must cost the user nothing.
+                // The request was rejected outright, so nothing was generated and nothing was
+                // charged: Orbit records the refusal, stops asking on this device, and answers the
+                // turn normally instead of surfacing a failure for an optional status line.
+                if (askForSummary && ReasoningSummarySupport.looksLikeSummaryRefusal(code, err)) {
+                    // Written synchronously, so the retry below re-reads it and computes
+                    // askForSummary false. That is what makes this one retry rather than a loop.
+                    ReasoningSummarySupport.markUnsupported(context);
+                    conn.disconnect();
+                    conn = null;
+                    // Thinking updates stay on for the retry: only the summary request is dropped,
+                    // so the user still sees Orbit's own progress for this turn.
+                    doSend(context, prompt, screenText, screenshot, history, intelligenceMode,
+                            explicitAttachment, notificationContext, memoryContext,
+                            trustedTaskContext, thinkingUpdates, tokens, alreadyRefreshed, cb);
+                    return;
+                }
                 cb.onError(friendlyHttpError(code, err, Prefs.effectiveModelForMode(context, intelligenceMode, prompt)));
                 return;
             }
 
             boolean hostedSearchAvailable = shouldOfferHostedWebSearch(prompt);
-            SseResult stream = readSse(conn.getInputStream(), cb);
+            if (thinkingUpdates) {
+                // True and known before a single token arrives: this request went to this model at
+                // this effort. It is replaced the moment the backend has something better to say.
+                cb.onThinking(ThinkingUpdate.modelReasoning(
+                        Prefs.effectiveModelForMode(context, intelligenceMode, prompt)));
+            }
+            SseResult stream = readSse(conn.getInputStream(), cb, thinkingUpdates);
+            if (askForSummary) ReasoningSummarySupport.record(context, stream.sawReasoningSummary);
             String output = stream.output;
             if (output.trim().isEmpty()) {
                 cb.onError("ChatGPT connected but returned no assistant text. Try again.");
@@ -292,7 +338,8 @@ public final class ChatGptClient {
     private static JSONObject requestBody(Context context, String prompt, String screenText, Bitmap screenshot,
                                           List<AssistantClient.History> history, String intelligenceMode,
                                           boolean explicitAttachment, String notificationContext,
-                                          String memoryContext, String trustedTaskContext) throws Exception {
+                                          String memoryContext, String trustedTaskContext,
+                                          boolean askForSummary) throws Exception {
         JSONObject root = new JSONObject();
         root.put("model", Prefs.effectiveModelForMode(context, intelligenceMode, prompt));
         String memory = memoryContext == null ? "" : memoryContext.trim();
@@ -322,7 +369,12 @@ public final class ChatGptClient {
 
         String effort = Prefs.effectiveReasoningForMode(context, intelligenceMode, prompt);
         if (effort != null && !effort.isEmpty() && !"none".equals(effort)) {
-            root.put("reasoning", new JSONObject().put("effort", effort));
+            JSONObject reasoning = new JSONObject().put("effort", effort);
+            // The effort is untouched by Thinking updates: this asks the backend to also write a
+            // short summary of the work it was already going to do, and never asks it to think
+            // harder. Auto's calibration and a Fast request's cost are therefore unchanged.
+            if (askForSummary) reasoning.put("summary", "auto");
+            root.put("reasoning", reasoning);
         }
 
         JSONArray input = new JSONArray();
@@ -373,17 +425,38 @@ public final class ChatGptClient {
     private static final class SseResult {
         final String output;
         final String sourceUrl;
-        SseResult(String output, String sourceUrl) {
+        /** True if the backend actually published a user-facing reasoning summary on this stream. */
+        final boolean sawReasoningSummary;
+        SseResult(String output, String sourceUrl, boolean sawReasoningSummary) {
             this.output = output == null ? "" : output;
             this.sourceUrl = sourceUrl == null ? "" : sourceUrl;
+            this.sawReasoningSummary = sawReasoningSummary;
         }
     }
 
-    private static SseResult readSse(InputStream in, AssistantClient.Callback cb) throws Exception {
+    /**
+     * The only event families Orbit will ever turn into visible thinking text.
+     *
+     * <p>{@code response.reasoning_summary_*} carries the summary the backend produces <em>for
+     * display</em> in answer to {@code reasoning.summary}. That is a different thing from the
+     * model's own reasoning: {@code response.reasoning_text.*} and the {@code encrypted_content}
+     * on a reasoning item are hidden chain-of-thought, and Orbit reads neither, here or anywhere
+     * else in the app. The match below is anchored to {@code _summary_} on purpose, so a future
+     * event name cannot quietly widen what Orbit is willing to show.
+     */
+    private static final String SUMMARY_TEXT_PREFIX = "response.reasoning_summary_text.";
+    private static final String SUMMARY_PART_ADDED = "response.reasoning_summary_part.added";
+
+    private static SseResult readSse(InputStream in, AssistantClient.Callback cb,
+                                     boolean thinkingUpdates) throws Exception {
         StringBuilder raw = new StringBuilder();
         String completedFallback = "";
         String discoveredSource = "";
         String lastVisible = "";
+        boolean sawSummary = false;
+        boolean answerStarted = false;
+        // Allocated either way; it holds nothing at all until something feeds it.
+        ThinkingUpdateStream summary = new ThinkingUpdateStream();
         try (BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
             String line;
             while ((line = r.readLine()) != null) {
@@ -399,21 +472,40 @@ public final class ChatGptClient {
                     String visible = removeEmDashes(extractPartialText(raw.toString()));
                     if (!visible.isEmpty() && !visible.equals(lastVisible)) {
                         lastVisible = visible;
+                        // The answer has begun. Nothing past this point may emit another status
+                        // update: answer delivery wins outright, and a summary that arrives late
+                        // must never reappear above text the user is already reading.
+                        answerStarted = true;
                         cb.onDelta(visible);
                     }
                 } else if ("response.output_text.done".equals(type) && raw.length() == 0) {
                     raw.append(event.optString("text", ""));
                 } else if ("response.completed".equals(type)) {
                     completedFallback = extractCompletedText(event);
+                } else if (thinkingUpdates && !answerStarted && SUMMARY_PART_ADDED.equals(type)) {
+                    summary.beginPart();
+                } else if (thinkingUpdates && !answerStarted && type.startsWith(SUMMARY_TEXT_PREFIX)) {
+                    sawSummary = true;
+                    String phrase = type.endsWith(".done")
+                            ? summary.finishPart(System.currentTimeMillis())
+                            : summary.accept(event.optString("delta", ""), System.currentTimeMillis());
+                    if (!phrase.isEmpty()) cb.onThinking(ThinkingUpdate.providerSummary(phrase));
                 } else if (type.toLowerCase(java.util.Locale.US).contains("web_search")) {
                     if (discoveredSource.isEmpty()) discoveredSource = extractSourceUrl(event);
+                    if (thinkingUpdates && !answerStarted) {
+                        // Orbit's own words for something it has genuinely watched happen: the
+                        // hosted search tool reporting that it began, and then that it finished.
+                        cb.onThinking(ThinkingUpdate.progress(type.endsWith(".completed")
+                                ? ThinkingUpdate.Stage.WEB_RESULTS : ThinkingUpdate.Stage.WEB_SEARCH));
+                    }
                 } else if ("response.failed".equals(type) || "error".equals(type)) {
                     String message = extractEventError(event);
                     throw new Exception(message.isEmpty() ? "ChatGPT response failed." : message);
                 }
             }
         }
-        return new SseResult(raw.length() > 0 ? raw.toString() : completedFallback, discoveredSource);
+        return new SseResult(raw.length() > 0 ? raw.toString() : completedFallback,
+                discoveredSource, sawSummary);
     }
 
     /**

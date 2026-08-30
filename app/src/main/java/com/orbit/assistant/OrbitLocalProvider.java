@@ -40,6 +40,10 @@ final class OrbitLocalProvider implements AiProvider {
             .reasoningLevels(false)
             .hostedWebSearch(false)
             .routinePlanning(false)
+            // The packaged local runtime streams answer tokens and nothing else. It exposes no
+            // user-facing summary of its own work, and Orbit will not invent one: what the user
+            // sees during a local turn is Orbit stating that generation is running on the phone.
+            .reasoningSummaries(false)
             .build();
 
     private static final String SYSTEM =
@@ -154,6 +158,13 @@ final class OrbitLocalProvider implements AiProvider {
         final java.util.concurrent.atomic.AtomicBoolean finished =
                 new java.util.concurrent.atomic.AtomicBoolean(false);
         startCancellationWatch(context, request, finished);
+
+        if (request.thinkingUpdates) {
+            // Orbit's own execution state, and the only thing that is true here: the component is
+            // about to generate on this device. No claim is made about how the model is thinking,
+            // because the local runtime does not tell Orbit and Orbit will not guess.
+            callback.onThinking(ThinkingUpdate.progress(ThinkingUpdate.Stage.LOCAL_INFERENCE));
+        }
 
         OrbitLocalClient.generate(context, prompt, new OrbitLocalClient.StreamCallback() {
             @Override public void onPartial(String cumulativeText) {

@@ -31,6 +31,16 @@ public final class AiRequest {
      * {@link OrbitRequestManager} already refuses their late results.
      */
     public final BooleanSupplier cancelled;
+    /**
+     * True when the user has Thinking updates on, so a provider may ask for reasoning summaries.
+     *
+     * <p>Carried on the request rather than read from preferences inside a provider, because the
+     * answer must be the one that was true when this turn was submitted: a request already in
+     * flight keeps the behaviour it started with even if the setting is changed underneath it.
+     * Providers that would pay for summaries in request parameters, cost, or latency ask for them
+     * only when this is true.
+     */
+    public final boolean thinkingUpdates;
 
     private AiRequest(Builder b) {
         this.prompt = b.prompt == null ? "" : b.prompt;
@@ -43,6 +53,7 @@ public final class AiRequest {
         this.memoryContext = b.memoryContext == null ? "" : b.memoryContext;
         this.trustedTaskContext = b.trustedTaskContext == null ? "" : b.trustedTaskContext;
         this.cancelled = b.cancelled == null ? () -> false : b.cancelled;
+        this.thinkingUpdates = b.thinkingUpdates;
     }
 
     public static Builder builder() { return new Builder(); }
@@ -58,6 +69,7 @@ public final class AiRequest {
         private String memoryContext;
         private String trustedTaskContext;
         private BooleanSupplier cancelled;
+        private boolean thinkingUpdates;
 
         public Builder prompt(String v) { prompt = v; return this; }
         public Builder screenText(String v) { screenText = v; return this; }
@@ -69,6 +81,7 @@ public final class AiRequest {
         public Builder memoryContext(String v) { memoryContext = v; return this; }
         public Builder trustedTaskContext(String v) { trustedTaskContext = v; return this; }
         public Builder cancelled(BooleanSupplier v) { cancelled = v; return this; }
+        public Builder thinkingUpdates(boolean v) { thinkingUpdates = v; return this; }
         public AiRequest build() { return new AiRequest(this); }
     }
 }

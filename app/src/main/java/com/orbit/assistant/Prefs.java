@@ -49,6 +49,7 @@ public final class Prefs {
      * surfaces. Off leaves the composer exactly as it was before this option existed.
      */
     public static final String SHOW_STOP_BUTTON = "show_stop_button";
+    public static final String THINKING_UPDATES = "thinking_updates";
     public static final String USER_BUBBLE_COLOR = "user_bubble_color";
     public static final String ASSISTANT_BUBBLE_COLOR = "assistant_bubble_color";
     public static final String CHAT_TEXT_SIZE = "chat_text_size";
@@ -117,6 +118,7 @@ public final class Prefs {
             SPEAK, HAPTICS, AUTO_LISTEN, AUTO_LISTEN_ON_OPEN, SMART_FOLLOW_UPS,
             VOICE_PAUSE_FRIENDLY, NEW_CHAT_ON_OPEN,
             HISTORY_ENABLED, SAVE_SCREEN_THUMBNAILS, KEYBOARD_AWARE_ASSISTANT, SHOW_STOP_BUTTON,
+            THINKING_UPDATES,
             LELO_MODE, BACKGROUND_NOTIFICATIONS, WEATHER_USE_DEVICE_LOCATION,
             MEMORY_ENABLED, MEMORY_USAGE_INDICATOR, MEMORY_SUGGESTIONS,
             NOTIFICATION_AI_ENABLED, AMOLED_MODE, UPDATE_NOTIFICATIONS));
@@ -214,6 +216,15 @@ public final class Prefs {
     public static boolean saveScreenThumbnails(Context c) { return get(c).getBoolean(SAVE_SCREEN_THUMBNAILS, false); }
     public static boolean keyboardAwareAssistant(Context c) { return get(c).getBoolean(KEYBOARD_AWARE_ASSISTANT, true); }
     public static boolean showStopButton(Context c) { return get(c).getBoolean(SHOW_STOP_BUTTON, true); }
+
+    /**
+     * Whether Orbit shows brief status updates beside the thinking indicator while it works.
+     *
+     * <p>Off by default. It changes what the user sees during every single request and can ask a
+     * provider for extra output, so it is something a person turns on rather than something that
+     * appears on its own after an update. The orbital thinking indicator is unaffected either way.
+     */
+    public static boolean thinkingUpdates(Context c) { return get(c).getBoolean(THINKING_UPDATES, false); }
     public static String userBubbleColor(Context c) { return get(c).getString(USER_BUBBLE_COLOR, "classic"); }
     public static String assistantBubbleColor(Context c) { return get(c).getString(ASSISTANT_BUBBLE_COLOR, "classic"); }
     public static String chatTextSize(Context c) {

@@ -24,6 +24,16 @@ public final class AiCapabilities {
     public final boolean hostedWebSearch;
     /** Routine planning requests produce reliable structured output. */
     public final boolean routinePlanning;
+    /**
+     * The provider can stream reasoning <em>summaries</em> that are meant to be shown to the user.
+     *
+     * <p>Narrow on purpose. This is not "the model reasons" and not "reasoning exists somewhere in
+     * the response protocol": it is "this provider publishes a short, user-facing description of
+     * its own work, and Orbit may display it". A provider that only carries hidden reasoning, or
+     * carries it encrypted, declares false and Orbit falls back to describing its own execution
+     * instead. Nothing in Orbit reads private reasoning either way.
+     */
+    public final boolean reasoningSummaries;
 
     private AiCapabilities(Builder b) {
         this.streaming = b.streaming;
@@ -34,6 +44,7 @@ public final class AiCapabilities {
         this.reasoningLevels = b.reasoningLevels;
         this.hostedWebSearch = b.hostedWebSearch;
         this.routinePlanning = b.routinePlanning;
+        this.reasoningSummaries = b.reasoningSummaries;
     }
 
     public static Builder builder() { return new Builder(); }
@@ -47,6 +58,7 @@ public final class AiCapabilities {
         private boolean reasoningLevels;
         private boolean hostedWebSearch;
         private boolean routinePlanning;
+        private boolean reasoningSummaries;
 
         public Builder streaming(boolean v) { streaming = v; return this; }
         public Builder deviceActions(boolean v) { deviceActions = v; return this; }
@@ -56,6 +68,7 @@ public final class AiCapabilities {
         public Builder reasoningLevels(boolean v) { reasoningLevels = v; return this; }
         public Builder hostedWebSearch(boolean v) { hostedWebSearch = v; return this; }
         public Builder routinePlanning(boolean v) { routinePlanning = v; return this; }
+        public Builder reasoningSummaries(boolean v) { reasoningSummaries = v; return this; }
         public AiCapabilities build() { return new AiCapabilities(this); }
     }
 }

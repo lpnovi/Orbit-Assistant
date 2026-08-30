@@ -491,3 +491,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - One tap of Send makes one request, and an interrupted background request never adds a second answer or a false failure.
   - Auto reaches Deep for genuinely hard questions, and setup now presents every provider with its real state.
   - Conversation edges fade softly, inline `code` reads as a tinted chip, and short answers sit centred in their bubble.
+
+- **v0.7.7.8-beta.1**: Orbit can now tell you what it is working on while it thinks, if you want it to.
+  - A new **Thinking updates** switch in Settings, off until you turn it on.
+  - With it on, a short line beside the thinking animation says what Orbit is doing right now.
+  - Updates are brief and truthful: real progress, or a summary the model published for you to read.
+  - Private reasoning is never shown, and no update is saved to your chat, spoken, or sent anywhere.
+  - The line disappears the moment your answer starts, and clears at once if you press Stop.
+  - Fast requests are never slowed down, and Auto still picks the same model it always did.

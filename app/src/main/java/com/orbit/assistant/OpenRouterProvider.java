@@ -22,6 +22,9 @@ final class OpenRouterProvider implements AiProvider {
             .reasoningLevels(true)
             .hostedWebSearch(false)
             .routinePlanning(true)
+            // Chat does not run here at all, so there is no stream to carry a summary and
+            // nothing to claim. Unchanged by this release: OpenRouter stays setup-only.
+            .reasoningSummaries(false)
             .build();
 
     @Override public String id() { return Prefs.PROVIDER_OPENROUTER; }

@@ -147,27 +147,25 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * The 0.7.7.7 line shipped as Betas until Orbit's direct Calendar writes and its request
-     * deduplication were validated on a Galaxy S25 Ultra, and is now promoted to Stable. Writing to
-     * someone's real calendar is exactly the kind of change that must not reach the Stable channel
-     * on the strength of unit tests alone, so this guard now fails publication if the finished
-     * release quietly regains prerelease metadata.
+     * The 0.7.7.8 line ships as Betas until Thinking updates are validated on a Galaxy S25 Ultra.
+     * The feature changes what is shown during every request and asks a live backend for output
+     * Orbit has never requested before, and neither of those is provable from unit tests, so this
+     * guard fails publication if the version quietly loses its Beta metadata and reaches the
+     * Stable channel early.
      */
-    @Test public void thisBuildIsCalendarAndRequestReliabilityStable() {
-        assertFalse(OrbitVersion.installedIsBeta());
-        assertFalse(OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
-        assertTrue(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
-        assertEquals("0.7.7.7", OrbitVersion.baseVersion(BuildConfig.VERSION_NAME));
-        assertEquals("a Stable build carries no beta counter",
-                0, OrbitVersion.betaNumber(BuildConfig.VERSION_NAME));
-        assertEquals("Orbit Assistant v0.7.7.7",
+    @Test public void thisBuildIsAThinkingUpdatesBeta() {
+        assertTrue(OrbitVersion.installedIsBeta());
+        assertTrue(OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+        assertEquals("0.7.7.8", OrbitVersion.baseVersion(BuildConfig.VERSION_NAME));
+        assertTrue("a Beta build carries a real beta counter",
+                OrbitVersion.betaNumber(BuildConfig.VERSION_NAME) >= 1);
+        assertEquals("Orbit Assistant v0.7.7.8 Beta 1",
                 OrbitVersion.releaseTitle(BuildConfig.VERSION_NAME));
-        assertEquals("v0.7.7.7", OrbitVersion.tagFor(BuildConfig.VERSION_NAME));
-        assertFalse("the release workflow must publish it as Stable",
+        assertEquals("v0.7.7.8-beta.1", OrbitVersion.tagFor(BuildConfig.VERSION_NAME));
+        assertTrue("the release workflow must publish it as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(BuildConfig.VERSION_NAME)));
-        assertTrue("and it must outrank 0.7.7.6 and every Beta it was built from",
-                OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.7.7.6") > 0
-                        && OrbitVersion.compareVersions(
-                                BuildConfig.VERSION_NAME, "0.7.7.7-beta.4") > 0);
+        assertTrue("and it must still outrank the Stable release it follows",
+                OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.7.7.7") > 0);
     }
 }

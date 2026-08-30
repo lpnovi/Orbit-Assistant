@@ -73,6 +73,8 @@ public class ChatActivity extends Activity {
     private Button modeChip;
     private LinearLayout thinkingRow;
     private OrbitThinkingView thinkingView;
+    /** Non-null only while Thinking updates are on and a request is running. */
+    private ThinkingStatusView thinkingStatus;
     private boolean followBottom = true;
     /** Set when the next render adds content the user just caused, so only that bubble animates. */
     private boolean animateNewestOnRender;
@@ -408,6 +410,7 @@ public class ChatActivity extends Activity {
         messages.removeAllViews();
         thinkingRow = null;
         thinkingView = null;
+        thinkingStatus = null;
         streamingBubble = null;
         if (history.isEmpty()) {
             TextView welcome = UiKit.text(this, "What can I help with?",
@@ -745,6 +748,20 @@ public class ChatActivity extends Activity {
 
     private OrbitRequestManager.Listener createRequestListener(boolean voiceRequest) {
         return new OrbitRequestManager.Listener() {
+            /**
+             * Shows a status only for a request this screen is still listening to.
+             *
+             * <p>The check is on the request id, never on what the text says. A conversation the
+             * user has navigated away from, or a request that has already ended and been removed
+             * from {@code listeners}, cannot put anything on screen here.
+             */
+            @Override public void onThinking(String requestId, ThinkingUpdate update) {
+                runOnUiThread(() -> {
+                    if (!listeners.containsKey(requestId)) return;
+                    showThinkingStatus(update);
+                });
+            }
+
             @Override public void onDelta(String requestId, String delta) {
                 runOnUiThread(() -> {
                     removeThinkingRow();
@@ -1150,8 +1167,42 @@ public class ChatActivity extends Activity {
                 UiKit.dp(this, 30), UiKit.dp(this, 30)));
         thinkingView.start();
 
+        // With Thinking updates off the row is exactly what it has always been: the orbital
+        // indicator alone. The status line is only ever built when the user asked for it.
+        if (Prefs.thinkingUpdates(this)) {
+            thinkingStatus = new ThinkingStatusView(this, thinkingFill);
+            thinkingStatus.attachTo(thinkingRow, "Orbit is thinking");
+            LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(
+                    ThinkingStatusView.stableWidth(this), ViewGroup.LayoutParams.WRAP_CONTENT);
+            statusLp.setMarginStart(UiKit.dp(this, 10));
+            thinkingRow.addView(thinkingStatus, statusLp);
+            // Whatever this request has already said, so attaching to a running request mid-flight
+            // does not start blank, falling back to the honest generic state.
+            ThinkingUpdate current = latestThinkingForConversation();
+            showThinkingStatus(current != null ? current
+                    : ThinkingUpdate.progress(ThinkingUpdate.Stage.WORKING));
+        }
         messages.addView(thinkingRow, bubbleLp(Gravity.START, UiKit.dp(this, 78)));
         UiKit.enterContent(thinkingRow);
+    }
+
+    /**
+     * The status of a request this screen is actually watching, or null.
+     *
+     * <p>Identity, not text: the snapshot is looked up by the request ids this screen holds
+     * listeners for, so a status belonging to some other request cannot be picked up here.
+     */
+    private ThinkingUpdate latestThinkingForConversation() {
+        for (String requestId : listeners.keySet()) {
+            ThinkingUpdate update = OrbitRequestManager.latestThinking(requestId);
+            if (update != null) return update;
+        }
+        return null;
+    }
+
+    /** Shows one update, if this screen currently has a status line to show it on. */
+    private void showThinkingStatus(ThinkingUpdate update) {
+        if (thinkingStatus != null) thinkingStatus.setStatus(update);
     }
 
 
@@ -1163,8 +1214,13 @@ public class ChatActivity extends Activity {
     private void removeThinkingRow() {
         final LinearLayout row = thinkingRow;
         final OrbitThinkingView view = thinkingView;
+        final ThinkingStatusView status = thinkingStatus;
         thinkingRow = null;
         thinkingView = null;
+        thinkingStatus = null;
+        // Cleared before the row starts fading, so no answer ever appears beneath a stale status
+        // line and accessibility stops announcing the instant the answer takes over.
+        if (status != null) status.clearStatus();
         if (row == null) return;
         if (view != null) view.settle();
         if (!UiKit.animationsEnabled()) {

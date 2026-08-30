@@ -8,6 +8,17 @@ import java.util.List;
 public final class AssistantClient {
     public interface Callback {
         default void onDelta(String text) {}
+        /**
+         * A short, safe statement about what is happening right now, for display only.
+         *
+         * <p>Observational by construction. It carries no reply, claims no completion, and a
+         * provider that never calls it behaves exactly as it did before this existed. Anything a
+         * surface does in response must be limited to what it shows.
+         *
+         * <p>Never persisted, never sent back to a model, and never mixed into the answer: an
+         * update is live commentary on a request in flight and dies with it.
+         */
+        default void onThinking(ThinkingUpdate update) {}
         void onSuccess(AssistantReply reply);
         void onError(String message);
     }
@@ -160,6 +171,20 @@ public final class AssistantClient {
                     Prefs.effectiveReasoningForMode(context, requestMode, prompt));
         }
 
+        // Thinking updates are decided once, here, and then travel with the request. Reading the
+        // preference again inside a provider would let a setting change mid-flight alter a turn
+        // that had already started.
+        final boolean thinkingUpdates = Prefs.thinkingUpdates(context);
+        if (thinkingUpdates) {
+            // The first thing Orbit can honestly say. Screen context is claimed only when this
+            // request genuinely carries it, so the line describes the request that was actually
+            // built rather than the setting that might have allowed one.
+            boolean usingScreen = (Prefs.screenContext(context) || explicitAttachment)
+                    && screenText != null && !screenText.trim().isEmpty();
+            responseCallback.onThinking(ThinkingUpdate.progress(usingScreen
+                    ? ThinkingUpdate.Stage.SCREEN_CONTEXT : ThinkingUpdate.Stage.WORKING));
+        }
+
         // Everything above is Orbit's provider-independent pipeline. From here the active
         // provider owns the request; its own send() reports readiness problems (sign-in,
         // missing local model, missing relay) through the callback in plain language.
@@ -174,6 +199,7 @@ public final class AssistantClient {
                 .memoryContext(memorySelection.promptContext)
                 .trustedTaskContext(trustedTaskContext)
                 .cancelled(cancelled)
+                .thinkingUpdates(thinkingUpdates)
                 .build();
         AiProviders.active(context).send(context, request, responseCallback);
     }
@@ -226,6 +252,12 @@ public final class AssistantClient {
         return new Callback() {
             @Override public void onDelta(String text) {
                 downstream.onDelta(text);
+            }
+
+            @Override public void onThinking(ThinkingUpdate update) {
+                // Passed straight through. Memory metadata belongs to the answer; a status line
+                // is not an answer and is never decorated, stored, or remembered.
+                downstream.onThinking(update);
             }
 
             @Override public void onSuccess(AssistantReply reply) {

@@ -184,6 +184,7 @@ public final class DiagnosticsActivity extends Activity {
                 "\nLast overlay launch: " + OverlayLaunchTrace.summary(this) +
                 "\nLast error: " + error +
                 requestFlow(d) +
+                thinkingUpdates() +
                 CalendarDiagnostics.report(this) +
                 orbitLocal(d) +
                 lastRoutinePlan(d);
@@ -228,6 +229,32 @@ public final class DiagnosticsActivity extends Activity {
                 "\n  Superseded worker runs: " + d.getInt("worker_attempts_superseded", 0) +
                 "\n  Last superseded run: " + supersededDetail +
                 "\n  Active requests: " + PendingRequestStore.active(this).size();
+    }
+
+    /**
+     * Enough to tell whether Thinking updates are working, and where an update came from.
+     *
+     * <p>Shape only, and deliberately so. Whether the feature is on, whether the active provider's
+     * protocol can carry a user-facing summary, whether this backend has actually produced one,
+     * how many updates have been shown, when the last one was, and whether the last status handed
+     * over to a real answer. What any update <em>said</em> is not here, is not stored anywhere, and
+     * has no field to be stored in: reasoning summaries are ephemeral display text and Orbit does
+     * not keep them.
+     */
+    private String thinkingUpdates() {
+        AiProvider provider = AiProviders.active(this);
+        long lastAt = ReasoningSummarySupport.lastUpdateAt(this);
+        return "\n\nThinking updates" +
+                "\n  Setting: " + (Prefs.thinkingUpdates(this) ? "enabled" : "disabled") +
+                "\n  Provider carries reasoning summaries: "
+                        + (provider.capabilities().reasoningSummaries ? "yes" : "no") +
+                "\n  Backend has produced a summary: " + ReasoningSummarySupport.stateLabel(this) +
+                "\n  Last thinking source: " + ReasoningSummarySupport.lastSource(this) +
+                "\n  Thinking updates received: " + ReasoningSummarySupport.updatesReceived(this) +
+                "\n  Last update at: " + (lastAt == 0 ? "Never"
+                        : DateFormat.getDateTimeInstance().format(new Date(lastAt))) +
+                "\n  Last status handed over to an answer: "
+                        + (ReasoningSummarySupport.lastRequestReachedAnswer(this) ? "yes" : "no");
     }
 
     private String orNone(String value) {

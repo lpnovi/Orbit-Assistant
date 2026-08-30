@@ -253,10 +253,38 @@ public final class OrbitRequestWorker extends Worker {
                 mode, item.explicitAttachment, item.trustedTaskContext,
                 () -> isStopped() || OrbitRequestManager.isCancelled(c, requestId),
                 new AssistantClient.Callback() {
+                    /**
+                     * True once any answer text has streamed. A status update after that point is
+                     * dropped here rather than at the UI, so no surface has to defend itself
+                     * against a summary that arrives beside an answer already on screen.
+                     */
+                    private boolean answerStarted = false;
+                    private boolean showedStatus = false;
+
                     @Override public void onDelta(String text) {
                         if (streamDeltas && text != null && !text.isEmpty()) {
+                            if (!answerStarted && showedStatus) {
+                                ReasoningSummarySupport.recordHandoff(c, true);
+                            }
+                            answerStarted = true;
                             OrbitRequestManager.dispatchDelta(requestId, text);
                         }
+                    }
+
+                    @Override public void onThinking(ThinkingUpdate update) {
+                        // Tied to the same switch as the deltas: an execution whose output is not
+                        // being shown has no business narrating itself either.
+                        if (!streamDeltas || update == null || answerStarted) return;
+                        // Written pessimistically at the first status and corrected to true only
+                        // if answer text actually follows, so the diagnostic reads "did this end
+                        // in an answer" rather than "did it start".
+                        if (!showedStatus) ReasoningSummarySupport.recordHandoff(c, false);
+                        showedStatus = true;
+                        ReasoningSummarySupport.recordDisplayed(c, update);
+                        // Observational only: the manager forwards this to whatever is watching
+                        // and does nothing else with it. The request's own lifecycle - its
+                        // execution claim, its completion claim, its retries - is untouched.
+                        OrbitRequestManager.dispatchThinking(requestId, update);
                     }
 
                     @Override public void onSuccess(AssistantReply reply) {

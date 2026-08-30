@@ -707,6 +707,12 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         TextView cost = UiKit.text(this, "ChatGPT-account mode uses your account-backed allowance. Orbit never silently switches to the separately metered API-relay fallback.", 12, UiKit.MUTED, false);
         cost.setPadding(0, UiKit.dp(this, 8), 0, 0);
         aiCard.addView(cost);
+        // Sits with Intelligence because it is about how a request behaves while it runs, and it
+        // takes effect on the next request with no restart and no extra setup step.
+        aiCard.addView(toggle("Thinking updates",
+                "Show brief updates about what Orbit is working on while it prepares an answer. "
+                        + "Never shows private chain-of-thought.",
+                Prefs.THINKING_UPDATES, false));
         page.addView(aiCard);
 
         page.addView(sectionTitle("DIAGNOSTICS", "diagnostics"));
