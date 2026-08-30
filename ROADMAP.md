@@ -739,11 +739,18 @@ request-duplication failures, so this release closes both.
   rather than a second set of hardcoded strings, and setup stays seven steps
 
 ### 0.7.7.8 — Thinking updates
-Shipped as `0.7.7.8-beta.1` and awaiting Galaxy S25 Ultra validation. This release deliberately
-took the Beta slot ahead of Orbit Local device actions, which are unchanged and simply move down
-one place. A long Deep request told the user only that something was happening; the orbital
-indicator says a request is running and nothing more, and on a request that takes twenty seconds
-that is not enough.
+Shipped as `0.7.7.8-beta.1`, then refined in `0.7.7.8-beta.2`. This release deliberately took the
+Beta slot ahead of Orbit Local device actions, which are unchanged and simply move down one place.
+A long Deep request told the user only that something was happening; the orbital indicator says a
+request is running and nothing more, and on a request that takes twenty seconds that is not enough.
+
+**Beta 1 answered the open question on real hardware.** The design had to allow for the
+ChatGPT-account Codex backend refusing `reasoning.summary`, because that is a server-side decision
+Orbit cannot know in advance. A Galaxy S25 Ultra Deep request reported `Provider carries reasoning
+summaries: yes`, `Backend has produced a summary: yes`, `Last thinking source: provider-summary`,
+45 updates received, and `Last status handed over to an answer: yes`. So the safe summary path is
+genuinely live, not a fallback dressed up as one, and the Beta 1 transport, event parsing,
+coalescing, and request-safety architecture are frozen from that point.
 
 - **An optional status line, off by default.** Settings > AI & account > Intelligence gains a
   **Thinking updates** switch. With it off, the thinking row is exactly what `0.7.7.7` shipped: the
@@ -777,6 +784,31 @@ that is not enough.
   are untouched, and stale updates are refused by request id rather than by comparing text
 - **Auto is untouched.** Fast still means Luna and low, Balanced Terra and medium, Deep Sol and
   high. Asking for a summary never raises reasoning effort and never delays an answer
+
+Beta 2 changed nothing about any of the above. It is three focused refinements on top of it:
+
+- **On by default.** Beta 1 shipped the switch off because nothing was proven yet; Beta 2 makes it
+  part of Orbit's normal experience. The change is one default value and no migration code, because
+  the distinction that matters is between an absent preference and a stored `false`: an upgrade
+  from `0.7.7.7` has never stored one and gets the new default, while anyone who turned it off
+  keeps it off. The switch stays, so it can always be turned back off
+- **A stopped turn now looks stopped.** Stopping mid-thought used to leave the question with
+  nothing under it, which reads as a silent failure rather than as something the user did. Orbit
+  now leaves an interrupted orbital mark: the same core and the same tilted ellipse as the thinking
+  indicator, drawn as an arc with a clean cut and one particle at rest on the break. No error
+  colour, no cross, no warning glyph, because stopping is not a failure. It is rendered from
+  `PendingRequestStore.stoppedTailForConversation`, a derived view of the existing cancelled
+  status, so it survives reopening the chat and an Activity recreation without a single word of
+  fake model output being written, and it retires itself when the next turn is asked. A partial
+  answer is kept exactly as before, with the mark beneath it
+- **Diagnostics gained progressive disclosure.** The report had grown to a wall of text that had to
+  be read in full to find anything. The screen now opens on a compact Overview with every detailed
+  block behind a collapsed section, and copying splits into a short support-shaped **Copy summary**
+  and the unchanged verbose **Copy full diagnostics**. Nothing was deleted; the request-flow
+  counters that diagnosed the duplication failures are intact. One privacy finding came out of the
+  audit: the raw Routine planner response is model output derived from a description the user
+  typed, so it could name people and places they mentioned, and it was being appended to the copied
+  report. It is now on the device only, behind its own disclosure and its own labelled copy control
 
 ## Future direction
 

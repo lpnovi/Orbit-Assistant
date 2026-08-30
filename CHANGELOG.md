@@ -499,3 +499,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Private reasoning is never shown, and no update is saved to your chat, spoken, or sent anywhere.
   - The line disappears the moment your answer starts, and clears at once if you press Stop.
   - Fast requests are never slowed down, and Auto still picks the same model it always did.
+
+- **v0.7.7.8-beta.2**: Thinking updates are on by default, stopping a reply leaves a clear mark, and Diagnostics is far easier to read.
+  - Thinking updates now start switched on. If you turned them off in Beta 1, they stay off.
+  - Stopping a reply leaves a small interrupted Orbit mark instead of the turn seeming to vanish.
+  - Anything Orbit had already written before you stopped is kept, with the mark beneath it.
+  - The mark is still there when you reopen the chat, and clears itself when you ask something else.
+  - Diagnostics opens on a short Overview, with every detailed section one tap away.
+  - New **Copy summary** for support, alongside the full report; neither now includes your routine wording.

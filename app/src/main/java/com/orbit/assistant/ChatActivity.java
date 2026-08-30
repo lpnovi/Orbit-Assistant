@@ -78,6 +78,8 @@ public class ChatActivity extends Activity {
     private boolean followBottom = true;
     /** Set when the next render adds content the user just caused, so only that bubble animates. */
     private boolean animateNewestOnRender;
+    /** Set only by a Stop the user just performed, so the mark settles once and never replays. */
+    private boolean animateStoppedMarker;
     private TextView streamingBubble;
     private String currentMode;
 
@@ -427,7 +429,10 @@ public class ChatActivity extends Activity {
             }
         }
         if (PendingRequestStore.hasActiveForConversation(this, conversationId)) addThinkingRow();
-        else addFailureStateIfNeeded();
+        else {
+            addFailureStateIfNeeded();
+            addStoppedMarkerIfNeeded();
+        }
         // Every path that redraws the conversation also settles Send/Stop, so the control can
         // never be left showing the wrong one.
         updateComposerAction();
@@ -807,6 +812,11 @@ public class ChatActivity extends Activity {
                     // the partial answer with its ordinary Copy and Regenerate controls, and shows
                     // nothing at all when the reply had not started. Stopping is not a failure, so
                     // no error bubble and no Retry appear either way.
+                    //
+                    // What the reload now also shows is the stopped mark, because the request is
+                    // durably cancelled and is this conversation's newest one. This is the only
+                    // place that asks for it to settle visibly rather than simply be there.
+                    animateStoppedMarker = true;
                     reloadConversation();
                 });
             }
@@ -1784,6 +1794,46 @@ public class ChatActivity extends Activity {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.setMargins(0, UiKit.dp(this, 3), 0, UiKit.dp(this, 8));
         messages.addView(row, lp);
+    }
+
+    /**
+     * The mark left behind when the user stopped a reply.
+     *
+     * <p>Rendered from {@link PendingRequestStore#stoppedTailForConversation}, so it is a view of
+     * durable request state rather than anything written into the conversation. That is what makes
+     * it survive leaving the screen, reopening the chat, an Activity recreation, and process
+     * death, without a single word of fake model output being persisted to achieve it.
+     *
+     * <p>No bubble around it. A stopped turn produced no answer, and wrapping the mark in an
+     * assistant bubble would make an absence look like a message. It occupies the space it needs
+     * and no more, and it carries the meaning for accessibility that the glyph carries visually.
+     */
+    private void addStoppedMarkerIfNeeded() {
+        if (PendingRequestStore.stoppedTailForConversation(this, conversationId) == null) return;
+        boolean animate = animateStoppedMarker;
+        animateStoppedMarker = false;
+
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(UiKit.dp(this, 4), 0, 0, 0);
+        // TalkBack is told what happened in words; the mark itself stays wordless on screen.
+        row.setContentDescription("Response stopped");
+        row.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+
+        OrbitStoppedView mark = new OrbitStoppedView(this, UiKit.BG);
+        row.addView(mark, new LinearLayout.LayoutParams(UiKit.dp(this, 22), UiKit.dp(this, 22)));
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.gravity = Gravity.START;
+        lp.setMargins(0, UiKit.dp(this, 2), 0, UiKit.dp(this, 6));
+        messages.addView(row, lp);
+        // Only a stop the user just performed settles visibly. Reopening a conversation that
+        // already ended this way simply shows the finished mark.
+        if (animate) {
+            mark.resolve();
+            UiKit.enterContent(row);
+        }
     }
 
     private void retryFailed(PendingRequestStore.Item failed) {

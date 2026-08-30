@@ -51,8 +51,18 @@ public final class CalendarDiagnostics {
                 .apply();
     }
 
-    /** The Calendar block of the diagnostics report. */
+    /** The Calendar block of the diagnostics report, heading included. */
     public static String report(Context c) {
+        return "\n\nCalendar" + body(c);
+    }
+
+    /**
+     * The same lines without the heading, for the sectioned Diagnostics screen.
+     *
+     * <p>Split out rather than duplicated so the collapsible section and the copied report can
+     * never describe the calendar differently.
+     */
+    public static String body(Context c) {
         SharedPreferences d = DiagnosticStore.prefs(c);
         long updated = d.getLong("calendar_updated", 0L);
         boolean access = OrbitCalendarStore.hasAccess(c);
@@ -60,8 +70,7 @@ public final class CalendarDiagnostics {
         OrbitCalendarStore.Target target = access ? OrbitCalendarStore.resolveTarget(c) : null;
         String lastError = d.getString("calendar_last_error", "");
 
-        return "\n\nCalendar"
-                + "\n  Direct calendar writes: available"
+        return "\n  Direct calendar writes: available"
                 + "\n  Permission: " + (access ? "granted" : "not granted")
                 + "\n  Writable calendars: " + writable
                 + "\n  Selected calendar: " + (target == null

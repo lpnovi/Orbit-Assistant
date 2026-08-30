@@ -709,10 +709,12 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         aiCard.addView(cost);
         // Sits with Intelligence because it is about how a request behaves while it runs, and it
         // takes effect on the next request with no restart and no extra setup step.
+        // On unless the user says otherwise, and the switch stays so they always can. The default
+        // comes from Prefs rather than a literal here, so the two cannot drift apart.
         aiCard.addView(toggle("Thinking updates",
                 "Show brief updates about what Orbit is working on while it prepares an answer. "
                         + "Never shows private chain-of-thought.",
-                Prefs.THINKING_UPDATES, false));
+                Prefs.THINKING_UPDATES, Prefs.THINKING_UPDATES_DEFAULT));
         page.addView(aiCard);
 
         page.addView(sectionTitle("DIAGNOSTICS", "diagnostics"));

@@ -840,6 +840,12 @@ public class OrbitSession extends VoiceInteractionSession {
                 addPersistedActionCards(i);
             }
         }
+        // Reopening the sheet on a conversation whose last turn was stopped shows the same mark
+        // it showed at the time, because it is read from the request record rather than from
+        // anything this sheet happened to remember.
+        if (PendingRequestStore.stoppedTailForConversation(getContext(), conversationId) != null) {
+            addStoppedMarker(false);
+        }
         scrollBottom();
     }
 
@@ -2447,8 +2453,46 @@ public class OrbitSession extends VoiceInteractionSession {
                 discardStreamingBubble();
             }
         }
+        // The orbital has just settled out; this settles in behind it, so the sheet shows the turn
+        // ending deliberately instead of the reply appearing to vanish. It sits after whatever
+        // partial answer was kept, which is what says "this response ended here".
+        if (sessionVisible) addStoppedMarker(true);
         updateComposerAction();
         traceComposer("response.stopped");
+    }
+
+    /**
+     * The mark left behind when the user stopped a reply.
+     *
+     * <p>Same meaning and same glyph as full chat, and read from the same durable request state,
+     * so the two surfaces cannot disagree about whether a turn was stopped. Nothing is written to
+     * the conversation to produce it: a stopped turn is Orbit's own UI state, not model output.
+     *
+     * @param animate true only for a stop happening in front of the user right now.
+     */
+    private void addStoppedMarker(boolean animate) {
+        if (messages == null) return;
+        Context c = getContext();
+        LinearLayout row = new LinearLayout(c);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(UiKit.dp(c, 4), 0, 0, 0);
+        row.setContentDescription("Response stopped");
+        row.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+
+        OrbitStoppedView mark = new OrbitStoppedView(c, UiKit.BG);
+        row.addView(mark, new LinearLayout.LayoutParams(UiKit.dp(c, 20), UiKit.dp(c, 20)));
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.gravity = Gravity.START;
+        lp.setMargins(0, UiKit.dp(c, 1), 0, UiKit.dp(c, 4));
+        messages.addView(row, lp);
+        if (animate) {
+            mark.resolve();
+            UiKit.enterContent(row);
+        }
+        scrollBottom();
     }
 
     private void executeActions(List<AssistantReply.Action> actions, int index) {

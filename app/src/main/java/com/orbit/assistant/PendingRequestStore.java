@@ -132,6 +132,42 @@ public final class PendingRequestStore {
         return failed.isEmpty() ? null : failed.get(0);
     }
 
+    /**
+     * The most recent request of any status for one conversation, or null.
+     *
+     * <p>Ordered by creation rather than by last update, because this answers "which turn came
+     * last", and a request's status can change long after a newer one was already queued.
+     */
+    public static synchronized Item newestForConversation(Context c, String conversationId) {
+        if (c == null || conversationId == null) return null;
+        Item newest = null;
+        for (Item i : readAll(c)) {
+            if (!conversationId.equals(i.conversationId)) continue;
+            if (newest == null || i.createdAt > newest.createdAt) newest = i;
+        }
+        return newest;
+    }
+
+    /**
+     * The request behind a visible "you stopped this" marker, or null when none should be shown.
+     *
+     * <p>This is the durable representation of a stopped turn, and it is deliberately derived
+     * rather than stored a second time: {@link #markCancelled} already records the fact, so
+     * rendering reads that instead of inventing a parallel state or, worse, writing a fake
+     * assistant message saying "Stopped". Nothing about a stopped turn is model output, so nothing
+     * about it is kept as model output.
+     *
+     * <p>Only the conversation's newest request qualifies. Every user turn creates one of these,
+     * so a request that has been followed by another turn is no longer the tail of the
+     * conversation and its marker would be pointing at the wrong place. That single rule is what
+     * makes the marker appear after a stop, survive reopening the chat, and disappear by itself
+     * the moment the user asks something else.
+     */
+    public static synchronized Item stoppedTailForConversation(Context c, String conversationId) {
+        Item newest = newestForConversation(c, conversationId);
+        return newest != null && CANCELLED.equals(newest.status) ? newest : null;
+    }
+
     /** True once a request can no longer change state, whichever way it ended. */
     public static boolean isTerminal(String status) {
         return DONE.equals(status) || FAILED.equals(status) || CANCELLED.equals(status);

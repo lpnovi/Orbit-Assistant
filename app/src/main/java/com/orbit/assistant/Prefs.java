@@ -218,13 +218,28 @@ public final class Prefs {
     public static boolean showStopButton(Context c) { return get(c).getBoolean(SHOW_STOP_BUTTON, true); }
 
     /**
+     * The answer for someone who has never expressed a preference.
+     *
+     * <p>v0.7.7.8 Beta 1 shipped this off, because at that point nobody knew whether the ChatGPT
+     * backend would produce real reasoning summaries or whether the status line would behave on a
+     * real device. Galaxy S25 Ultra testing answered both: genuine provider summaries arrive, the
+     * handoff to the answer is clean, and the answer is not delayed. So it now belongs in Orbit's
+     * normal experience and is on unless the user says otherwise.
+     */
+    public static final boolean THINKING_UPDATES_DEFAULT = true;
+
+    /**
      * Whether Orbit shows brief status updates beside the thinking indicator while it works.
      *
-     * <p>Off by default. It changes what the user sees during every single request and can ask a
-     * provider for extra output, so it is something a person turns on rather than something that
-     * appears on its own after an update. The orbital thinking indicator is unaffected either way.
+     * <p>The default only ever applies to an <em>absent</em> preference, which is exactly the
+     * behaviour this needs. Someone upgrading from v0.7.7.7 has never stored a value and gets the
+     * new default; someone who turned it off in Beta 1 has {@code false} stored and keeps it. That
+     * distinction is the whole reason nothing here writes a value: an explicit choice is only ever
+     * created by the user touching the switch, so no update can overwrite one.
      */
-    public static boolean thinkingUpdates(Context c) { return get(c).getBoolean(THINKING_UPDATES, false); }
+    public static boolean thinkingUpdates(Context c) {
+        return get(c).getBoolean(THINKING_UPDATES, THINKING_UPDATES_DEFAULT);
+    }
     public static String userBubbleColor(Context c) { return get(c).getString(USER_BUBBLE_COLOR, "classic"); }
     public static String assistantBubbleColor(Context c) { return get(c).getString(ASSISTANT_BUBBLE_COLOR, "classic"); }
     public static String chatTextSize(Context c) {

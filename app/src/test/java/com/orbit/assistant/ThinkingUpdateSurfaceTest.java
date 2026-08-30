@@ -93,12 +93,18 @@ public final class ThinkingUpdateSurfaceTest {
 
     // ---- the setting is what decides -------------------------------------------------------------
 
-    /** Off is the shipped default, and off means today's experience exactly. */
-    @Test public void theSettingIsOffByDefault() {
-        assertFalse(Prefs.thinkingUpdates(context));
+    /**
+     * On by default from Beta 2, after real-device testing proved the feature out. The three
+     * preference states themselves are covered in {@link ThinkingUpdateDefaultTest}; what matters
+     * here is that the conversation actually reflects whichever one applies.
+     */
+    @Test public void theSettingIsOnByDefault() {
+        assertTrue(Prefs.thinkingUpdates(context));
     }
 
+    /** Turning it off must still give back exactly the v0.7.7.7 thinking row. */
     @Test public void withTheSettingOffTheThinkingRowIsTheOrbitalIndicatorAlone() {
+        Prefs.get(context).edit().putBoolean(Prefs.THINKING_UPDATES, false).commit();
         String conversationId = seedRunningConversation();
         ActivityController<ChatActivity> controller = openChat(conversationId);
 
@@ -234,8 +240,9 @@ public final class ThinkingUpdateSurfaceTest {
         assertEquals("", status.getText().toString());
     }
 
-    /** The row keeps a meaningful description with the feature off, exactly as it does today. */
+    /** The row keeps a meaningful description with the feature off, exactly as it did before. */
     @Test public void theThinkingRowKeepsItsDescriptionWithTheFeatureOff() {
+        Prefs.get(context).edit().putBoolean(Prefs.THINKING_UPDATES, false).commit();
         String conversationId = seedRunningConversation();
         ActivityController<ChatActivity> controller = openChat(conversationId);
 
