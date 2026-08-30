@@ -507,3 +507,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - The mark is still there when you reopen the chat, and clears itself when you ask something else.
   - Diagnostics opens on a short Overview, with every detailed section one tap away.
   - New **Copy summary** for support, alongside the full report; neither now includes your routine wording.
+
+- **v0.7.7.8-beta.3**: A stopped reply now stays with the question you stopped, and its mark is easier to see.
+  - The stopped mark stays under the question it belongs to, even after you send another message.
+  - Stop several replies in one chat and each keeps its own mark, in the right place.
+  - Anything Orbit had already written stays above its mark, and the next question starts below both.
+  - The mark is a little larger and easier to recognise, still quiet and still not an error.
+  - Diagnostics no longer reports a problem Orbit already fixed as though it were happening now.
+  - The full diagnostics report still keeps that history, clearly marked as resolved.

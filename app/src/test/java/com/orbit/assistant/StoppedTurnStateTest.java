@@ -61,6 +61,57 @@ public final class StoppedTurnStateTest {
                 Prefs.MODE_DEEP, false, "");
     }
 
+    /** One more turn on an existing conversation, the way sending another message behaves. */
+    private PendingRequestStore.Item ask(String conversationId, String prompt) {
+        ConversationStore.appendMessage(context, conversationId,
+                new AssistantClient.History("user", prompt));
+        return PendingRequestStore.create(context, conversationId, prompt, "", "", false, false,
+                Prefs.MODE_DEEP, false, "");
+    }
+
+    /** Finishes a turn the way a successful completion does. */
+    private void answer(String conversationId, PendingRequestStore.Item item, String text) {
+        PendingRequestStore.markDone(context, item.id);
+        ConversationStore.appendMessage(context, conversationId,
+                new AssistantClient.History("assistant", text));
+    }
+
+    /** Which request ids the conversation itself says were stopped, in turn order. */
+    private List<String> anchors(String conversationId) {
+        return ConversationStore.stoppedRequestIds(context, conversationId);
+    }
+
+    /**
+     * The conversation as it actually reads down the screen.
+     *
+     * <p>A depth-first walk is top-to-bottom order for Orbit's vertical message column, so this is
+     * the real rendered sequence rather than a restatement of the state the render was built from.
+     * Only the messages a test named are reported, plus every stopped mark, so unrelated labels
+     * and controls cannot make an assertion pass or fail by accident.
+     */
+    private static List<String> shape(Activity activity, String... interesting) {
+        List<String> wanted = java.util.Arrays.asList(interesting);
+        List<String> out = new ArrayList<>();
+        collectShape(activity.getWindow().getDecorView(), wanted, out);
+        return out;
+    }
+
+    private static void collectShape(View view, List<String> wanted, List<String> out) {
+        CharSequence description = view.getContentDescription();
+        if (description != null && "Response stopped".contentEquals(description)) {
+            out.add("stopped");
+            return;
+        }
+        if (view instanceof TextView) {
+            String text = ((TextView) view).getText().toString();
+            if (wanted.contains(text)) out.add(text);
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) collectShape(group.getChildAt(i), wanted, out);
+        }
+    }
+
     private static List<View> descendants(View root) {
         List<View> out = new ArrayList<>();
         out.add(root);
@@ -86,40 +137,52 @@ public final class StoppedTurnStateTest {
 
     // ---- the durable representation ----------------------------------------------------------------
 
-    @Test public void aStoppedRequestBecomesTheConversationsStoppedTail() {
-        PendingRequestStore.Item item = queue("c-stop-tail");
-        assertNull("nothing is stopped yet",
-                PendingRequestStore.stoppedTailForConversation(context, "c-stop-tail"));
+    @Test public void aStoppedRequestIsAnchoredToItsOwnTurn() {
+        PendingRequestStore.Item item = queue("c-anchor");
+        assertTrue("nothing is stopped yet", anchors("c-anchor").isEmpty());
 
         assertTrue(OrbitRequestManager.cancel(context, item.id));
 
-        PendingRequestStore.Item stopped =
-                PendingRequestStore.stoppedTailForConversation(context, "c-stop-tail");
-        assertNotNull(stopped);
-        assertEquals(item.id, stopped.id);
-        assertEquals(PendingRequestStore.CANCELLED, stopped.status);
+        assertEquals("the stop is recorded against the turn it ended",
+                java.util.Collections.singletonList(item.id), anchors("c-anchor"));
+        assertTrue(PendingRequestStore.isStoppedRequest(context, item.id));
+        // Case A: no text arrived, so the question itself is the end of the stopped turn.
+        ConversationStore.Conversation chat = ConversationStore.load(context, "c-anchor");
+        assertEquals(1, chat.messages.size());
+        assertEquals(item.id, chat.messages.get(0).stoppedRequestId);
     }
 
-    /** The mark belongs to the last turn, so asking something else retires it by itself. */
-    @Test public void askingAnotherQuestionRetiresTheMark() {
+    /**
+     * The Beta 2 bug, at the level of state: asking something else must not move the anchor.
+     *
+     * <p>Beta 2 derived the mark from "the conversation's newest request is cancelled", so a
+     * second turn made the first turn's stop stop being describable at all.
+     */
+    @Test public void askingAnotherQuestionLeavesTheMarkOnItsOwnTurn() {
         PendingRequestStore.Item stoppedItem = queue("c-stop-next");
         OrbitRequestManager.cancel(context, stoppedItem.id);
-        assertNotNull(PendingRequestStore.stoppedTailForConversation(context, "c-stop-next"));
+        assertEquals(java.util.Collections.singletonList(stoppedItem.id), anchors("c-stop-next"));
 
-        queue("c-stop-next");
-        assertNull("a newer turn means the mark is no longer the tail",
-                PendingRequestStore.stoppedTailForConversation(context, "c-stop-next"));
+        ask("c-stop-next", "Never mind, summarise the first one.");
+
+        assertEquals("a newer turn must not disturb an older turn's mark",
+                java.util.Collections.singletonList(stoppedItem.id), anchors("c-stop-next"));
+        ConversationStore.Conversation chat = ConversationStore.load(context, "c-stop-next");
+        assertEquals(2, chat.messages.size());
+        assertEquals("the mark stays on the first question", stoppedItem.id,
+                chat.messages.get(0).stoppedRequestId);
+        assertFalse("and never migrates onto the new one", chat.messages.get(1).isStopped());
     }
 
     /** A completed or failed turn is not a stopped one. */
-    @Test public void onlyACancelledTailProducesAMark() {
+    @Test public void onlyACancelledTurnProducesAMark() {
         PendingRequestStore.Item done = queue("c-done");
         PendingRequestStore.markDone(context, done.id);
-        assertNull(PendingRequestStore.stoppedTailForConversation(context, "c-done"));
+        assertTrue(anchors("c-done").isEmpty());
 
         PendingRequestStore.Item failed = queue("c-failed");
         PendingRequestStore.markFailed(context, failed.id, "Orbit could not finish this response.");
-        assertNull(PendingRequestStore.stoppedTailForConversation(context, "c-failed"));
+        assertTrue(anchors("c-failed").isEmpty());
     }
 
     /** One conversation's stop must not mark another's. */
@@ -128,8 +191,176 @@ public final class StoppedTurnStateTest {
         queue("c-b");
         OrbitRequestManager.cancel(context, first.id);
 
-        assertNotNull(PendingRequestStore.stoppedTailForConversation(context, "c-a"));
-        assertNull(PendingRequestStore.stoppedTailForConversation(context, "c-b"));
+        assertEquals(java.util.Collections.singletonList(first.id), anchors("c-a"));
+        assertTrue(anchors("c-b").isEmpty());
+    }
+
+    // ---- turn anchoring: the exact Galaxy S25 Ultra failure --------------------------------------------
+
+    /**
+     * Stop, then immediately ask something else. This is the reported bug.
+     *
+     * <p>Beta 2 rendered the mark as a conversation footer, and {@code acceptedSubmit} redraws
+     * after appending the new question but before the new request exists — so the footer was
+     * appended below the new question, and the conversation read "prompt 1, prompt 2, mark".
+     */
+    @Test public void aStoppedMarkStaysUnderItsOwnPromptWhenTheNextOneIsSent() {
+        PendingRequestStore.Item first = ask("c-order", "Explain the tradeoffs in depth.");
+        OrbitRequestManager.cancel(context, first.id);
+        ask("c-order", "Actually, just give me the headline.");
+
+        ActivityController<ChatActivity> controller = openChat("c-order");
+        assertEquals(
+                java.util.Arrays.asList("Explain the tradeoffs in depth.", "stopped",
+                        "Actually, just give me the headline."),
+                shape(controller.get(), "Explain the tradeoffs in depth.",
+                        "Actually, just give me the headline."));
+        controller.pause().stop().destroy();
+    }
+
+    /** Two stops in one conversation are two marks, each on its own turn. */
+    @Test public void everyStoppedTurnKeepsItsOwnMark() {
+        PendingRequestStore.Item a = ask("c-multi", "First question.");
+        OrbitRequestManager.cancel(context, a.id);
+        PendingRequestStore.Item b = ask("c-multi", "Second question.");
+        answer("c-multi", b, "Second answer.");
+        PendingRequestStore.Item c = ask("c-multi", "Third question.");
+        OrbitRequestManager.cancel(context, c.id);
+
+        assertEquals("both stops are recorded, in turn order",
+                java.util.Arrays.asList(a.id, c.id), anchors("c-multi"));
+
+        ActivityController<ChatActivity> controller = openChat("c-multi");
+        assertEquals(
+                java.util.Arrays.asList("First question.", "stopped", "Second question.",
+                        "Second answer.", "Third question.", "stopped"),
+                shape(controller.get(), "First question.", "Second question.", "Second answer.",
+                        "Third question."));
+        controller.pause().stop().destroy();
+    }
+
+    /** Identity is the request, never the words. Two identical prompts are two different turns. */
+    @Test public void identicalPromptsAreStillDistinctTurns() {
+        PendingRequestStore.Item first = ask("c-same", "Summarise this.");
+        answer("c-same", first, "Here is the summary.");
+        PendingRequestStore.Item second = ask("c-same", "Summarise this.");
+        OrbitRequestManager.cancel(context, second.id);
+
+        assertEquals("only the stopped request is anchored",
+                java.util.Collections.singletonList(second.id), anchors("c-same"));
+        ConversationStore.Conversation chat = ConversationStore.load(context, "c-same");
+        assertFalse("the earlier identical question must not be marked",
+                chat.messages.get(0).isStopped());
+        assertEquals(second.id, chat.messages.get(2).stoppedRequestId);
+
+        ActivityController<ChatActivity> controller = openChat("c-same");
+        assertEquals(
+                java.util.Arrays.asList("Summarise this.", "Here is the summary.",
+                        "Summarise this.", "stopped"),
+                shape(controller.get(), "Summarise this.", "Here is the summary."));
+        controller.pause().stop().destroy();
+    }
+
+    /** Case B, in order: the partial answer is kept and the mark closes that turn, not a later one. */
+    @Test public void aPartialAnswerKeepsItsMarkWhenTheNextTurnArrives() {
+        PendingRequestStore.Item first = ask("c-partial-order", "Explain the tradeoffs.");
+        OrbitRequestManager.dispatchDelta(first.id, "Both designs trade throughput for latency");
+        assertTrue(OrbitRequestManager.cancel(context, first.id));
+        ask("c-partial-order", "Shorter, please.");
+
+        ConversationStore.Conversation chat = ConversationStore.load(context, "c-partial-order");
+        assertEquals("the partial answer is kept exactly", "Both designs trade throughput for latency",
+                chat.messages.get(1).content);
+        assertEquals("the mark closes the turn after its partial answer", first.id,
+                chat.messages.get(1).stoppedRequestId);
+
+        ActivityController<ChatActivity> controller = openChat("c-partial-order");
+        assertEquals(
+                java.util.Arrays.asList("Explain the tradeoffs.",
+                        "Both designs trade throughput for latency", "stopped", "Shorter, please."),
+                shape(controller.get(), "Explain the tradeoffs.",
+                        "Both designs trade throughput for latency", "Shorter, please."));
+        controller.pause().stop().destroy();
+    }
+
+    /** Reopening after a later turn must show the same order, not a re-derived one. */
+    @Test public void theAnchorSurvivesReloadWithLaterTurnsPresent() {
+        PendingRequestStore.Item first = ask("c-reload-order", "Long question.");
+        OrbitRequestManager.cancel(context, first.id);
+        PendingRequestStore.Item second = ask("c-reload-order", "Short question.");
+        answer("c-reload-order", second, "Short answer.");
+
+        for (int pass = 0; pass < 2; pass++) {
+            ActivityController<ChatActivity> controller = openChat("c-reload-order");
+            assertEquals("reopening must not move the mark",
+                    java.util.Arrays.asList("Long question.", "stopped", "Short question.",
+                            "Short answer."),
+                    shape(controller.get(), "Long question.", "Short question.", "Short answer."));
+            controller.pause().stop().destroy();
+        }
+    }
+
+    /**
+     * Both surfaces read the conversation record, so parity is a property of that record.
+     *
+     * <p>Full chat and the overlay each walk the same message list and draw a mark wherever a
+     * message carries an anchor. This asserts the rendered order is exactly the order the record
+     * describes, which is the thing the overlay independently reproduces — under Beta 2 neither
+     * surface could have agreed, because the mark was a footer appended after the walk.
+     */
+    @Test public void theRenderedOrderIsExactlyWhatTheConversationRecordSays() {
+        PendingRequestStore.Item a = ask("c-parity", "First question.");
+        OrbitRequestManager.cancel(context, a.id);
+        PendingRequestStore.Item b = ask("c-parity", "Second question.");
+        answer("c-parity", b, "Second answer.");
+        PendingRequestStore.Item c = ask("c-parity", "Third question.");
+        OrbitRequestManager.cancel(context, c.id);
+
+        // The order both surfaces derive, straight from the shared record.
+        List<String> expected = new ArrayList<>();
+        for (AssistantClient.History h : ConversationStore.load(context, "c-parity").messages) {
+            expected.add(h.content);
+            if (h.isStopped()) expected.add("stopped");
+        }
+
+        ActivityController<ChatActivity> controller = openChat("c-parity");
+        assertEquals(expected, shape(controller.get(), "First question.", "Second question.",
+                "Second answer.", "Third question."));
+        controller.pause().stop().destroy();
+    }
+
+    /** A lifecycle save of a screen's own copy must not rub the anchor out. */
+    @Test public void savingAStaleInMemoryCopyCannotEraseAMark() {
+        PendingRequestStore.Item first = ask("c-stale", "Explain the tradeoffs.");
+        // What a surface held before the stop was recorded on disk: no anchor anywhere.
+        List<AssistantClient.History> stale = new ArrayList<>();
+        stale.add(new AssistantClient.History("user", "Explain the tradeoffs."));
+
+        OrbitRequestManager.cancel(context, first.id);
+        assertEquals(java.util.Collections.singletonList(first.id), anchors("c-stale"));
+
+        ConversationStore.save(context, "c-stale", stale);
+        assertEquals("a stale save must not lose the stop",
+                java.util.Collections.singletonList(first.id), anchors("c-stale"));
+
+        // And the same once the stale copy has grown a turn the disk has not seen.
+        stale.add(new AssistantClient.History("user", "Shorter, please."));
+        ConversationStore.save(context, "c-stale", stale);
+        ConversationStore.Conversation chat = ConversationStore.load(context, "c-stale");
+        assertEquals(2, chat.messages.size());
+        assertEquals(first.id, chat.messages.get(0).stoppedRequestId);
+        assertFalse(chat.messages.get(1).isStopped());
+    }
+
+    /** Marking is idempotent and never steals a turn that already carries someone else's mark. */
+    @Test public void anAnchorIsWrittenOnceAndNeverOverwritten() {
+        PendingRequestStore.Item first = ask("c-idempotent", "Explain the tradeoffs.");
+        assertTrue(ConversationStore.markTurnStopped(context, "c-idempotent", first.id));
+        assertFalse("the same stop must not be recorded twice",
+                ConversationStore.markTurnStopped(context, "c-idempotent", first.id));
+        assertFalse("another request must not take over a marked turn",
+                ConversationStore.markTurnStopped(context, "c-idempotent", "some-other-request"));
+        assertEquals(java.util.Collections.singletonList(first.id), anchors("c-idempotent"));
     }
 
     // ---- nothing is faked into the conversation ------------------------------------------------------
@@ -161,8 +392,8 @@ public final class StoppedTurnStateTest {
         assertEquals(2, chat.messages.size());
         assertEquals("assistant", chat.messages.get(1).role);
         assertEquals("Both designs trade throughput for latency", chat.messages.get(1).content);
-        assertNotNull("the mark still applies to a partially answered turn",
-                PendingRequestStore.stoppedTailForConversation(context, "c-partial"));
+        assertEquals("the mark still applies to a partially answered turn",
+                item.id, chat.messages.get(1).stoppedRequestId);
     }
 
     /** A late delta after a stop must not extend the partial answer. */
@@ -192,8 +423,8 @@ public final class StoppedTurnStateTest {
         assertFalse("a stopped request must not accept a completion", committed);
         ConversationStore.Conversation chat = ConversationStore.load(context, "c-late-answer");
         assertEquals(1, chat.messages.size());
-        assertNotNull("the stopped state survives the late answer",
-                PendingRequestStore.stoppedTailForConversation(context, "c-late-answer"));
+        assertEquals("the stopped state survives the late answer",
+                java.util.Collections.singletonList(item.id), anchors("c-late-answer"));
     }
 
     /** And a late Thinking update cannot resurrect the running state either. */
@@ -205,7 +436,7 @@ public final class StoppedTurnStateTest {
                 ThinkingUpdate.providerSummary("Still comparing the approaches"));
 
         assertNull(OrbitRequestManager.latestThinking(item.id));
-        assertNotNull(PendingRequestStore.stoppedTailForConversation(context, "c-late-thinking"));
+        assertEquals(java.util.Collections.singletonList(item.id), anchors("c-late-thinking"));
         assertFalse("a stopped request is not active",
                 PendingRequestStore.hasActiveForConversation(context, "c-late-thinking"));
     }
@@ -338,6 +569,57 @@ public final class StoppedTurnStateTest {
                 .advanceBy(600, java.util.concurrent.TimeUnit.MILLISECONDS);
         drawOnce(mark, 44);
         assertFalse("the settle must finish rather than repeat", mark.isResolving());
+    }
+
+    /**
+     * Beta 2's mark was mistaken on a real device for a rendering artifact, so it grew.
+     *
+     * <p>Stated as a range rather than an exact number: the contract is "clearly bigger than Beta
+     * 2, still small enough to stay out of the conversation's way", not one particular value.
+     */
+    @Test public void theMarkIsLargerThanBetaTwoButStillCompact() {
+        int beta2 = 22;
+        assertTrue("the mark must be noticeably larger than Beta 2's 22dp",
+                OrbitStoppedView.SIZE_DP >= beta2 * 5 / 4);
+        assertTrue("but it must not start competing with a message bubble",
+                OrbitStoppedView.SIZE_DP <= beta2 * 3 / 2);
+
+        OrbitStoppedView mark = new OrbitStoppedView(context, UiKit.SURFACE);
+        mark.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        assertEquals(UiKit.dp(context, OrbitStoppedView.SIZE_DP), mark.getMeasuredWidth());
+        assertEquals(UiKit.dp(context, OrbitStoppedView.SIZE_DP), mark.getMeasuredHeight());
+    }
+
+    /** Still not a failure: nothing about the mark may be styled as an error. */
+    @Test public void theMarkIsNeverStyledAsAnError() {
+        PendingRequestStore.Item item = queue("c-not-error");
+        OrbitRequestManager.cancel(context, item.id);
+
+        ActivityController<ChatActivity> controller = openChat("c-not-error");
+        ChatActivity activity = controller.get();
+        assertNotNull(findMark(activity));
+        for (View v : descendants(activity.getWindow().getDecorView())) {
+            if (!(v instanceof TextView)) continue;
+            String text = ((TextView) v).getText().toString().trim();
+            assertFalse("a stop must not offer Retry the way a failure does", text.equals("Retry"));
+            assertFalse("and must not read as a failure", text.startsWith("Orbit could not finish"));
+        }
+        controller.pause().stop().destroy();
+    }
+
+    /** No assistant bubble may wrap the mark; an absence must not be dressed as a message. */
+    @Test public void theMarkIsNotWrappedInAnAssistantBubble() {
+        PendingRequestStore.Item item = queue("c-no-bubble");
+        OrbitRequestManager.cancel(context, item.id);
+
+        ActivityController<ChatActivity> controller = openChat("c-no-bubble");
+        OrbitStoppedView mark = findMark(controller.get());
+        assertNotNull(mark);
+        View row = (View) mark.getParent();
+        assertNull("the mark's row must carry no bubble background", row.getBackground());
+        assertEquals("nothing but the mark belongs in that row", 1, ((ViewGroup) row).getChildCount());
+        controller.pause().stop().destroy();
     }
 
     @Test public void theMarkDrawsAtEverySizeWithoutCrashing() {

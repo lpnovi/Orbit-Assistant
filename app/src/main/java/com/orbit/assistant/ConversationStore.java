@@ -75,7 +75,11 @@ public final class ConversationStore {
                     h.attachmentPath,
                     h.attachmentKind,
                     h.attachmentLabel,
-                    clip(h.attachmentText, 105000)));
+                    clip(h.attachmentText, 105000),
+                    // Memory fields keep their existing save behaviour; only the stopped-turn
+                    // anchor is added here, because losing it would move a mark off its turn.
+                    "", "", "",
+                    h.stoppedRequestId));
         }
         // A background response may be appended to disk after the assistant sheet
         // is hidden, while that old sheet still holds a shorter in-memory copy.
@@ -86,6 +90,11 @@ public final class ConversationStore {
                 && isExactPrefix(clipped, existing.messages)) {
             clipped = new ArrayList<>(existing.messages);
         }
+        // A stop is recorded straight to disk by the request manager, which can happen while a
+        // screen still holds an in-memory copy of the conversation from before it. Saving that
+        // copy must not quietly rub the mark out, so stored anchors are carried back onto the
+        // messages they belong to.
+        if (existing != null) carryStoppedMarks(clipped, existing.messages);
 
         String computedTitle = titleFor(clipped);
         String finalTitle = existing != null && existing.title != null && !existing.title.trim().isEmpty()
@@ -129,6 +138,59 @@ public final class ConversationStore {
                 : new ArrayList<>(existing.messages);
         messages.add(message);
         save(c, id, messages);
+    }
+
+    /**
+     * Records that the user stopped {@code requestId} at this conversation's current end.
+     *
+     * <p>The one durable write behind a stopped mark, and the reason the mark stays where it
+     * belongs. It anchors to the message that ends the stopped turn — the question itself when no
+     * text arrived, or the partial answer when some did, since the manager persists that first.
+     * Later turns are appended after this message, so they push the mark nowhere.
+     *
+     * <p>Nothing is written as content: only the anchor field changes, and no assistant message is
+     * created. {@code updatedAt} is deliberately left alone, because stopping a reply is not new
+     * activity and must not reorder the chat list.
+     *
+     * <p>Idempotent, and it never overwrites another turn's anchor: stopping the same request
+     * twice, or a second request whose turn already carries a mark, changes nothing.
+     *
+     * @return true when this call is what recorded the mark.
+     */
+    public static synchronized boolean markTurnStopped(Context c, String id, String requestId) {
+        if (c == null || id == null || id.isEmpty() || requestId == null) return false;
+        String wanted = requestId.trim();
+        if (wanted.isEmpty()) return false;
+        List<Conversation> all = readAll(c);
+        for (int x = 0; x < all.size(); x++) {
+            Conversation existing = all.get(x);
+            if (!id.equals(existing.id)) continue;
+            List<AssistantClient.History> messages = new ArrayList<>(existing.messages);
+            if (messages.isEmpty()) return false;
+            // Already recorded, in this process or an earlier one.
+            for (AssistantClient.History h : messages) {
+                if (h != null && wanted.equals(h.stoppedRequestId)) return false;
+            }
+            AssistantClient.History last = messages.get(messages.size() - 1);
+            if (last == null || last.isStopped()) return false;
+            messages.set(messages.size() - 1, last.withStoppedRequestId(wanted));
+            all.set(x, new Conversation(existing.id, existing.title, existing.updatedAt, messages,
+                    existing.intelligenceMode));
+            writeAll(c, all);
+            return true;
+        }
+        return false;
+    }
+
+    /** Every request id this conversation has a stopped mark for, oldest turn first. */
+    public static synchronized List<String> stoppedRequestIds(Context c, String id) {
+        List<String> out = new ArrayList<>();
+        Conversation existing = load(c, id);
+        if (existing == null) return out;
+        for (AssistantClient.History h : existing.messages) {
+            if (h != null && h.isStopped()) out.add(h.stoppedRequestId);
+        }
+        return out;
     }
 
     public static synchronized void rename(Context c, String id, String title) {
@@ -234,6 +296,61 @@ public final class ConversationStore {
     }
 
 
+    /**
+     * Restores stopped anchors from the stored copy onto the messages being saved.
+     *
+     * <p>Orbit conversations are append-only and are clipped from the front, so the two lists are
+     * windows onto one sequence and differ only by a shift. The shift is found by matching role and
+     * content, and the longest fully agreeing alignment wins; an anchor is then copied only onto a
+     * message that agrees with the one that carried it and does not already have an anchor of its
+     * own. When no alignment agrees — an edit rewrote the tail, say — nothing is copied, because a
+     * mark guessed onto the wrong message would be worse than a mark that is gone.
+     *
+     * <p>Position is used, never prompt text: identical questions asked twice are different
+     * messages here, distinguished by everything around them and by the request id they carry.
+     */
+    private static void carryStoppedMarks(List<AssistantClient.History> incoming,
+                                          List<AssistantClient.History> stored) {
+        if (incoming == null || stored == null || incoming.isEmpty() || stored.isEmpty()) return;
+        boolean anyStored = false;
+        for (AssistantClient.History h : stored) if (h != null && h.isStopped()) { anyStored = true; break; }
+        if (!anyStored) return;
+
+        int bestShift = 0;
+        int bestOverlap = 0;
+        for (int shift = -(stored.size() - 1); shift < incoming.size(); shift++) {
+            int overlap = 0;
+            boolean agrees = true;
+            for (int i = 0; i < stored.size(); i++) {
+                int j = i + shift;
+                if (j < 0 || j >= incoming.size()) continue;
+                if (!sameMessage(stored.get(i), incoming.get(j))) { agrees = false; break; }
+                overlap++;
+            }
+            if (agrees && overlap > bestOverlap) { bestOverlap = overlap; bestShift = shift; }
+        }
+        if (bestOverlap == 0) return;
+        // One matching message is not an alignment, it is a coincidence — and with a question
+        // asked twice it is a coincidence that would put the mark on the wrong occurrence.
+        if (bestOverlap < 2 && incoming.size() > 1 && stored.size() > 1) return;
+
+        for (int i = 0; i < stored.size(); i++) {
+            AssistantClient.History from = stored.get(i);
+            if (from == null || !from.isStopped()) continue;
+            int j = i + bestShift;
+            if (j < 0 || j >= incoming.size()) continue;
+            AssistantClient.History to = incoming.get(j);
+            if (to == null || to.isStopped()) continue;
+            incoming.set(j, to.withStoppedRequestId(from.stoppedRequestId));
+        }
+    }
+
+    /** Same place in the conversation, for alignment purposes: same speaker, same words. */
+    private static boolean sameMessage(AssistantClient.History a, AssistantClient.History b) {
+        if (a == null || b == null) return a == b;
+        return safe(a.role).equalsIgnoreCase(safe(b.role)) && safe(a.content).equals(safe(b.content));
+    }
+
     private static boolean isExactPrefix(List<AssistantClient.History> shorter, List<AssistantClient.History> longer) {
         if (shorter == null || longer == null || shorter.size() > longer.size()) return false;
         for (int i = 0; i < shorter.size(); i++) {
@@ -305,7 +422,8 @@ public final class ConversationStore {
                                 m.optString("attachmentText", ""),
                                 m.optString("memoryUsage", ""),
                                 m.optString("memorySuggestionText", ""),
-                                m.optString("memorySuggestionCategory", "")));
+                                m.optString("memorySuggestionCategory", ""),
+                                m.optString("stoppedRequestId", "")));
                     }
                 }
                 result.add(new Conversation(o.optString("id"), o.optString("title"), o.optLong("updatedAt", 0), history, o.optString("intelligenceMode", "")));
@@ -335,7 +453,8 @@ public final class ConversationStore {
                             .put("attachmentText", safe(h.attachmentText))
                             .put("memoryUsage", safe(h.memoryUsage))
                             .put("memorySuggestionText", safe(h.memorySuggestionText))
-                            .put("memorySuggestionCategory", safe(h.memorySuggestionCategory)));
+                            .put("memorySuggestionCategory", safe(h.memorySuggestionCategory))
+                            .put("stoppedRequestId", safe(h.stoppedRequestId)));
                 }
                 o.put("messages", msgs);
                 arr.put(o);

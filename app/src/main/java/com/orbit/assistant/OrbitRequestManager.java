@@ -339,6 +339,12 @@ public final class OrbitRequestManager {
                 ConversationStore.appendMessage(c, current.conversationId,
                         new AssistantClient.History("assistant", partial));
             }
+            // Anchor the stopped mark to this turn, after the partial answer has been written so
+            // it lands on the end of the turn rather than in the middle of it. This is the only
+            // place a stop is recorded against the conversation, so both surfaces read one fact
+            // and neither can invent its own. It is representation only: cancellation is already
+            // complete above, and nothing below this line may depend on the write succeeding.
+            ConversationStore.markTurnStopped(c, current.conversationId, requestId);
             cancelWork(c, requestId);
         }
         AttachmentStore.delete(item.screenshotPath);

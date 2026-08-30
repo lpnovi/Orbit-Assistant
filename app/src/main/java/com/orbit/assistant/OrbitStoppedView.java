@@ -28,8 +28,17 @@ import android.view.animation.AnimationUtils;
  */
 public class OrbitStoppedView extends View {
 
-    /** How much of the orbit is missing. Wide enough to read as deliberate at 22dp. */
+    /** How much of the orbit is missing. Wide enough to read as deliberate at this size. */
     private static final float CUT_DEGREES = 96f;
+    /**
+     * The mark's natural size.
+     *
+     * <p>Beta 2 drew it at 22dp, and on a real Galaxy S25 Ultra that was small enough to be taken
+     * for a rendering artifact or a stray flourish rather than a state. This is a little over a
+     * quarter larger in each direction, which is enough to read as deliberate while staying far
+     * quieter than an answer and well short of competing with the next question.
+     */
+    static final int SIZE_DP = 28;
     /** The same tilt the live indicator's outer orbit uses, so the two clearly match. */
     private static final float TILT_DEGREES = -18f;
     /** And the same flattening, so it reads as the same ellipse seen from the same angle. */
@@ -44,8 +53,11 @@ public class OrbitStoppedView extends View {
     private final Paint corePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint arcPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint particlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint haloPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final android.graphics.RectF orbitBounds = new android.graphics.RectF();
 
+    private int haloInk;
+    private float haloRadius;
     private long resolveStartedAt;
     private float openness = 1f;
 
@@ -76,9 +88,27 @@ public class OrbitStoppedView extends View {
         int ink = UiKit.blend(base, backgroundColor, MUTED);
         if (UiKit.contrastRatio(ink, backgroundColor) < MIN_CONTRAST) ink = base;
         corePaint.setColor(ink);
-        arcPaint.setColor(UiKit.withAlpha(ink, 150));
-        particlePaint.setColor(UiKit.withAlpha(ink, 215));
+        arcPaint.setColor(UiKit.withAlpha(ink, 165));
+        particlePaint.setColor(UiKit.withAlpha(ink, 225));
+        haloInk = ink;
+        haloRadius = 0f;
         invalidate();
+    }
+
+    /**
+     * A very faint glow under the mark, so it settles on the page instead of floating on it.
+     *
+     * <p>Deliberately a soft gradient that fades to nothing rather than a filled shape: the mark
+     * must never acquire the outline of a bubble, because a bubble would say a message is here and
+     * the whole point is that no message arrived. It only has to lift a few thin strokes off the
+     * background enough to look placed.
+     */
+    private void prepareHalo(float radius) {
+        if (radius <= 0f || Math.abs(radius - haloRadius) < 0.5f) return;
+        haloRadius = radius;
+        haloPaint.setShader(new android.graphics.RadialGradient(0f, 0f, radius,
+                new int[]{UiKit.withAlpha(haloInk, 30), UiKit.withAlpha(haloInk, 16), UiKit.withAlpha(haloInk, 0)},
+                new float[]{0f, 0.55f, 1f}, android.graphics.Shader.TileMode.CLAMP));
     }
 
     /**
@@ -103,7 +133,7 @@ public class OrbitStoppedView extends View {
     public boolean isResolving() { return resolveStartedAt != 0L; }
 
     @Override protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        int preferred = UiKit.dp(getContext(), 22);
+        int preferred = UiKit.dp(getContext(), SIZE_DP);
         setMeasuredDimension(resolveSize(preferred, widthMeasureSpec),
                 resolveSize(preferred, heightMeasureSpec));
     }
@@ -126,19 +156,28 @@ public class OrbitStoppedView extends View {
         float start = -48f + cut / 2f;
         float sweep = 360f - cut;
 
-        arcPaint.setStrokeWidth(Math.max(1.4f, unit * 0.115f));
+        // The faint backing goes down first, so every stroke above sits on it rather than in it.
+        prepareHalo(unit * 0.95f);
+        if (haloPaint.getShader() != null) {
+            canvas.save();
+            canvas.translate(cx, cy);
+            canvas.drawCircle(0f, 0f, haloRadius, haloPaint);
+            canvas.restore();
+        }
+
+        arcPaint.setStrokeWidth(Math.max(1.4f, unit * 0.125f));
         canvas.save();
         canvas.rotate(TILT_DEGREES, cx, cy);
         orbitBounds.set(cx - radius, cy - radius * FLATTEN, cx + radius, cy + radius * FLATTEN);
         canvas.drawArc(orbitBounds, start, sweep, false, arcPaint);
         canvas.restore();
 
-        // The core, at rest: no breathing, no halo, smaller than the live indicator's.
-        canvas.drawCircle(cx, cy, unit * 0.20f, corePaint);
+        // The core, at rest: no breathing, smaller than the live indicator's.
+        canvas.drawCircle(cx, cy, unit * 0.215f, corePaint);
 
         // One particle, stopped at the near edge of the cut. Drawn on the ellipse itself so it
         // reads as having come to rest on the orbit rather than being decoration beside it.
-        drawRestingParticle(canvas, cx, cy, radius, start + sweep, unit * 0.115f);
+        drawRestingParticle(canvas, cx, cy, radius, start + sweep, unit * 0.125f);
 
         if (resolveStartedAt != 0L) postInvalidateOnAnimation();
     }

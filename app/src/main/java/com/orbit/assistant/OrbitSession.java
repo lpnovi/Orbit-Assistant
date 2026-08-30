@@ -839,12 +839,10 @@ public class OrbitSession extends VoiceInteractionSession {
                 }
                 addPersistedActionCards(i);
             }
-        }
-        // Reopening the sheet on a conversation whose last turn was stopped shows the same mark
-        // it showed at the time, because it is read from the request record rather than from
-        // anything this sheet happened to remember.
-        if (PendingRequestStore.stoppedTailForConversation(getContext(), conversationId) != null) {
-            addStoppedMarker(false);
+            // Same rule as full chat, from the same durable anchor on the same message: a stopped
+            // turn carries its mark, so reopening the sheet shows every stop exactly where it
+            // happened, and the two surfaces cannot disagree about the order.
+            if (item.isStopped()) addStoppedMarker(false);
         }
         scrollBottom();
     }
@@ -1071,7 +1069,9 @@ public class OrbitSession extends VoiceInteractionSession {
         if (attachmentOpening) {
             if (AttachmentBridge.isPending(attachmentCallbackToken)) {
                 AttachmentBridge.cancel(attachmentCallbackToken);
-                DiagnosticStore.recordError(getContext(),
+                // Recorded as what it is: the guard above has already put this right, so it is
+                // history for an investigation, not a problem the user still has.
+                DiagnosticStore.recordRecovered(getContext(),
                         "attachment_bridge_stale_recovered");
             }
             attachmentCallbackToken = "";
@@ -1862,7 +1862,7 @@ public class OrbitSession extends VoiceInteractionSession {
             }
 
             @Override public void onCancelled(String requestId, String partialText) {
-                main.post(() -> applyCancellation(ownsCurrentUi(), partialText));
+                main.post(() -> applyCancellation(ownsCurrentUi(), requestId, partialText));
             }
         };
 
@@ -2420,7 +2420,7 @@ public class OrbitSession extends VoiceInteractionSession {
                 });
             }
             @Override public void onCancelled(String requestId, String partialText) {
-                main.post(() -> applyCancellation(ownsCurrentUi(), partialText));
+                main.post(() -> applyCancellation(ownsCurrentUi(), requestId, partialText));
             }
         };
     }
@@ -2433,7 +2433,7 @@ public class OrbitSession extends VoiceInteractionSession {
      * not produced any text leaves no empty bubble behind. Either way this is not an error: no
      * error bubble, no Retry, and the composer goes straight back to Ready without being touched.
      */
-    private void applyCancellation(boolean ownsUi, String partialText) {
+    private void applyCancellation(boolean ownsUi, String requestId, String partialText) {
         if (!ownsUi) {
             updateComposerAction();
             return;
@@ -2453,6 +2453,10 @@ public class OrbitSession extends VoiceInteractionSession {
                 discardStreamingBubble();
             }
         }
+        // The manager has already anchored the mark to this turn's last message on disk. Mirror
+        // that onto the sheet's own copy, so a later save writes the conversation back the way it
+        // actually is rather than as it looked a moment before the stop.
+        anchorStoppedTurnInMemory(requestId);
         // The orbital has just settled out; this settles in behind it, so the sheet shows the turn
         // ending deliberately instead of the reply appearing to vanish. It sits after whatever
         // partial answer was kept, which is what says "this response ended here".
@@ -2462,11 +2466,30 @@ public class OrbitSession extends VoiceInteractionSession {
     }
 
     /**
+     * Puts this sheet's in-memory conversation in step with the stop just recorded on disk.
+     *
+     * <p>The sheet keeps its own list and saves it at various lifecycle moments. Without this the
+     * next such save would write back messages that carry no anchor, and the mark would quietly
+     * lose the turn it belongs to. Anchored to the last message for the same reason the durable
+     * write is: that is where the stopped turn ends, partial answer included.
+     */
+    private void anchorStoppedTurnInMemory(String requestId) {
+        if (requestId == null || requestId.trim().isEmpty() || history.isEmpty()) return;
+        for (AssistantClient.History h : history) if (h != null && h.isStopped()
+                && requestId.equals(h.stoppedRequestId)) return;
+        int last = history.size() - 1;
+        AssistantClient.History tail = history.get(last);
+        if (tail == null || tail.isStopped()) return;
+        history.set(last, tail.withStoppedRequestId(requestId));
+    }
+
+    /**
      * The mark left behind when the user stopped a reply.
      *
-     * <p>Same meaning and same glyph as full chat, and read from the same durable request state,
-     * so the two surfaces cannot disagree about whether a turn was stopped. Nothing is written to
-     * the conversation to produce it: a stopped turn is Orbit's own UI state, not model output.
+     * <p>Same meaning and same glyph as full chat, and anchored to the same message in the same
+     * conversation record, so the two surfaces cannot disagree about whether a turn was stopped or
+     * about where the mark sits. Nothing is written to the conversation as content to produce it:
+     * a stopped turn is Orbit's own state, not model output.
      *
      * @param animate true only for a stop happening in front of the user right now.
      */
@@ -2480,7 +2503,10 @@ public class OrbitSession extends VoiceInteractionSession {
         row.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_YES);
 
         OrbitStoppedView mark = new OrbitStoppedView(c, UiKit.BG);
-        row.addView(mark, new LinearLayout.LayoutParams(UiKit.dp(c, 20), UiKit.dp(c, 20)));
+        // The sheet is tighter than full chat, so the mark sits a touch under its natural size —
+        // still the larger, clearly-intentional mark, just proportionate to the overlay.
+        int size = UiKit.dp(c, OrbitStoppedView.SIZE_DP - 2);
+        row.addView(mark, new LinearLayout.LayoutParams(size, size));
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT,

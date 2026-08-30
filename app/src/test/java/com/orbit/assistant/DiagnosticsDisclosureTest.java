@@ -126,9 +126,11 @@ public final class DiagnosticsDisclosureTest {
         }
         assertNotNull("the Overview must be present", overview);
         for (String field : new String[]{"Orbit version:", "Provider:", "ChatGPT:",
-                "Default mode:", "Pending requests:", "Thinking updates:", "Last error:"}) {
+                "Default mode:", "Pending requests:", "Thinking updates:"}) {
             assertTrue("the Overview must answer " + field, overview.contains(field));
         }
+        assertTrue("the Overview must still say whether anything is wrong",
+                overview.contains("Status: OK") || overview.contains("Last error:"));
         assertTrue("the Overview must stay something you can take in at a glance: "
                         + overview.split("\n").length + " lines",
                 overview.split("\n").length <= 9);
@@ -168,6 +170,84 @@ public final class DiagnosticsDisclosureTest {
         controller.pause().stop().destroy();
     }
 
+    // ---- current problems versus things that already resolved themselves ---------------------------
+
+    /** Returns the Overview block, which is the one that starts with the version. */
+    private String overviewOf(DiagnosticsActivity activity) {
+        for (String text : texts(activity)) if (text.startsWith("Orbit version:")) return text;
+        return "";
+    }
+
+    /**
+     * The reported problem: a healthy Orbit looked broken because of something it had already fixed.
+     *
+     * <p>{@code attachment_bridge_stale_recovered} describes a guard doing its job, and it sat in
+     * Overview as "Last error" for as long as it was the most recent thing recorded.
+     */
+    @Test public void arecoveredConditionDoesNotMakeOverviewLookBroken() {
+        DiagnosticStore.recordRecovered(context, "attachment_bridge_stale_recovered");
+
+        ActivityController<DiagnosticsActivity> controller = open();
+        String overview = overviewOf(controller.get());
+        assertFalse("a resolved condition must not be presented as a current failure",
+                overview.contains("Last error:"));
+        assertFalse(overview.contains("attachment_bridge_stale_recovered"));
+        assertTrue("and Overview must still answer the question", overview.contains("Status: OK"));
+        controller.pause().stop().destroy();
+    }
+
+    /** The rule is about the vocabulary, not about one remembered string. */
+    @Test public void anyConditionNamedRecoveredIsTreatedAsHistory() {
+        assertTrue(DiagnosticStore.isRecoveredCondition("attachment_bridge_stale_recovered"));
+        assertTrue(DiagnosticStore.isRecoveredCondition("some_future_guard_recovered"));
+        assertFalse(DiagnosticStore.isRecoveredCondition("gallery_component_launch_failed: x"));
+
+        // Even routed through the old entry point, which is how existing call sites reach it.
+        DiagnosticStore.recordError(context, "some_future_guard_recovered");
+        assertEquals("", DiagnosticStore.currentError(context));
+        assertEquals("some_future_guard_recovered", DiagnosticStore.recoveredCondition(context));
+    }
+
+    /** Real failures are not hidden by any of this. */
+    @Test public void aRealCurrentErrorIsStillReportedProminently() {
+        DiagnosticStore.recordError(context, "gallery_component_launch_failed: com.example");
+
+        ActivityController<DiagnosticsActivity> controller = open();
+        String overview = overviewOf(controller.get());
+        assertTrue("a current failure belongs in Overview", overview.contains("Last error:"));
+        assertTrue(overview.contains("gallery_component_launch_failed: com.example"));
+        assertFalse("and it must not be reported as fine", overview.contains("Status: OK"));
+        controller.pause().stop().destroy();
+    }
+
+    /** A recovered condition must not displace a real error that is still outstanding. */
+    @Test public void aLaterRecoveryDoesNotEraseAnOutstandingError() {
+        DiagnosticStore.recordError(context, "gallery_component_launch_failed: com.example");
+        DiagnosticStore.recordRecovered(context, "attachment_bridge_stale_recovered");
+
+        ActivityController<DiagnosticsActivity> controller = open();
+        assertTrue(overviewOf(controller.get()).contains("gallery_component_launch_failed"));
+        controller.pause().stop().destroy();
+    }
+
+    /** The detail is the point of keeping it: Advanced still has the whole story. */
+    @Test public void recoveredHistoryRemainsAvailableInTheDetailSections() {
+        DiagnosticStore.recordRecovered(context, "attachment_bridge_stale_recovered");
+
+        ActivityController<DiagnosticsActivity> controller = open();
+        DiagnosticsActivity activity = controller.get();
+        View expandAll = viewWithText(activity, "Expand all");
+        assertNotNull(expandAll);
+        expandAll.performClick();
+
+        String joined = String.join("\n", texts(activity));
+        assertTrue("the historical condition must still be findable",
+                joined.contains("attachment_bridge_stale_recovered"));
+        assertTrue("and must be labelled for what it was",
+                joined.contains("resolved automatically"));
+        controller.pause().stop().destroy();
+    }
+
     // ---- the two reports -------------------------------------------------------------------------
 
     @Test public void copySummaryIsShortAndCarriesTheHighValueFields() {
@@ -176,15 +256,42 @@ public final class DiagnosticsDisclosureTest {
         String summary = controller.get().summaryReport();
 
         for (String field : new String[]{"Version:", "Provider:", "Default mode:",
-                "Pending requests:", "Requests:", "Thinking updates:", "Last error:"}) {
+                "Pending requests:", "Requests:", "Thinking updates:"}) {
             assertTrue("the summary must carry " + field, summary.contains(field));
         }
+        assertTrue("the summary must still say whether anything is wrong",
+                summary.contains("Status: OK") || summary.contains("Last error:"));
         assertTrue("the duplication counters are the whole point of pasting this",
                 summary.contains("committed") && summary.contains("already answered")
                         && summary.contains("superseded runs"));
         assertTrue("a summary someone can paste into a chat: "
                         + summary.split("\n").length + " lines",
                 summary.split("\n").length <= 14);
+        controller.pause().stop().destroy();
+    }
+
+    /** Copy summary must not hand a support reply an old recovery dressed up as a live failure. */
+    @Test public void copySummaryDoesNotPresentRecoveredHistoryAsACurrentFailure() {
+        DiagnosticStore.recordRecovered(context, "attachment_bridge_stale_recovered");
+        ActivityController<DiagnosticsActivity> controller = open();
+        String summary = controller.get().summaryReport();
+
+        assertFalse("nothing is currently failing", summary.contains("Last error:"));
+        assertTrue(summary.contains("Status: OK"));
+        assertTrue("but the recovery is worth mentioning, as history",
+                summary.contains("Recent recovered issue: attachment_bridge_stale_recovered"));
+        assertTrue(summary.contains("resolved automatically"));
+        controller.pause().stop().destroy();
+    }
+
+    /** And the full report keeps the provenance a real investigation needs. */
+    @Test public void copyFullRetainsRecoveredProvenance() {
+        DiagnosticStore.recordRecovered(context, "attachment_bridge_stale_recovered");
+        ActivityController<DiagnosticsActivity> controller = open();
+        String full = controller.get().fullReport();
+
+        assertTrue(full.contains("Last recovered condition: attachment_bridge_stale_recovered"));
+        assertTrue(full.contains("resolved automatically"));
         controller.pause().stop().destroy();
     }
 

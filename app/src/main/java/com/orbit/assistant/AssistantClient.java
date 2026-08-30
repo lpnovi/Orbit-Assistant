@@ -38,6 +38,20 @@ public final class AssistantClient {
         /** Optional user-approved memory suggestion attached to this assistant turn. */
         public final String memorySuggestionText;
         public final String memorySuggestionCategory;
+        /**
+         * The id of the request the user stopped at this point in the turn, or empty for none.
+         *
+         * <p>This is what anchors the stopped mark. It is state, not content: it never reaches the
+         * model, is never rendered as text, and no "Stopped" message is written anywhere. It lives
+         * on the message because the message is the thing that keeps its place when a conversation
+         * grows, so the mark cannot drift onto a later turn the way a conversation-tail derivation
+         * can.
+         *
+         * <p>It carries a real request id rather than a bare flag, so the association can be
+         * checked against {@link PendingRequestStore} and so one turn's mark can never be confused
+         * with another's. Turns are never identified by comparing prompt text.
+         */
+        public final String stoppedRequestId;
 
         public History(String role, String content) {
             this(role, content, false, "", "", "", "", "", "", "");
@@ -64,6 +78,15 @@ public final class AssistantClient {
                        String attachmentKind, String attachmentLabel, String attachmentText,
                        String memoryUsage, String memorySuggestionText,
                        String memorySuggestionCategory) {
+            this(role, content, attached, attachmentPath, attachmentKind, attachmentLabel,
+                    attachmentText, memoryUsage, memorySuggestionText, memorySuggestionCategory, "");
+        }
+
+        public History(String role, String content, boolean attached, String attachmentPath,
+                       String attachmentKind, String attachmentLabel, String attachmentText,
+                       String memoryUsage, String memorySuggestionText,
+                       String memorySuggestionCategory, String stoppedRequestId) {
+            this.stoppedRequestId = stoppedRequestId == null ? "" : stoppedRequestId.trim();
             this.role = role;
             this.content = content;
             this.screenAttached = attached;
@@ -74,6 +97,16 @@ public final class AssistantClient {
             this.memoryUsage = memoryUsage == null ? "" : memoryUsage.trim();
             this.memorySuggestionText = memorySuggestionText == null ? "" : memorySuggestionText.trim();
             this.memorySuggestionCategory = memorySuggestionCategory == null ? "" : memorySuggestionCategory.trim();
+        }
+
+        /** True when the user stopped the reply belonging to this point in the conversation. */
+        public boolean isStopped() { return !stoppedRequestId.isEmpty(); }
+
+        /** A copy of this message carrying the stopped request id, everything else untouched. */
+        public History withStoppedRequestId(String requestId) {
+            return new History(role, content, screenAttached, attachmentPath, attachmentKind,
+                    attachmentLabel, attachmentText, memoryUsage, memorySuggestionText,
+                    memorySuggestionCategory, requestId);
         }
     }
 

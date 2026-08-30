@@ -180,8 +180,6 @@ public final class DiagnosticsActivity extends Activity {
     private String overview() {
         SharedPreferences d = DiagnosticStore.prefs(this);
         long autoUpdatedMs = d.getLong("auto_updated", 0L);
-        String error = d.getString("last_error", "");
-        boolean hasError = error != null && !error.trim().isEmpty();
         return "Orbit version: " + versionLabel() +
                 "\nProvider: " + AiProviders.active(this).displayName() +
                 "\nChatGPT: " + accountStatus() +
@@ -193,7 +191,35 @@ public final class DiagnosticsActivity extends Activity {
                 "\nPending requests: " + PendingRequestStore.active(this).size() +
                 "\nThinking updates: " + (Prefs.thinkingUpdates(this) ? "enabled" : "disabled")
                         + " · " + ReasoningSummarySupport.lastSource(this) +
-                "\nLast error: " + (hasError ? error : "None recorded");
+                "\n" + healthLine();
+    }
+
+    /**
+     * The one line in Overview that says whether Orbit has a problem right now.
+     *
+     * <p>Only a current, unresolved failure earns a place here, and it is dated, so an old one
+     * reads as old rather than as something happening now. A condition Orbit already recovered
+     * from is not a problem the user has; it stays in Advanced, where it is still there for
+     * anyone actually investigating. Reporting nothing when nothing is wrong would leave the
+     * question unanswered, so the healthy case says so in three words rather than a banner.
+     */
+    private String healthLine() {
+        String error = DiagnosticStore.currentError(this);
+        if (error.isEmpty()) return "Status: OK";
+        long at = DiagnosticStore.prefs(this).getLong("error_updated", 0L);
+        return "Last error: " + error + (at == 0L ? "" : " (" + ageLabel(at) + ")");
+    }
+
+    /** Compact "how long ago", for a line that has to stay one line. */
+    private static String ageLabel(long whenMs) {
+        long age = Math.max(0L, System.currentTimeMillis() - whenMs);
+        long mins = age / 60000L;
+        if (mins < 1) return "just now";
+        if (mins < 60) return mins + " min ago";
+        long hours = mins / 60L;
+        if (hours < 24) return hours + (hours == 1 ? " hour ago" : " hours ago");
+        long days = hours / 24L;
+        return days + (days == 1 ? " day ago" : " days ago");
     }
 
     // ---- the collapsible parts --------------------------------------------------------------------
@@ -512,7 +538,33 @@ public final class DiagnosticsActivity extends Activity {
                 "\n  Hands-free voice follow-ups: " + Prefs.autoListen(this) +
                 "\n  0.6 capabilities dashboard: available" +
                 "\n  Lelo mode: " + Prefs.leloMode(this) +
-                "\n  Last overlay launch: " + OverlayLaunchTrace.summary(this);
+                "\n  Last overlay launch: " + OverlayLaunchTrace.summary(this) +
+                errorHistory();
+    }
+
+    /**
+     * Everything Overview deliberately leaves out about what has gone wrong here before.
+     *
+     * <p>Overview answers "is something wrong now". This answers "what has happened", which is the
+     * question that matters once someone is already investigating, and it is where a condition
+     * that recovered on its own belongs: still recorded, still dated, no longer pretending to be
+     * a live failure.
+     */
+    private String errorHistory() {
+        SharedPreferences d = DiagnosticStore.prefs(this);
+        String error = DiagnosticStore.currentError(this);
+        long errorAt = d.getLong("error_updated", 0L);
+        String recovered = DiagnosticStore.recoveredCondition(this);
+        long recoveredAt = d.getLong("recovered_updated", 0L);
+        return "\n  Last error: " + (error.isEmpty() ? "none recorded"
+                        : error + (errorAt == 0L ? "" : " · " + stamp(errorAt))) +
+                "\n  Last recovered condition: " + (recovered.isEmpty() ? "none recorded"
+                        : recovered + (recoveredAt == 0L ? "" : " · " + stamp(recoveredAt))
+                                + " · resolved automatically");
+    }
+
+    private static String stamp(long whenMs) {
+        return DateFormat.getDateTimeInstance().format(new Date(whenMs));
     }
 
     private String orNone(String value) {
@@ -532,8 +584,8 @@ public final class DiagnosticsActivity extends Activity {
     String summaryReport() {
         SharedPreferences d = DiagnosticStore.prefs(this);
         long autoUpdatedMs = d.getLong("auto_updated", 0L);
-        String error = d.getString("last_error", "");
-        boolean hasError = error != null && !error.trim().isEmpty();
+        String recovered = DiagnosticStore.recoveredCondition(this);
+        long recoveredAt = d.getLong("recovered_updated", 0L);
         int refused = d.getInt("completions_ignored", 0);
         int duplicates = d.getInt("completions_ignored_duplicate", 0);
         int superseded = d.getInt("worker_attempts_superseded", 0);
@@ -561,7 +613,11 @@ public final class DiagnosticsActivity extends Activity {
                 "\nOrbit Local: " + OrbitLocalComponent.stateLabel(OrbitLocalComponent.state(this)) +
                 "\nCalendar permission: "
                         + (OrbitCalendarStore.hasAccess(this) ? "granted" : "not granted") +
-                "\nLast error: " + (hasError ? error : "None recorded");
+                "\n" + healthLine() +
+                // Worth a support reply's attention, but stated for what it is: something that
+                // already ended, never a failure the user is currently having.
+                (recovered.isEmpty() ? "" : "\nRecent recovered issue: " + recovered
+                        + (recoveredAt == 0L ? "" : " (" + ageLabel(recoveredAt) + ", resolved automatically)"));
     }
 
     /**

@@ -739,7 +739,7 @@ request-duplication failures, so this release closes both.
   rather than a second set of hardcoded strings, and setup stays seven steps
 
 ### 0.7.7.8 — Thinking updates
-Shipped as `0.7.7.8-beta.1`, then refined in `0.7.7.8-beta.2`. This release deliberately took the
+Shipped as `0.7.7.8-beta.1`, then refined in `0.7.7.8-beta.2` and `0.7.7.8-beta.3`. This release deliberately took the
 Beta slot ahead of Orbit Local device actions, which are unchanged and simply move down one place.
 A long Deep request told the user only that something was happening; the orbital indicator says a
 request is running and nothing more, and on a request that takes twenty seconds that is not enough.
@@ -796,11 +796,9 @@ Beta 2 changed nothing about any of the above. It is three focused refinements o
   nothing under it, which reads as a silent failure rather than as something the user did. Orbit
   now leaves an interrupted orbital mark: the same core and the same tilted ellipse as the thinking
   indicator, drawn as an arc with a clean cut and one particle at rest on the break. No error
-  colour, no cross, no warning glyph, because stopping is not a failure. It is rendered from
-  `PendingRequestStore.stoppedTailForConversation`, a derived view of the existing cancelled
-  status, so it survives reopening the chat and an Activity recreation without a single word of
-  fake model output being written, and it retires itself when the next turn is asked. A partial
-  answer is kept exactly as before, with the mark beneath it
+  colour, no cross, no warning glyph, because stopping is not a failure. The mark itself was right
+  and is unchanged; where Beta 2 got it wrong was in deciding where it belonged, which Beta 3
+  replaces below. A partial answer is kept exactly as before, with the mark beneath it
 - **Diagnostics gained progressive disclosure.** The report had grown to a wall of text that had to
   be read in full to find anything. The screen now opens on a compact Overview with every detailed
   block behind a collapsed section, and copying splits into a short support-shaped **Copy summary**
@@ -809,6 +807,36 @@ Beta 2 changed nothing about any of the above. It is three focused refinements o
   audit: the raw Routine planner response is model output derived from a description the user
   typed, so it could name people and places they mentioned, and it was being appended to the copied
   report. It is now on the device only, behind its own disclosure and its own labelled copy control
+
+Beta 3 is narrower still. Beta 2's device validation was strong — Thinking updates, Auto routing,
+the request lifecycle and the new Diagnostics layout all passed and are frozen — and it left one
+reproducible defect and two points of polish.
+
+- **A stopped turn keeps its own mark.** Beta 2 derived the mark from
+  `PendingRequestStore.stoppedTailForConversation`: the conversation's newest request, if cancelled.
+  That answers "did this conversation end on a stop", which is not the question. It could describe
+  only one stopped turn, it stopped describing even that one as soon as the next turn was queued,
+  and because the mark was drawn as a footer after the message list it landed below whatever
+  happened to be last. On a real device that read as `prompt 1, prompt 2, mark, thinking` — the
+  mark under a question it had nothing to do with. The anchor is now a property of the turn rather
+  than of the conversation: `AssistantClient.History.stoppedRequestId` records which request was
+  stopped at that point, written once by `OrbitRequestManager.cancel` after any partial answer has
+  been persisted, and both surfaces draw the mark inside the same pass that draws the turn. Later
+  turns are appended after it and cannot move it; several stopped turns each keep their own mark;
+  identical prompts are distinguished by request identity rather than by their text; and a stale
+  in-memory copy of a conversation cannot save the anchor away again. Still no fake assistant
+  message anywhere, and the mark remains representation only — every cancellation guard is
+  untouched and the mark is never lifecycle authority
+- **The mark is easier to recognise.** At 22dp it was being read on a Galaxy S25 Ultra as a
+  rendering artifact. It is now 28dp with slightly firmer strokes and a very faint halo behind it,
+  which is enough to look deliberate while staying wordless, muted, un-bubbled and nothing like an
+  error
+- **Diagnostics separates a current problem from one Orbit already fixed.** Overview reported
+  `attachment_bridge_stale_recovered` — a guard doing its job — as "Last error", so a healthy
+  install looked broken indefinitely. Conditions whose names end in `_recovered` are now filed as
+  resolved history rather than as failures, by a rule about the vocabulary rather than a list of
+  known strings. Overview shows a dated current failure or `Status: OK`; the recovered condition
+  keeps its place, its timestamp and its provenance in Advanced and in the full report
 
 ## Future direction
 

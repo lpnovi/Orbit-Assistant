@@ -78,8 +78,13 @@ public class ChatActivity extends Activity {
     private boolean followBottom = true;
     /** Set when the next render adds content the user just caused, so only that bubble animates. */
     private boolean animateNewestOnRender;
-    /** Set only by a Stop the user just performed, so the mark settles once and never replays. */
-    private boolean animateStoppedMarker;
+    /**
+     * The request whose mark should settle visibly on the next render, or empty for none.
+     *
+     * <p>Held as an id rather than a flag so that in a conversation with several stopped turns the
+     * animation plays on the one the user just stopped, and the older marks are simply there.
+     */
+    private String animateStoppedRequestId = "";
     private TextView streamingBubble;
     private String currentMode;
 
@@ -421,7 +426,12 @@ public class ChatActivity extends Activity {
             welcome.setBackground(UiKit.rounded(UiKit.SURFACE, 18, this));
             messages.addView(welcome, bubbleLp(Gravity.START, UiKit.dp(this, 240)));
         } else {
-            for (int i = 0; i < history.size(); i++) addHistoryBubble(history.get(i), i);
+            for (int i = 0; i < history.size(); i++) {
+                addHistoryBubble(history.get(i), i);
+                // The mark is part of the turn it ended, so it is drawn inside the same pass that
+                // draws the turn. Later turns are appended after it and cannot displace it.
+                addStoppedMarkerFor(history.get(i));
+            }
             // Only the message that just arrived animates in; reopening a chat never replays
             // motion for the whole conversation.
             if (animateNewest && messages.getChildCount() > 0) {
@@ -429,10 +439,7 @@ public class ChatActivity extends Activity {
             }
         }
         if (PendingRequestStore.hasActiveForConversation(this, conversationId)) addThinkingRow();
-        else {
-            addFailureStateIfNeeded();
-            addStoppedMarkerIfNeeded();
-        }
+        else addFailureStateIfNeeded();
         // Every path that redraws the conversation also settles Send/Stop, so the control can
         // never be left showing the wrong one.
         updateComposerAction();
@@ -813,10 +820,10 @@ public class ChatActivity extends Activity {
                     // nothing at all when the reply had not started. Stopping is not a failure, so
                     // no error bubble and no Retry appear either way.
                     //
-                    // What the reload now also shows is the stopped mark, because the request is
-                    // durably cancelled and is this conversation's newest one. This is the only
-                    // place that asks for it to settle visibly rather than simply be there.
-                    animateStoppedMarker = true;
+                    // What the reload now also shows is the stopped mark, because the manager has
+                    // anchored it to this turn's last message. This is the only place that asks
+                    // for it to settle visibly rather than simply be there.
+                    animateStoppedRequestId = requestId == null ? "" : requestId;
                     reloadConversation();
                 });
             }
@@ -1797,21 +1804,23 @@ public class ChatActivity extends Activity {
     }
 
     /**
-     * The mark left behind when the user stopped a reply.
+     * The mark left behind when the user stopped the reply to this message.
      *
-     * <p>Rendered from {@link PendingRequestStore#stoppedTailForConversation}, so it is a view of
-     * durable request state rather than anything written into the conversation. That is what makes
-     * it survive leaving the screen, reopening the chat, an Activity recreation, and process
-     * death, without a single word of fake model output being persisted to achieve it.
+     * <p>Drawn from the message's own {@link AssistantClient.History#stoppedRequestId}, so it is
+     * anchored to the turn that was stopped and to nothing else. That is what makes it survive
+     * leaving the screen, reopening the chat, an Activity recreation and process death, stay put
+     * when later turns are added, and appear once per stopped turn rather than once per
+     * conversation — all without a single word of fake model output being persisted.
      *
      * <p>No bubble around it. A stopped turn produced no answer, and wrapping the mark in an
      * assistant bubble would make an absence look like a message. It occupies the space it needs
      * and no more, and it carries the meaning for accessibility that the glyph carries visually.
      */
-    private void addStoppedMarkerIfNeeded() {
-        if (PendingRequestStore.stoppedTailForConversation(this, conversationId) == null) return;
-        boolean animate = animateStoppedMarker;
-        animateStoppedMarker = false;
+    private void addStoppedMarkerFor(AssistantClient.History message) {
+        if (message == null || !message.isStopped()) return;
+        // Only the stop the user just watched happen settles visibly, and only on its own mark.
+        boolean animate = message.stoppedRequestId.equals(animateStoppedRequestId);
+        if (animate) animateStoppedRequestId = "";
 
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -1821,7 +1830,8 @@ public class ChatActivity extends Activity {
         row.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
 
         OrbitStoppedView mark = new OrbitStoppedView(this, UiKit.BG);
-        row.addView(mark, new LinearLayout.LayoutParams(UiKit.dp(this, 22), UiKit.dp(this, 22)));
+        int size = UiKit.dp(this, OrbitStoppedView.SIZE_DP);
+        row.addView(mark, new LinearLayout.LayoutParams(size, size));
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);

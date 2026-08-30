@@ -121,11 +121,61 @@ public final class DiagnosticStore {
         return prefs(c).getString("local_uninstall_stage", "");
     }
 
+    /**
+     * Records something that went wrong, sorted into what the user can act on and what they cannot.
+     *
+     * <p>Orbit's diagnostic vocabulary already separates the two. Some conditions are failures —
+     * a request that did not complete, a component that would not install. Others are things Orbit
+     * noticed and put right on its own, and by long-standing convention those are named with a
+     * {@code _recovered} suffix. Only the first kind is a problem the user currently has, and only
+     * the first kind belongs at the top of Diagnostics.
+     *
+     * <p>Before this the two shared one slot, so a condition that had already resolved itself sat
+     * in Overview as "Last error" indefinitely and made a healthy install look broken. They are now
+     * kept apart, and both are kept: nothing is thrown away, it is only filed correctly.
+     */
     public static void recordError(Context c, String error) {
+        if (c == null) return;
+        if (isRecoveredCondition(error)) { recordRecovered(c, error); return; }
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
                 .putString("last_error", safe(error))
                 .putLong("error_updated", System.currentTimeMillis())
                 .apply();
+    }
+
+    /**
+     * Records a condition Orbit detected and recovered from without the user having to do anything.
+     *
+     * <p>Kept because it is genuinely useful when investigating a report, and kept out of the
+     * headline because it describes something that already ended.
+     */
+    public static void recordRecovered(Context c, String condition) {
+        if (c == null) return;
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+                .putString("last_recovered", safe(condition))
+                .putLong("recovered_updated", System.currentTimeMillis())
+                .apply();
+    }
+
+    /**
+     * True for a condition whose own name says it ended in recovery.
+     *
+     * <p>Deliberately a rule about the vocabulary rather than a list of known strings, so a
+     * condition added later is classified correctly without anyone remembering to come back here.
+     */
+    public static boolean isRecoveredCondition(String condition) {
+        String value = safe(condition).trim().toLowerCase(java.util.Locale.US);
+        return value.endsWith("_recovered") || value.endsWith("_recovered.");
+    }
+
+    /** The current, unresolved failure, or empty when Orbit has nothing to report. */
+    public static String currentError(Context c) {
+        return safe(prefs(c).getString("last_error", "")).trim();
+    }
+
+    /** The last self-resolved condition, or empty. Historical by definition, never a headline. */
+    public static String recoveredCondition(Context c) {
+        return safe(prefs(c).getString("last_recovered", "")).trim();
     }
 
     public static SharedPreferences prefs(Context c) {
