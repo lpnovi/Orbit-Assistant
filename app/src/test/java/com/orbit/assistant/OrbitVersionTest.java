@@ -148,9 +148,11 @@ public final class OrbitVersionTest {
 
     /**
      * The 0.7.7.8 line stays in Beta through its refinements. Beta 1 proved the summary path on a
-     * Galaxy S25 Ultra; Beta 2 turns the feature on by default and changes what a stopped turn
-     * leaves behind, and both of those are visible in every conversation, so they get their own
-     * device validation before this reaches the Stable channel.
+     * Galaxy S25 Ultra; Beta 2 turned the feature on by default and changed what a stopped turn
+     * leaves behind; Beta 3 anchored that mark to its own turn; and Beta 4 changes what a
+     * follow-up question actually sends to the model. Every one of those is visible in ordinary
+     * conversations and none of them is provable without a real device, so each gets its own
+     * validation before this reaches the Stable channel.
      *
      * <p>The original reason stands unchanged below: the feature changes what is shown during
      * every request and asks a live backend for output
@@ -165,9 +167,9 @@ public final class OrbitVersionTest {
         assertEquals("0.7.7.8", OrbitVersion.baseVersion(BuildConfig.VERSION_NAME));
         assertTrue("a Beta build carries a real beta counter",
                 OrbitVersion.betaNumber(BuildConfig.VERSION_NAME) >= 1);
-        assertEquals("Orbit Assistant v0.7.7.8 Beta 3",
+        assertEquals("Orbit Assistant v0.7.7.8 Beta 4",
                 OrbitVersion.releaseTitle(BuildConfig.VERSION_NAME));
-        assertEquals("v0.7.7.8-beta.3", OrbitVersion.tagFor(BuildConfig.VERSION_NAME));
+        assertEquals("v0.7.7.8-beta.4", OrbitVersion.tagFor(BuildConfig.VERSION_NAME));
         assertTrue("the release workflow must publish it as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(BuildConfig.VERSION_NAME)));
         assertTrue("and it must still outrank the Stable release it follows",

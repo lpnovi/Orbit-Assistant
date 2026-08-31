@@ -378,20 +378,59 @@ public final class ChatGptClient {
         }
 
         JSONArray input = new JSONArray();
+        // What the user is attaching right now, for Diagnostics only. Read from the current turn's
+        // own record rather than guessed, and it is Orbit's category name, never a filename.
+        String currentAttachmentKind = "none";
+        HistoryAttachments.Plan attachments = HistoryAttachments.empty();
         if (history != null) {
             int end = history.size();
             if (end > 0) {
                 AssistantClient.History last = history.get(end - 1);
-                if (last != null && "user".equalsIgnoreCase(last.role) && prompt != null && prompt.trim().equals(last.content == null ? "" : last.content.trim())) end--;
+                if (last != null && "user".equalsIgnoreCase(last.role) && prompt != null && prompt.trim().equals(last.content == null ? "" : last.content.trim())) {
+                    // The turn being asked right now. Dropped from history because its attachment
+                    // travels the current-turn path below; counting it in both places is exactly
+                    // the duplication this whole path exists to prevent.
+                    if (last.screenAttached) currentAttachmentKind = HistoryAttachments.category(last.attachmentKind);
+                    end--;
+                }
             }
             int start = Math.max(0, end - 10);
-            for (int i = start; i < end; i++) {
-                AssistantClient.History h = history.get(i);
+            List<AssistantClient.History> window = history.subList(start, Math.max(start, end));
+            // Bounded by construction: only turns already inside this window are eligible, so the
+            // attachment policy can never reach further back than the text history does.
+            attachments = HistoryAttachments.plan(window, Prefs.screenshot(context));
+            for (int i = 0; i < window.size(); i++) {
+                AssistantClient.History h = window.get(i);
                 if (h == null || h.content == null || h.content.trim().isEmpty()) continue;
                 String role = "assistant".equalsIgnoreCase(h.role) ? "assistant" : "user";
-                input.put(new JSONObject().put("role", role).put("content", safe(h.content, 6000)));
+                HistoryAttachments.Turn attachment = "user".equals(role) ? attachments.at(i) : null;
+                if (attachment == null) {
+                    input.put(new JSONObject().put("role", role).put("content", safe(h.content, 6000)));
+                    continue;
+                }
+                // The attachment is rebuilt onto the turn it was shared with, so the model reads
+                // the conversation the way the user remembers having it: the picture is part of
+                // the question they asked back then, not part of the one they are asking now.
+                JSONArray parts = new JSONArray();
+                parts.put(new JSONObject().put("type", "input_text")
+                        .put("text", safe(h.content, 6000)
+                                + HistoryAttachments.wrap(attachment.kind, attachment.text)));
+                if (attachment.hasImage()) {
+                    Bitmap stored = AttachmentStore.load(attachment.imagePath);
+                    // A file that will not decode is treated exactly like one that is gone: the
+                    // turn keeps its text and Orbit invents nothing to stand in for the image.
+                    if (stored != null) {
+                        parts.put(new JSONObject()
+                                .put("type", "input_image")
+                                .put("image_url", "data:image/jpeg;base64," + bitmapToBase64(stored)));
+                    }
+                }
+                input.put(new JSONObject().put("role", role).put("content", parts));
             }
         }
+        DiagnosticStore.recordAttachmentContext(context, currentAttachmentKind,
+                attachments.size(), attachments.images, attachments.kindLabel(),
+                attachments.missingAssets);
 
         JSONArray currentContent = new JSONArray();
         StringBuilder text = new StringBuilder(prompt == null ? "" : prompt.trim());

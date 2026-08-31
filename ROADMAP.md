@@ -739,7 +739,8 @@ request-duplication failures, so this release closes both.
   rather than a second set of hardcoded strings, and setup stays seven steps
 
 ### 0.7.7.8 — Thinking updates
-Shipped as `0.7.7.8-beta.1`, then refined in `0.7.7.8-beta.2` and `0.7.7.8-beta.3`. This release deliberately took the
+Shipped as `0.7.7.8-beta.1`, then refined in `0.7.7.8-beta.2`, `0.7.7.8-beta.3`, and
+`0.7.7.8-beta.4`. This release deliberately took the
 Beta slot ahead of Orbit Local device actions, which are unchanged and simply move down one place.
 A long Deep request told the user only that something was happening; the orbital indicator says a
 request is running and nothing more, and on a request that takes twenty seconds that is not enough.
@@ -838,6 +839,38 @@ reproducible defect and two points of polish.
   known strings. Overview shows a dated current failure or `Status: OK`; the recovered condition
   keeps its place, its timestamp and its provenance in Advanced and in the full report
 
+Beta 4 closed the last two items before Stable: one real defect and the finish on the stopped mark.
+
+- **An attachment belongs to the turn it was shared with.** A screen shared in the overlay appeared
+  to be attached all over again on the next question, and the cause was the opposite of the
+  symptom. The overlay left `screenAttached` armed after a send, so the follow-up genuinely did
+  pick the screen up a second time; meanwhile `ChatGptClient.requestBody` rebuilt history as role
+  and text only, so the picture the conversation was actually about was not reaching the model at
+  all. Both halves are fixed together. A hand-attached screen, selection, image, or file is now
+  consumed by the message that carried it, exactly like sending a photo, while earlier
+  attachment-bearing turns are reconstructed onto *their own* position in the request by
+  `HistoryAttachments`, image bytes included. Orbit's transport is stateless, so those bytes do
+  travel again — but as part of the question the user asked back then, never as a new attachment on
+  the question they are asking now
+- **Bounded, and it degrades honestly.** Only turns already inside the ten-turn history window are
+  eligible, the newest few carry image bytes and older ones fall back to their extracted text, one
+  stored file is never sent twice in a request, and no file is ever copied or re-saved. A stored
+  image that has since been deleted costs the turn its picture and nothing else: the text survives
+  and Orbit invents no replacement. Reconstructed attachments keep the identical
+  `untrusted="true"` framing the current turn uses, and no local path ever reaches the model
+- **Automatic screen context is deliberately untouched.** Attach screen by default and an app
+  profile set to Attach are standing instructions to keep supplying the live screen, not one-shot
+  shares, so they survive every send. The overlay now tracks which of the two armed the screen
+  rather than treating one flag as both things
+- **The stopped mark reached its intended form.** Beta 3's 28dp square still read as a small icon
+  parked at the left of the response lane. It is now a wide, shallow interrupted orbit centred
+  across that lane: two arcs broken symmetrically above and below centre, a core at rest in the
+  break, and a particle stopped at each extreme. The settle went from 260ms to 620ms and became
+  four overlapping phases — the particles decelerating, the orbit widening out of the live
+  indicator's compact geometry, the breaks opening, the core landing — so a stop looks arrived at
+  rather than swapped in. Beta 3's turn anchoring is unchanged, historical marks stay static, and
+  the whole thing is skipped for the finished state when system animations are off
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever
@@ -870,6 +903,29 @@ v0.7.7.8 then took the following Beta slot for Thinking updates, a focused UX re
 provider one. It is small, it is optional, and it is off by default, so it was worth taking ahead of
 the larger runtime work rather than behind it. Orbit Local device actions remain unstarted and
 unchanged at the head of this list, and the release below them is untouched.
+
+Once `0.7.7.8` reaches Stable, the following Beta slot is reserved for `0.7.7.9`, a full-app gesture
+release. It is a UX release like `0.7.7.8` rather than a provider one, and it is taken next because
+the navigation model it establishes is something later screens should be built on rather than
+retrofitted to. Nothing in it was started in `0.7.7.8-beta.4`; it is recorded here as sequencing
+only. **Orbit Local device actions remain unstarted and unchanged at the head of the numbered list
+below**, and `0.7.7.9` does not displace them from that position — it takes the Beta slot in front
+of them, exactly as `0.7.7.7` and `0.7.7.8` each did.
+
+`0.7.7.9` is expected to cover:
+
+- **Interactive back-navigation in full chat.** A left-to-right swipe returns `ChatActivity` to the
+  chat list. It has to be genuinely interactive rather than a gesture detector that plays a
+  canned animation: the conversation follows the finger continuously, the Chats surface is visibly
+  revealed beneath it, releasing below the threshold springs back, releasing past it or with enough
+  velocity completes the navigation, and a subtle haptic marks the commit threshold
+- **Chat-list actions.** Swipe left on a chat for Delete and right for Pin/Unpin, with Orbit's
+  existing reversible-action and Undo treatment where it applies
+- **Settings > Look & feel > Gestures.** The mappings are optional and can be turned off, because a
+  gesture that cannot be disabled is a gesture that gets in someone's way
+
+Deliberately **not** in that scope: per-message swipe actions, and any horizontal gesture in the
+Side-button overlay. The overlay's vertical swipe behaviour is settled and is not being reopened.
 
 1. **Orbit Local device actions** — a lightweight local intent/function model installed beside the
    chat model (the `ModelSpec` architecture already keeps their files and state independent). The

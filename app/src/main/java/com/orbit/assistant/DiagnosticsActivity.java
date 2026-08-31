@@ -442,7 +442,26 @@ public final class DiagnosticsActivity extends Activity {
                 "\n  App screen policy: " + orNone(d.getString("app_effective_screen", "")) +
                 "\n  App screenshot policy: " + orNone(d.getString("app_effective_screenshot", "")) +
                 "\n  App AI strength: " + orNone(d.getString("app_effective_mode", "")) +
-                "\n  App quick actions: " + orNone(d.getString("app_effective_actions", ""));
+                "\n  App quick actions: " + orNone(d.getString("app_effective_actions", "")) +
+                attachmentContinuity(d);
+    }
+
+    /**
+     * Whether an attachment stayed with the turn it belongs to, which is the question Beta 4
+     * exists to answer.
+     *
+     * <p>Counts and Orbit's own category words. What was attached is not here and has nowhere to
+     * be stored: no image data, no extracted text, no filename, no path on this device.
+     */
+    private String attachmentContinuity(SharedPreferences d) {
+        if (d.getLong("attachment_updated", 0L) == 0L) {
+            return "\n  Attachment continuity: no request recorded yet";
+        }
+        return "\n  Current turn attachment: " + orNone(d.getString("attachment_current_kind", "")) +
+                "\n  Historical attachments in last request: " + d.getInt("attachment_history_turns", 0) +
+                "\n  Of those, re-sent as images: " + d.getInt("attachment_history_images", 0) +
+                "\n  Historical attachment types: " + orNone(d.getString("attachment_history_kinds", "")) +
+                "\n  Historical assets missing: " + d.getInt("attachment_history_missing", 0);
     }
 
     private String memory() {

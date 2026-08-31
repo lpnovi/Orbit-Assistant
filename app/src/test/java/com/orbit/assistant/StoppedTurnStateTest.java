@@ -564,31 +564,128 @@ public final class StoppedTurnStateTest {
             assertTrue("a live stop settles once", mark.isResolving());
         }
 
-        // The settle is time-based and ends on its own; it never becomes a loop.
+        // The settle is time-based and ends on its own; it never becomes a loop. Beta 4 made it
+        // long enough to actually watch, so this waits past the whole of it.
         Robolectric.getForegroundThreadScheduler()
-                .advanceBy(600, java.util.concurrent.TimeUnit.MILLISECONDS);
+                .advanceBy(1200, java.util.concurrent.TimeUnit.MILLISECONDS);
         drawOnce(mark, 44);
         assertFalse("the settle must finish rather than repeat", mark.isResolving());
     }
 
     /**
-     * Beta 2's mark was mistaken on a real device for a rendering artifact, so it grew.
+     * Beta 3's mark still read on a real device as a small icon parked at the left of the response
+     * lane. Beta 4's is a wide, shallow line that spans it.
      *
-     * <p>Stated as a range rather than an exact number: the contract is "clearly bigger than Beta
-     * 2, still small enough to stay out of the conversation's way", not one particular value.
+     * <p>Stated as a shape contract rather than exact numbers: what matters is that the mark is
+     * several times wider than it is tall, that it grew outward rather than being scaled up whole,
+     * and that a stopped turn still costs a conversation almost no vertical room.
      */
-    @Test public void theMarkIsLargerThanBetaTwoButStillCompact() {
-        int beta2 = 22;
-        assertTrue("the mark must be noticeably larger than Beta 2's 22dp",
-                OrbitStoppedView.SIZE_DP >= beta2 * 5 / 4);
-        assertTrue("but it must not start competing with a message bubble",
-                OrbitStoppedView.SIZE_DP <= beta2 * 3 / 2);
+    @Test public void theMarkIsWideAndShallowRatherThanASquareGlyph() {
+        assertTrue("the mark must be several times wider than it is tall",
+                OrbitStoppedView.WIDTH_DP >= OrbitStoppedView.HEIGHT_DP * 3);
+        assertTrue("but it must not run edge to edge",
+                OrbitStoppedView.WIDTH_DP <= 160);
+        int beta3 = 28;
+        assertTrue("it must be clearly wider than Beta 3's square glyph",
+                OrbitStoppedView.WIDTH_DP >= beta3 * 3);
+        assertTrue("and must not have grown by scaling the whole glyph up",
+                OrbitStoppedView.HEIGHT_DP <= beta3 + 4);
+        assertTrue("the overlay's tighter width is still a wide mark",
+                OrbitStoppedView.OVERLAY_WIDTH_DP >= OrbitStoppedView.HEIGHT_DP * 3);
+        assertTrue("and is not wider than full chat's",
+                OrbitStoppedView.OVERLAY_WIDTH_DP <= OrbitStoppedView.WIDTH_DP);
 
         OrbitStoppedView mark = new OrbitStoppedView(context, UiKit.SURFACE);
         mark.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-        assertEquals(UiKit.dp(context, OrbitStoppedView.SIZE_DP), mark.getMeasuredWidth());
-        assertEquals(UiKit.dp(context, OrbitStoppedView.SIZE_DP), mark.getMeasuredHeight());
+        assertEquals(UiKit.dp(context, OrbitStoppedView.WIDTH_DP), mark.getMeasuredWidth());
+        assertEquals(UiKit.dp(context, OrbitStoppedView.HEIGHT_DP), mark.getMeasuredHeight());
+    }
+
+    /**
+     * The mark belongs across the assistant response lane, not against the left edge where a reply
+     * would have begun.
+     *
+     * <p>A layout contract rather than a pixel one: the row spans the lane and centres its single
+     * child in it. That is what stops the mark reading as a bullet on an empty line, and it is
+     * checked on the real rendered view rather than on the constants it was built from.
+     */
+    @Test public void theMarkIsCentredInTheResponseLane() {
+        PendingRequestStore.Item item = queue("c-centred");
+        OrbitRequestManager.cancel(context, item.id);
+
+        ActivityController<ChatActivity> controller = openChat("c-centred");
+        OrbitStoppedView mark = findMark(controller.get());
+        assertNotNull(mark);
+        ViewGroup row = (ViewGroup) mark.getParent();
+        assertEquals("the mark's row must centre it rather than start-align it",
+                android.view.Gravity.CENTER, ((android.widget.LinearLayout) row).getGravity());
+        ViewGroup.LayoutParams lp = row.getLayoutParams();
+        assertEquals("the row has to span the lane for centring to mean anything",
+                ViewGroup.LayoutParams.MATCH_PARENT, lp.width);
+        assertTrue("the mark itself stays wide rather than filling the row",
+                mark.getLayoutParams().width > mark.getLayoutParams().height * 2);
+        controller.pause().stop().destroy();
+    }
+
+    /**
+     * The settle has to be long enough to watch. Beta 3's was over before it registered, which made
+     * a stop look like the indicator being swapped out rather than coming to rest.
+     */
+    @Test public void theSettleLastsLongEnoughToBeRead() {
+        OrbitStoppedView mark = new OrbitStoppedView(context, UiKit.SURFACE);
+        mark.resolve();
+        if (!UiKit.animationsEnabled()) return;
+
+        assertTrue("the settle must still be playing well past Beta 3's whole duration",
+                mark.isResolving());
+        Robolectric.getForegroundThreadScheduler()
+                .advanceBy(300, java.util.concurrent.TimeUnit.MILLISECONDS);
+        drawOnce(mark, 44);
+        assertTrue("a third of a second in, the settle is not finished", mark.isResolving());
+
+        Robolectric.getForegroundThreadScheduler()
+                .advanceBy(500, java.util.concurrent.TimeUnit.MILLISECONDS);
+        drawOnce(mark, 44);
+        assertFalse("but it is over well inside a second", mark.isResolving());
+    }
+
+    /**
+     * Every frame of the settle has to draw, at every size the two surfaces can hand it.
+     *
+     * <p>The geometry moves during the settle (the orbit widens, the breaks open, the particles
+     * decelerate), so this walks the whole motion rather than only its endpoints.
+     */
+    @Test public void everyFrameOfTheSettleDraws() {
+        OrbitStoppedView mark = new OrbitStoppedView(context, UiKit.SURFACE);
+        mark.resolve();
+        for (int step = 0; step < 12; step++) {
+            drawWide(mark, UiKit.dp(context, OrbitStoppedView.WIDTH_DP),
+                    UiKit.dp(context, OrbitStoppedView.HEIGHT_DP));
+            Robolectric.getForegroundThreadScheduler()
+                    .advanceBy(60, java.util.concurrent.TimeUnit.MILLISECONDS);
+        }
+        drawWide(mark, UiKit.dp(context, OrbitStoppedView.OVERLAY_WIDTH_DP),
+                UiKit.dp(context, OrbitStoppedView.HEIGHT_DP));
+    }
+
+    /**
+     * With animations turned down the mark is simply there, finished, on the first frame.
+     *
+     * <p>The terminal state is information, not decoration, so it must never depend on motion the
+     * user has asked the system not to play.
+     */
+    @Test public void theTerminalStateNeverDependsOnMotion() {
+        OrbitStoppedView mark = new OrbitStoppedView(context, UiKit.SURFACE);
+        android.provider.Settings.Global.putFloat(context.getContentResolver(),
+                android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 0f);
+        mark.resolve();
+        assertFalse("animations off means the finished mark, drawn once, with no settle",
+                mark.isResolving());
+        drawWide(mark, UiKit.dp(context, OrbitStoppedView.WIDTH_DP),
+                UiKit.dp(context, OrbitStoppedView.HEIGHT_DP));
+        android.provider.Settings.Global.putFloat(context.getContentResolver(),
+                android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f);
     }
 
     /** Still not a failure: nothing about the mark may be styled as an error. */
@@ -657,6 +754,17 @@ public final class StoppedTurnStateTest {
         mark.applyAccent(UiKit.SURFACE);
         drawOnce(mark, 44);
         assertEquals(UiKit.accentForName(context, "rose"), UiKit.accent(context));
+    }
+
+    /** Draws the mark at the real, non-square proportions the two surfaces give it. */
+    private static void drawWide(View view, int width, int height) {
+        view.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
+        view.layout(0, 0, width, height);
+        android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(
+                Math.max(1, width), Math.max(1, height), android.graphics.Bitmap.Config.ARGB_8888);
+        view.draw(new android.graphics.Canvas(bitmap));
+        bitmap.recycle();
     }
 
     private static void drawOnce(View view, int size) {

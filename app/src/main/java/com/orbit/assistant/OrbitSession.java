@@ -116,6 +116,19 @@ public class OrbitSession extends VoiceInteractionSession {
     private Bitmap screenshot;
     private Bitmap selectedScreenshot;
     private boolean screenAttached = false;
+    /**
+     * True when {@link #screenAttached} was armed by policy rather than by the user.
+     *
+     * <p>The two look identical to the rest of the sheet and mean completely different things. A
+     * screen the user attached is something they shared with one message, exactly like sending a
+     * photo, and it is consumed by that message. A screen armed by Attach screen by default, or
+     * by an app profile's Attach policy, is a standing instruction to keep handing Orbit the live
+     * screen, and it has to survive every send or that feature would quietly become one-shot.
+     *
+     * <p>Anything the user does by hand (tapping Use screen, choosing a selection, attaching a
+     * file) clears this, because from that point the attachment is theirs and not the policy's.
+     */
+    private boolean screenAttachedByPolicy = false;
     private boolean selectionAttached = false;
     private boolean screenSelectionOpening = false;
     private int screenContextGeneration = 0;
@@ -325,6 +338,8 @@ public class OrbitSession extends VoiceInteractionSession {
         }
         screenAttached = AppProfileStore.shouldAttachByDefault(
                 getContext(), foregroundPackage, Prefs.attachScreenByDefault(getContext()));
+        // Armed by policy, so it stays armed across sends. A manual attach below clears this.
+        screenAttachedByPolicy = screenAttached;
         DiagnosticStore.recordScreen(getContext(), foregroundPackage, foregroundAppLabel, false, false);
         OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_CONTEXT_COMPLETE,
                 OverlayLaunchTrace.State.of()
@@ -984,6 +999,7 @@ public class OrbitSession extends VoiceInteractionSession {
         selectedScreenshot = null;
         genericAttachment = null;
         screenAttached = false;
+        screenAttachedByPolicy = false;
         selectionAttached = false;
         screenSelectionOpening = false;
         if (screenshotPreview != null) {
@@ -1201,6 +1217,7 @@ public class OrbitSession extends VoiceInteractionSession {
 
             if (blocked) {
                 screenAttached = false;
+                screenAttachedByPolicy = false;
                 selectionAttached = false;
                 selectedScreenshot = null;
                 contextText.setText(foregroundAppLabel == null || foregroundAppLabel.isEmpty()
@@ -1305,6 +1322,9 @@ public class OrbitSession extends VoiceInteractionSession {
         boolean attach = !screenAttached;
         if (attach) clearGenericAttachment();
         screenAttached = attach;
+        // Touched by hand, so this attachment now belongs to the next message rather than to a
+        // standing policy, and is consumed when that message is sent.
+        screenAttachedByPolicy = false;
         if (attach) {
             selectedScreenshot = null;
             selectionAttached = false;
@@ -1377,6 +1397,7 @@ public class OrbitSession extends VoiceInteractionSession {
                         return;
                     }
                     screenAttached = true;
+                    screenAttachedByPolicy = false;
                     clearGenericAttachment();
                     selectionAttached = result.precise;
                     selectedScreenshot = result.precise ? result.image : null;
@@ -1584,6 +1605,7 @@ public class OrbitSession extends VoiceInteractionSession {
         genericAttachment = attachment;
         if (attachment != null) {
             screenAttached = false;
+            screenAttachedByPolicy = false;
             selectionAttached = false;
             selectedScreenshot = null;
             updateContextUi();
@@ -1719,8 +1741,12 @@ public class OrbitSession extends VoiceInteractionSession {
         }
 
         final ComposerAttachment submittedGeneric = genericAttachment;
+        // Frozen before anything below can clear it. The composer returns to unattached as part
+        // of this send, so every later line in this method has to describe the message that was
+        // sent rather than the composer as it now is.
+        final boolean submittedSelection = selectionAttached;
         final boolean submittedWithScreen = submittedGeneric == null && screenAttached &&
-                (selectionAttached && selectedScreenshot != null ||
+                (submittedSelection && selectedScreenshot != null ||
                         (screenText != null && !screenText.trim().isEmpty()) || screenshot != null);
 
         // Freeze the exact screen context at submission time. The same immutable
@@ -1728,16 +1754,16 @@ public class OrbitSession extends VoiceInteractionSession {
         // so later assistant-session updates cannot change what this message meant.
         final String submittedScreenText = submittedGeneric != null
                 ? submittedGeneric.contextText : submittedWithScreen
-                ? (selectionAttached ? selectedScreenContext() :
+                ? (submittedSelection ? selectedScreenContext() :
                         (screenText == null ? "" : screenText)) : "";
         final Bitmap submittedScreenshot = submittedGeneric != null
                 ? submittedGeneric.image : submittedWithScreen
-                ? (selectionAttached ? selectedScreenshot : screenshot) : null;
+                ? (submittedSelection ? selectedScreenshot : screenshot) : null;
 
         addUserBubble(q);
         if (submittedGeneric != null) addScreenAttachmentBadge(submittedGeneric.label);
         else if (submittedWithScreen) addScreenAttachmentBadge(
-                selectionAttached ? "Selection attached" : "Screen attached");
+                submittedSelection ? "Selection attached" : "Screen attached");
 
         final boolean submittedWithAttachment = submittedGeneric != null || submittedWithScreen;
         final String historyAttachmentPath = submittedWithAttachment
@@ -1748,12 +1774,12 @@ public class OrbitSession extends VoiceInteractionSession {
         AssistantClient.History userItem = new AssistantClient.History(
                 "user", q, submittedWithAttachment, historyAttachmentPath,
                 submittedGeneric != null ? submittedGeneric.kind :
-                        submittedWithScreen ? (selectionAttached ? "screen_selection" : "screen") : "",
+                        submittedWithScreen ? (submittedSelection ? "screen_selection" : "screen") : "",
                 submittedGeneric != null ? submittedGeneric.label :
-                        submittedWithScreen ? (selectionAttached ? "Selection attached" : "Screen attached") : "",
+                        submittedWithScreen ? (submittedSelection ? "Selection attached" : "Screen attached") : "",
                 submittedScreenText);
         history.add(userItem);
-        if (submittedGeneric != null) clearGenericAttachment();
+        consumeSubmittedAttachment(submittedGeneric != null, submittedWithScreen);
 
         final String requestConversationId = conversationId;
         final List<AssistantClient.History> requestHistory = new ArrayList<>(history);
@@ -1868,7 +1894,43 @@ public class OrbitSession extends VoiceInteractionSession {
 
         OrbitRequestManager.enqueue(getContext(), requestConversationId, submitted, submittedScreenText,
                 submittedScreenshot, voiceRequest, draftedReply, currentMode,
-                submittedGeneric != null || selectionAttached, listener);
+                submittedGeneric != null || submittedSelection, listener);
+    }
+
+    /**
+     * Whether a screen attachment is used up by the message it has just been sent with.
+     *
+     * <p>The one rule that separates the two things Orbit calls "the screen is attached". A screen
+     * the user attached by hand is a thing they shared with one message and is consumed by it. A
+     * screen armed by Attach screen by default, or by an app profile's Attach policy, is a
+     * standing instruction to keep supplying the live screen and survives every send; consuming
+     * one would turn a continuous feature into a one-shot without the user asking for that.
+     */
+    static boolean screenAttachmentIsConsumedBySend(boolean submittedWithScreen,
+                                                    boolean armedByPolicy) {
+        return submittedWithScreen && !armedByPolicy;
+    }
+
+    /**
+     * Returns the composer to an unattached state once the turn that owns the attachment is away.
+     *
+     * <p>An attachment belongs to the message the user shared it with. It stays on that message in
+     * the conversation, its history file is untouched, and the provider still receives it as part
+     * of that historical turn; what ends here is only the composer being armed. Sending a photo in
+     * any other chat app behaves the same way: the photo stays on the message, the attach button
+     * does not stay loaded for whatever the user types next.
+     *
+     * <p>A screen armed by policy is deliberately left alone. Attach screen by default and an app
+     * profile's Attach policy are standing instructions to keep supplying the live screen, so
+     * consuming one would turn a continuous feature into a one-shot without the user asking.
+     */
+    private void consumeSubmittedAttachment(boolean submittedGeneric, boolean submittedWithScreen) {
+        if (submittedGeneric) clearGenericAttachment();
+        if (!screenAttachmentIsConsumedBySend(submittedWithScreen, screenAttachedByPolicy)) return;
+        screenAttached = false;
+        selectionAttached = false;
+        selectedScreenshot = null;
+        updateContextUi();
     }
 
     private void showThinkingIndicator() {
@@ -2497,22 +2559,24 @@ public class OrbitSession extends VoiceInteractionSession {
         if (messages == null) return;
         Context c = getContext();
         LinearLayout row = new LinearLayout(c);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(UiKit.dp(c, 4), 0, 0, 0);
+        // Centred across the sheet's response lane, the same contract full chat follows, so the
+        // two surfaces cannot disagree about where a stopped turn ended.
+        row.setGravity(Gravity.CENTER);
         row.setContentDescription("Response stopped");
         row.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_YES);
 
         OrbitStoppedView mark = new OrbitStoppedView(c, UiKit.BG);
-        // The sheet is tighter than full chat, so the mark sits a touch under its natural size —
-        // still the larger, clearly-intentional mark, just proportionate to the overlay.
-        int size = UiKit.dp(c, OrbitStoppedView.SIZE_DP - 2);
-        row.addView(mark, new LinearLayout.LayoutParams(size, size));
+        // The sheet is narrower than full chat, so the same mark is drawn a little tighter. Its
+        // height is unchanged, so a stopped turn costs the overlay exactly the vertical room it
+        // did before.
+        row.addView(mark, new LinearLayout.LayoutParams(
+                UiKit.dp(c, OrbitStoppedView.OVERLAY_WIDTH_DP),
+                UiKit.dp(c, OrbitStoppedView.HEIGHT_DP)));
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.gravity = Gravity.START;
-        lp.setMargins(0, UiKit.dp(c, 1), 0, UiKit.dp(c, 4));
+        lp.setMargins(0, UiKit.dp(c, 6), 0, UiKit.dp(c, 9));
         messages.addView(row, lp);
         if (animate) {
             mark.resolve();

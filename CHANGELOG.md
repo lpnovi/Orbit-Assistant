@@ -515,3 +515,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - The mark is a little larger and easier to recognise, still quiet and still not an error.
   - Diagnostics no longer reports a problem Orbit already fixed as though it were happening now.
   - The full diagnostics report still keeps that history, clearly marked as resolved.
+
+- **v0.7.7.8-beta.4**: Follow-up questions now keep the screen or file you already shared, and stopping a reply resolves into a calmer, wider Orbit mark.
+  - Ask a follow-up about a screen you shared and Orbit still understands it, without attaching it again.
+  - The screenshot or file stays on the message you sent it with, exactly like a photo in any chat.
+  - Attaching the screen again still works and really does share the new screen.
+  - Automatic screen context is untouched: if you had Orbit always use your screen, it still does.
+  - The stopped mark is now a wide, centred orbit that visibly settles out of the thinking animation.

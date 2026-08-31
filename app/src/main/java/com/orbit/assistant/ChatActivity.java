@@ -1592,9 +1592,13 @@ public class ChatActivity extends Activity {
         });
     }
 
-    private void setPendingAttachment(ComposerAttachment a) {
+    /** Package-private so a test can arm the composer the way the attachment menu does. */
+    void setPendingAttachment(ComposerAttachment a) {
         setPendingAttachment(a, true);
     }
+
+    /** What the composer is currently holding, or null when it is unarmed. For tests. */
+    ComposerAttachment pendingAttachment() { return pendingAttachment; }
 
     private void setPendingAttachment(ComposerAttachment a, boolean haptic) {
         pendingAttachment = a;
@@ -1823,20 +1827,25 @@ public class ChatActivity extends Activity {
         if (animate) animateStoppedRequestId = "";
 
         LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(UiKit.dp(this, 4), 0, 0, 0);
+        // Centred within the assistant lane, not against its left edge. A stop is where the
+        // response lane ended, so the mark belongs across that lane rather than at the point a
+        // reply would have started. The right inset matches the one an assistant answer keeps, so
+        // "centred" means centred under the answer, not centred on the physical display.
+        row.setGravity(Gravity.CENTER);
         // TalkBack is told what happened in words; the mark itself stays wordless on screen.
         row.setContentDescription("Response stopped");
         row.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
 
         OrbitStoppedView mark = new OrbitStoppedView(this, UiKit.BG);
-        int size = UiKit.dp(this, OrbitStoppedView.SIZE_DP);
-        row.addView(mark, new LinearLayout.LayoutParams(size, size));
+        row.addView(mark, new LinearLayout.LayoutParams(
+                UiKit.dp(this, OrbitStoppedView.WIDTH_DP),
+                UiKit.dp(this, OrbitStoppedView.HEIGHT_DP)));
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.gravity = Gravity.START;
-        lp.setMargins(0, UiKit.dp(this, 2), 0, UiKit.dp(this, 6));
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        // Enough air above and below that the mark reads as belonging to the response it ended
+        // rather than as a rule drawn between two turns.
+        lp.setMargins(0, UiKit.dp(this, 8), UiKit.dp(this, 8), UiKit.dp(this, 12));
         messages.addView(row, lp);
         // Only a stop the user just performed settles visibly. Reopening a conversation that
         // already ended this way simply shows the finished mark.

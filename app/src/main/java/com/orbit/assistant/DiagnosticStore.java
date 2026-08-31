@@ -29,6 +29,26 @@ public final class DiagnosticStore {
                 .apply();
     }
 
+    /**
+     * What the last provider request carried in the way of attachments, in counts and categories.
+     *
+     * <p>Shape only. Nothing that was attached reaches this store: no pixels, no extracted text,
+     * no filename, no local path. The kinds are Orbit's own closed set of category words, so a
+     * line built from them cannot describe what the user actually shared, only that they shared
+     * one of a handful of kinds of thing.
+     */
+    public static void recordAttachmentContext(Context c, String currentKind, int historicalTurns,
+                                               int historicalImages, String kinds, int missingAssets) {
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+                .putString("attachment_current_kind", safe(currentKind))
+                .putInt("attachment_history_turns", Math.max(0, historicalTurns))
+                .putInt("attachment_history_images", Math.max(0, historicalImages))
+                .putString("attachment_history_kinds", safe(kinds))
+                .putInt("attachment_history_missing", Math.max(0, missingAssets))
+                .putLong("attachment_updated", System.currentTimeMillis())
+                .apply();
+    }
+
     public static void recordAutoRouting(Context c, String mode, int confidence,
                                          String reason, String model, String reasoning) {
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
