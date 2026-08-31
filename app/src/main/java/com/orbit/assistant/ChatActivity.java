@@ -55,6 +55,30 @@ public class ChatActivity extends Activity {
     public static final String EXTRA_FOCUS_COMPOSER = "focus_composer";
     public static final String EXTRA_INITIAL_DRAFT = "initial_draft";
 
+    /**
+     * The stack any surface outside Chats must open a conversation with.
+     *
+     * <p>A conversation opened from the Side-button overlay, a widget, or a notification used to be
+     * launched on its own into a new task, which left it as that task's root. Back from there ends
+     * the task and lands on the launcher — and the v0.7.7.9 back gesture then has nothing real to
+     * reveal, because there is genuinely nothing of Orbit's behind it. The manifest's
+     * {@code parentActivityName} does not fix this: it is metadata for Up navigation and synthesised
+     * back stacks, and the platform does not consult it for an ordinary Back.
+     *
+     * <p>So Orbit builds the stack it wants explicitly, the way the notification already did:
+     * Chats, then the conversation, started together so only one transition plays. {@code
+     * SINGLE_TOP} alongside {@code CLEAR_TOP} is what stops an existing Chats screen being torn
+     * down and built again — the user comes back to the same one they left, scroll position and
+     * all, rather than to a second copy of it.
+     */
+    public static Intent[] stackFor(Context c, Intent open) {
+        Intent home = new Intent(c, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                        | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        return new Intent[]{home, open};
+    }
+
     private String conversationId;
     private final List<AssistantClient.History> history = new ArrayList<>();
     private final Map<String, OrbitRequestManager.Listener> listeners = new HashMap<>();
@@ -87,6 +111,7 @@ public class ChatActivity extends Activity {
     private String animateStoppedRequestId = "";
     /** Owns what Back means on this screen. See {@link #installBackHandling()}. */
     private OrbitBackHandler backHandler;
+    private OrbitPredictiveBack predictiveBack;
     private TextView streamingBubble;
     private String currentMode;
 
@@ -145,7 +170,7 @@ public class ChatActivity extends Activity {
         // Applied after the ordinary page transition and still before the window is added, so the
         // chat is never animated one way and then corrected.
         UiKit.applyPredictiveBackTransition(this);
-        installBackHandling();
+        installBackHandling(content);
 
         boolean assistantHandoff = getIntent() != null
                 && getIntent().getBooleanExtra(EXTRA_ASSISTANT_HANDOFF, false);
@@ -193,25 +218,27 @@ public class ChatActivity extends Activity {
     }
 
     /**
-     * Back belongs to Android here, except while this screen has a chooser of its own open.
+     * Who owns back on this screen, and it is only ever one of three answers.
      *
-     * <p>{@link OrbitBackHandler} is armed only for as long as the attachment chooser is on
-     * screen. Every other moment nothing is registered, so the system sees an ordinary finishable
-     * activity and the back gesture becomes its own predictive transition: the conversation is
-     * tracked by the finger and the real Chats screen is revealed behind it. Orbit draws none of
-     * that and must not, because anything it registered here would replace it.
+     * <p>While the attachment chooser is open it is {@link OrbitBackHandler}, which closes the
+     * chooser and nothing else. Otherwise, on a device that reports gesture progress and with the
+     * setting on, it is {@link OrbitPredictiveBack}, which draws the conversation leaving as the
+     * finger moves. Everywhere else it is Android's ordinary back with Orbit's page transition.
      *
-     * <p>The chooser's presence is observed rather than remembered. It can also close by being
-     * chosen from or tapped outside, and a remembered flag would miss both and leave this screen
-     * silently holding on to a gesture it no longer has any use for.
+     * <p>Both callbacks register at the same priority, where the last one registered wins, so
+     * {@link #syncBackHandler()} always releases one before arming the other rather than trusting
+     * registration order. That is also why the chooser's presence is observed rather than
+     * remembered: it can be dismissed by choosing from it or tapping outside, and a remembered
+     * flag would miss both and leave this screen holding a gesture it has no use for.
      */
-    private void installBackHandling() {
+    private void installBackHandling(View content) {
         backHandler = OrbitBackHandler.attach(this, () -> {
             // Closes the chooser and leaves the draft, the scroll position and the keyboard as
             // they were. Nothing about the conversation changes and the activity does not finish.
             OrbitAttachmentMenu.dismiss(menuHost());
             syncBackHandler();
         });
+        predictiveBack = OrbitPredictiveBack.attach(this, content);
         ViewGroup host = menuHost();
         if (host != null) {
             host.setOnHierarchyChangeListener(new ViewGroup.OnHierarchyChangeListener() {
@@ -222,20 +249,49 @@ public class ChatActivity extends Activity {
         syncBackHandler();
     }
 
-    /** Arms back for this screen exactly while the chooser is showing, and never otherwise. */
+    /** Hands back to exactly one owner, releasing the other one first. */
     private void syncBackHandler() {
-        if (backHandler != null) backHandler.setArmed(OrbitAttachmentMenu.isShowing(menuHost()));
+        boolean chooser = OrbitAttachmentMenu.isShowing(menuHost());
+        if (chooser) {
+            if (predictiveBack != null) predictiveBack.setArmed(false);
+            if (backHandler != null) backHandler.setArmed(true);
+        } else {
+            if (backHandler != null) backHandler.setArmed(false);
+            if (predictiveBack != null) predictiveBack.setArmed(true);
+        }
+        DiagnosticStore.recordBackCallback(this, backCallbackMode(chooser));
     }
 
-    /** Whether this screen is currently holding on to back. For tests. */
+    /** The word Diagnostics reports for what this screen actually installed. */
+    private String backCallbackMode(boolean chooser) {
+        if (chooser) return "chooser-only";
+        if (predictiveBack != null && predictiveBack.isArmed()) return "progress";
+        return "none";
+    }
+
+    /** Whether this screen is currently holding on to back for a chooser. For tests. */
     boolean backHandlerArmedForTest() {
         return backHandler != null && backHandler.isArmed();
     }
+
+    /** Whether the Orbit-drawn back gesture is currently armed. For tests. */
+    boolean predictiveBackArmedForTest() {
+        return predictiveBack != null && predictiveBack.isArmed();
+    }
+
+    /** The Orbit-drawn back gesture itself, so a test can run one. */
+    OrbitPredictiveBack predictiveBackForTest() { return predictiveBack; }
 
     /** Performs Back the way the gesture and the Back control both do. For tests. */
     void performBackForTest() {
         if (backHandler != null) backHandler.performBack();
     }
+
+    /** The composer draft, for tests that must prove a gesture did not take it. */
+    String draftForTest() { return input == null ? "" : input.getText().toString(); }
+
+    /** Puts a draft in the composer, as typing does. For tests. */
+    void setDraftForTest(String text) { if (input != null) input.setText(text); }
 
     /** Opens the attachment chooser the way the composer's control does. For tests. */
     void showAttachmentMenuForTest() {
@@ -274,6 +330,7 @@ public class ChatActivity extends Activity {
         // at two different destinations. It does not imitate the gesture: a tap is not a drag, and
         // the platform's committed transition is the honest result of one.
         back.setOnClickListener(v -> {
+            DiagnosticStore.recordBackButton(this);
             if (backHandler != null) backHandler.performBack();
             else finish();
         });
@@ -2371,6 +2428,7 @@ public class ChatActivity extends Activity {
     }
     @Override protected void onDestroy() {
         if (backHandler != null) backHandler.detach();
+        if (predictiveBack != null) predictiveBack.detach();
         attachmentExecutor.shutdownNow();
         if (voiceController != null) voiceController.destroy();
         if (listeningHalo != null) listeningHalo.stop();

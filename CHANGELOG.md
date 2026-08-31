@@ -538,3 +538,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Swipe a chat right to pin it to the top, and swipe again to unpin.
   - Pinned chats get their own section above the rest.
   - New Gestures controls under Settings, Look & Feel, if you would rather turn either off.
+
+- **v0.7.7.9-beta.2**: The conversation swipe now really does follow your finger, Diagnostics sections copy on their own, and the Undo bar floats.
+  - Swiping back from a conversation now moves it with your finger on every phone, with Chats visible behind it.
+  - Let go early and it comes back exactly where it was; carry on and you land on Chats.
+  - Conversations opened from the Side button, a widget, or a notification now go back to Chats instead of leaving Orbit.
+  - Every Diagnostics section has its own Copy button, which works without opening the section first.
+  - The Chat deleted bar now floats above the list instead of cutting a hard edge across it.
+  - Chat swipes to delete and pin are unchanged.

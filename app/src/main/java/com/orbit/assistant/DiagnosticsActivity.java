@@ -7,6 +7,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.graphics.Color;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
@@ -168,11 +169,22 @@ public final class DiagnosticsActivity extends Activity {
      */
     private LinearLayout overviewCard() {
         LinearLayout card = card();
-        card.addView(UiKit.text(this, "Overview", 16, UiKit.TEXT, true));
-        TextView body = UiKit.text(this, overview(), 13, UiKit.TEXT, false);
+        Section section = new Section("Overview", overview());
+
+        LinearLayout head = new LinearLayout(this);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.addView(UiKit.text(this, section.title, 16, UiKit.TEXT, true),
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        TextView overviewCopy = copyControl(section);
+        head.addView(overviewCopy);
+        expandTouchTarget(head, overviewCopy);
+        card.addView(head, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44)));
+
+        TextView body = UiKit.text(this, bodyText(section), 13, UiKit.TEXT, false);
         body.setTextIsSelectable(true);
         body.setLineSpacing(0, 1.18f);
-        body.setPadding(0, UiKit.dp(this, 8), 0, 0);
+        body.setPadding(0, UiKit.dp(this, 4), 0, 0);
         card.addView(body);
         return card;
     }
@@ -252,6 +264,11 @@ public final class DiagnosticsActivity extends Activity {
         head.setContentDescription(section.title + (open ? ", expanded" : ", collapsed"));
         TextView label = UiKit.text(this, section.title, 15, UiKit.TEXT, true);
         head.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        // Its own target inside the header. A child that handles the tap consumes it, so Copy
+        // never also expands the section, and the rest of the header still toggles it.
+        TextView sectionCopy = copyControl(section);
+        head.addView(sectionCopy);
+        expandTouchTarget(head, sectionCopy);
         TextView chevron = UiKit.text(this, open ? "▾" : "▸", 16, UiKit.accent(this), false);
         chevron.setPadding(UiKit.dp(this, 8), 0, UiKit.dp(this, 2), 0);
         head.addView(chevron);
@@ -260,17 +277,80 @@ public final class DiagnosticsActivity extends Activity {
             populate();
         });
         card.addView(head, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 34)));
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44)));
 
         if (open) {
-            TextView body = UiKit.text(this, section.body.trim().isEmpty()
-                    ? "Nothing recorded yet." : section.body, 13, UiKit.TEXT, false);
+            TextView body = UiKit.text(this, bodyText(section), 13, UiKit.TEXT, false);
             body.setTextIsSelectable(true);
             body.setLineSpacing(0, 1.18f);
-            body.setPadding(0, UiKit.dp(this, 8), 0, 0);
+            body.setPadding(0, UiKit.dp(this, 4), 0, 0);
             card.addView(body);
         }
         return card;
+    }
+
+    /**
+     * The text of one section, used for both the screen and the clipboard.
+     *
+     * <p>One expression, so what was read and what was pasted cannot drift apart — including the
+     * stand-in for a section that has nothing in it yet, which is a real answer rather than an
+     * empty paste.
+     */
+    private static String bodyText(Section section) {
+        return section.body.trim().isEmpty() ? "Nothing recorded yet." : section.body;
+    }
+
+    /** Exactly one section, titled, and nothing either side of it. */
+    static String sectionReport(String title, String body) {
+        return "Orbit Diagnostics — " + title + "\n" + bodyText(new Section(title, body));
+    }
+
+    /**
+     * The small Copy control that sits in a section header.
+     *
+     * <p>Deliberately a chip rather than a button under every card: most visits to this screen are
+     * about one section, and the copy for that section should be a tap away without turning each
+     * card into a form. It works collapsed, because whether a section is expanded is about reading
+     * it, not about what it contains.
+     *
+     * <p>Never given to the raw planner card. That block can contain the user's own routine
+     * wording, and copying is the step that sends it somewhere else, so it keeps its own explicit
+     * control and stays out of every generic copy path.
+     */
+    private TextView copyControl(Section section) {
+        TextView copy = UiKit.text(this, "Copy", 12, UiKit.accent(this), false);
+        copy.setGravity(Gravity.CENTER);
+        copy.setClickable(true);
+        copy.setFocusable(true);
+        copy.setBackground(UiKit.rippleOutlined(Color.TRANSPARENT,
+                UiKit.withAlpha(UiKit.accent(this), 90), UiKit.accent(this), 14, this));
+        copy.setContentDescription("Copy " + section.title + " diagnostics");
+        copy.setOnClickListener(v -> copy("Orbit diagnostics — " + section.title,
+                sectionReport(section.title, section.body),
+                section.title + " diagnostics copied"));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                UiKit.dp(this, 62), UiKit.dp(this, 34));
+        lp.leftMargin = UiKit.dp(this, 8);
+        copy.setLayoutParams(lp);
+        return copy;
+    }
+
+    /**
+     * Grows a small control's touch area to the accessible minimum without growing the control.
+     *
+     * <p>The Copy chip is deliberately quiet, and a 48 dp chip next to a 15 sp heading would not
+     * be. This keeps the drawn size and widens only what a finger has to hit.
+     */
+    private void expandTouchTarget(View parent, View child) {
+        final int min = UiKit.dp(this, 48);
+        parent.post(() -> {
+            android.graphics.Rect bounds = new android.graphics.Rect();
+            child.getHitRect(bounds);
+            int growY = Math.max(0, (min - bounds.height()) / 2);
+            int growX = Math.max(0, (min - bounds.width()) / 2);
+            bounds.inset(-growX, -growY);
+            parent.setTouchDelegate(new android.view.TouchDelegate(bounds, child));
+        });
     }
 
     /**
@@ -557,14 +637,47 @@ public final class DiagnosticsActivity extends Activity {
      * about which chat: no title, no text, not even a truncated id, because knowing that a pin
      * happened is what validates the feature and knowing what was pinned is not.
      */
+    /**
+     * What Orbit asked for, what this device can do, and what Orbit actually saw happen.
+     *
+     * <p>Deliberately three different kinds of statement, because v0.7.7.9 Beta 1 collapsed them
+     * into one and was wrong. It read the API level and the preference and reported "Back path in a
+     * conversation: system predictive" as though that were an observation, while the acceptance
+     * device showed no transition whatsoever. Orbit cannot see whether the system rendered frames,
+     * so it must not say that it did.
+     *
+     * <p>The lines below therefore never claim a system animation ran. <b>Requested</b> is
+     * configuration. <b>Platform predictive API</b> is a runtime fact about the device. <b>Chat
+     * back callback</b> is what a conversation last actually installed, recorded by the
+     * conversation rather than inferred here. <b>Last back gesture</b> and its progress count are
+     * observations: the count is the number of progress events Orbit was handed and drew, so zero
+     * means the conversation did not move, whatever the configuration says it should have done.
+     */
     private String gestures(SharedPreferences d) {
         long updated = d.getLong("gesture_updated", 0L);
-        String path = !OrbitBackHandler.supported() ? "legacy back"
-                : OrbitBackHandler.predictiveTransitionAvailable()
-                        ? (Prefs.enhancedChatBack(this) ? "system predictive" : "Orbit page transition")
-                        : "back callback, no predictive transition";
+        long backUpdated = d.getLong("back_updated", 0L);
+        String requested = !OrbitBackHandler.supported() ? "standard back"
+                : !OrbitPredictiveBack.available()
+                        ? "standard back (this Android reports no gesture progress)"
+                        : Prefs.enhancedChatBack(this) ? "Orbit progress" : "Orbit page transition";
+        String callback = d.getString("back_callback", "");
+        String outcome = d.getString("back_outcome", "");
+        int events = d.getInt("back_progress_events", 0);
+        String gesture = backUpdated == 0L || outcome.isEmpty() ? "none recorded"
+                : outcome + " · " + events + (events == 1 ? " progress event" : " progress events")
+                        + " · " + stamp(backUpdated);
         return "\n  Swipe back to Chats: " + (Prefs.enhancedChatBack(this) ? "enabled" : "disabled") +
-                "\n  Back path in a conversation: " + path +
+                "\n  Platform predictive API: " + (OrbitPredictiveBack.available()
+                        ? "available (API " + Build.VERSION.SDK_INT + ")"
+                        : "unavailable (API " + Build.VERSION.SDK_INT + ")") +
+                "\n  Back transition requested: " + requested +
+                "\n  Chat back callback: " + (callback.isEmpty() ? "not observed yet" : callback) +
+                "\n  Last back gesture: " + gesture +
+                "\n  Last back path: " + (backUpdated == 0L
+                        ? "none recorded" : orNone(d.getString("back_path", ""))) +
+                "\n  Destination behind the conversation: " + (backUpdated == 0L ? "not observed yet"
+                        : d.getBoolean("back_real_destination", false)
+                                ? "the real Chats screen" : "Orbit's background only") +
                 "\n  Chat swipe actions: " + (Prefs.chatSwipeActions(this) ? "enabled" : "disabled") +
                 "\n  Last chat gesture: " + (updated == 0L ? "none recorded"
                         : orNone(d.getString("gesture_last_action", "")) + " · " + stamp(updated));

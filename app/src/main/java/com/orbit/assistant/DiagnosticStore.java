@@ -63,6 +63,55 @@ public final class DiagnosticStore {
                 .apply();
     }
 
+    /**
+     * Which back callback a conversation last installed, as Orbit actually installed it.
+     *
+     * <p>Recorded rather than derived, because v0.7.7.9 Beta 1 derived it and was wrong: it read
+     * the API level and the preference, concluded that the system's predictive transition was the
+     * live path, and reported that as fact while the acceptance device showed no transition at
+     * all. Diagnostics may state what Orbit configured and it may state what Orbit observed, and
+     * this is the second kind.
+     */
+    public static void recordBackCallback(Context c, String mode) {
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+                .putString("back_callback", safe(mode))
+                .apply();
+    }
+
+    /**
+     * How the last back gesture in a conversation ended, and how much of it Orbit drew.
+     *
+     * <p>The progress count is the honest part: it is the number of {@code onBackProgressed}
+     * events Orbit was handed and turned into frames. Zero means the conversation did not move,
+     * whatever the configuration claims it should have done. No coordinates and no conversation
+     * are recorded — the count and the outcome word are the whole of it.
+     */
+    public static void recordBackGesture(Context c, String outcome, int progressEvents) {
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+                .putString("back_outcome", safe(outcome))
+                .putString("back_path", "Orbit progress")
+                .putInt("back_progress_events", Math.max(0, progressEvents))
+                .putLong("back_updated", System.currentTimeMillis())
+                .apply();
+    }
+
+    /** Whether the last gesture genuinely uncovered Chats or only Orbit's own background. */
+    public static void recordBackReveal(Context c, boolean realDestination) {
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+                .putBoolean("back_real_destination", realDestination)
+                .apply();
+    }
+
+    /** A back that was not a gesture at all: the conversation's own Back control. */
+    public static void recordBackButton(Context c) {
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+                .putString("back_outcome", "committed")
+                .putString("back_path", "Back control")
+                .putInt("back_progress_events", 0)
+                .putLong("back_updated", System.currentTimeMillis())
+                .apply();
+    }
+
     public static void recordAutoRouting(Context c, String mode, int confidence,
                                          String reason, String model, String reasoning) {
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()

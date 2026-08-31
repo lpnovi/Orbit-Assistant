@@ -3878,14 +3878,17 @@ public class OrbitSession extends VoiceInteractionSession {
         });
         expand.addListener(new android.animation.AnimatorListenerAdapter() {
             @Override public void onAnimationEnd(android.animation.Animator animation) {
-                // Straight to the conversation the overlay is already showing. Routing through
-                // MainActivity meant its Chats list was built and drawn first, and the chat was
-                // then reached by a second, ordinary navigation that played its own transition.
+                // Chats, then the conversation the overlay is already showing, started together
+                // as one stack. Started together matters: two separate launches built and drew
+                // the Chats list first and then played a second, ordinary navigation on top of
+                // it, which is why this used to go straight to the conversation. One
+                // startActivities plays one transition, and the conversation still lands on a
+                // real Chats screen instead of on whatever app the overlay was called over.
                 Intent open = new Intent(c, ChatActivity.class)
                         .putExtra(ChatActivity.EXTRA_CONVERSATION_ID, conversationId)
                         // The overlay's expansion is the transition, so this launch plays none.
-                        .putExtra(ChatActivity.EXTRA_ASSISTANT_HANDOFF, true)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                        .putExtra(ChatActivity.EXTRA_ASSISTANT_HANDOFF, true);
+                Intent[] stack = ChatActivity.stackFor(c, open);
                 // Hold the overlay until the chat has actually drawn, so there is no uncovered
                 // frame between the two. The rendezvous releases it on its own if that never
                 // arrives, so the overlay can never be left on screen.
@@ -3898,7 +3901,7 @@ public class OrbitSession extends VoiceInteractionSession {
                     hide();
                 });
                 try {
-                    c.startActivity(open);
+                    c.startActivities(stack);
                 } catch (Exception ignored) {
                     OrbitHandoff.destinationDrawn();
                 }

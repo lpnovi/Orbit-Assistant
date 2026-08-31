@@ -120,9 +120,13 @@
         </activity>
 
         <!--
-          parentActivityName gives a conversation opened from a widget, a notification, or the
-          assistant overlay a real Chats screen to go back to, instead of the task ending at the
-          launcher. A conversation opened from Chats already has one and is unaffected.
+          parentActivityName is Up metadata and nothing more. v0.7.7.9 Beta 1 expected it to give a
+          conversation opened from a widget, a notification, or the assistant overlay a real Chats
+          screen to go back to; it does not. The platform consults it for Up navigation and for
+          stacks built explicitly with TaskStackBuilder, never for an ordinary Back, so a
+          conversation launched on its own was still the root of its task and Back still ended at
+          the launcher. Building the stack is what fixes that, and ChatActivity.stackFor does it
+          for every surface outside Chats. This stays because Up metadata is still true.
         -->
         <activity android:name=".ChatActivity" android:exported="false"
             android:enableOnBackInvokedCallback="true"

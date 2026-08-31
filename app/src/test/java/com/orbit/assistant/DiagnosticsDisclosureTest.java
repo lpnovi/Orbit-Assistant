@@ -3,6 +3,7 @@ package com.orbit.assistant;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import android.app.Activity;
@@ -423,6 +424,207 @@ public final class DiagnosticsDisclosureTest {
         assertTrue(CalendarDiagnostics.report(context)
                 .endsWith(CalendarDiagnostics.body(context)));
         assertTrue(controller.get().fullReport().contains(CalendarDiagnostics.body(context)));
+        controller.pause().stop().destroy();
+    }
+
+    // ---- copying one section --------------------------------------------------------------------
+
+    /** Every Copy control on the screen, in the order they appear. */
+    private static List<View> copyControls(Activity activity) {
+        List<View> out = new ArrayList<>();
+        for (View v : descendants(activity.getWindow().getDecorView())) {
+            CharSequence description = v.getContentDescription();
+            if (description != null && description.toString().startsWith("Copy ")
+                    && description.toString().endsWith(" diagnostics")) {
+                out.add(v);
+            }
+        }
+        return out;
+    }
+
+    private static View copyControlFor(Activity activity, String title) {
+        for (View v : copyControls(activity)) {
+            if (("Copy " + title + " diagnostics").contentEquals(v.getContentDescription())) return v;
+        }
+        return null;
+    }
+
+    /** The clickable header row a section title sits in, which is what toggles disclosure. */
+    private static View headerRowFor(Activity activity, String title) {
+        View label = viewWithText(activity, title);
+        for (View v = label; v != null; ) {
+            CharSequence description = v.getContentDescription();
+            if (description != null && description.toString().startsWith(title)) return v;
+            v = v.getParent() instanceof View ? (View) v.getParent() : null;
+        }
+        return null;
+    }
+
+    private String clipboard() {
+        android.content.ClipboardManager cm = (android.content.ClipboardManager)
+                context.getSystemService(Context.CLIPBOARD_SERVICE);
+        android.content.ClipData clip = cm == null ? null : cm.getPrimaryClip();
+        if (clip == null || clip.getItemCount() == 0) return "";
+        CharSequence text = clip.getItemAt(0).getText();
+        return text == null ? "" : text.toString();
+    }
+
+    /**
+     * Overview and every normal section can be copied on their own.
+     *
+     * <p>The complaint this answers is a real one: most visits to this screen are about a single
+     * section, and until now the only way to send one was to copy the whole report and cut it down
+     * by hand.
+     */
+    @Test public void everyNormalSectionHasItsOwnCopyControl() {
+        seedRequestFlow();
+        ActivityController<DiagnosticsActivity> controller = open();
+        Activity activity = controller.get();
+
+        for (String title : new String[]{"Overview", "Request flow", "Thinking updates",
+                "Auto routing", "Screen & app context", "Memory", "Calendar", "Orbit Local",
+                "Routines", "Gestures", "Advanced"}) {
+            assertNotNull(title + " must be copyable on its own",
+                    copyControlFor(activity, title));
+        }
+        controller.pause().stop().destroy();
+    }
+
+    /** What a section's Copy puts on the clipboard is that section, titled, and nothing else. */
+    @Test public void copyingASectionCopiesThatSectionAlone() {
+        seedRequestFlow();
+        ActivityController<DiagnosticsActivity> controller = open();
+        Activity activity = controller.get();
+
+        copyControlFor(activity, "Gestures").performClick();
+        String copied = clipboard();
+
+        assertTrue("it must say which section this is",
+                copied.startsWith("Orbit Diagnostics — Gestures"));
+        assertTrue("and carry that section's own lines",
+                copied.contains("Swipe back to Chats:"));
+        assertFalse("a neighbouring section may not come with it",
+                copied.contains("Routines"));
+        assertFalse(copied.contains("Requests accepted"));
+        assertFalse(copied.contains("Orbit Local"));
+        controller.pause().stop().destroy();
+    }
+
+    /**
+     * The clipboard and the screen read from one expression, so they cannot drift apart.
+     *
+     * <p>Asserted against the body the screen actually shows rather than against a second copy of
+     * the formatting, which is the only version of this test that would catch the two diverging.
+     */
+    @Test public void whatIsCopiedIsWhatTheSectionShows() {
+        seedRequestFlow();
+        ActivityController<DiagnosticsActivity> controller = open();
+        Activity activity = controller.get();
+
+        headerRowFor(activity, "Request flow").performClick();
+        String shown = null;
+        for (String text : texts(activity)) {
+            if (text.contains("Accepted submissions: 12")) shown = text;
+        }
+        assertNotNull("the expanded section must be on screen", shown);
+
+        copyControlFor(activity, "Request flow").performClick();
+        assertTrue("the clipboard must carry exactly the body that was displayed",
+                clipboard().contains(shown));
+        controller.pause().stop().destroy();
+    }
+
+    /** Copying does not require reading first, and does not expand anything. */
+    @Test public void copyingWorksCollapsedAndLeavesTheSectionCollapsed() {
+        seedRequestFlow();
+        ActivityController<DiagnosticsActivity> controller = open();
+        Activity activity = controller.get();
+
+        View head = headerRowFor(activity, "Gestures");
+        assertNotNull(head);
+        assertTrue("the section starts collapsed",
+                head.getContentDescription().toString().endsWith("collapsed"));
+
+        copyControlFor(activity, "Gestures").performClick();
+        assertTrue("copying carries the section even though nobody opened it",
+                clipboard().contains("Swipe back to Chats:"));
+        assertTrue("and tapping Copy must not also expand it",
+                headerRowFor(activity, "Gestures").getContentDescription()
+                        .toString().endsWith("collapsed"));
+        controller.pause().stop().destroy();
+    }
+
+    /** A section with nothing in it yet copies the same answer it shows. */
+    @Test public void anemptySectionCopiesAClearStandIn() {
+        // The stand-in the screen shows for a section with nothing in it is the stand-in the
+        // clipboard gets, because one expression produces both.
+        assertEquals("Orbit Diagnostics — Example\nNothing recorded yet.",
+                DiagnosticsActivity.sectionReport("Example", ""));
+        assertEquals("whitespace is not content either",
+                "Orbit Diagnostics — Example\nNothing recorded yet.",
+                DiagnosticsActivity.sectionReport("Example", "\n   \n"));
+        assertEquals("and a section that does have lines keeps every one of them, under its title",
+                "Orbit Diagnostics — Example\n\n  Two: 2",
+                DiagnosticsActivity.sectionReport("Example", "\n  Two: 2"));
+    }
+
+    /** Overview copies Overview, and Copy summary remains the different thing it always was. */
+    @Test public void overviewCopiesOverviewAndNotTheSupportSummary() {
+        seedRequestFlow();
+        ActivityController<DiagnosticsActivity> controller = open();
+        DiagnosticsActivity activity = controller.get();
+
+        copyControlFor(activity, "Overview").performClick();
+        String copied = clipboard();
+        assertTrue(copied.startsWith("Orbit Diagnostics — Overview"));
+        assertTrue(copied.contains("Orbit version:"));
+        assertFalse("Overview is not the support summary and must not grow into it",
+                copied.contains("Requests: 12 accepted"));
+        assertTrue("while the support summary still carries the counters it exists for",
+                activity.summaryReport().contains("Requests: 12 accepted"));
+        controller.pause().stop().destroy();
+    }
+
+    /**
+     * The raw planner block keeps its own deliberate control and gains no generic one.
+     *
+     * <p>It can contain the user's own routine wording, and copying is the step that sends it
+     * somewhere else. Folding it into the section-copy behaviour would have quietly undone the
+     * privacy boundary Beta 2 of v0.7.7.8 drew.
+     */
+    @Test public void therawPlannerBlockIsExcludedFromSectionCopying() {
+        seedRoutinePlan();
+        ActivityController<DiagnosticsActivity> controller = open();
+        Activity activity = controller.get();
+
+        assertNull("the raw planner block may not gain a generic Copy control",
+                copyControlFor(activity, "Raw planner response"));
+        for (View control : copyControls(activity)) {
+            control.performClick();
+            assertFalse("no section's copy may carry the user's own wording",
+                    clipboard().contains("zzpersonzz"));
+        }
+
+        headerRowFor(activity, "Raw planner response").performClick();
+        View deliberate = viewWithText(activity, "Copy raw planner response");
+        assertNotNull("its own explicit control must remain", deliberate);
+        deliberate.performClick();
+        assertTrue("and must still be the one way to copy it",
+                clipboard().contains("zzpersonzz"));
+        controller.pause().stop().destroy();
+    }
+
+    /** Each Copy control says what it copies, for anyone who cannot see the header it sits in. */
+    @Test public void everyCopyControlIsDescribed() {
+        ActivityController<DiagnosticsActivity> controller = open();
+        List<View> controls = copyControls(controller.get());
+        assertTrue("there must be one per section plus Overview", controls.size() >= 11);
+        for (View control : controls) {
+            String description = control.getContentDescription().toString();
+            assertTrue(description.startsWith("Copy "));
+            assertTrue(description.endsWith(" diagnostics"));
+            assertTrue("a description has to name something", description.length() > 16);
+        }
         controller.pause().stop().destroy();
     }
 }

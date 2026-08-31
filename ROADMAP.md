@@ -908,7 +908,7 @@ the larger runtime work rather than behind it. Orbit Local device actions remain
 unchanged at the head of this list, and the release below them is untouched.
 
 `0.7.7.8` reached Stable and `0.7.7.9` is now the active release: the full-app gesture system,
-shipped as `0.7.7.9-beta.1` and awaiting device validation. It is a UX release like `0.7.7.8`
+shipped as `0.7.7.9-beta.1`, corrected in `0.7.7.9-beta.2`, and still in Beta. It is a UX release like `0.7.7.8`
 rather than a provider one, and it was taken next because the navigation model it establishes is
 something later screens should be built on rather than retrofitted to. **Orbit Local device actions
 remain unstarted and unchanged at the head of the numbered list below**, and `0.7.7.9` does not
@@ -927,8 +927,9 @@ Beta 1 shipped:
   open and otherwise leaves back entirely alone, and the conversation window uses a page-transition
   variant with no close half. Chats and the conversation opt into the back-callback API per
   activity in the manifest; every other screen keeps its own `onBackPressed` and is untouched.
-  The result is the real system transition revealing the real Chats screen: no screenshot of Home,
-  no touch listener competing with system navigation, and no animation code of Orbit's own
+  The intended result was the real system transition revealing the real Chats screen, with no
+  screenshot of Home and no animation code of Orbit's own. On the device it produced no transition
+  at all, which is what Beta 2 below corrects
 - **Chat cards move with the finger.** `OrbitSwipeRow` holds one piece of state, written directly
   by touch, and everything drawn is a function of it. Arbitration is deliberate rather than a
   threshold on `dx`: vertical intent is decided once and is final, so a scroll that curves sideways
@@ -950,6 +951,45 @@ Beta 1 shipped:
 - **Settings > Look & Feel > Gestures.** Two switches, both on. Neither disables Android's back
   gesture, which is not Orbit's to disable: the first chooses whether the conversation hands its
   transition to the platform or keeps Orbit's own
+
+Beta 1 on a Galaxy S25 Ultra, recorded honestly because the third result is the reason Beta 2 exists:
+
+- **Passed: swipe a chat left to delete.** Threshold, resistance, haptic and the Undo window all felt
+  right on the device and are frozen
+- **Passed: swipe a chat right to pin or unpin.** Same
+- **Failed: the conversation's back gesture.** Diagnostics reported `Back path in a conversation:
+  system predictive`, and the conversation did not move at all. The subtraction was configured
+  correctly and the platform simply did not draw the transition it had been asked for. The deeper
+  fault was the reporting: Orbit derived that line from the API level and the preference and
+  presented an expectation as an observation, so nothing in the release could tell the difference
+  between "asked for" and "happened"
+
+Beta 2 is the corrective patch:
+
+- **Orbit draws the gesture itself.** `OrbitPredictiveBack` registers an `OnBackAnimationCallback` on
+  API 34+ and moves the conversation as a pure function of `BackEvent.progress`. Nothing waits for a
+  release, so reversing the gesture reverses the picture and cancelling restores it exactly. The
+  system path was preferred and was tried first; it was abandoned because Orbit cannot observe
+  whether the platform rendered it, which is precisely how Beta 1 shipped nothing while passing
+- **The destination is the real Chats screen.** `Activity.setTranslucent(true)` for the length of the
+  gesture, so the activity underneath becomes visible and resumes. No screenshot, no second copy of
+  the Chats UI. If the platform refuses the conversion the gesture still tracks the finger over
+  Orbit's background, and Diagnostics records which of the two actually happened
+- **There is now genuinely something underneath.** `parentActivityName` never did this: it is Up
+  metadata, and the platform does not consult it for Back. A conversation opened from the overlay, a
+  widget, or a notification was the root of its own task, so Back left Orbit. `ChatActivity.stackFor`
+  builds Chats-then-conversation for every one of those surfaces, reusing an existing Chats screen
+  rather than duplicating it
+- **Diagnostics stops claiming what it cannot see.** Configuration, device capability and observation
+  are three separate lines now, and the count of progress events Orbit actually drew is the proof
+  the old wording pretended to be
+- **The Undo bar floats.** It was an ordinary sibling under the weighted list, so showing it resized
+  the list's viewport and sliced the straddling chat card flat — the black edge reported on the
+  device. The page is hosted in a frame now, the list never changes size, and the one bottom inset
+  Chats already applies is applied on the host and nowhere else
+- **Each Diagnostics section copies on its own**, collapsed or not, from the same expression the
+  screen displays. The raw planner block keeps its separate deliberate control and is excluded from
+  every generic copy path
 
 Deliberately **not** in scope, then or now: per-message swipe actions, and any horizontal gesture in
 the Side-button overlay. The overlay's vertical swipe behaviour is settled and is not being reopened.

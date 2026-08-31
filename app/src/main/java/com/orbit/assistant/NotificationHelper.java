@@ -31,10 +31,9 @@ public final class NotificationHelper {
         NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
 
-        Intent home = new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         Intent open = new Intent(c, ChatActivity.class).putExtra(ChatActivity.EXTRA_CONVERSATION_ID, conversationId);
         int requestCode = Math.abs((conversationId == null ? "orbit" : conversationId).hashCode());
-        PendingIntent pi = PendingIntent.getActivities(c, requestCode, new Intent[]{home, open},
+        PendingIntent pi = PendingIntent.getActivities(c, requestCode, ChatActivity.stackFor(c, open),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         String title = compact(prompt, 52);

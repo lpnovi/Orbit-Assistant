@@ -245,10 +245,20 @@ public final class OrbitWidgets {
     private static PendingIntent activityPendingIntent(Context context, Intent intent, int widgetId,
                                                        int slot, String action) {
         intent.setPackage(context.getPackageName());
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         intent.setData(Uri.parse("orbit://widget/" + widgetId + "/" + slot + "/" + action));
-        return PendingIntent.getActivity(context, requestCode(widgetId, slot, action), intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
+        int code = requestCode(widgetId, slot, action);
+        boolean conversation = intent.getComponent() != null
+                && ChatActivity.class.getName().equals(intent.getComponent().getClassName());
+        if (!conversation) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            return PendingIntent.getActivity(context, code, intent, flags);
+        }
+        // Chats underneath the conversation, not the launcher. A widget used to drop a chat in as
+        // the root of a fresh task, so Back left Orbit entirely and the conversation's own back
+        // gesture had nothing of Orbit's to reveal behind it. Only conversations get the extra
+        // screen: the widget configuration screen is its own destination and keeps its own task.
+        return PendingIntent.getActivities(context, code, ChatActivity.stackFor(context, intent), flags);
     }
 
     private static PendingIntent configurationPendingIntent(Context context, int widgetId, int slot) {

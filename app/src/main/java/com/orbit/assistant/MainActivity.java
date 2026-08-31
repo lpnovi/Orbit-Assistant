@@ -53,6 +53,16 @@ public class MainActivity extends Activity {
      */
     private String pendingDeletionId;
     private final Runnable undoTimeout = this::commitPendingDeletion;
+    /**
+     * Where the Undo window is counted.
+     *
+     * <p>Not on the bar itself. The bar is replaced whenever Chats is rebuilt for a new accent or
+     * font, and a callback posted to a view that has gone cannot be taken off again — which would
+     * leave a deletion counting down with nothing on screen offering to stop it.
+     */
+    private final android.os.Handler undoTimer = new android.os.Handler(android.os.Looper.getMainLooper());
+    /** The scrolled column inside the list, so the floating bar can make room and give it back. */
+    private LinearLayout scrollContent;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -237,12 +247,30 @@ public class MainActivity extends Activity {
         }
     }
 
+    /**
+     * Chats, with the transient Undo surface floating over it rather than sharing the page with it.
+     *
+     * <p>Until v0.7.7.9 Beta 2 the Undo bar was an ordinary sibling below the weighted list, so
+     * making it visible took its height out of the list's viewport. That is what produced the hard
+     * black edge reported on the S25 Ultra: the list was abruptly given a new, higher bottom, and
+     * whichever chat card happened to straddle it was sliced flat against the window background. It
+     * was never a colour problem and painting over the seam would only have hidden a resize that
+     * should not be happening.
+     *
+     * <p>So the page is hosted in a frame. The list keeps its full height whether the bar is there
+     * or not, and the bar is laid over the bottom of it. The page padding moves to the host, which
+     * gives the bar Orbit's own horizontal rhythm for free and, because {@code applyActivityInsets}
+     * is applied to the host and to nothing else, puts it above the gesture inset with that inset
+     * counted exactly once.
+     */
     private View buildContent() {
+        FrameLayout host = new FrameLayout(this);
+        host.setBackgroundColor(UiKit.BG);
+        int h = UiKit.dp(this, 18);
+        host.setPadding(h, UiKit.dp(this, 10), h, 0);
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(UiKit.BG);
-        int h = UiKit.dp(this, 18);
-        root.setPadding(h, UiKit.dp(this, 10), h, 0);
 
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
@@ -351,6 +379,7 @@ public class MainActivity extends Activity {
         chatScroller = new ScrollView(this);
         chatScroller.setFillViewport(true);
         LinearLayout content = new LinearLayout(this);
+        scrollContent = content;
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(0, UiKit.dp(this, 4), 0, UiKit.dp(this, 40));
 
@@ -369,9 +398,19 @@ public class MainActivity extends Activity {
 
         chatScroller.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         root.addView(chatScroller, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
-        root.addView(buildUndoBar(), new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        return root;
+
+        host.addView(root, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        FrameLayout.LayoutParams barLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM);
+        barLp.bottomMargin = UiKit.dp(this, 12);
+        host.addView(buildUndoBar(), barLp);
+
+        // A rebuild for a new accent or font must not silently swallow an offer that is still
+        // standing. The deletion has not happened yet, so the bar is put back on the new page.
+        if (pendingDeletionId != null) undoBar.post(this::showUndoBar);
+        return host;
     }
 
     /**
@@ -379,8 +418,9 @@ public class MainActivity extends Activity {
      *
      * <p>Deliberately not a toast. A toast is the system's voice, it lands wherever the system puts
      * it, and it cannot be operated by anyone who is not looking at it; this is Orbit's own bar,
-     * anchored under the list where the chat just left from, and its Undo is a real focusable
-     * control. It occupies no space at all until there is something to undo.
+     * floating over the bottom of the list the chat just left, and its Undo is a real focusable
+     * control. It occupies no space at all until there is something to undo, and even then it takes
+     * none away from the list: it is laid over Chats rather than fitted next to it.
      */
     private View buildUndoBar() {
         undoBar = new LinearLayout(this);
@@ -389,6 +429,9 @@ public class MainActivity extends Activity {
         undoBar.setVisibility(View.GONE);
         undoBar.setPadding(UiKit.dp(this, 16), UiKit.dp(this, 12), UiKit.dp(this, 10), UiKit.dp(this, 12));
         undoBar.setBackground(UiKit.outlined(UiKit.SURFACE_2, UiKit.withAlpha(UiKit.accent(this), 46), 18, this));
+        // Enough to read as a surface sitting above the list rather than a band cut into it. The
+        // outlined background supplies the outline the shadow is cast from.
+        undoBar.setElevation(UiKit.dp(this, 8));
 
         undoLabel = UiKit.text(this, "Chat deleted", 14, UiKit.TEXT, false);
         undoBar.addView(undoLabel, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
@@ -409,11 +452,6 @@ public class MainActivity extends Activity {
                 UiKit.dp(this, 88), UiKit.dp(this, 40));
         undoLp.leftMargin = UiKit.dp(this, 10);
         undoBar.addView(undo, undoLp);
-
-        LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        barLp.setMargins(0, 0, 0, UiKit.dp(this, 12));
-        undoBar.setLayoutParams(barLp);
         return undoBar;
     }
 
@@ -580,20 +618,75 @@ public class MainActivity extends Activity {
         showUndoBar();
     }
 
+    /**
+     * Shows the offer, immediately usable.
+     *
+     * <p>Visible and clickable before a single frame of motion, so the entrance is decoration on an
+     * already-live control rather than a delay in front of one. The timeout is held on a handler
+     * rather than posted to the bar itself: a rebuild for a new accent replaces the view, and a
+     * deletion must not be able to escape its own window by outliving the thing that was counting.
+     */
     private void showUndoBar() {
         if (undoBar == null) return;
         undoBar.setVisibility(View.VISIBLE);
+        undoBar.setAlpha(1f);
+        undoBar.setTranslationY(0f);
         if (undoLabel != null) undoLabel.setText("Chat deleted");
         undoBar.announceForAccessibility("Chat deleted. Undo is available.");
-        undoBar.removeCallbacks(undoTimeout);
-        undoBar.postDelayed(undoTimeout, UNDO_WINDOW_MS);
-        if (UiKit.animationsEnabled()) UiKit.enterContent(undoBar);
+        undoTimer.removeCallbacks(undoTimeout);
+        undoTimer.postDelayed(undoTimeout, UNDO_WINDOW_MS);
+        applyUndoRoom(true);
+        if (!UiKit.animationsEnabled()) return;
+        undoBar.animate().cancel();
+        undoBar.setAlpha(0f);
+        undoBar.setTranslationY(UiKit.dp(this, 14));
+        undoBar.animate().alpha(1f).translationY(0f)
+                .setDuration(170L)
+                .setInterpolator(UiKit.motionEasing())
+                .start();
     }
 
     private void hideUndoBar() {
         if (undoBar == null) return;
-        undoBar.removeCallbacks(undoTimeout);
-        undoBar.setVisibility(View.GONE);
+        undoTimer.removeCallbacks(undoTimeout);
+        applyUndoRoom(false);
+        if (undoBar.getVisibility() != View.VISIBLE) {
+            undoBar.setVisibility(View.GONE);
+            return;
+        }
+        if (!UiKit.animationsEnabled()) {
+            undoBar.animate().cancel();
+            undoBar.setVisibility(View.GONE);
+            return;
+        }
+        final LinearLayout bar = undoBar;
+        bar.animate().cancel();
+        bar.animate().alpha(0f).translationY(UiKit.dp(this, 6))
+                .setDuration(UiKit.MOTION_FAST)
+                .setInterpolator(UiKit.motionEasing())
+                .withEndAction(() -> {
+                    bar.setVisibility(View.GONE);
+                    bar.setAlpha(1f);
+                    bar.setTranslationY(0f);
+                })
+                .start();
+    }
+
+    /**
+     * Lets the last chat still be scrolled clear of the floating bar, and takes the room back after.
+     *
+     * <p>Padding at the bottom of the scrolled content, not height taken from the viewport, so the
+     * list is never resized and nothing is ever clipped. Growing it cannot move the list, and the
+     * scroll position is pinned across the shrink so that taking the room back does not either.
+     */
+    private void applyUndoRoom(boolean room) {
+        if (scrollContent == null || chatScroller == null) return;
+        int wanted = UiKit.dp(this, 40) + (room ? UiKit.dp(this, 76) : 0);
+        if (scrollContent.getPaddingBottom() == wanted) return;
+        int scrollY = chatScroller.getScrollY();
+        scrollContent.setPadding(scrollContent.getPaddingLeft(), scrollContent.getPaddingTop(),
+                scrollContent.getPaddingRight(), wanted);
+        if (!room) chatScroller.post(() -> chatScroller.scrollTo(0, scrollY));
     }
 
     private void undoPendingDeletion() {
@@ -689,6 +782,18 @@ public class MainActivity extends Activity {
 
     /** Ends the Undo window, as its timeout does. For tests. */
     void commitDeletionsForTest() { commitPendingDeletion(); }
+
+    /** Opens a conversation the way tapping a chat card does. For tests. */
+    void openChatForTest(String id) { openChat(id); }
+
+    /** The Undo bar itself, so a test can look at where it sits. For tests. */
+    View undoBarForTest() { return undoBar; }
+
+    /** The scrolled column inside the list. For tests. */
+    View listContentForTest() { return scrollContent; }
+
+    /** The list viewport. For tests. */
+    ScrollView listViewportForTest() { return chatScroller; }
 
     /** Rebuilds the chat list, as a change to it does. For tests. */
     void refreshChatsForTest() { refreshChats(); }
