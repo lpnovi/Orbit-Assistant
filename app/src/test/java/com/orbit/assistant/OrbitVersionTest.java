@@ -147,39 +147,34 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * The 0.7.7.9 line ships as Betas until its gestures are validated on a Galaxy S25 Ultra.
+     * The 0.7.7.9 line ran as three Betas and is now promoted to Stable.
      *
-     * <p>A gesture is the one kind of change unit tests can say least about. They can prove that a
-     * card's position tracks the events it was given and that a scroll is never taken as a swipe;
-     * they cannot say whether the movement arrives with the finger, whether the commit point is
-     * findable, or whether the platform's back transition actually reveals Chats on a real device
-     * at 120 Hz. This also changes how Back behaves in a conversation, which is the last thing that
-     * should reach the Stable channel on the strength of a Robolectric run, so this guard fails
-     * publication if the version quietly loses its Beta metadata.
-     */
-    /**
-     * This build is a 0.7.7.9 Beta, and everything derived from its version name agrees.
+     * <p>A gesture is the one kind of change unit tests can say least about, which is why this line
+     * earned three device validations rather than one. They can prove that a card's position tracks
+     * the events it was given and that a scroll is never taken as a swipe; they cannot say whether
+     * the movement arrives with the finger. Beta 1 proved exactly that gap: every off-device check
+     * passed while the conversation did not move at all on a Galaxy S25 Ultra. Beta 2 replaced the
+     * platform-only path with Orbit's own progress-driven one and the device agreed; Beta 3 spread
+     * that working interaction across the app and the device agreed again.
      *
-     * <p>Written against the beta counter rather than against one frozen number. The earlier version
-     * of this test hardcoded "Beta 1" and so began failing the moment 0.7.7.9 reached its second
-     * Beta — which went unnoticed because that release ran its suite before the version bump rather
-     * than after. Pinning the shape catches what this test is actually for (a Beta that is tagged,
-     * titled and ranked correctly) without needing an edit on every release.
+     * <p>The guard now runs the other way. The finished release must not quietly regain prerelease
+     * metadata and be published to the Beta channel by accident, so this fails before publication
+     * rather than on a phone.
      */
-    @Test public void thisBuildIsAFullAppGestureBeta() {
+    @Test public void thisBuildIsFullAppGestureNavigationStable() {
         String version = BuildConfig.VERSION_NAME;
-        assertTrue(OrbitVersion.installedIsBeta());
-        assertTrue(OrbitVersion.isBeta(version));
-        assertFalse(OrbitVersion.isStable(version));
+        assertFalse(OrbitVersion.installedIsBeta());
+        assertFalse(OrbitVersion.isBeta(version));
+        assertTrue(OrbitVersion.isStable(version));
         assertEquals("0.7.7.9", OrbitVersion.baseVersion(version));
 
-        int beta = OrbitVersion.betaNumber(version);
-        assertTrue("a Beta build carries a real beta counter", beta >= 1);
-        assertEquals("Orbit Assistant v0.7.7.9 Beta " + beta, OrbitVersion.releaseTitle(version));
-        assertEquals("v0.7.7.9-beta." + beta, OrbitVersion.tagFor(version));
-        assertTrue("the release workflow must publish it as a prerelease",
+        assertEquals("a Stable build carries no beta counter", 0, OrbitVersion.betaNumber(version));
+        assertEquals("Orbit Assistant v0.7.7.9", OrbitVersion.releaseTitle(version));
+        assertEquals("v0.7.7.9", OrbitVersion.tagFor(version));
+        assertFalse("the release workflow must publish it as Stable",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
-        assertTrue("and it must still outrank the Stable release it follows",
-                OrbitVersion.compareVersions(version, "0.7.7.8") > 0);
+        assertTrue("and it must outrank 0.7.7.8 and every Beta it was built from",
+                OrbitVersion.compareVersions(version, "0.7.7.8") > 0
+                        && OrbitVersion.compareVersions(version, "0.7.7.9-beta.3") > 0);
     }
 }

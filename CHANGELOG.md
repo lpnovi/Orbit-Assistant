@@ -554,3 +554,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Editors keep their existing behaviour: a screen with unsaved changes still asks before discarding them.
   - The setting is now called Swipe to go back, and your existing choice is kept.
   - Chat delete and pin swipes and the Side-button overlay are unchanged.
+
+- **v0.7.7.9**: Orbit now moves like an app you can feel: swipe to go back anywhere, and swipe your chats to manage them.
+  - Swipe from the screen edge and the page follows your finger, revealing the real screen you came from.
+  - It works in conversations, in Settings and its sections, and on Orbit's other pages, one level at a time.
+  - Let go early and the page comes back; carry on and you arrive where you were going. You can turn it off under Look & Feel.
+  - Swipe a chat left to delete it, with a floating Undo that no longer cuts across the list.
+  - Swipe a chat right to pin it to the top, and swipe again to unpin. Pinned chats get their own section.
+  - Screens with unsaved changes still ask before discarding them, and every Diagnostics section can now be copied on its own.

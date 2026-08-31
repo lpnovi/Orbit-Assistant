@@ -874,6 +874,24 @@ Beta 4 closed the last two items before Stable: one real defect and the finish o
   rather than swapped in. Beta 3's turn anchoring is unchanged, historical marks stay static, and
   the whole thing is skipped for the finished state when system animations are off
 
+### 0.7.7.9 — Full-app gesture navigation
+Validated on a Galaxy S25 Ultra across three Betas (`beta.1`-`beta.3`) and released as `0.7.7.9`
+Stable. The line is recorded in full under **Near-term order** below, including the Beta 1 device
+failure that shaped it; in short:
+
+- **Beta 1** introduced the chat-card gestures — swipe left to delete with Undo, swipe right to
+  pin, and a Pinned section — and attempted the conversation's back gesture as a subtraction, letting
+  Android's own cross-activity predictive back own it. The chat gestures passed on the device. The
+  back gesture did not: every off-device check passed and the conversation did not move at all
+- **Beta 2** replaced that with Orbit's own progress-driven implementation, which moves the page as
+  a function of the gesture's reported progress and reveals the real screen underneath rather than a
+  picture of it. It also fixed the Undo bar's geometry so the offer floats over Chats instead of
+  resizing the list, gave every Diagnostics section its own Copy control, and stopped Diagnostics
+  describing a transition Orbit had only requested as one it had observed
+- **Beta 3** generalized that working interaction into one shared engine and spread it across the
+  app, with every Activity classified as predictive, guarded, local or root so that editors keep
+  their unsaved-work protection and result-returning or bridge screens keep their own Back
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever
@@ -889,7 +907,7 @@ genuinely unfinished remainder of the line, in the order the next patches should
 The long-term goal is unchanged: Orbit becomes a **hybrid, provider-agnostic Android assistant
 runtime** rather than an app tied to one model service.
 
-#### Near-term order, after v0.7.7.8
+#### Near-term order, after v0.7.7.9
 v0.7.7.4 shipped the Beta channel, so this order is now also the order these are expected to be
 *tested* in: a feature becomes a numbered Beta, is validated on a real device, and only then
 becomes a Stable release.
@@ -907,13 +925,16 @@ provider one. It is small, it is optional, and it is off by default, so it was w
 the larger runtime work rather than behind it. Orbit Local device actions remain unstarted and
 unchanged at the head of this list, and the release below them is untouched.
 
-`0.7.7.8` reached Stable and `0.7.7.9` is now the active release: the full-app gesture system,
-shipped as `0.7.7.9-beta.1`, corrected in `0.7.7.9-beta.2`, extended app-wide in `0.7.7.9-beta.3`, and still in Beta. It is a UX release like `0.7.7.8`
-rather than a provider one, and it was taken next because the navigation model it establishes is
-something later screens should be built on rather than retrofitted to. **Orbit Local device actions
-remain unstarted and unchanged at the head of the numbered list below**, and `0.7.7.9` does not
-displace them from that position — it takes the Beta slot in front of them, exactly as `0.7.7.7`
-and `0.7.7.8` each did.
+`0.7.7.9` has now reached Stable: the full-app gesture system, shipped as `0.7.7.9-beta.1`,
+corrected in `0.7.7.9-beta.2`, and extended app-wide in `0.7.7.9-beta.3`. It was a UX release like
+`0.7.7.8` rather than a provider one, and it was taken then because the navigation model it
+establishes is something later screens should be built on rather than retrofitted to. It took the
+Beta slot in front of Orbit Local device actions exactly as `0.7.7.7` and `0.7.7.8` each did, and
+never displaced them.
+
+**The next release is `0.7.8.0-beta.1` — Orbit Local device actions**, item 1 of the numbered list
+below and unchanged since it was written. Nothing of it was started in `0.7.7.9`; the gesture line
+is closed and this is where development goes next.
 
 Beta 1 shipped:
 
