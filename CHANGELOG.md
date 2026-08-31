@@ -522,3 +522,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Attaching the screen again still works and really does share the new screen.
   - Automatic screen context is untouched: if you had Orbit always use your screen, it still does.
   - The stopped mark is now a wide, centred orbit that visibly settles out of the thinking animation.
+
+- **v0.7.7.8**: Orbit now tells you what it is working on while it thinks, stops cleanly when you ask it to, and remembers what you already shared with it.
+  - Orbit shows what it is actually doing while it works, in a short line you can turn off in Settings.
+  - Press Stop and the turn ends with a calm Orbit mark instead of looking as though it vanished.
+  - Anything Orbit had already written is kept, and each stopped question keeps its own mark.
+  - Ask a follow-up about a screen or file you shared and Orbit still understands it, without attaching it again.
+  - What you attach stays on the message you sent it with, exactly like a photo in any chat app.
+  - Diagnostics opens on a short overview, with every detailed section one tap away.

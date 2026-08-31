@@ -738,9 +738,12 @@ request-duplication failures, so this release closes both.
   Private API relay behind More provider options. Availability and status come from `AiProviders`
   rather than a second set of hardcoded strings, and setup stays seven steps
 
-### 0.7.7.8 — Thinking updates
-Shipped as `0.7.7.8-beta.1`, then refined in `0.7.7.8-beta.2`, `0.7.7.8-beta.3`, and
-`0.7.7.8-beta.4`. This release deliberately took the
+### 0.7.7.8 — Thinking updates, stopped turns, and attachment continuity
+Validated on a Galaxy S25 Ultra across four Betas (`beta.1`-`beta.4`) and released as `0.7.7.8`
+Stable. The line grew as each Beta was tested: it began as Thinking updates alone, gained a real
+stopped-turn state in Beta 2, moved that state onto the turn it belonged to in Beta 3, and closed
+in Beta 4 with the follow-up attachment defect and the finished stopped mark. This release
+deliberately took the
 Beta slot ahead of Orbit Local device actions, which are unchanged and simply move down one place.
 A long Deep request told the user only that something was happening; the orbital indicator says a
 request is running and nothing more, and on a request that takes twenty seconds that is not enough.
@@ -904,7 +907,7 @@ provider one. It is small, it is optional, and it is off by default, so it was w
 the larger runtime work rather than behind it. Orbit Local device actions remain unstarted and
 unchanged at the head of this list, and the release below them is untouched.
 
-Once `0.7.7.8` reaches Stable, the following Beta slot is reserved for `0.7.7.9`, a full-app gesture
+`0.7.7.8` has now reached Stable, so the following Beta slot is `0.7.7.9`, a full-app gesture
 release. It is a UX release like `0.7.7.8` rather than a provider one, and it is taken next because
 the navigation model it establishes is something later screens should be built on rather than
 retrofitted to. Nothing in it was started in `0.7.7.8-beta.4`; it is recorded here as sequencing
