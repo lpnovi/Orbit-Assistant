@@ -562,3 +562,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Swipe a chat left to delete it, with a floating Undo that no longer cuts across the list.
   - Swipe a chat right to pin it to the top, and swipe again to unpin. Pinned chats get their own section.
   - Screens with unsaved changes still ask before discarding them, and every Diagnostics section can now be copied on its own.
+
+- **v0.7.8.0-beta.1**: Orbit Local can now understand phone commands in your own words, and Orbit gains a calculator, wider conversions, and answers about your phone.
+  - Orbit Local can request a first safe set of device commands on its own, using an optional on-device model, so "kill the torch" or "a bit quieter" works with no internet.
+  - Orbit now does everyday sums itself, instantly and offline, including percentages, brackets and square roots.
+  - Unit conversion goes beyond the kitchen: length, distance, speed, area, and storage in both SI and binary units.
+  - Ask what your battery, brightness, media volume, ringer or Do Not Disturb is actually set to, and Orbit reads the real value.
+  - Pause, resume, and skip whatever is playing, and switch the ringer between normal, vibrate, and silent.
+  - Something quiet is hidden on the Chats screen, for anyone who finds it.

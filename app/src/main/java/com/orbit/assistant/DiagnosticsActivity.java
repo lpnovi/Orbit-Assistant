@@ -253,6 +253,7 @@ public final class DiagnosticsActivity extends Activity {
         sections.add(new Section("Memory", memory()));
         sections.add(new Section("Calendar", CalendarDiagnostics.body(this)));
         sections.add(new Section("Orbit Local", orbitLocal(d)));
+        sections.add(new Section("Actions & utilities", actionsAndUtilities(d)));
         sections.add(new Section("Routines", routines(d)));
         sections.add(new Section("Gestures", gestures(d)));
         sections.add(new Section("Advanced", advanced()));
@@ -573,6 +574,60 @@ public final class DiagnosticsActivity extends Activity {
      * <p>Package state, versions, download state, byte counts, and the tokens the component uses
      * for "why did this stop". No model contents, no conversation, no file paths.
      */
+    /**
+     * The deterministic utility routes, and what the Orbit Local action model last did.
+     *
+     * <p>Categories and outcomes only. What was calculated, what was converted, which app was
+     * opened, what a timer was named, and every word the user or the model actually wrote are all
+     * absent by construction: the store this reads never receives them. What a Beta report needs is
+     * which path answered and whether validation accepted it, and that is exactly what is here.
+     */
+    private String actionsAndUtilities(SharedPreferences d) {
+        OrbitLocalStatus status = OrbitLocalProvider.cachedStatus(this);
+        boolean installed = status != null && status.actionModelReady();
+        long updated = d.getLong("local_action_updated", 0L);
+        long utilityUpdated = d.getLong("utility_updated", 0L);
+
+        return "\n  Local action model installed: " + (installed ? "yes" : "no") +
+                "\n  Local device actions enabled: " + Prefs.localDeviceActions(this) +
+                (status == null ? "" :
+                        "\n  Action model: " + (status.actionModelId.isEmpty()
+                                ? "none" : status.actionModelId) +
+                        "\n  Action model state: " + status.actionModelState +
+                        (status.actionModelLicense.isEmpty() ? ""
+                                : "\n  Action model licence: " + status.actionModelLicense) +
+                        "\n  Action model bytes: " + status.actionModelTotalBytes +
+                        (status.actionLastFailure.isEmpty() ? ""
+                                : "\n  Action model last failure: " + status.actionLastFailure)) +
+                "\n  Semantic fallback available: "
+                        + OrbitLocalActionRouter.available(this) +
+                "\n  Last action route: " + (updated == 0L ? "none"
+                        : d.getString("local_action_route", "")) +
+                "\n  Last action category: " + (updated == 0L ? "none"
+                        : blankAs(d.getString("local_action_category", ""), "none")) +
+                "\n  Last validation result: " + (updated == 0L ? "none"
+                        : blankAs(d.getString("local_action_validation", ""), "none")) +
+                "\n  Last action model time: " + (updated == 0L ? "none"
+                        : d.getLong("local_action_ms", 0L) + " ms") +
+                (updated == 0L ? "" : "\n  Last action attempt at: "
+                        + DateFormat.getDateTimeInstance().format(new Date(updated))) +
+                "\n  Calculator route available: true" +
+                "\n  General conversion route available: true" +
+                "\n  Device status route available: true" +
+                "\n  Media control: "
+                        + (NotificationAccess.enabled(this)
+                                ? "session control with read-back" : "media key only, unconfirmed") +
+                "\n  Ringer control: "
+                        + (OrbitPermissionHelper.hasDndAccess(this)
+                                ? "available" : "needs Do Not Disturb access") +
+                "\n  Last deterministic route: " + (utilityUpdated == 0L ? "none"
+                        : blankAs(d.getString("utility_route", ""), "none"));
+    }
+
+    private static String blankAs(String value, String fallback) {
+        return value == null || value.trim().isEmpty() ? fallback : value.trim();
+    }
+
     private String orbitLocal(SharedPreferences d) {
         OrbitLocalComponent.State componentState = OrbitLocalComponent.state(this);
         String installedVersion = OrbitLocalComponent.installedVersionName(this);

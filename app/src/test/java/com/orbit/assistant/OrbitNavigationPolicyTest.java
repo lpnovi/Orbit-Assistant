@@ -59,7 +59,9 @@ public final class OrbitNavigationPolicyTest {
     /** Back cancels, denies, or steps within the screen. Deliberately unchanged by Beta 3. */
     private static final String[] LOCAL = {
             "ScreenSelectionActivity", "AttachmentPickerActivity", "CalendarPermissionActivity",
-            "OrbitWidgetActionActivity", "OrbitWidgetConfigureActivity", "OnboardingActivity"
+            "OrbitWidgetActionActivity", "OrbitWidgetConfigureActivity", "OnboardingActivity",
+            // A decorative full-screen scene. Back closes it; it is not a page to be revealed from.
+            "OrbitLaunchSequenceActivity"
     };
 
     /** Orbit's root. Back is the task's business and Orbit invents nothing behind it. */

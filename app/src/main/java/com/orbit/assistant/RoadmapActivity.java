@@ -113,7 +113,7 @@ public final class RoadmapActivity extends Activity {
         // work that genuinely does not exist yet: reading your calendar back as context, and
         // changing or removing events Orbit created. That release never touches an existing event.
         addGroup(page, "NEXT UP", new String[][]{
-                {"Local device actions", "Orbit Local asking the same trusted Orbit actions the cloud providers use, starting with simple reversible controls."},
+                {"Local device actions", "Growing what Orbit Local can act on by itself, beyond the first safe set of controls it understands today."},
                 {"Calendar awareness", "Orbit reading your day back to you, and changing or removing events it added for you."},
                 {"More branch points & conditions", "Several decision points in one Routine, and conditions beyond time and place."},
                 {"Cook with Orbit", "A cooking session you start on purpose and end when you're done, following a recipe with you step by step."}

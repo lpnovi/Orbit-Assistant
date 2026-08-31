@@ -204,6 +204,14 @@
             android:enableOnBackInvokedCallback="true" android:exported="false" />
         <activity android:name=".RoadmapActivity"
             android:enableOnBackInvokedCallback="true" android:exported="false" />
+        <!--
+          The hidden Orbit Launch Sequence. Deliberately without the back-callback opt-in: it is a
+          scene laid over Chats, not a page in Orbit's navigation, so its Back stays the plain one
+          that closes it immediately. Excluded from Recents so a decorative screen never becomes a
+          card the user has to dismiss.
+        -->
+        <activity android:name=".OrbitLaunchSequenceActivity"
+            android:exported="false" android:excludeFromRecents="true" />
         <activity
             android:name=".OrbitWidgetConfigureActivity"
             android:exported="true"

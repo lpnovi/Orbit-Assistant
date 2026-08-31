@@ -97,6 +97,14 @@ public final class Prefs {
     public static final String ENHANCED_CHAT_BACK = "enhanced_chat_back";
     /** Whether chat cards respond to horizontal drags. Menu Delete and Pin never depend on it. */
     public static final String CHAT_SWIPE_ACTIONS = "chat_swipe_actions";
+    /**
+     * Whether Orbit Local's device-action model may be used as a semantic fallback.
+     *
+     * <p>Only ever consulted when that model is actually installed, so the default is simply
+     * "yes, use what you installed". Turning it off leaves the model on disk and stops it being
+     * consulted; deleting the model is the separate, storage-reclaiming action.
+     */
+    public static final String LOCAL_DEVICE_ACTIONS = "local_device_actions";
     // Onboarding keys intentionally remain outside Backup & Restore. A backup cannot
     // restore account credentials, Android permissions, or default-assistant state.
 
@@ -140,7 +148,7 @@ public final class Prefs {
             LELO_MODE, BACKGROUND_NOTIFICATIONS, WEATHER_USE_DEVICE_LOCATION,
             MEMORY_ENABLED, MEMORY_USAGE_INDICATOR, MEMORY_SUGGESTIONS,
             NOTIFICATION_AI_ENABLED, AMOLED_MODE, UPDATE_NOTIFICATIONS,
-            ENHANCED_CHAT_BACK, CHAT_SWIPE_ACTIONS));
+            ENHANCED_CHAT_BACK, CHAT_SWIPE_ACTIONS, LOCAL_DEVICE_ACTIONS));
     private static final Set<String> BACKUP_INTEGER_KEYS = new HashSet<>(
             Arrays.asList(NOTIFICATION_RETENTION_DAYS));
 
@@ -226,6 +234,7 @@ public final class Prefs {
     public static boolean attachScreenByDefault(Context c) { return get(c).getBoolean(ATTACH_SCREEN_BY_DEFAULT, false); }
     public static boolean swipeToGoBack(Context c) { return get(c).getBoolean(ENHANCED_CHAT_BACK, true); }
     public static boolean chatSwipeActions(Context c) { return get(c).getBoolean(CHAT_SWIPE_ACTIONS, true); }
+    public static boolean localDeviceActions(Context c) { return get(c).getBoolean(LOCAL_DEVICE_ACTIONS, true); }
     public static boolean speak(Context c) { return get(c).getBoolean(SPEAK, true); }
     public static boolean haptics(Context c) { return get(c).getBoolean(HAPTICS, true); }
     public static boolean autoListen(Context c) { return get(c).getBoolean(AUTO_LISTEN, false); }

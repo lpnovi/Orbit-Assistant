@@ -229,6 +229,21 @@ public final class DeviceActionExecutor {
                 case "SET_DND":
                     result = setDoNotDisturb(c, p.optBoolean("enabled", true));
                     break;
+                case "MEDIA_CONTROL": {
+                    // The whole implementation lives in MediaControl, so this stays a routing layer
+                    // and every caller - cloud tool request, deterministic phrase, local action
+                    // model, routine step - reaches the same one.
+                    MediaControl.Command command = MediaControl.parse(p.optString("command", ""));
+                    if (command == null) {
+                        result = Result.failed("That is not a media command Orbit has");
+                        break;
+                    }
+                    result = MediaControl.execute(c, command);
+                    break;
+                }
+                case "SET_RINGER_MODE":
+                    result = setRingerMode(c, p.optString("mode", ""));
+                    break;
                 case "OPEN_INTERNET_PANEL":
                     start(c, new Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY));
                     result = Result.success("Internet controls opened");
@@ -373,12 +388,24 @@ public final class DeviceActionExecutor {
      * user is actually looking at. Falls back to a mid level when the value cannot be read.
      */
     private static int currentBrightnessPercent(Context c) {
+        return currentBrightnessPercent(c, 50);
+    }
+
+    /**
+     * The same reading, with the caller's own answer for "Android would not say".
+     *
+     * <p>{@link DeviceStatusReader} passes -1 because reporting a brightness has to fail honestly
+     * when the value is unreadable, while a relative command passes a mid level because it needs
+     * somewhere to move from. One interpretation of the raw value, two callers, so what Orbit says
+     * the brightness is and what Orbit sets it to can never disagree.
+     */
+    static int currentBrightnessPercent(Context c, int fallback) {
         try {
             int value = Settings.System.getInt(c.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS, -1);
-            if (value < 0) return 50;
+            if (value < 0) return fallback;
             return Math.max(0, Math.min(100, Math.round((value / 255f) * 100f)));
         } catch (Exception e) {
-            return 50;
+            return fallback;
         }
     }
 
@@ -394,6 +421,68 @@ public final class DeviceActionExecutor {
             return Result.success("Brightness set to " + percent + "%");
         } catch (Exception e) {
             return Result.failed("Could not change brightness");
+        }
+    }
+
+    /**
+     * Normal, vibrate, or silent, confirmed by reading the mode back.
+     *
+     * <p>Android's own policy decides whether this is allowed at all. Vibrate and silent both go
+     * through the Do Not Disturb policy on a modern device, so a phone that has not granted Orbit
+     * that access refuses the change — and Orbit reports that as the permission it is, with the
+     * mode left exactly as it was. Nothing here works around the platform's decision.
+     *
+     * <p>The success line is the mode Android reported afterwards, not the mode Orbit asked for, so
+     * a silently ignored request cannot be announced as a change.
+     */
+    private static Result setRingerMode(Context c, String requested) {
+        String wanted = requested == null ? "" : requested.trim().toLowerCase(Locale.US);
+        int mode;
+        switch (wanted) {
+            case "normal": case "ring": case "ringer": case "sound": case "loud":
+                mode = AudioManager.RINGER_MODE_NORMAL; break;
+            case "vibrate": case "vibration":
+                mode = AudioManager.RINGER_MODE_VIBRATE; break;
+            case "silent": case "mute": case "muted": case "off":
+                mode = AudioManager.RINGER_MODE_SILENT; break;
+            default:
+                return Result.failed("That is not a ringer mode Orbit has");
+        }
+
+        AudioManager am = (AudioManager) c.getSystemService(Context.AUDIO_SERVICE);
+        if (am == null) return Result.unavailable("Audio service unavailable");
+
+        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+        boolean policyGranted = nm != null && nm.isNotificationPolicyAccessGranted();
+        if (!policyGranted && mode != AudioManager.RINGER_MODE_NORMAL) {
+            // Android refuses a quiet mode without this access, and refuses it by throwing. Asking
+            // first means the user is told what to grant instead of shown a failure.
+            return Result.permission(
+                    "Grant Do Not Disturb access to let Orbit silence or vibrate the ringer");
+        }
+        try {
+            am.setRingerMode(mode);
+        } catch (SecurityException e) {
+            return Result.permission(
+                    "Grant Do Not Disturb access to let Orbit change the ringer mode");
+        } catch (Exception e) {
+            return Result.failed("Could not change the ringer mode");
+        }
+
+        String actual = DeviceStatusReader.ringerModeName(c);
+        if (actual.isEmpty()) return Result.failed("Orbit could not confirm the ringer mode");
+        if (!actual.equalsIgnoreCase(modeName(mode))) {
+            // The call went through and the phone is somewhere else. Say where it actually is.
+            return Result.failed("Android kept the ringer on " + actual);
+        }
+        return Result.success("Ringer set to " + actual);
+    }
+
+    private static String modeName(int mode) {
+        switch (mode) {
+            case AudioManager.RINGER_MODE_NORMAL: return "Normal";
+            case AudioManager.RINGER_MODE_VIBRATE: return "Vibrate";
+            default: return "Silent";
         }
     }
 

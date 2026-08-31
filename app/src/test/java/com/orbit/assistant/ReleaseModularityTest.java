@@ -184,11 +184,17 @@ public final class ReleaseModularityTest {
                 workflow.contains("Orbit-Assistant-v${EXPECTED_VERSION_NAME}.apk"));
     }
 
-    /** Full-app gesture navigation passed device validation across three Betas, so this is Stable. */
-    @Test public void thisReleaseIsStableAfterDeviceValidation() {
-        assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
-                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.installedIsBeta());
+    /**
+     * On-device device actions need real hardware before they are called finished, so this is a Beta.
+     *
+     * <p>Nothing in this release has been through a Galaxy S25 Ultra yet: the action model's
+     * behaviour cannot be validated anywhere else, and neither can media control, the ringer, or the
+     * device-status readings.
+     */
+    @Test public void thisReleaseIsABetaAwaitingDeviceValidation() {
+        assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
+                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
+        assertTrue(OrbitVersion.installedIsBeta());
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
     }
 

@@ -425,6 +425,7 @@ public final class LocalAiActivity extends Activity {
         cards.addView(deviceCard(), cardLp());
         cards.addView(componentCard(), cardLp());
         cards.addView(modelCard(), cardLp());
+        cards.addView(actionModelCard(), cardLp());
         cards.addView(storageCard(), cardLp());
         if (hasAnythingToRemove()) cards.addView(removeCard(), cardLp());
         UiKit.applyTypography(cards);
@@ -653,7 +654,11 @@ public final class LocalAiActivity extends Activity {
                         + LocalModelStore.formatBytes(LocalModelStore.MODEL_SIZE_BYTES),
                 "Contains the local AI model itself."));
 
-        TextView footer = UiKit.text(this, "Both can be removed later.", 13, UiKit.MUTED, false);
+        TextView footer = UiKit.text(this,
+                "Both can be removed later. A separate, optional action model can be added "
+                        + "afterwards if you want Orbit Local to handle phone commands too.",
+                13, UiKit.MUTED, false);
+        footer.setLineSpacing(0, 1.13f);
         footer.setPadding(0, UiKit.dp(this, 12), 0, 0);
         content.addView(footer);
         UiKit.applyTypography(content);
@@ -862,8 +867,14 @@ public final class LocalAiActivity extends Activity {
         if (status == null) return "Checking the Orbit Local component…";
         switch (status.modelState) {
             case OrbitLocalStatus.READY:
+                // The action model is a separate install and does not change what *this* model can
+                // do, so the sentence changes only to stop claiming device commands are impossible
+                // on a phone where they demonstrably are not.
                 return size + " installed · Works completely offline\n"
-                        + "Good for private chat, drafting, and quick answers. Device actions and screen reading stay with cloud providers for now.";
+                        + "Good for private chat, drafting, and quick answers. "
+                        + (status.actionModelReady()
+                                ? "Phone commands are handled by the action model below; screen reading stays with cloud providers."
+                                : "Device actions and screen reading stay with cloud providers for now.");
             case OrbitLocalStatus.DOWNLOADING:
                 return "Downloading in the background. You can leave this screen, lock the phone, or use other apps; the download keeps going and picks up where it left off after any interruption.";
             case OrbitLocalStatus.QUEUED:
@@ -1068,14 +1079,253 @@ public final class LocalAiActivity extends Activity {
 
     // ---- storage ----------------------------------------------------------------------------------
 
+    // ---- the device-action model --------------------------------------------------------------------
+
+    /**
+     * The second, much smaller model: the one that turns a spoken instruction into an Orbit action.
+     *
+     * <p>Deliberately its own card, with its own state, its own storage figure and its own removal.
+     * It is optional in exactly the way the chat model is optional, and Orbit Local's chat works
+     * with or without it — as does every cloud provider, which never touches it at all.
+     */
+    private View actionModelCard() {
+        boolean componentReady = OrbitLocalComponent.isUsable(this);
+        LinearLayout card = card();
+        card.addView(UiKit.text(this, "Device actions", 12, UiKit.MUTED, true));
+
+        String pillLabel;
+        boolean accentPill = false;
+        if (!componentReady) {
+            pillLabel = "Requires Orbit Local component";
+        } else if (status == null) {
+            pillLabel = "Checking…";
+        } else if (status.actionModelReady()) {
+            boolean enabled = Prefs.localDeviceActions(this);
+            pillLabel = enabled ? "On" : "Off";
+            accentPill = enabled;
+        } else {
+            pillLabel = status.actionStateLabel();
+        }
+        card.addView(titleRow(
+                status == null || status.actionModelDisplayName.isEmpty()
+                        ? "Local action model" : status.actionModelDisplayName,
+                pillLabel, accentPill));
+
+        TextView details = UiKit.text(this, actionModelDetails(componentReady), 13, UiKit.MUTED, false);
+        details.setLineSpacing(0, 1.13f);
+        details.setPadding(0, UiKit.dp(this, 6), 0, 0);
+        card.addView(details);
+
+        if (componentReady && status != null && status.actionShowsProgress()) {
+            ProgressBar bar = UiKit.horizontalProgress(this);
+            bar.setMax(1000);
+            bar.setProgress(OrbitLocalStatus.VALIDATING.equals(status.actionModelState)
+                    ? 1000 : status.actionProgressPerMille());
+            LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 8));
+            barLp.topMargin = UiKit.dp(this, 11);
+            card.addView(bar, barLp);
+            card.addView(actionProgressLine());
+        }
+
+        if (componentReady && status != null && !status.actionModelError.isEmpty()) {
+            TextView error = UiKit.text(this, status.actionModelError, 13, UiKit.DANGER, false);
+            error.setLineSpacing(0, 1.13f);
+            error.setPadding(0, UiKit.dp(this, 8), 0, 0);
+            card.addView(error);
+        }
+
+        if (componentReady && status != null && status.actionModelReady()) {
+            card.addView(actionsEnabledRow());
+            TextView covers = UiKit.text(this,
+                    "Understands: flashlight, brightness, media volume, Do Not Disturb, ringer mode, "
+                            + "play/pause/skip, timers, alarms, opening an app, and opening Settings. "
+                            + "Nothing else, and nothing it suggests runs without Orbit checking it first.",
+                    12, UiKit.MUTED, false);
+            covers.setLineSpacing(0, 1.13f);
+            covers.setPadding(0, UiKit.dp(this, 10), 0, 0);
+            card.addView(covers);
+        }
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.VERTICAL);
+        actions.setPadding(0, UiKit.dp(this, 12), 0, 0);
+        buildActionModelActions(actions, componentReady);
+        if (actions.getChildCount() > 0) {
+            card.addView(actions, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+        return card;
+    }
+
+    /** The on/off control for consulting the model, separate from having it installed. */
+    private View actionsEnabledRow() {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, UiKit.dp(this, 12), 0, 0);
+        LinearLayout labels = new LinearLayout(this);
+        labels.setOrientation(LinearLayout.VERTICAL);
+        labels.addView(UiKit.text(this, "Use for device commands", 15, UiKit.TEXT, false));
+        labels.addView(UiKit.text(this,
+                "Orbit's own command recognition always runs first. This only handles what it cannot.",
+                12, UiKit.MUTED, false));
+        row.addView(labels, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
+        OrbitSwitch toggle = new OrbitSwitch(this);
+        toggle.setChecked(Prefs.localDeviceActions(this), false);
+        toggle.setOnCheckedChangeListener((view, checked) -> {
+            Prefs.get(this).edit().putBoolean(Prefs.LOCAL_DEVICE_ACTIONS, checked).apply();
+            rebuild();
+        });
+        row.addView(toggle);
+        return row;
+    }
+
+    private TextView actionProgressLine() {
+        String have = LocalModelStore.formatBytes(status.actionModelBytes);
+        String total = LocalModelStore.formatBytes(status.actionModelSizeBytes);
+        String text;
+        switch (status.actionModelState) {
+            case OrbitLocalStatus.VALIDATING: text = "Verifying the model…"; break;
+            case OrbitLocalStatus.QUEUED: text = have + " of " + total + " · starting…"; break;
+            case OrbitLocalStatus.WAITING_FOR_NETWORK:
+                text = have + " of " + total + " · waiting for a connection"; break;
+            default:
+                text = have + " of " + total + " · " + (status.actionProgressPerMille() / 10) + "%";
+        }
+        TextView line = UiKit.text(this, text, 12, UiKit.MUTED, false);
+        line.setPadding(0, UiKit.dp(this, 6), 0, 0);
+        return line;
+    }
+
+    private String actionModelDetails(boolean componentReady) {
+        String size = status == null || status.actionModelSizeBytes <= 0L
+                ? "about 520 MB"
+                : LocalModelStore.formatBytes(status.actionModelSizeBytes);
+        if (!componentReady) {
+            return "Lets Orbit Local understand phone commands it has no exact wording for, entirely "
+                    + "on the device. Install the Orbit Local component first.";
+        }
+        if (status == null) return "Checking the Orbit Local component…";
+        switch (status.actionModelState) {
+            case OrbitLocalStatus.READY:
+                return size + " installed · Works completely offline\n"
+                        + "Turns everyday phrasing like \"kill the torch\" or \"a bit quieter\" into an "
+                        + "Orbit action, on the phone. It never chats and never controls Android itself.";
+            case OrbitLocalStatus.DOWNLOADING:
+                return "Downloading in the background. You can leave this screen or use other apps; "
+                        + "the download continues and resumes after any interruption.";
+            case OrbitLocalStatus.QUEUED:
+                return "The download is starting. It runs in the background and does not need this screen open.";
+            case OrbitLocalStatus.WAITING_FOR_NETWORK:
+                return "Waiting for a connection. The download continues on its own once this phone is back online.";
+            case OrbitLocalStatus.VALIDATING:
+                return "Making sure every byte arrived intact before the model is enabled.";
+            case OrbitLocalStatus.PAUSED:
+                return "You paused this download. Resume any time; already-downloaded data is kept.";
+            case OrbitLocalStatus.INTERRUPTED:
+                return "The download stopped before it finished. Resume to continue from where it got to.";
+            case OrbitLocalStatus.ERROR:
+                return "One-time download · " + size + " · stored only on this device.";
+            default:
+                return "Optional · one-time download of " + size + " · stored only on this device.\n"
+                        + "Lets Orbit Local act on phone commands that do not match Orbit's exact wording, "
+                        + "with no internet and no account. Chat works without it.";
+        }
+    }
+
+    private void buildActionModelActions(LinearLayout actions, boolean componentReady) {
+        if (!componentReady || status == null) return;
+        boolean allowed = DeviceCapabilityCheck.allowsLocalAi(DeviceCapabilityCheck.assess(this));
+        switch (status.actionModelState) {
+            case OrbitLocalStatus.NOT_INSTALLED:
+            case OrbitLocalStatus.ERROR: {
+                Button download = primaryButton(
+                        OrbitLocalStatus.ERROR.equals(status.actionModelState)
+                                ? "Try again" : "Download action model");
+                download.setEnabled(allowed);
+                if (!allowed) download.setAlpha(0.5f);
+                download.setOnClickListener(v -> {
+                    OrbitLocalClient.startActionModelDownload(this);
+                    bumpRefresh();
+                });
+                addPrimaryAction(actions, download);
+                break;
+            }
+            case OrbitLocalStatus.PAUSED:
+            case OrbitLocalStatus.INTERRUPTED: {
+                Button resume = primaryButton("Resume download");
+                resume.setOnClickListener(v -> {
+                    OrbitLocalClient.startActionModelDownload(this);
+                    bumpRefresh();
+                });
+                addPrimaryAction(actions, resume);
+                Button discard = dangerButton("Remove downloaded data");
+                discard.setOnClickListener(v -> confirmDeleteActionModel(true));
+                addDestructiveAction(actions, discard);
+                break;
+            }
+            case OrbitLocalStatus.DOWNLOADING:
+            case OrbitLocalStatus.QUEUED:
+            case OrbitLocalStatus.WAITING_FOR_NETWORK: {
+                Button pause = secondaryButton("Pause");
+                pause.setOnClickListener(v -> {
+                    OrbitLocalClient.pauseActionModelDownload(this);
+                    bumpRefresh();
+                });
+                addCompactAction(actions, pause);
+                break;
+            }
+            case OrbitLocalStatus.VALIDATING:
+                break;
+            case OrbitLocalStatus.READY: {
+                Button delete = dangerButton("Delete action model");
+                delete.setOnClickListener(v -> confirmDeleteActionModel(false));
+                addDestructiveAction(actions, delete);
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    private void confirmDeleteActionModel(boolean partialOnly) {
+        long bytes = status == null ? 0L : status.actionModelTotalBytes;
+        String size = LocalModelStore.formatBytes(bytes);
+        String title = partialOnly ? "Remove downloaded data?" : "Remove the action model?";
+        String message = partialOnly
+                ? "About " + size + " of partly downloaded model data will be removed, freeing that "
+                        + "storage. You can start the download again at any time."
+                : "About " + size + " of downloaded model data will be removed, freeing that storage. "
+                        + "Orbit Local chat and its own model are not affected, and Orbit's built-in "
+                        + "command recognition keeps working exactly as it does now.";
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setMessage(message)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton(partialOnly ? "Remove" : "Remove model", (d, w) -> {
+                    OrbitLocalClient.deleteActionModel(this);
+                    OrbitLocalProvider.invalidateStatus();
+                    if (!partialOnly) {
+                        Toast.makeText(this, "Action model removed", Toast.LENGTH_SHORT).show();
+                    }
+                    bumpRefresh();
+                })
+                .create();
+        UiKit.styleOrbitDialog(dialog, this, true);
+        dialog.show();
+    }
+
     private View storageCard() {
         LinearLayout card = card();
         card.addView(UiKit.text(this, "Orbit Local storage", 12, UiKit.MUTED, true));
 
         long componentBytes = OrbitLocalComponent.installedApkBytes(this);
         long modelBytes = status == null ? 0L : status.modelTotalBytes;
+        long actionBytes = status == null ? 0L : status.actionModelTotalBytes;
         long legacyBytes = LocalModelStore.legacyBytes(this);
-        long total = componentBytes + modelBytes + legacyBytes;
+        long total = componentBytes + modelBytes + actionBytes + legacyBytes;
 
         LinearLayout totalRow = new LinearLayout(this);
         totalRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -1103,6 +1353,11 @@ public final class LocalAiActivity extends Activity {
                     ? LocalModelStore.MODEL_DISPLAY_NAME
                     : LocalModelStore.MODEL_DISPLAY_NAME + " (partial)";
             card.addView(storageLine(label, LocalModelStore.formatBytes(modelBytes)));
+        }
+        if (actionBytes > 0L) {
+            String label = status != null && status.actionModelReady()
+                    ? "Action model" : "Action model (partial)";
+            card.addView(storageLine(label, LocalModelStore.formatBytes(actionBytes)));
         }
         if (legacyBytes > 0L) {
             card.addView(storageLine(

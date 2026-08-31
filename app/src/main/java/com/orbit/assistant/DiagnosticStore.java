@@ -281,5 +281,42 @@ public final class DiagnosticStore {
         return prefs(c).getString("foreground_label", "");
     }
 
+    /**
+     * Which deterministic route last answered a request, as a category word.
+     *
+     * <p>Category only. Not the message, not the expression, not the units, not the value: knowing
+     * that the calculator answered the last request is useful for a Beta report, and knowing what
+     * was calculated is nobody's business but the user's.
+     */
+    public static void recordUtilityRoute(Context c, String route) {
+        prefs(c).edit()
+                .putString("utility_route", safe(route))
+                .putLong("utility_updated", System.currentTimeMillis())
+                .apply();
+    }
+
+    public static String lastUtilityRoute(Context c) {
+        return prefs(c).getString("utility_route", "");
+    }
+
+    /**
+     * What the Orbit Local action path did with the last request it looked at.
+     *
+     * <p>Four fields, all of them Orbit's own closed vocabulary: which route won, which category of
+     * action was produced, whether validation accepted or refused it, and how long the attempt
+     * took. Nothing the user typed, nothing the model wrote, no app name, no label, and no
+     * parameter value reaches this store.
+     */
+    public static void recordLocalAction(Context c, String route, String category,
+                                         String validation, long millis) {
+        prefs(c).edit()
+                .putString("local_action_route", safe(route))
+                .putString("local_action_category", safe(category))
+                .putString("local_action_validation", safe(validation))
+                .putLong("local_action_ms", Math.max(0L, millis))
+                .putLong("local_action_updated", System.currentTimeMillis())
+                .apply();
+    }
+
     private static String safe(String s) { return s == null ? "" : s; }
 }

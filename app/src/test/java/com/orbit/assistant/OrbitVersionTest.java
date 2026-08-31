@@ -161,20 +161,28 @@ public final class OrbitVersionTest {
      * metadata and be published to the Beta channel by accident, so this fails before publication
      * rather than on a phone.
      */
-    @Test public void thisBuildIsFullAppGestureNavigationStable() {
+    /**
+     * This build opens the 0.7.8 line, and it is a Beta.
+     *
+     * <p>Orbit Local device actions and every new utility in this release need validation on real
+     * hardware before any of it is called Stable, so the version string says so and the release
+     * workflow publishes it as a prerelease.
+     */
+    @Test public void thisBuildIsTheFirstDeviceActionBeta() {
         String version = BuildConfig.VERSION_NAME;
-        assertFalse(OrbitVersion.installedIsBeta());
-        assertFalse(OrbitVersion.isBeta(version));
-        assertTrue(OrbitVersion.isStable(version));
-        assertEquals("0.7.7.9", OrbitVersion.baseVersion(version));
+        assertTrue(OrbitVersion.installedIsBeta());
+        assertTrue(OrbitVersion.isBeta(version));
+        assertFalse(OrbitVersion.isStable(version));
+        assertEquals("0.7.8.0", OrbitVersion.baseVersion(version));
 
-        assertEquals("a Stable build carries no beta counter", 0, OrbitVersion.betaNumber(version));
-        assertEquals("Orbit Assistant v0.7.7.9", OrbitVersion.releaseTitle(version));
-        assertEquals("v0.7.7.9", OrbitVersion.tagFor(version));
-        assertFalse("the release workflow must publish it as Stable",
+        assertEquals(1, OrbitVersion.betaNumber(version));
+        assertEquals("Orbit Assistant v0.7.8.0 Beta 1", OrbitVersion.releaseTitle(version));
+        assertEquals("v0.7.8.0-beta.1", OrbitVersion.tagFor(version));
+        assertTrue("the release workflow must publish it as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
-        assertTrue("and it must outrank 0.7.7.8 and every Beta it was built from",
-                OrbitVersion.compareVersions(version, "0.7.7.8") > 0
-                        && OrbitVersion.compareVersions(version, "0.7.7.9-beta.3") > 0);
+        assertTrue("and it must outrank the 0.7.7.9 line it follows",
+                OrbitVersion.compareVersions(version, "0.7.7.9") > 0);
+        assertTrue("while ranking below the Stable 0.7.8.0 it is working towards",
+                OrbitVersion.compareVersions(version, "0.7.8.0") < 0);
     }
 }

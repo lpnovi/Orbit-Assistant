@@ -932,9 +932,35 @@ establishes is something later screens should be built on rather than retrofitte
 Beta slot in front of Orbit Local device actions exactly as `0.7.7.7` and `0.7.7.8` each did, and
 never displaced them.
 
-**The next release is `0.7.8.0-beta.1` — Orbit Local device actions**, item 1 of the numbered list
-below and unchanged since it was written. Nothing of it was started in `0.7.7.9`; the gesture line
-is closed and this is where development goes next.
+`0.7.8.0-beta.1` — **Orbit Local device-action foundation, plus everyday utilities** — has now
+shipped as a Beta and awaits device validation. It opens item 1 of the numbered list below without
+finishing it. What actually shipped:
+
+- **A second, much smaller model beside the chat model.** The component stopped holding one model
+  and started holding two, keyed by slot: independent download, pause, resume, verification,
+  storage accounting, and deletion, with the chat model keeping its original preference keys and
+  file name so no existing install re-downloads anything. The IPC contract went to protocol 3
+- **The action model itself**: Qwen 2.5 0.5B Instruct, Apache-2.0, the same publisher, export
+  format and runtime as the chat model, ~521 MB, pinned by exact size and SHA-256, downloaded only
+  when asked for and removable on its own
+- **A semantic fallback, never a replacement.** `LocalCommandRouter` and every other deterministic
+  router still run first and keep everything they can handle. The model is reached only when the
+  message already reads as an instruction about something Orbit can control, and every failure
+  falls through to the provider
+- **One executor, as promised.** The model requests a normalized action; `LocalActionSchema`
+  validates it against a small allowlist and rebuilds the parameters itself; `DeviceActionExecutor`
+  runs it. Orbit Local gained a way to *ask* for tools and no Android-control code of its own
+- **Initial allowlist**: flashlight, brightness, media volume, Do Not Disturb, ringer mode, media
+  transport, timer, alarm, open app, open Settings. Deliberately small
+- **New shared actions for every provider**: `MEDIA_CONTROL` and `SET_RINGER_MODE`, both reported
+  from what Android actually confirmed rather than from a call that did not throw
+- **Deterministic calculator and general unit conversion**, on the same exact rational the kitchen
+  work introduced, and **device-status answers** for battery, brightness, media volume, ringer and
+  Do Not Disturb
+- **The Orbit Launch Sequence**, a hidden decorative scene behind a hold on the Chats mark
+
+Still open on item 1: the allowlist beyond those ten actions, relative-follow-up handling through
+the semantic path, and multi-action requests, which Beta 1 refuses outright.
 
 Beta 1 shipped:
 
@@ -1047,14 +1073,18 @@ Deliberately **not** in scope, then or now: per-message swipe actions, forward o
 navigation, and any horizontal gesture in the Side-button overlay. The overlay's vertical swipe
 behaviour is settled and is not being reopened.
 
-1. **Orbit Local device actions** — a lightweight local intent/function model installed beside the
-   chat model (the `ModelSpec` architecture already keeps their files and state independent). The
-   intended pipeline is fixed: user request → lightweight local intent/function model → normalized
-   Orbit tool request → existing Orbit tool execution layer → result. The local model only ever
-   *requests* existing Orbit tools — starting with simple reversible actions such as flashlight,
-   brightness, and volume — and never grows its own device-control logic; cloud and local providers
-   ultimately share the same tool execution layer. Until it exists, Orbit Local declares
-   `deviceActions(false)` and says so plainly rather than pretending otherwise
+1. **Orbit Local device actions** — *foundation shipped in `0.7.8.0-beta.1`, not finished.* The
+   pipeline is now real and is the one that was written down: user request → deterministic routers
+   → lightweight local action model → normalized Orbit action → `LocalActionSchema` validation →
+   the existing shared executor → observed result. `ComponentModelSpec` keys the two models' files
+   and state independently, and the local model only ever *requests* existing Orbit tools; it has
+   no device-control logic of its own and will not be given any.
+
+   What remains: growing the allowlist past the initial ten actions, letting the semantic path
+   resolve short follow-ups ("put it back") the way `RecentActionContext` already does for the
+   deterministic one, and multi-action requests, which Beta 1 rejects outright rather than partly
+   obeying. Orbit Local still declares `deviceActions(false)` for chat, because its chat model does
+   not produce actions; the action model is a separate, optional install and says so on its own card
 2. **Calendar maturation** — reading the calendar as context ("what does my Saturday look like"),
    editing and removing events Orbit itself created, and recurring events. Deliberately not in
    v0.7.7.7, which never modifies or deletes an existing user event
@@ -1155,8 +1185,9 @@ awareness, "what can I make with what I have". Not built until real use shows th
 place. Orbit should first be excellent *during* cooking rather than become a meal planner.
 
 ### Next up
-- Local device actions: Orbit Local asking Orbit's existing tools to run simple reversible
-  controls
+- Local device actions, beyond the first allowlist: more actions, short follow-ups through the
+  semantic path, and requests that need more than one action. The foundation shipped in
+  `0.7.8.0-beta.1`
 - Conditions beyond time and location, and more than one branch point in a single routine
 - Cook with Orbit: an explicit temporary cooking session with step state, quantities, and timers
 

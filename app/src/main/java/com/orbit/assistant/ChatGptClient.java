@@ -41,7 +41,8 @@ public final class ChatGptClient {
             "ADD_CALENDAR_EVENTS",
             "NAVIGATE", "DIAL", "DIAL_CONTACT", "SMS", "SMS_CONTACT", "WEB_SEARCH",
             "OPEN_URL", "SHARE", "COPY", "FLASHLIGHT", "SET_VOLUME",
-            "SET_BRIGHTNESS", "SET_DND", "OPEN_INTERNET_PANEL", "OPEN_BLUETOOTH_SETTINGS"
+            "SET_BRIGHTNESS", "SET_DND", "OPEN_INTERNET_PANEL", "OPEN_BLUETOOTH_SETTINGS",
+            "MEDIA_CONTROL", "SET_RINGER_MODE"
     ));
 
     private static final String SYSTEM =
@@ -69,7 +70,9 @@ public final class ChatGptClient {
             "SET_REMINDER {message,year,month,day,hour,minute}; CREATE_EVENT {title,description,beginMillis,endMillis}; " +
             "ADD_CALENDAR_EVENTS {events:[{title,date,hour,minute,timezone,durationMinutes,allDay,timeTba,location,description,sourceUrl}]}; NAVIGATE {query}; DIAL {number}; DIAL_CONTACT {name}; " +
             "SMS {number,body}; SMS_CONTACT {name,body}; SET_VOLUME {percent}; SET_BRIGHTNESS {percent}; SET_DND {enabled}; OPEN_INTERNET_PANEL {}; OPEN_BLUETOOTH_SETTINGS {}; " +
-            "WEB_SEARCH {query}; OPEN_URL {url}; SHARE {text}; COPY {text}; FLASHLIGHT {on}. " +
+            "WEB_SEARCH {query}; OPEN_URL {url}; SHARE {text}; COPY {text}; FLASHLIGHT {on}; " +
+            "MEDIA_CONTROL {command} where command is PLAY, PAUSE, PLAY_PAUSE, NEXT or PREVIOUS and acts on whatever is currently playing, never a named app; " +
+            "SET_RINGER_MODE {mode} where mode is normal, vibrate or silent, which is the phone's ringer profile and is not the same thing as SET_VOLUME. " +
             "If no phone action is needed, actions must be an empty array. Keep ordinary assistant answers concise unless the user asks for detail. Never use an em dash (—) in any response. Use commas, parentheses, colons, semicolons, or ordinary hyphens instead.";
 
     private static final String LELO_SYSTEM =

@@ -81,4 +81,35 @@ interface IOrbitLocalService {
 
     /** Frees the loaded model from memory. Safe at any time. */
     void unloadEngine();
+
+    // ---- the device-action model, from protocol 3 --------------------------------------------
+
+    /**
+     * The same download lifecycle, for the small action model that lives beside the chat model.
+     *
+     * <p>Separate calls rather than a slot argument, deliberately: an interface where the wrong
+     * constant deletes a 1.6 GB model is a worse interface than four more method names. The two
+     * models have independent state, independent background work, and independent storage, and
+     * these calls can never reach the other one.
+     */
+    void startActionModelDownload();
+
+    void pauseActionModelDownload();
+
+    void cancelActionModelDownload();
+
+    /** Deletes the action model and its state. The chat model is untouched. */
+    void deleteActionModel();
+
+    /**
+     * Runs one action-model generation.
+     *
+     * <p>Orbit builds the prompt and Orbit validates the answer. The component's only job here is
+     * to run the small model and hand back what it produced, exactly as it does for chat: it does
+     * not parse the output, does not understand actions, and cannot execute anything.
+     */
+    void generateAction(String prompt, IOrbitLocalCallback callback);
+
+    /** Stops an action generation in progress, if any. */
+    void cancelActionGeneration();
 }

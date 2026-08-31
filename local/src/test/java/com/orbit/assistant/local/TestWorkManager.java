@@ -52,4 +52,27 @@ final class TestWorkManager {
                 .build();
         WorkManager.initialize(context, configuration);
     }
+
+    /**
+     * A queue with nothing of Orbit Local's left in it.
+     *
+     * <p>Robolectric shares one WorkManager singleton across test classes in a JVM, so a class that
+     * enqueues a download leaves it there for whatever runs next — and a state machine asserted
+     * against "no live work" would then pass or fail on class ordering. Every test class that reads
+     * a download state starts from here instead, and cancellation is waited on rather than fired and
+     * hoped for.
+     */
+    static void resetQueue(Context context) {
+        ensureInitialized(context);
+        for (ComponentModelSpec.Slot slot : ComponentModelSpec.Slot.values()) {
+            try {
+                WorkManager.getInstance(context)
+                        .cancelUniqueWork(ComponentModelSpec.forSlot(slot).workName())
+                        .getResult().get();
+            } catch (Exception ignored) {
+                // Nothing to cancel, or a queue that will not answer. Either way there is no live
+                // work this test could be affected by.
+            }
+        }
+    }
 }

@@ -119,6 +119,10 @@ public final class OrbitNavigation {
         // Onboarding owns Back for its own steps: it walks backwards through setup and confirms
         // before leaving it. A page-level gesture would be a second, competing meaning.
         put(OnboardingActivity.class, Policy.LOCAL, "Onboarding");
+        // A full-screen scene laid over Chats rather than a page in the hierarchy. Back closes it
+        // at once; animating it away as a page would be describing it as navigation, which it is
+        // not, and would put a decorative canvas in contention with the app-wide gesture.
+        put(OrbitLaunchSequenceActivity.class, Policy.LOCAL, "Launch sequence");
 
         // ---- ROOT ------------------------------------------------------------------------------
 

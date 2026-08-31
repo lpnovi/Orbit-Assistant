@@ -153,9 +153,23 @@ public final class AssistantClient {
             return;
         }
 
+        // A question about a device state has to be resolved before the command parser sees it.
+        // "Is Do Not Disturb on?" contains the words LocalCommandRouter treats as an instruction,
+        // and answering it by switching DND on and reporting that would be exactly wrong. The
+        // recognizer is deliberately the narrowest in the pipeline - question shape, a state Orbit
+        // can actually read, and no verb that would change anything - so every phrasing that is an
+        // instruction still falls straight through to the router below.
+        AssistantReply status = DeviceStatusRouter.tryHandle(context, prompt);
+        if (status != null) {
+            DiagnosticStore.recordUtilityRoute(context, "device-status");
+            cb.onSuccess(status);
+            return;
+        }
+
         // Obvious phone commands stay instant and offline regardless of AI provider.
         AssistantReply local = LocalCommandRouter.tryHandle(context, prompt);
         if (local != null) {
+            DiagnosticStore.recordUtilityRoute(context, "device-command");
             cb.onSuccess(local);
             return;
         }
@@ -183,10 +197,59 @@ public final class AssistantClient {
         // substitutions, technique, food safety - straight through to the provider below.
         AssistantReply kitchen = KitchenMathRouter.tryHandle(context, prompt);
         if (kitchen != null) {
+            DiagnosticStore.recordUtilityRoute(context, "kitchen");
             cb.onSuccess(kitchen);
             return;
         }
 
+        // Ordinary arithmetic and everyday unit conversion, on the same principle as the kitchen
+        // router above and after it, so cooking keeps its own presentation rules. Both are pure
+        // functions of the text, both are exact, and both work with no provider and no network.
+        AssistantReply calculated = CalculatorRouter.tryHandle(context, prompt);
+        if (calculated != null) {
+            DiagnosticStore.recordUtilityRoute(context, "calculator");
+            cb.onSuccess(calculated);
+            return;
+        }
+
+        AssistantReply converted = UnitConversionRouter.tryHandle(context, prompt);
+        if (converted != null) {
+            DiagnosticStore.recordUtilityRoute(context, "conversion");
+            cb.onSuccess(converted);
+            return;
+        }
+
+        final String resolvedNotificationContext = notificationContext;
+        final Runnable continueToProvider = () -> sendToProvider(context, prompt, screenText,
+                screenshot, history, intelligenceMode, explicitAttachment, trustedTaskContext,
+                cancelled, resolvedNotificationContext, cb);
+
+        // The last stop before the network. When Orbit Local's action model is installed and
+        // enabled, and the message already reads as an instruction about something Orbit can
+        // control, the phone gets one attempt at it: the model proposes a normalized action, Orbit
+        // validates it, and the shared executor runs it. Every other outcome - a refusal, malformed
+        // output, a model failure, a timeout - continues to the provider exactly as before, so this
+        // can add an answer and can never take one away.
+        if (OrbitLocalActionRouter.shouldTry(context, prompt)) {
+            OrbitLocalActionRouter.handle(context, prompt, cb, continueToProvider);
+            return;
+        }
+        continueToProvider.run();
+    }
+
+    /**
+     * Everything from memory selection to the active provider.
+     *
+     * <p>Split out of {@link #send} so the Orbit Local action attempt above has something to hand
+     * the request on to. Nothing about it changed when it moved: this is the same provider path,
+     * reached either directly or after the on-device action model declined.
+     */
+    private static void sendToProvider(Context context, String prompt, String screenText,
+                                       Bitmap screenshot, List<History> history,
+                                       String intelligenceMode, boolean explicitAttachment,
+                                       String trustedTaskContext,
+                                       java.util.function.BooleanSupplier cancelled,
+                                       String notificationContext, Callback cb) {
         final MemoryStore.Selection memorySelection =
                 MemoryStore.select(context, prompt, screenText, history);
         final MemoryStore.Suggestion memorySuggestion =

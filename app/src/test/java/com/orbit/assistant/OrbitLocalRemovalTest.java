@@ -198,12 +198,18 @@ public final class OrbitLocalRemovalTest {
     @Test public void theComponentsDeleteUnloadsTheEngineAndKeepsTheComponent() {
         String source = ComponentUninstallTest.readRepositoryFile(
                 "local/src/main/java/com/orbit/assistant/local/ComponentModelStore.java");
-        int delete = source.indexOf("public static void delete(Context c)");
+        int delete = source.indexOf("public static void delete(Context c, ComponentModelSpec spec)");
         assertTrue("ComponentModelStore.delete was not found", delete > 0);
         String body = source.substring(delete, source.indexOf("public static void clearError", delete));
+        // Per slot on both counts since v0.7.8.0 Beta 1: deleting the action model must free the
+        // action model's memory and stop the action model's download, and must leave a 1.6 GB chat
+        // model loaded and downloading exactly as it was.
         assertTrue("a deleted model must not stay loaded in memory",
-                body.contains("LocalLlmEngine.unload()"));
-        assertTrue("and the in-flight download must stop", body.contains("ComponentDownloadWorker.cancel(c)"));
+                body.contains("LocalLlmEngine.unload(spec.slot)"));
+        assertTrue("and the in-flight download must stop",
+                body.contains("ComponentDownloadWorker.cancel(c, spec)"));
+        assertTrue("and only this model's files may be swept",
+                body.contains("file.getName().startsWith(spec.fileName())"));
     }
 
     // ---- helpers ------------------------------------------------------------------------------------

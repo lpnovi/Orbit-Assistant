@@ -61,11 +61,46 @@ public final class OrbitLocalStatus {
     /** Diagnostics only: a short token naming why the last attempt stopped. */
     public final String lastFailure;
 
+    // ---- the action model, from protocol 3 --------------------------------------------------
+
+    /** The device-action model's state, in exactly the same vocabulary as the chat model's. */
+    public final String actionModelState;
+    public final String actionModelId;
+    public final String actionModelDisplayName;
+    public final long actionModelBytes;
+    public final long actionModelTotalBytes;
+    public final long actionModelSizeBytes;
+    public final String actionModelError;
+    /** The model's licence, reported by the component rather than restated by Orbit. */
+    public final String actionModelLicense;
+    /** Diagnostics only. */
+    public final String actionWorkState;
+    public final boolean actionPauseRequested;
+    public final String actionLastFailure;
+
     private OrbitLocalStatus(int protocol, String componentVersionName, long componentVersionCode,
                              String modelState, String modelId, String modelDisplayName,
                              long modelBytes, long modelTotalBytes, long modelSizeBytes,
                              String modelError, long freeBytes, String workState,
-                             boolean pauseRequested, String lastFailure) {
+                             boolean pauseRequested, String lastFailure,
+                             String actionModelState, String actionModelId,
+                             String actionModelDisplayName, long actionModelBytes,
+                             long actionModelTotalBytes, long actionModelSizeBytes,
+                             String actionModelError, String actionModelLicense,
+                             String actionWorkState, boolean actionPauseRequested,
+                             String actionLastFailure) {
+        this.actionModelState = normalizeState(actionModelState);
+        this.actionModelId = actionModelId == null ? "" : actionModelId;
+        this.actionModelDisplayName = actionModelDisplayName == null || actionModelDisplayName.isEmpty()
+                ? "Local action model" : actionModelDisplayName;
+        this.actionModelBytes = Math.max(0L, actionModelBytes);
+        this.actionModelTotalBytes = Math.max(0L, actionModelTotalBytes);
+        this.actionModelSizeBytes = Math.max(0L, actionModelSizeBytes);
+        this.actionModelError = actionModelError == null ? "" : actionModelError;
+        this.actionModelLicense = actionModelLicense == null ? "" : actionModelLicense;
+        this.actionWorkState = actionWorkState == null ? "" : actionWorkState;
+        this.actionPauseRequested = actionPauseRequested;
+        this.actionLastFailure = actionLastFailure == null ? "" : actionLastFailure;
         this.protocol = protocol;
         this.componentVersionName = componentVersionName == null ? "" : componentVersionName;
         this.componentVersionCode = componentVersionCode;
@@ -99,7 +134,20 @@ public final class OrbitLocalStatus {
                 bundle.getLong("freeBytes", -1L),
                 bundle.getString("workState", ""),
                 bundle.getBoolean("pauseRequested", false),
-                bundle.getString("lastFailure", ""));
+                bundle.getString("lastFailure", ""),
+                // Absent on a protocol-2 component, which reads back as NOT_INSTALLED — the
+                // honest answer for a component that cannot hold an action model at all.
+                bundle.getString("actionModelState", NOT_INSTALLED),
+                bundle.getString("actionModelId", ""),
+                bundle.getString("actionModelDisplayName", ""),
+                bundle.getLong("actionModelBytes", 0L),
+                bundle.getLong("actionModelTotalBytes", 0L),
+                bundle.getLong("actionModelSizeBytes", 0L),
+                bundle.getString("actionModelError", ""),
+                bundle.getString("actionModelLicense", ""),
+                bundle.getString("actionWorkState", ""),
+                bundle.getBoolean("actionPauseRequested", false),
+                bundle.getString("actionLastFailure", ""));
     }
 
     /** An unknown state is treated as nothing installed, never as something usable. */
@@ -147,9 +195,40 @@ public final class OrbitLocalStatus {
         return (int) Math.max(0L, Math.min(1000L, modelBytes * 1000L / modelSizeBytes));
     }
 
+    // ---- the action model, read through the same rules ------------------------------------------
+
+    public boolean actionModelReady() { return READY.equals(actionModelState); }
+
+    public boolean actionModelBusy() {
+        return DOWNLOADING.equals(actionModelState) || VALIDATING.equals(actionModelState);
+    }
+
+    public boolean actionModelInFlight() {
+        return actionModelBusy() || QUEUED.equals(actionModelState)
+                || WAITING_FOR_NETWORK.equals(actionModelState);
+    }
+
+    public boolean actionModelResumable() {
+        return PAUSED.equals(actionModelState) || INTERRUPTED.equals(actionModelState);
+    }
+
+    public boolean actionShowsProgress() { return actionModelInFlight() || actionModelResumable(); }
+
+    /** Progress through the action model's download, 0-1000, for the shared progress bar. */
+    public int actionProgressPerMille() {
+        if (actionModelSizeBytes <= 0L) return 0;
+        return (int) Math.max(0L, Math.min(1000L,
+                actionModelBytes * 1000L / actionModelSizeBytes));
+    }
+
+    public String actionStateLabel() { return labelFor(actionModelState); }
+
     /** The short pill label the Orbit Local screen shows for the model. */
-    public String stateLabel() {
-        switch (modelState) {
+    public String stateLabel() { return labelFor(modelState); }
+
+    /** One vocabulary for both models, so the two cards can never describe a state differently. */
+    static String labelFor(String state) {
+        switch (state == null ? "" : state) {
             case READY: return "Ready";
             case DOWNLOADING: return "Downloading";
             case QUEUED: return "Preparing";

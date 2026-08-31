@@ -61,7 +61,7 @@ public final class ComponentDownloadStateTest {
         // decision here a storage refusal instead of the lifecycle question under test.
         ShadowStatFs.registerStats(context.getFilesDir(), 4_000_000, 4_000_000, 4_000_000);
         // Pause and Resume are WorkManager operations, so they run against a real one.
-        TestWorkManager.ensureInitialized(context);
+        TestWorkManager.resetQueue(context);
     }
 
     @After public void tearDown() {

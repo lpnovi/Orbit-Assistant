@@ -37,8 +37,14 @@ public final class OrbitLocalService extends Service {
      * the one thing it should always have meant — a pause the user actually asked for. An older
      * reader would resolve the new words to "not installed", and would keep reading PAUSED as
      * though it still covered every stopped download.
+     *
+     * <p>Raised to 3 in v0.7.8.0 Beta 1, when the component stopped holding one model. The
+     * interface gained a second model's lifecycle and its own generation call, and the status
+     * Bundle gained a second set of keys. Orbit and the component ship together and check this
+     * before anything else, so a mismatched pair refuses to run rather than guessing which half of
+     * the contract it is talking to.
      */
-    public static final int PROTOCOL_VERSION = 2;
+    public static final int PROTOCOL_VERSION = 3;
 
     /** The only package allowed to bind, whatever the permission system reports. */
     private static final String ORBIT_PACKAGE = "com.orbit.assistant";
@@ -65,6 +71,20 @@ public final class OrbitLocalService extends Service {
     public static final String KEY_PAUSE_REQUESTED = "pauseRequested";
     /** Protocol 2: a short non-sensitive token naming why the last attempt stopped. */
     public static final String KEY_LAST_FAILURE = "lastFailure";
+
+    // ---- protocol 3: the action model's own keys, mirroring the chat model's ---------------------
+
+    public static final String KEY_ACTION_MODEL_STATE = "actionModelState";
+    public static final String KEY_ACTION_MODEL_ID = "actionModelId";
+    public static final String KEY_ACTION_MODEL_DISPLAY_NAME = "actionModelDisplayName";
+    public static final String KEY_ACTION_MODEL_BYTES = "actionModelBytes";
+    public static final String KEY_ACTION_MODEL_TOTAL_BYTES = "actionModelTotalBytes";
+    public static final String KEY_ACTION_MODEL_SIZE_BYTES = "actionModelSizeBytes";
+    public static final String KEY_ACTION_MODEL_ERROR = "actionModelError";
+    public static final String KEY_ACTION_MODEL_LICENSE = "actionModelLicense";
+    public static final String KEY_ACTION_WORK_STATE = "actionWorkState";
+    public static final String KEY_ACTION_PAUSE_REQUESTED = "actionPauseRequested";
+    public static final String KEY_ACTION_LAST_FAILURE = "actionLastFailure";
 
     @Override public IBinder onBind(Intent intent) {
         return binder;
@@ -101,6 +121,22 @@ public final class OrbitLocalService extends Service {
             out.putString(KEY_WORK_STATE, ComponentModelStore.lastObservedWorkState().name());
             out.putBoolean(KEY_PAUSE_REQUESTED, ComponentModelStore.pauseRequested(c));
             out.putString(KEY_LAST_FAILURE, ComponentModelStore.lastFailure(c));
+
+            // The action model, in the same one call. Orbit's Orbit Local screen shows both models
+            // together, and asking for them separately would double a cross-process query it polls.
+            ComponentModelSpec action = ComponentModelSpec.ACTION;
+            out.putString(KEY_ACTION_MODEL_STATE, ComponentModelStore.state(c, action).name());
+            out.putString(KEY_ACTION_MODEL_ID, action.id);
+            out.putString(KEY_ACTION_MODEL_DISPLAY_NAME, action.displayName);
+            out.putLong(KEY_ACTION_MODEL_BYTES, ComponentModelStore.downloadedBytes(c, action));
+            out.putLong(KEY_ACTION_MODEL_TOTAL_BYTES, ComponentModelStore.totalModelBytes(c, action));
+            out.putLong(KEY_ACTION_MODEL_SIZE_BYTES, action.sizeBytes);
+            out.putString(KEY_ACTION_MODEL_ERROR, ComponentModelStore.errorMessage(c, action));
+            out.putString(KEY_ACTION_MODEL_LICENSE, action.license);
+            out.putString(KEY_ACTION_WORK_STATE,
+                    ComponentModelStore.lastObservedWorkState(action).name());
+            out.putBoolean(KEY_ACTION_PAUSE_REQUESTED, ComponentModelStore.pauseRequested(c, action));
+            out.putString(KEY_ACTION_LAST_FAILURE, ComponentModelStore.lastFailure(c, action));
             return out;
         }
 
@@ -152,7 +188,7 @@ public final class OrbitLocalService extends Service {
                 @Override public void onPartial(String cumulativeText) {
                     try { callback.onPartial(cumulativeText); } catch (RemoteException ignored) {
                         // Orbit went away mid-generation. Stop rather than keep burning the CPU.
-                        LocalLlmEngine.requestCancel();
+                        LocalLlmEngine.requestCancel(ComponentModelSpec.Slot.CHAT);
                     }
                 }
 
@@ -168,12 +204,72 @@ public final class OrbitLocalService extends Service {
 
         @Override public void cancelGeneration() {
             requireOrbitCaller();
-            LocalLlmEngine.requestCancel();
+            LocalLlmEngine.requestCancel(ComponentModelSpec.Slot.CHAT);
         }
 
         @Override public void unloadEngine() {
             requireOrbitCaller();
             LocalLlmEngine.unload();
+        }
+
+        // ---- protocol 3: the action model ------------------------------------------------------
+
+        @Override public void startActionModelDownload() {
+            requireOrbitCaller();
+            ComponentDownloadWorker.start(getApplicationContext(), ComponentModelSpec.ACTION);
+        }
+
+        @Override public void pauseActionModelDownload() {
+            requireOrbitCaller();
+            ComponentDownloadWorker.pause(getApplicationContext(), ComponentModelSpec.ACTION);
+        }
+
+        @Override public void cancelActionModelDownload() {
+            requireOrbitCaller();
+            ComponentDownloadWorker.cancelAndDiscard(getApplicationContext(), ComponentModelSpec.ACTION);
+        }
+
+        @Override public void deleteActionModel() {
+            requireOrbitCaller();
+            ComponentModelStore.delete(getApplicationContext(), ComponentModelSpec.ACTION);
+        }
+
+        @Override public void generateAction(String prompt, IOrbitLocalCallback callback) {
+            requireOrbitCaller();
+            if (callback == null) return;
+            Context c = getApplicationContext();
+            if (!ComponentModelStore.isReady(c, ComponentModelSpec.ACTION)) {
+                safeError(callback, "the local action model is not installed");
+                return;
+            }
+            if (prompt == null || prompt.trim().isEmpty()) {
+                safeError(callback, "the request was empty");
+                return;
+            }
+            // Identical plumbing to chat, on purpose. The component runs a model and streams text;
+            // what that text means, and whether it is allowed to do anything, is entirely Orbit's
+            // decision and is made on Orbit's side of this boundary.
+            LocalLlmEngine.generate(c, ComponentModelSpec.ACTION, prompt,
+                    new LocalLlmEngine.StreamCallback() {
+                        @Override public void onPartial(String cumulativeText) {
+                            try { callback.onPartial(cumulativeText); } catch (RemoteException ignored) {
+                                LocalLlmEngine.requestCancel(ComponentModelSpec.Slot.ACTION);
+                            }
+                        }
+
+                        @Override public void onDone(String fullText) {
+                            try { callback.onDone(fullText); } catch (RemoteException ignored) {}
+                        }
+
+                        @Override public void onError(String message) {
+                            safeError(callback, message);
+                        }
+                    });
+        }
+
+        @Override public void cancelActionGeneration() {
+            requireOrbitCaller();
+            LocalLlmEngine.requestCancel(ComponentModelSpec.Slot.ACTION);
         }
     };
 

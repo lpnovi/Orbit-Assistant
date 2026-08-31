@@ -115,6 +115,8 @@ public class MainActivity extends Activity {
 
     @Override protected void onPause() {
         foregroundActive = false;
+        // A hold that was in progress when Chats went away is not a hold anybody completed.
+        launchSequenceTimer.removeCallbacksAndMessages(null);
         // Leaving Chats ends the offer. A deletion the user walked away from is a deletion they
         // meant, and leaving it pending would make it depend on this process staying alive.
         commitPendingDeletion();
@@ -207,6 +209,54 @@ public class MainActivity extends Activity {
     }
 
 
+    /** How long the Orbit mark has to be held before the hidden scene opens. */
+    static final long LAUNCH_SEQUENCE_HOLD_MS = 2600L;
+
+    private final android.os.Handler launchSequenceTimer =
+            new android.os.Handler(android.os.Looper.getMainLooper());
+
+    /**
+     * The way into the Orbit Launch Sequence, and the only one.
+     *
+     * <p>A deliberate hold rather than a long-press, because Android's own long-press fires in about
+     * half a second and this must not be something anybody reaches by accident. The mark has no tap
+     * behaviour of its own, so nothing is being taken away: a tap still does nothing, a scroll still
+     * scrolls, and TalkBack still reads the header.
+     *
+     * <p>The scene opens once per gesture. The timer is cancelled by lifting, by moving off the
+     * mark, and by leaving Chats, so a hold that is abandoned half way opens nothing.
+     */
+    private void installLaunchSequenceGesture(View mark) {
+        mark.setContentDescription("Orbit");
+        final boolean[] opened = {false};
+        final Runnable open = () -> {
+            if (opened[0]) return;
+            opened[0] = true;
+            UiKit.haptic(mark, android.view.HapticFeedbackConstants.LONG_PRESS);
+            startActivity(new Intent(this, OrbitLaunchSequenceActivity.class));
+        };
+        mark.setOnTouchListener((v, event) -> {
+            switch (event.getActionMasked()) {
+                case android.view.MotionEvent.ACTION_DOWN:
+                    opened[0] = false;
+                    launchSequenceTimer.postDelayed(open, LAUNCH_SEQUENCE_HOLD_MS);
+                    return true;
+                case android.view.MotionEvent.ACTION_MOVE:
+                    if (event.getX() < 0 || event.getY() < 0
+                            || event.getX() > v.getWidth() || event.getY() > v.getHeight()) {
+                        launchSequenceTimer.removeCallbacks(open);
+                    }
+                    return true;
+                case android.view.MotionEvent.ACTION_UP:
+                case android.view.MotionEvent.ACTION_CANCEL:
+                    launchSequenceTimer.removeCallbacks(open);
+                    return true;
+                default:
+                    return false;
+            }
+        });
+    }
+
     private String currentAccentName() {
         return Prefs.get(this).getString(Prefs.ACCENT, "dynamic") +
                 "|amoled=" + Prefs.amoledMode(this) +
@@ -275,6 +325,7 @@ public class MainActivity extends Activity {
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
         View mark = UiKit.orbitMark(this, 40);
+        installLaunchSequenceGesture(mark);
         LinearLayout.LayoutParams markLp = new LinearLayout.LayoutParams(UiKit.dp(this, 46), UiKit.dp(this, 46));
         markLp.rightMargin = UiKit.dp(this, 8);
         top.addView(mark, markLp);

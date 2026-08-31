@@ -258,6 +258,28 @@ public final class OrbitLocalClient {
         run(context, s -> s.abortModelImport());
     }
 
+    // ---- the action model's own lifecycle -----------------------------------------------------
+
+    public static void startActionModelDownload(Context context) {
+        run(context, s -> s.startActionModelDownload());
+    }
+
+    public static void pauseActionModelDownload(Context context) {
+        run(context, s -> s.pauseActionModelDownload());
+    }
+
+    public static void cancelActionModelDownload(Context context) {
+        run(context, s -> s.cancelActionModelDownload());
+    }
+
+    public static void deleteActionModel(Context context) {
+        run(context, s -> s.deleteActionModel());
+    }
+
+    public static void cancelActionGeneration(Context context) {
+        run(context, s -> s.cancelActionGeneration());
+    }
+
     // ---- generation ------------------------------------------------------------------------------
 
     /**
@@ -268,6 +290,22 @@ public final class OrbitLocalClient {
      * quietly handed to a cloud provider.
      */
     public static void generate(Context context, String prompt, StreamCallback callback) {
+        generate(context, prompt, false, callback);
+    }
+
+    /**
+     * Runs one action-model generation.
+     *
+     * <p>The same transport as chat, aimed at the other model. Orbit builds the prompt, the
+     * component runs the small model, and Orbit validates whatever comes back before any of it can
+     * mean anything. Nothing about action handling lives on the component's side of this call.
+     */
+    public static void generateAction(Context context, String prompt, StreamCallback callback) {
+        generate(context, prompt, true, callback);
+    }
+
+    private static void generate(Context context, String prompt, boolean actionModel,
+                                 StreamCallback callback) {
         Context app = context.getApplicationContext();
         new Thread(() -> {
             String reason = unavailableReason(app);
@@ -281,7 +319,7 @@ public final class OrbitLocalClient {
                 return;
             }
             try {
-                bound.generate(prompt, new IOrbitLocalCallback.Stub() {
+                IOrbitLocalCallback stub = new IOrbitLocalCallback.Stub() {
                     @Override public void onPartial(String cumulativeText) {
                         callback.onPartial(cumulativeText == null ? "" : cumulativeText);
                     }
@@ -294,7 +332,9 @@ public final class OrbitLocalClient {
                         callback.onError("Orbit Local could not answer: "
                                 + (message == null ? "unknown error" : message));
                     }
-                });
+                };
+                if (actionModel) bound.generateAction(prompt, stub);
+                else bound.generate(prompt, stub);
             } catch (Throwable t) {
                 // Includes the component's process dying mid-call. Drop the proxy so the next
                 // attempt rebinds cleanly, and report it as what it is.

@@ -36,8 +36,12 @@ public final class OrbitLocalComponent {
      *
      * <p>2 since v0.7.7.6: the model status vocabulary grew, and PAUSED narrowed to mean only a
      * pause the user asked for. See {@link OrbitLocalStatus}.
+     *
+     * <p>3 since v0.7.8.0 Beta 1: the component can hold a second model. The interface gained the
+     * action model's download lifecycle and its own generation call, and the status Bundle gained
+     * that model's keys.
      */
-    public static final int PROTOCOL_VERSION = 2;
+    public static final int PROTOCOL_VERSION = 3;
     /** Orbit's permanent release certificate, the same pin the updater carries. */
     static final String CERTIFICATE_SHA256 =
             "7DAD619385DFF11EC731AA555F2B448A943C7391813D1A94DF1CB4232ECD41E3";

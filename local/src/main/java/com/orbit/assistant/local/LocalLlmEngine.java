@@ -6,6 +6,8 @@ import com.google.mediapipe.tasks.genai.llminference.LlmInference;
 import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession;
 
 import java.io.File;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -18,9 +20,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * exists. They used to live inside every Orbit installation whether or not local AI was ever
  * enabled; now they ship only to people who chose to install Orbit Local.
  *
- * <p>The loaded model is expensive (seconds to load, roughly its size in memory), so one engine
- * is kept per process and reused across turns. Requests run one at a time: local generation
- * saturates the device, and Orbit never issues concurrent turns for one conversation anyway.
+ * <p>A loaded model is expensive (seconds to load, roughly its size in memory), so one engine per
+ * model is kept and reused across turns. Since v0.7.8.0 Beta 1 there can be two — the conversational
+ * model and the much smaller action model — held independently, because swapping a 1.6 GB model out
+ * and back every time somebody says "turn the flashlight off" would make the feature useless. Each
+ * has its own engine, its own cancellation flag, and its own {@link #unload(ComponentModelSpec.Slot)},
+ * so removing one model frees exactly its own memory.
+ *
+ * <p>Requests still run one at a time across both models. Local generation saturates the device,
+ * and Orbit never issues concurrent turns for one conversation anyway.
  */
 final class LocalLlmEngine {
 
@@ -38,38 +46,77 @@ final class LocalLlmEngine {
     });
 
     private static final Object LOCK = new Object();
-    private static LlmInference engine;
-    private static String loadedModelPath;
-    /** Set by a cancel request from Orbit; polled between tokens. */
-    private static final AtomicBoolean CANCEL_REQUESTED = new AtomicBoolean(false);
+    private static final Map<ComponentModelSpec.Slot, LlmInference> ENGINES =
+            new EnumMap<>(ComponentModelSpec.Slot.class);
+    private static final Map<ComponentModelSpec.Slot, String> LOADED_PATHS =
+            new EnumMap<>(ComponentModelSpec.Slot.class);
+    /** Set by a cancel request from Orbit; polled between tokens. One flag per model. */
+    private static final Map<ComponentModelSpec.Slot, AtomicBoolean> CANCEL =
+            new EnumMap<>(ComponentModelSpec.Slot.class);
 
     private LocalLlmEngine() {}
 
     static boolean isLoaded() {
-        synchronized (LOCK) { return engine != null; }
+        synchronized (LOCK) { return !ENGINES.isEmpty(); }
     }
 
-    /** Asks the generation in progress, if any, to stop. */
+    static boolean isLoaded(ComponentModelSpec.Slot slot) {
+        synchronized (LOCK) { return ENGINES.get(slot) != null; }
+    }
+
+    private static AtomicBoolean cancelFlag(ComponentModelSpec.Slot slot) {
+        synchronized (LOCK) {
+            AtomicBoolean flag = CANCEL.get(slot);
+            if (flag == null) {
+                flag = new AtomicBoolean(false);
+                CANCEL.put(slot, flag);
+            }
+            return flag;
+        }
+    }
+
+    /** Asks every generation in progress to stop. */
     static void requestCancel() {
-        CANCEL_REQUESTED.set(true);
+        for (ComponentModelSpec.Slot slot : ComponentModelSpec.Slot.values()) requestCancel(slot);
+    }
+
+    /** Asks the generation in progress for one model, if any, to stop. */
+    static void requestCancel(ComponentModelSpec.Slot slot) {
+        cancelFlag(slot).set(true);
     }
 
     /**
-     * Runs one streaming generation. The callback is invoked on the engine thread; cancellation is
-     * polled between tokens and stops the underlying generation, returning whatever text had
-     * already been produced through {@link StreamCallback#onDone}.
+     * Runs one streaming generation on the conversational model.
+     *
+     * <p>Kept as the plain two-argument form the chat path has always called.
      */
     static void generate(Context context, String fullPrompt, StreamCallback callback) {
-        CANCEL_REQUESTED.set(false);
+        generate(context, ComponentModelSpec.CHAT, fullPrompt, callback);
+    }
+
+    /**
+     * Runs one streaming generation on the named model.
+     *
+     * <p>The callback is invoked on the engine thread; cancellation is polled between tokens and
+     * stops the underlying generation, returning whatever text had already been produced through
+     * {@link StreamCallback#onDone}.
+     */
+    static void generate(Context context, ComponentModelSpec spec, String fullPrompt,
+                         StreamCallback callback) {
+        AtomicBoolean cancelRequested = cancelFlag(spec.slot);
+        cancelRequested.set(false);
         EXEC.execute(() -> {
             LlmInferenceSession session = null;
             try {
-                LlmInference llm = ensureLoaded(context);
+                LlmInference llm = ensureLoaded(context, spec);
                 session = LlmInferenceSession.createFromOptions(llm,
                         LlmInferenceSession.LlmInferenceSessionOptions.builder()
-                                .setTopK(40)
-                                .setTopP(0.95f)
-                                .setTemperature(0.6f)
+                                .setTopK(spec.slot == ComponentModelSpec.Slot.ACTION ? 1 : 40)
+                                .setTopP(spec.slot == ComponentModelSpec.Slot.ACTION ? 1.0f : 0.95f)
+                                // The action model is asked for one small JSON object. Sampling it
+                                // creatively would only make a strict validator reject more of it,
+                                // so it runs as close to greedy as the runtime allows.
+                                .setTemperature(spec.slot == ComponentModelSpec.Slot.ACTION ? 0.0f : 0.6f)
                                 .build());
                 session.addQueryChunk(fullPrompt);
 
@@ -85,7 +132,7 @@ final class LocalLlmEngine {
                         text.append(partial);
                         if (!cancelSent.get()) callback.onPartial(text.toString());
                     }
-                    if (CANCEL_REQUESTED.get() && cancelSent.compareAndSet(false, true)) {
+                    if (cancelRequested.get() && cancelSent.compareAndSet(false, true)) {
                         try { activeSession.cancelGenerateResponseAsync(); } catch (Throwable ignored) {}
                     }
                     if (done) {
@@ -100,7 +147,7 @@ final class LocalLlmEngine {
                     long deadline = System.currentTimeMillis() + 10 * 60_000L;
                     while (!finished.get() && System.currentTimeMillis() < deadline) {
                         doneSignal.wait(1000L);
-                        if (!finished.get() && CANCEL_REQUESTED.get()
+                        if (!finished.get() && cancelRequested.get()
                                 && cancelSent.compareAndSet(false, true)) {
                             try { activeSession.cancelGenerateResponseAsync(); } catch (Throwable ignored) {}
                         }
@@ -109,14 +156,15 @@ final class LocalLlmEngine {
                 }
                 callback.onDone(text.toString());
             } catch (Throwable t) {
-                // OutOfMemory and native failures both land here; the engine is dropped so the
-                // next attempt starts clean instead of reusing a wedged runtime.
+                // OutOfMemory and native failures both land here. Every engine is dropped rather
+                // than only this one: running out of memory is a statement about the process, and
+                // the next attempt should start from an empty one.
                 unload();
                 String message = t.getMessage();
                 callback.onError(message == null || message.trim().isEmpty()
                         ? t.getClass().getSimpleName() : message);
             } finally {
-                CANCEL_REQUESTED.set(false);
+                cancelRequested.set(false);
                 if (session != null) {
                     try { session.close(); } catch (Throwable ignored) {}
                 }
@@ -124,34 +172,42 @@ final class LocalLlmEngine {
         });
     }
 
-    private static LlmInference ensureLoaded(Context context) {
+    private static LlmInference ensureLoaded(Context context, ComponentModelSpec spec) {
         synchronized (LOCK) {
-            File model = ComponentModelStore.modelFile(context);
+            File model = ComponentModelStore.modelFile(context, spec);
             String path = model.getAbsolutePath();
-            if (engine != null && path.equals(loadedModelPath)) return engine;
-            if (engine != null) {
-                try { engine.close(); } catch (Throwable ignored) {}
-                engine = null;
-                loadedModelPath = null;
+            LlmInference existing = ENGINES.get(spec.slot);
+            if (existing != null && path.equals(LOADED_PATHS.get(spec.slot))) return existing;
+            if (existing != null) {
+                try { existing.close(); } catch (Throwable ignored) {}
+                ENGINES.remove(spec.slot);
+                LOADED_PATHS.remove(spec.slot);
             }
             LlmInference.LlmInferenceOptions options = LlmInference.LlmInferenceOptions.builder()
                     .setModelPath(path)
-                    .setMaxTokens(ComponentModelStore.MODEL_MAX_TOKENS)
+                    .setMaxTokens(spec.maxTokens)
                     .build();
-            engine = LlmInference.createFromOptions(context.getApplicationContext(), options);
-            loadedModelPath = path;
+            LlmInference engine =
+                    LlmInference.createFromOptions(context.getApplicationContext(), options);
+            ENGINES.put(spec.slot, engine);
+            LOADED_PATHS.put(spec.slot, path);
             return engine;
         }
     }
 
-    /** Frees the loaded model, e.g. before deleting its file. Safe to call at any time. */
+    /** Frees every loaded model. Safe to call at any time. */
     static void unload() {
+        for (ComponentModelSpec.Slot slot : ComponentModelSpec.Slot.values()) unload(slot);
+    }
+
+    /** Frees one loaded model, e.g. before deleting its file. Safe to call at any time. */
+    static void unload(ComponentModelSpec.Slot slot) {
         synchronized (LOCK) {
+            LlmInference engine = ENGINES.remove(slot);
+            LOADED_PATHS.remove(slot);
             if (engine != null) {
                 try { engine.close(); } catch (Throwable ignored) {}
             }
-            engine = null;
-            loadedModelPath = null;
         }
     }
 }

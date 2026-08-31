@@ -126,6 +126,13 @@ public final class LocalCommandRouter {
             ParsedCommand parsedAlarm = parseAlarm(q);
             if (parsedAlarm != null) return parsedAlarm;
 
+            // Playback and the ringer, both of which are plain phrases with no numbers in them, so
+            // they sit after every matcher that reads a level and cannot take a request from one.
+            ParsedCommand media = parseMedia(q);
+            if (media != null) return media;
+            ParsedCommand ringer = parseRinger(q);
+            if (ringer != null) return ringer;
+
             // Everyday ways of saying "launch this app". Anchored at the start so a sentence that
             // merely mentions opening something is not treated as an instruction.
             Matcher app = Pattern.compile(
@@ -210,6 +217,100 @@ public final class LocalCommandRouter {
         else params.put("delta", resolved.delta);
         return new ParsedCommand(action(resolved.actionType(), params),
                 resolved.confirmation(), resolved.summary());
+    }
+
+    // ---- playback ---------------------------------------------------------------------------------
+
+    /** What is being played, in the words people use for it. */
+    private static final String MEDIA_NOUN =
+            "(?:the\\s+|my\\s+|this\\s+)?(?:music|song|songs|track|audio|video|playback|player|"
+                    + "podcast|episode|it|this|that)";
+
+    private static final Pattern MEDIA_PAUSE = Pattern.compile(
+            "^(?:pause|hold)(?:\\s+" + MEDIA_NOUN + ")?$");
+    private static final Pattern MEDIA_PLAY = Pattern.compile(
+            "^(?:play|resume|unpause|carry on)(?:\\s+" + MEDIA_NOUN + ")?$");
+    /**
+     * "next song", "skip", "skip this".
+     *
+     * <p>A bare "next" is deliberately absent: it is an ordinary word in a conversation and the
+     * cost of guessing wrong is the user's music jumping a track. "Skip" is included because it has
+     * no other everyday meaning as a whole message.
+     */
+    private static final Pattern MEDIA_NEXT = Pattern.compile(
+            "^(?:next\\s+(?:song|track|one|episode)"
+                    + "|skip(?:\\s+(?:this|that|it|the)?\\s*(?:song|track|one|episode)?)?"
+                    + "|forward\\s+a\\s+(?:song|track))$");
+    private static final Pattern MEDIA_PREVIOUS = Pattern.compile(
+            "^(?:previous(?:\\s+(?:song|track|one|episode))?"
+                    + "|last\\s+(?:song|track)"
+                    + "|(?:go\\s+)?back\\s+(?:a|one)\\s+(?:song|track|episode))$");
+
+    private static ParsedCommand parseMedia(String q) throws org.json.JSONException {
+        if (MEDIA_PAUSE.matcher(q).matches()) return media("PAUSE", "Pausing playback.", "pause playback");
+        if (MEDIA_PLAY.matcher(q).matches()) return media("PLAY", "Resuming playback.", "resume playback");
+        if (MEDIA_NEXT.matcher(q).matches()) return media("NEXT", "Skipping to the next track.", "skip to the next track");
+        if (MEDIA_PREVIOUS.matcher(q).matches()) return media("PREVIOUS", "Going back a track.", "go back a track");
+        return null;
+    }
+
+    private static ParsedCommand media(String command, String spoken, String label)
+            throws org.json.JSONException {
+        return new ParsedCommand(
+                action("MEDIA_CONTROL", new JSONObject().put("command", command)), spoken, label);
+    }
+
+    // ---- ringer -----------------------------------------------------------------------------------
+
+    /**
+     * Naming the ringer itself, or one of Android's sound profiles by name.
+     *
+     * <p>Deliberately not "any quiet-sounding word". "Silence everything" and "be quiet" are things
+     * people say to an assistant and are not requests to change a phone's ringer profile, so a bare
+     * quiet word only counts when the phone is also named — which is what
+     * {@link #RINGER_QUIET_WORD} plus {@link #NAMES_THE_PHONE} below require.
+     */
+    private static final Pattern RINGER_EXPLICIT = Pattern.compile(
+            "\\b(ringer|ring mode|ringer mode|sound mode|silent mode|vibrate mode|"
+                    + "on silent|on vibrate|off silent|off vibrate|to silent|to vibrate)\\b");
+    private static final Pattern RINGER_QUIET_WORD = Pattern.compile(
+            "\\b(silent|silence|vibrate|vibration|mute|unmute)\\b");
+    private static final Pattern NAMES_THE_PHONE = Pattern.compile("\\b(phone|handset|mobile)\\b");
+    /**
+     * Words that mean the message is about something else.
+     *
+     * <p>"Mute the volume" is a media level, "silence notifications" is Do Not Disturb territory,
+     * and neither is a request to change the phone's ringer profile.
+     */
+    private static final Pattern NOT_THE_RINGER = Pattern.compile(
+            "\\b(volume|media|notification|notifications|do not disturb|alarm|timer)\\b");
+    /** Ways of asking for the ringer back. Checked first, because they also name a quiet mode. */
+    private static final Pattern RINGER_TO_NORMAL = Pattern.compile(
+            "\\b(off (?:silent|vibrate)|out of (?:silent|vibrate)|un(?:mute|silence)|normal)\\b"
+                    + "|\\bring(?:er)?\\b.*\\bon\\b|\\bon\\b.*\\bring(?:er)?\\b");
+
+    private static ParsedCommand parseRinger(String q) throws org.json.JSONException {
+        boolean explicit = RINGER_EXPLICIT.matcher(q).find();
+        boolean aboutThePhone = RINGER_QUIET_WORD.matcher(q).find()
+                && NAMES_THE_PHONE.matcher(q).find();
+        if (!explicit && !aboutThePhone) return null;
+        if (NOT_THE_RINGER.matcher(q).find()) return null;
+        // A question about the ringer was already answered by DeviceStatusRouter; anything reaching
+        // here that still reads as a question is left alone rather than acted on.
+        if (q.startsWith("is ") || q.startsWith("am ") || q.startsWith("what")) return null;
+
+        String mode;
+        if (RINGER_TO_NORMAL.matcher(q).find()) mode = "normal";
+        else if (q.matches(".*\\bvibrat(?:e|ion)\\b.*")) mode = "vibrate";
+        else mode = "silent";
+
+        String spoken = "normal".equals(mode) ? "Turning the ringer back on."
+                : "vibrate".equals(mode) ? "Putting the phone on vibrate."
+                : "Silencing the phone.";
+        String label = "normal".equals(mode) ? "turn the ringer back on"
+                : "vibrate".equals(mode) ? "put the phone on vibrate" : "silence the phone";
+        return new ParsedCommand(
+                action("SET_RINGER_MODE", new JSONObject().put("mode", mode)), spoken, label);
     }
 
     /** Words that name a unit Orbit's timer action understands. */

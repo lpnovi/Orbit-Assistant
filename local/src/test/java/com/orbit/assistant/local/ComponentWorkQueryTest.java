@@ -48,7 +48,7 @@ public final class ComponentWorkQueryTest {
         // survives between test classes in a shared sandbox, so a test that depended on it being
         // absent would pass or fail on class ordering — and the uncertainty path deserves a
         // steadier assertion than that. It gets one below, through classify.
-        TestWorkManager.ensureInitialized(context);
+        TestWorkManager.resetQueue(context);
     }
 
     /** An empty queue is a proven "nothing live", which is a different thing from not knowing. */

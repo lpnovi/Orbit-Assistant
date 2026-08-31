@@ -38,6 +38,8 @@ public final class ComponentModelStoreTest {
         File[] files = ComponentModelStore.modelDir(context).listFiles();
         if (files != null) for (File file : files) //noinspection ResultOfMethodCallIgnored
             file.delete();
+        // No download of either model may be live when these state rules are asserted.
+        TestWorkManager.resetQueue(context);
     }
 
     // ---- the state machine -------------------------------------------------------------------------
@@ -172,10 +174,28 @@ public final class ComponentModelStoreTest {
 
     // ---- storage accounting ------------------------------------------------------------------------
 
-    @Test public void totalBytesCoversEverythingTheComponentHolds() throws Exception {
+    /**
+     * Each model accounts for its own bytes, and only its own.
+     *
+     * <p>The component holds two models from v0.7.8.0 Beta 1, and the Orbit Local screen shows a
+     * storage figure per model. Counting the whole directory for each of them would credit the chat
+     * model with the action model's half a gigabyte, so the count is by that model's own file-name
+     * prefix — which is also exactly what its deletion sweeps.
+     */
+    @Test public void eachModelCountsOnlyItsOwnBytes() throws Exception {
+        write(ComponentModelStore.partFile(context), 100L);
+        write(ComponentModelStore.partFile(context, ComponentModelSpec.ACTION), 40L);
+        write(new File(ComponentModelStore.modelDir(context), "leftover.bin"), 50L);
+
+        assertEquals(100L, ComponentModelStore.totalModelBytes(context));
+        assertEquals(40L, ComponentModelStore.totalModelBytes(context, ComponentModelSpec.ACTION));
+    }
+
+    /** And the whole-directory figure still exists, for anything that needs the real total. */
+    @Test public void allModelBytesCoversEverythingTheComponentHolds() throws Exception {
         write(ComponentModelStore.partFile(context), 100L);
         write(new File(ComponentModelStore.modelDir(context), "leftover.bin"), 50L);
-        assertEquals(150L, ComponentModelStore.totalModelBytes(context));
+        assertEquals(150L, ComponentModelStore.allModelBytes(context));
     }
 
     /**
