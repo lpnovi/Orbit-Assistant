@@ -255,10 +255,10 @@ public final class ChatBackNavigationTest {
 
     /** On by default, and it is a choice of transition rather than a switch for Android's back. */
     @Test public void theEnhancedTreatmentIsOnByDefaultAndCanBeTurnedOff() {
-        assertTrue("swipe back to Chats ships on", Prefs.enhancedChatBack(context));
+        assertTrue("swipe back to Chats ships on", Prefs.swipeToGoBack(context));
 
         Prefs.get(context).edit().putBoolean(Prefs.ENHANCED_CHAT_BACK, false).commit();
-        assertFalse(Prefs.enhancedChatBack(context));
+        assertFalse(Prefs.swipeToGoBack(context));
 
         ActivityController<ChatActivity> controller = openChat("c-setting-off");
         ChatActivity activity = controller.get();
@@ -415,12 +415,12 @@ public final class ChatBackNavigationTest {
         back.progressedForTest(0.9f);
         back.invokedForTest();
         idle();
-        assertTrue("a committed gesture must leave the conversation", back.finishedForTest());
+        assertTrue("a committed gesture must leave the conversation", back.navigatedForTest());
         assertTrue(activity.isFinishing());
 
         back.invokedForTest();
         idle();
-        assertTrue("and a repeat may not navigate a second time", back.finishedForTest());
+        assertTrue("and a repeat may not navigate a second time", back.navigatedForTest());
         controller.pause().stop().destroy();
     }
 
@@ -503,11 +503,13 @@ public final class ChatBackNavigationTest {
         assertFalse("Orbit cannot see the system's frames and must not claim them",
                 report.contains("system predictive"));
         assertTrue("what Orbit asked for is configuration, and must read as configuration",
-                report.contains("Back transition requested:"));
+                report.contains("Predictive navigation requested:"));
         assertTrue("the device's capability is a runtime fact and may be stated as one",
                 report.contains("Platform predictive API:"));
         assertTrue("what a conversation actually installed is an observation",
                 report.contains("Chat back callback:"));
+        assertTrue("and how many screens can offer the gesture is counted, not guessed",
+                report.contains("Eligible screens: " + OrbitNavigation.eligibleScreenCount()));
         diagnostics.pause().stop().destroy();
     }
 
@@ -519,7 +521,7 @@ public final class ChatBackNavigationTest {
         String report = diagnostics.get().fullReport();
 
         assertTrue(report.contains("Chat back callback: not observed yet"));
-        assertTrue(report.contains("Last back gesture: none recorded"));
+        assertTrue(report.contains("Last predictive gesture: none recorded"));
         assertTrue(report.contains("Last back path: none recorded"));
         diagnostics.pause().stop().destroy();
     }
@@ -541,7 +543,7 @@ public final class ChatBackNavigationTest {
                 Robolectric.buildActivity(DiagnosticsActivity.class).setup();
         String report = diagnostics.get().fullReport();
         assertTrue("the outcome and the count are both observations Orbit really has",
-                report.contains("Last back gesture: cancelled · 3 progress events"));
+                report.contains("Last predictive gesture: cancelled · 3 progress events"));
         assertTrue(report.contains("Last back path: Orbit progress"));
         diagnostics.pause().stop().destroy();
     }

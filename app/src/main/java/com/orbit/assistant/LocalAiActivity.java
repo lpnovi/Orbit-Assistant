@@ -92,6 +92,9 @@ public final class LocalAiActivity extends Activity {
         }
     };
 
+    /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
+    private OrbitPredictiveBack navigation;
+
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         UiKit.syncTheme(this);
@@ -102,6 +105,7 @@ public final class LocalAiActivity extends Activity {
         View content = buildContent();
         setContentView(content);
         UiKit.applyActivityInsets(this, content, true);
+        navigation = OrbitPredictiveBack.install(this);
     }
 
     @Override protected void onResume() {
@@ -383,7 +387,7 @@ public final class LocalAiActivity extends Activity {
         back.setContentDescription("Back to AI Providers");
         back.setPadding(UiKit.dp(this, 10), UiKit.dp(this, 10),
                 UiKit.dp(this, 10), UiKit.dp(this, 10));
-        back.setOnClickListener(v -> finish());
+        back.setOnClickListener(v -> navigation.performBack());
         UiKit.pressScale(back);
         header.addView(back, new LinearLayout.LayoutParams(UiKit.dp(this, 44), UiKit.dp(this, 44)));
 

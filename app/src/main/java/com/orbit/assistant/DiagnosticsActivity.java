@@ -61,13 +61,20 @@ public final class DiagnosticsActivity extends Activity {
     private final Set<String> expanded = new LinkedHashSet<>();
     private LinearLayout page;
 
+    /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
+    private OrbitPredictiveBack navigation;
+
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         UiKit.syncTheme(this);
         View content = build();
         setContentView(content);
         UiKit.applyActivityInsets(this, content, false);
+        navigation = OrbitPredictiveBack.install(this);
     }
+
+    /** The shared Back navigation this page installed. For tests. */
+    OrbitPredictiveBack navigationForTest() { return navigation; }
 
     @Override protected void onResume() { super.onResume(); UiPresence.enter(this); }
     @Override protected void onPause() { UiPresence.leave(this); super.onPause(); }
@@ -90,7 +97,7 @@ public final class DiagnosticsActivity extends Activity {
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
         Button back = button("Back");
-        back.setOnClickListener(v -> finish());
+        back.setOnClickListener(v -> navigation.performBack());
         header.addView(back, new LinearLayout.LayoutParams(UiKit.dp(this, 90), UiKit.dp(this, 44)));
         TextView title = UiKit.text(this, "Orbit Diagnostics", 24, UiKit.TEXT, true);
         title.setPadding(UiKit.dp(this, 12), 0, 0, 0);
@@ -647,11 +654,16 @@ public final class DiagnosticsActivity extends Activity {
      * so it must not say that it did.
      *
      * <p>The lines below therefore never claim a system animation ran. <b>Requested</b> is
-     * configuration. <b>Platform predictive API</b> is a runtime fact about the device. <b>Chat
-     * back callback</b> is what a conversation last actually installed, recorded by the
-     * conversation rather than inferred here. <b>Last back gesture</b> and its progress count are
-     * observations: the count is the number of progress events Orbit was handed and drew, so zero
-     * means the conversation did not move, whatever the configuration says it should have done.
+     * configuration. <b>Platform predictive API</b> is a runtime fact about the device. <b>Eligible
+     * screens</b> is counted from {@link OrbitNavigation}, the same table the screens install from,
+     * so what is reported and what is installed cannot disagree. <b>Chat back callback</b> is what a
+     * conversation last actually installed. <b>Last predictive gesture</b> and its progress count
+     * are observations: the count is the number of progress events Orbit was handed and drew, so
+     * zero means the page did not move, whatever the configuration says it should have done.
+     *
+     * <p>The screen names are categories — "Settings", "Memory", "Chat". Which section of Settings
+     * was open, which chat it was, and anything typed into a form are all deliberately absent, and
+     * that is a property of what {@link DiagnosticStore} is given rather than of the wording here.
      */
     private String gestures(SharedPreferences d) {
         long updated = d.getLong("gesture_updated", 0L);
@@ -659,25 +671,28 @@ public final class DiagnosticsActivity extends Activity {
         String requested = !OrbitBackHandler.supported() ? "standard back"
                 : !OrbitPredictiveBack.available()
                         ? "standard back (this Android reports no gesture progress)"
-                        : Prefs.enhancedChatBack(this) ? "Orbit progress" : "Orbit page transition";
+                        : Prefs.swipeToGoBack(this) ? "Orbit progress" : "Orbit page transition";
         String callback = d.getString("back_callback", "");
         String outcome = d.getString("back_outcome", "");
         int events = d.getInt("back_progress_events", 0);
         String gesture = backUpdated == 0L || outcome.isEmpty() ? "none recorded"
                 : outcome + " · " + events + (events == 1 ? " progress event" : " progress events")
                         + " · " + stamp(backUpdated);
-        return "\n  Swipe back to Chats: " + (Prefs.enhancedChatBack(this) ? "enabled" : "disabled") +
+        return "\n  Swipe to go back: " + (Prefs.swipeToGoBack(this) ? "enabled" : "disabled") +
                 "\n  Platform predictive API: " + (OrbitPredictiveBack.available()
                         ? "available (API " + Build.VERSION.SDK_INT + ")"
                         : "unavailable (API " + Build.VERSION.SDK_INT + ")") +
-                "\n  Back transition requested: " + requested +
+                "\n  Predictive navigation requested: " + requested +
+                "\n  Eligible screens: " + OrbitNavigation.eligibleScreenCount() +
                 "\n  Chat back callback: " + (callback.isEmpty() ? "not observed yet" : callback) +
-                "\n  Last back gesture: " + gesture +
+                "\n  Last predictive screen: " + (backUpdated == 0L
+                        ? "none recorded" : orNone(d.getString("back_screen", ""))) +
+                "\n  Last predictive gesture: " + gesture +
                 "\n  Last back path: " + (backUpdated == 0L
                         ? "none recorded" : orNone(d.getString("back_path", ""))) +
-                "\n  Destination behind the conversation: " + (backUpdated == 0L ? "not observed yet"
+                "\n  Destination behind the page: " + (backUpdated == 0L ? "not observed yet"
                         : d.getBoolean("back_real_destination", false)
-                                ? "the real Chats screen" : "Orbit's background only") +
+                                ? "the real screen underneath" : "Orbit's background only") +
                 "\n  Chat swipe actions: " + (Prefs.chatSwipeActions(this) ? "enabled" : "disabled") +
                 "\n  Last chat gesture: " + (updated == 0L ? "none recorded"
                         : orNone(d.getString("gesture_last_action", "")) + " · " + stamp(updated));

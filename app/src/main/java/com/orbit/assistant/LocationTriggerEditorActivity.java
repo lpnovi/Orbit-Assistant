@@ -47,6 +47,8 @@ public final class LocationTriggerEditorActivity extends Activity {
     private float radiusMeters = 200f;
     private boolean enabled = true;
     private boolean dirty;
+    /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
+    private OrbitPredictiveBack navigation;
     private boolean captureAfterPermission;
 
     private EditText nameField;
@@ -85,6 +87,16 @@ public final class LocationTriggerEditorActivity extends Activity {
         UiKit.applyActivityInsets(this, content, true);
         refreshFields();
         refreshAccessCard();
+        // Offered only while there is nothing to lose. The discard confirmation is unchanged and is
+        // still what Back reaches once there is, so the page never slides away on a decision the
+        // user has not made yet.
+        navigation = OrbitPredictiveBack.install(this, new OrbitPredictiveBack.Screen() {
+            @Override public boolean canNavigate() { return !dirty; }
+            @Override public void navigateBack() { onBackPressed(); }
+            @Override public String screenName() {
+                return OrbitNavigation.labelFor(LocationTriggerEditorActivity.class);
+            }
+        });
     }
 
     @Override protected void onResume() {

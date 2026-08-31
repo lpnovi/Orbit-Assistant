@@ -24,6 +24,9 @@ public class NotificationsActivity extends Activity {
     private LinearLayout page;
     private TextView subtitle;
 
+    /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
+    private OrbitPredictiveBack navigation;
+
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         UiKit.syncTheme(this);
@@ -66,7 +69,7 @@ public class NotificationsActivity extends Activity {
         back.setPadding(UiKit.dp(this, 12), UiKit.dp(this, 12),
                 UiKit.dp(this, 12), UiKit.dp(this, 12));
         UiKit.pressScale(back);
-        back.setOnClickListener(v -> finish());
+        back.setOnClickListener(v -> navigation.performBack());
         top.addView(back, new LinearLayout.LayoutParams(UiKit.dp(this, 48), UiKit.dp(this, 48)));
 
         LinearLayout titles = new LinearLayout(this);
@@ -86,6 +89,7 @@ public class NotificationsActivity extends Activity {
 
         setContentView(scroll);
         UiKit.applyActivityInsets(this, scroll, true);
+        navigation = OrbitPredictiveBack.install(this);
         refreshSubtitle();
     }
 

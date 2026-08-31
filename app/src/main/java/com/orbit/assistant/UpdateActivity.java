@@ -35,6 +35,9 @@ public final class UpdateActivity extends Activity {
     private OrbitUpdater.DownloadHandle download;
     private boolean waitingForInstallPermission;
 
+    /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
+    private OrbitPredictiveBack navigation;
+
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         UiKit.syncTheme(this);
@@ -44,6 +47,7 @@ public final class UpdateActivity extends Activity {
         View content = buildContent();
         setContentView(content);
         UiKit.applyActivityInsets(this, content, true);
+        navigation = OrbitPredictiveBack.install(this);
         OrbitUpdateWorker.schedule(this);
         OrbitUpdater.reconcilePendingInstall(this);
 
@@ -92,7 +96,7 @@ public final class UpdateActivity extends Activity {
         back.setColorFilter(UiKit.TEXT);
         back.setBackground(UiKit.ripple(UiKit.SURFACE_2, UiKit.TEXT, 18, this));
         back.setPadding(UiKit.dp(this, 10), UiKit.dp(this, 10), UiKit.dp(this, 10), UiKit.dp(this, 10));
-        back.setOnClickListener(v -> finish());
+        back.setOnClickListener(v -> navigation.performBack());
         header.addView(back, new LinearLayout.LayoutParams(UiKit.dp(this, 44), UiKit.dp(this, 44)));
 
         LinearLayout titles = new LinearLayout(this);

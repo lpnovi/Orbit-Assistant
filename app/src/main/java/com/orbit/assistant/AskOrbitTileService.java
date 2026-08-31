@@ -39,7 +39,13 @@ public final class AskOrbitTileService extends TileService {
         Intent intent = active
                 ? new Intent(Intent.ACTION_ASSIST)
                 : SettingsActivity.assistantSetupIntent(this);
-        PendingIntent pending = QuickSettingsTiles.activityPendingIntent(this, intent, 6501);
+        // ACTION_ASSIST is a system surface with no Orbit parent. Assistant setup is an ordinary
+        // Settings detail, so it is opened on the stack it belongs to: Chats, the Settings hub, then
+        // the section — which is also the sequence Back walks out through.
+        PendingIntent pending = active
+                ? QuickSettingsTiles.activityPendingIntent(this, intent, 6501)
+                : QuickSettingsTiles.orbitPagePendingIntent(this, 6501,
+                        new Intent(this, SettingsActivity.class), intent);
         if (Build.VERSION.SDK_INT >= 34) startActivityAndCollapse(pending);
         else startActivityAndCollapse(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
     }

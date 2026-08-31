@@ -97,12 +97,19 @@
         android:usesCleartextTraffic="false">
 
         <!--
-          Chats and the full conversation opt into Android's back-callback API, which is what makes
-          the system's predictive back transition available between them: the finishing chat is
-          tracked by the finger and the real Chats screen is revealed behind it. Declared per
-          activity on purpose. Every other Orbit screen still overrides onBackPressed for its own
-          discard prompts and cancelled results, and those overrides stop being called once a
-          screen opts in, so the flag is granted only where the migration has actually been done.
+          android:enableOnBackInvokedCallback is declared per activity, and only on the ones that
+          have actually been migrated to Orbit's shared back navigation. It is not a decoration: a
+          screen that opts in stops having onBackPressed called at all on API 33+, so opting one in
+          without migrating it would hand Back straight to the platform and skip that screen's own
+          discard prompt or cancelled result.
+
+          Which screens qualify is decided in OrbitNavigation, not here, and the two are kept in
+          step by OrbitNavigationPolicyTest. Every opted-in screen registers something on API 33+
+          through OrbitPredictiveBack — the drawn gesture where the device and the preference allow
+          it, and otherwise a plain callback that performs the same Back — so the confirmation on an
+          editor is reached on every device and at every setting. Screens classified LOCAL, such as
+          the invisible permission bridges, screen selection, widget configuration and onboarding,
+          deliberately do not appear below and keep their own onBackPressed.
         -->
         <activity
             android:name=".MainActivity"
@@ -146,32 +153,57 @@
         -->
         <activity android:name=".CalendarPermissionActivity" android:exported="false"
             android:excludeFromRecents="true" android:theme="@style/Theme.Orbit.Bridge" />
-        <activity android:name=".SettingsActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".AiProvidersActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".LocalAiActivity" android:exported="false" />
+        <activity android:name=".SettingsActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".AiProvidersActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".LocalAiActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" />
         <activity android:name=".OnboardingActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".DiagnosticsActivity" android:exported="false" />
-        <activity android:name=".MemoryActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".AppsActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".AppProfileActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".NotificationsActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".CapabilitiesActivity" android:exported="false" />
-        <activity android:name=".RoutinesActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".ExtensionsActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".RoutineTemplatesActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".CustomCommandsActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".CustomCommandEditorActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".RoutineEditorActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".RoutineBuilderActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".RoutineTriggersActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".RoutineRunHistoryActivity" android:exported="false" />
-        <activity android:name=".TimeTriggerEditorActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".LocationTriggerEditorActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".RemindersActivity" android:exported="false" />
-        <activity android:name=".SavedPlacesActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".UpdateActivity" android:exported="false" />
-        <activity android:name=".WhatsNewActivity" android:exported="false" />
-        <activity android:name=".RoadmapActivity" android:exported="false" />
+        <activity android:name=".DiagnosticsActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" />
+        <activity android:name=".MemoryActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".AppsActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".AppProfileActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".NotificationsActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".CapabilitiesActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" />
+        <activity android:name=".RoutinesActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".ExtensionsActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".RoutineTemplatesActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".CustomCommandsActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".CustomCommandEditorActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".RoutineEditorActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".RoutineBuilderActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".RoutineTriggersActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".RoutineRunHistoryActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" />
+        <activity android:name=".TimeTriggerEditorActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".LocationTriggerEditorActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".RemindersActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" />
+        <activity android:name=".SavedPlacesActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".UpdateActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" />
+        <activity android:name=".WhatsNewActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" />
+        <activity android:name=".RoadmapActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" />
         <activity
             android:name=".OrbitWidgetConfigureActivity"
             android:exported="true"

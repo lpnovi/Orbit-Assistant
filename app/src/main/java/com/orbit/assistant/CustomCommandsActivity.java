@@ -23,6 +23,9 @@ import java.util.List;
 public final class CustomCommandsActivity extends Activity {
     private LinearLayout commandList;
 
+    /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
+    private OrbitPredictiveBack navigation;
+
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         UiKit.syncTheme(this);
@@ -32,6 +35,7 @@ public final class CustomCommandsActivity extends Activity {
         View content = buildContent();
         setContentView(content);
         UiKit.applyActivityInsets(this, content, true);
+        navigation = OrbitPredictiveBack.install(this);
     }
 
     @Override protected void onResume() {
@@ -61,7 +65,7 @@ public final class CustomCommandsActivity extends Activity {
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
         ImageButton back = iconButton();
-        back.setOnClickListener(v -> finish());
+        back.setOnClickListener(v -> navigation.performBack());
         header.addView(back, new LinearLayout.LayoutParams(UiKit.dp(this, 44), UiKit.dp(this, 44)));
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);

@@ -28,6 +28,9 @@ public class MemoryActivity extends Activity {
     private TextView count;
     private EditText searchInput;
 
+    /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
+    private OrbitPredictiveBack navigation;
+
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         UiKit.syncTheme(this);
@@ -37,6 +40,7 @@ public class MemoryActivity extends Activity {
         View root = build();
         setContentView(root);
         UiKit.applyActivityInsets(this, root, true);
+        navigation = OrbitPredictiveBack.install(this);
     }
 
     @Override protected void onResume() {
@@ -60,7 +64,7 @@ public class MemoryActivity extends Activity {
         top.setGravity(Gravity.CENTER_VERTICAL);
 
         ImageButton back = iconButton(R.drawable.ic_back, "Back");
-        back.setOnClickListener(v -> finish());
+        back.setOnClickListener(v -> navigation.performBack());
         top.addView(back, new LinearLayout.LayoutParams(UiKit.dp(this,48), UiKit.dp(this,48)));
 
         LinearLayout titles = new LinearLayout(this);

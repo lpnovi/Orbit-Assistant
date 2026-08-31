@@ -908,7 +908,7 @@ the larger runtime work rather than behind it. Orbit Local device actions remain
 unchanged at the head of this list, and the release below them is untouched.
 
 `0.7.7.8` reached Stable and `0.7.7.9` is now the active release: the full-app gesture system,
-shipped as `0.7.7.9-beta.1`, corrected in `0.7.7.9-beta.2`, and still in Beta. It is a UX release like `0.7.7.8`
+shipped as `0.7.7.9-beta.1`, corrected in `0.7.7.9-beta.2`, extended app-wide in `0.7.7.9-beta.3`, and still in Beta. It is a UX release like `0.7.7.8`
 rather than a provider one, and it was taken next because the navigation model it establishes is
 something later screens should be built on rather than retrofitted to. **Orbit Local device actions
 remain unstarted and unchanged at the head of the numbered list below**, and `0.7.7.9` does not
@@ -991,8 +991,40 @@ Beta 2 is the corrective patch:
   screen displays. The raw planner block keeps its separate deliberate control and is excluded from
   every generic copy path
 
-Deliberately **not** in scope, then or now: per-message swipe actions, and any horizontal gesture in
-the Side-button overlay. The overlay's vertical swipe behaviour is settled and is not being reopened.
+Beta 2 on the Galaxy S25 Ultra passed substantially better than Beta 1, and the Orbit-drawn back
+interaction was approved as the navigation direction. Beta 3 makes it the app's navigation language
+rather than one screen's feature:
+
+- **One engine, not one per screen.** `OrbitPredictiveBack` was generalized rather than copied. It
+  owns capability, callback, lifecycle, motion, translucency, restoration, reduced motion, the
+  commit-without-a-second-animation rule and the counters; a screen supplies only a `Screen` policy —
+  whether leaving is unconditional right now, what Back means here, and a category name. The Beta 2
+  travel, scale, corner and commit timings are untouched, so Settings feels like leaving a chat
+  because it is the same code
+- **Every screen is classified, in data.** `OrbitNavigation` holds the audit: PREDICTIVE for the
+  twenty ordinary pages, GUARDED for the six editors, LOCAL for the six screens where Back cancels or
+  steps, ROOT for Chats. The test matrix asserts every one of them and fails when Orbit gains a
+  screen nobody classified, so the next new page cannot land in the wrong class by accident
+- **The reveal stays real everywhere.** A Settings section is a second `SettingsActivity` on top of
+  the hub, so the hub genuinely is the page underneath it. Nothing is screenshotted and no parent is
+  reconstructed
+- **Editors are guarded rather than excluded.** The page moves only while there is nothing to lose;
+  once there is, it does not move and Back reaches the screen's own save-or-discard contract by the
+  route it always did. No confirmation was added and none was removed
+- **The manifest opt-in was the trap.** `enableOnBackInvokedCallback` stops `onBackPressed` being
+  called at all, so opting an editor in without migrating it would have deleted its discard
+  confirmation outright. Every opted-in screen now registers something on API 33+ — the drawn gesture
+  where the device and the preference allow it, and otherwise a plain callback performing the same
+  Back — and the manifest and the classification table are asserted to be the same set
+- **Entry points from outside build their stack.** Update and routine notifications, both Quick
+  Settings tiles and the assistant-setup tile now open Chats-then-page (and Chats-hub-section for a
+  Settings detail) instead of dropping a page in as the root of a fresh task
+- **`Swipe back to Chats` became `Swipe to go back`**, on the same stored key, so an explicit opt-out
+  survives the rename
+
+Deliberately **not** in scope, then or now: per-message swipe actions, forward or history-style
+navigation, and any horizontal gesture in the Side-button overlay. The overlay's vertical swipe
+behaviour is settled and is not being reopened.
 
 1. **Orbit Local device actions** — a lightweight local intent/function model installed beside the
    chat model (the `ModelSpec` architecture already keeps their files and state independent). The

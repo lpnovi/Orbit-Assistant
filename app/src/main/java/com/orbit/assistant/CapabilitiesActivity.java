@@ -47,12 +47,16 @@ public final class CapabilitiesActivity extends Activity {
     private Button triggerAlertsManage;
     private TextView locationAutomationState;
     private Button locationAutomationManage;
+    /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
+    private OrbitPredictiveBack navigation;
+
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         UiKit.syncTheme(this);
         View root = build();
         setContentView(root);
         UiKit.applyActivityInsets(this, root, false);
+        navigation = OrbitPredictiveBack.install(this);
     }
 
     @Override protected void onResume() {
@@ -79,7 +83,7 @@ public final class CapabilitiesActivity extends Activity {
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
         ImageButton back = iconButton(R.drawable.ic_back, "Back");
-        back.setOnClickListener(v -> finish());
+        back.setOnClickListener(v -> navigation.performBack());
         header.addView(back, new LinearLayout.LayoutParams(UiKit.dp(this,48), UiKit.dp(this,48)));
 
         LinearLayout titles = new LinearLayout(this);

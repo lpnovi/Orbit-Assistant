@@ -24,6 +24,10 @@ public class AppProfileActivity extends Activity {
 
     private String pkg, label;
     private OptionSelector category, privacy, screen, screenshot, mode, action1, action2, action3;
+    /** The profile this screen opened with, so it can tell whether anything has been changed. */
+    private AppProfileStore.Profile loaded;
+    /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
+    private OrbitPredictiveBack navigation;
 
     private static final class OptionSelector {
         final String[] labels;
@@ -105,6 +109,29 @@ public class AppProfileActivity extends Activity {
         View root = build();
         setContentView(root);
         UiKit.applyActivityInsets(this, root, true);
+        // Nothing is written until Save app behavior, so Back has always dropped a changed selection
+        // without asking, and still does. The page only slides away while the selections still match
+        // what is stored.
+        navigation = OrbitPredictiveBack.install(this, new OrbitPredictiveBack.Screen() {
+            @Override public boolean canNavigate() { return !hasUnsavedWork(); }
+            @Override public void navigateBack() { finish(); }
+            @Override public String screenName() {
+                return OrbitNavigation.labelFor(AppProfileActivity.class);
+            }
+        });
+    }
+
+    /** True while any selector differs from the profile this screen opened with. */
+    private boolean hasUnsavedWork() {
+        if (loaded == null || category == null) return false;
+        return !selectedValue(category).equals(loaded.category)
+                || !selectedValue(privacy).equals(loaded.privacyPolicy)
+                || !selectedValue(screen).equals(loaded.screenPolicy)
+                || !selectedValue(screenshot).equals(loaded.screenshotPolicy)
+                || !selectedValue(mode).equals(loaded.intelligenceMode)
+                || !selectedValue(action1).equals(loaded.action1)
+                || !selectedValue(action2).equals(loaded.action2)
+                || !selectedValue(action3).equals(loaded.action3);
     }
 
     @Override protected void onResume(){ super.onResume(); UiPresence.enter(this); }
@@ -122,7 +149,7 @@ public class AppProfileActivity extends Activity {
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
         ImageButton back = iconButton(R.drawable.ic_back,"Back");
-        back.setOnClickListener(v -> finish());
+        back.setOnClickListener(v -> navigation.performBack());
         top.addView(back,new LinearLayout.LayoutParams(UiKit.dp(this,48),UiKit.dp(this,48)));
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
@@ -138,6 +165,7 @@ public class AppProfileActivity extends Activity {
         root.addView(top);
 
         AppProfileStore.Profile current = AppProfileStore.get(this,pkg);
+        loaded = current;
         ScreenContextClassifier.Result auto = ScreenContextClassifier.classify(this,"",false,pkg,label);
 
         LinearLayout preview = card();

@@ -502,7 +502,7 @@ public final class DiagnosticsDisclosureTest {
         assertTrue("it must say which section this is",
                 copied.startsWith("Orbit Diagnostics — Gestures"));
         assertTrue("and carry that section's own lines",
-                copied.contains("Swipe back to Chats:"));
+                copied.contains("Swipe to go back:"));
         assertFalse("a neighbouring section may not come with it",
                 copied.contains("Routines"));
         assertFalse(copied.contains("Requests accepted"));
@@ -547,7 +547,7 @@ public final class DiagnosticsDisclosureTest {
 
         copyControlFor(activity, "Gestures").performClick();
         assertTrue("copying carries the section even though nobody opened it",
-                clipboard().contains("Swipe back to Chats:"));
+                clipboard().contains("Swipe to go back:"));
         assertTrue("and tapping Copy must not also expand it",
                 headerRowFor(activity, "Gestures").getContentDescription()
                         .toString().endsWith("collapsed"));

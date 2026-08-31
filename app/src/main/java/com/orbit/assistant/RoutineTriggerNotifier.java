@@ -23,13 +23,14 @@ public final class RoutineTriggerNotifier {
         NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
 
+        // Chats underneath, so Back returns into Orbit and the swipe gesture has a real page.
         Intent open = new Intent(c, RoutinesActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 .putExtra(RoutinesActivity.EXTRA_AUTORUN_ROUTINE_ID, routine.id)
                 .putExtra(RoutinesActivity.EXTRA_AUTORUN_START_INDEX, Math.max(0, startIndex))
                 .putExtra(RoutinesActivity.EXTRA_AUTORUN_TRIGGER_ID, triggerId == null ? "" : triggerId);
         int requestCode = ("continue:" + routine.id + ":" + triggerId).hashCode() & 0x7fffffff;
-        PendingIntent pi = PendingIntent.getActivity(c, requestCode, open,
+        PendingIntent pi = PendingIntent.getActivities(c, requestCode,
+                OrbitNavigation.stackFor(c, open),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         String body = reason == null || reason.trim().isEmpty()
@@ -53,13 +54,14 @@ public final class RoutineTriggerNotifier {
         ensureChannel(c);
         NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
+        // Chats underneath, so Back returns into Orbit and the swipe gesture has a real page.
         Intent open = new Intent(c, RoutinesActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 .putExtra(RoutinesActivity.EXTRA_AUTORUN_ROUTINE_ID, routine.id)
                 .putExtra(RoutinesActivity.EXTRA_AUTORUN_START_INDEX, Math.max(0, startIndex))
                 .putExtra(RoutinesActivity.EXTRA_AUTORUN_TRIGGER_ID, triggerId == null ? "" : triggerId);
         int requestCode = ("failed:" + routine.id + ":" + triggerId).hashCode() & 0x7fffffff;
-        PendingIntent pi = PendingIntent.getActivity(c, requestCode, open,
+        PendingIntent pi = PendingIntent.getActivities(c, requestCode,
+                OrbitNavigation.stackFor(c, open),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         String base = reason == null || reason.trim().isEmpty() ? "The automatic routine stopped." : reason.trim();
         String body = base + " · Tap to retry from this step.";

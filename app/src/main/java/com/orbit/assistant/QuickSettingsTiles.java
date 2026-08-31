@@ -92,4 +92,17 @@ public final class QuickSettingsTiles {
         return PendingIntent.getActivity(c, requestCode, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
+
+    /**
+     * The same, for a tile that lands on an ordinary Orbit page rather than on a system surface.
+     *
+     * <p>A tile starts from nowhere, so a screen launched on its own becomes the root of its task and
+     * Back ends at the launcher. These pages are hierarchical now — Back means "return to the Orbit
+     * screen underneath" — so the stack they need is built rather than assumed. A system intent such
+     * as {@code ACTION_ASSIST} keeps the plain path above: it is not an Orbit page and has no parent.
+     */
+    static PendingIntent orbitPagePendingIntent(Context c, int requestCode, Intent... deeper) {
+        return PendingIntent.getActivities(c, requestCode, OrbitNavigation.stackFor(c, deeper),
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
 }

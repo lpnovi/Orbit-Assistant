@@ -72,11 +72,7 @@ public class ChatActivity extends Activity {
      * all, rather than to a second copy of it.
      */
     public static Intent[] stackFor(Context c, Intent open) {
-        Intent home = new Intent(c, MainActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                        | Intent.FLAG_ACTIVITY_CLEAR_TOP
-                        | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        return new Intent[]{home, open};
+        return OrbitNavigation.stackFor(c, open);
     }
 
     private String conversationId;
@@ -170,7 +166,7 @@ public class ChatActivity extends Activity {
         // Applied after the ordinary page transition and still before the window is added, so the
         // chat is never animated one way and then corrected.
         UiKit.applyPredictiveBackTransition(this);
-        installBackHandling(content);
+        installBackHandling();
 
         boolean assistantHandoff = getIntent() != null
                 && getIntent().getBooleanExtra(EXTRA_ASSISTANT_HANDOFF, false);
@@ -231,14 +227,19 @@ public class ChatActivity extends Activity {
      * remembered: it can be dismissed by choosing from it or tapping outside, and a remembered
      * flag would miss both and leave this screen holding a gesture it has no use for.
      */
-    private void installBackHandling(View content) {
+    private void installBackHandling() {
         backHandler = OrbitBackHandler.attach(this, () -> {
             // Closes the chooser and leaves the draft, the scroll position and the keyboard as
             // they were. Nothing about the conversation changes and the activity does not finish.
             OrbitAttachmentMenu.dismiss(menuHost());
             syncBackHandler();
         });
-        predictiveBack = OrbitPredictiveBack.attach(this, content);
+        // The generalized engine, with this screen supplying only policy. Back here is finish:
+        // the chooser has its own callback above and this one is armed only when it is closed.
+        predictiveBack = OrbitPredictiveBack.attach(this, new OrbitPredictiveBack.Screen() {
+            @Override public void navigateBack() { finish(); }
+            @Override public String screenName() { return OrbitNavigation.labelFor(ChatActivity.class); }
+        });
         ViewGroup host = menuHost();
         if (host != null) {
             host.setOnHierarchyChangeListener(new ViewGroup.OnHierarchyChangeListener() {
@@ -330,7 +331,7 @@ public class ChatActivity extends Activity {
         // at two different destinations. It does not imitate the gesture: a tap is not a drag, and
         // the platform's committed transition is the honest result of one.
         back.setOnClickListener(v -> {
-            DiagnosticStore.recordBackButton(this);
+            DiagnosticStore.recordBackButton(this, OrbitNavigation.labelFor(ChatActivity.class));
             if (backHandler != null) backHandler.performBack();
             else finish();
         });

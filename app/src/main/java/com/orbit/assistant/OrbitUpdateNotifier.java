@@ -30,9 +30,11 @@ public final class OrbitUpdateNotifier {
             if (channel == null || channel.getImportance() == NotificationManager.IMPORTANCE_NONE) return false;
         }
 
-        Intent open = new Intent(context, UpdateActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent pending = PendingIntent.getActivity(context, NOTIFICATION_ID, open,
+        // Chats underneath, so Back from the update screen returns into Orbit rather than ending
+        // the task at the launcher, and the swipe gesture has a real page to reveal.
+        Intent open = new Intent(context, UpdateActivity.class);
+        PendingIntent pending = PendingIntent.getActivities(context, NOTIFICATION_ID,
+                OrbitNavigation.stackFor(context, open),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         // A Beta build is named so the user can tell at a glance what they are being offered. A
         // Stable release reaching a Beta-channel user is still an ordinary Orbit update and is

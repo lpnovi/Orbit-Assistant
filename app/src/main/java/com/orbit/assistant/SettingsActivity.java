@@ -47,13 +47,13 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     private static final String SECTION_ASSISTANT = "assistant";
     static final String SECTION_AI = "ai";
     private static final String SECTION_VOICE = "voice";
-    private static final String SECTION_DATA = "data";
+    static final String SECTION_DATA = "data";
     private static final String SECTION_CONVERSATIONS = "conversations";
-    private static final String SECTION_ROUTINES = "routines";
+    static final String SECTION_ROUTINES = "routines";
     private static final String SECTION_EXTENSIONS = "extensions";
-    private static final String SECTION_APPEARANCE = "appearance";
+    static final String SECTION_APPEARANCE = "appearance";
     private static final String SECTION_UPDATES = "updates";
-    private static final String SECTION_ADVANCED = "advanced";
+    static final String SECTION_ADVANCED = "advanced";
 
     public static Intent assistantSetupIntent(Context context) {
         return new Intent(context, SettingsActivity.class).putExtra(EXTRA_SECTION, SECTION_ASSISTANT);
@@ -96,6 +96,9 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         }
     };
 
+    /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
+    private OrbitPredictiveBack navigation;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -110,6 +113,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         View content = buildContent();
         setContentView(content);
         UiKit.applyActivityInsets(this, content, true);
+        navigation = OrbitPredictiveBack.install(this);
         appliedAppearance = UiKit.appearanceSignature(this);
         appliedStructuralAppearance = UiKit.structuralAppearanceSignature(this);
     }
@@ -276,6 +280,12 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         startActivity(intent);
     }
 
+    /** The shared Back navigation this page installed. For tests. */
+    OrbitPredictiveBack navigationForTest() { return navigation; }
+
+    /** Opens a section exactly as tapping its card does. For tests. */
+    void openSectionForTest(String section) { openSettingsSection(section); }
+
     private String normalizeSection(String section) {
         if (SECTION_ASSISTANT.equals(section) || SECTION_AI.equals(section) ||
                 SECTION_VOICE.equals(section) || SECTION_DATA.equals(section) || SECTION_CONVERSATIONS.equals(section) ||
@@ -336,7 +346,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         back.setBackground(UiKit.ripple(UiKit.SURFACE_2, UiKit.accent(this), 18, this));
         back.setContentDescription("Back to Settings");
         back.setPadding(UiKit.dp(this, 11), UiKit.dp(this, 11), UiKit.dp(this, 11), UiKit.dp(this, 11));
-        back.setOnClickListener(v -> finish());
+        back.setOnClickListener(v -> navigation.performBack());
         UiKit.pressScale(back);
         LinearLayout.LayoutParams backLp = new LinearLayout.LayoutParams(UiKit.dp(this, 48), UiKit.dp(this, 48));
         backLp.rightMargin = UiKit.dp(this, 12);
@@ -831,10 +841,12 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         page.addView(sectionTitle("GESTURES", "appearance"));
         LinearLayout gestureCard = card();
         tagSectionCard(gestureCard, "appearance");
-        gestureCard.addView(toggle("Swipe back to Chats",
-                "Lets Android's own back gesture carry a conversation away with your finger, "
-                        + "revealing Chats underneath. Turn this off to use Orbit's page "
-                        + "transition instead. Back itself always works either way.",
+        gestureCard.addView(toggle("Swipe to go back",
+                "Use Orbit's interactive edge gesture when returning to the previous screen. The "
+                        + "page follows your finger and the screen you came from appears behind it, "
+                        + "across conversations, Settings and Orbit's other pages. Turn this off to "
+                        + "use Orbit's page transition instead. Back itself always works either "
+                        + "way, from the gesture, the navigation buttons, and every Back control.",
                 Prefs.ENHANCED_CHAT_BACK, true));
         gestureCard.addView(toggle("Chat swipe actions",
                 "Swipe a chat left to delete it, or right to pin and unpin it. Deleting always "

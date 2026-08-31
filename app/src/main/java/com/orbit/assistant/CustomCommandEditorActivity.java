@@ -37,6 +37,9 @@ public final class CustomCommandEditorActivity extends Activity {
     private TextView errorText;
     private String selectedRoutineId = "";
 
+    /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
+    private OrbitPredictiveBack navigation;
+
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         UiKit.syncTheme(this);
@@ -54,6 +57,29 @@ public final class CustomCommandEditorActivity extends Activity {
         View content = buildContent(savedInstanceState);
         setContentView(content);
         UiKit.applyActivityInsets(this, content, true);
+        // Nothing is stored until Save, so Back has always discarded a half-written command without
+        // asking, and still does. The page only slides away while there is nothing to discard.
+        navigation = OrbitPredictiveBack.install(this, new OrbitPredictiveBack.Screen() {
+            @Override public boolean canNavigate() { return !hasUnsavedWork(); }
+            @Override public void navigateBack() { finish(); }
+            @Override public String screenName() {
+                return OrbitNavigation.labelFor(CustomCommandEditorActivity.class);
+            }
+        });
+    }
+
+    /** True while this screen differs from what is stored, so leaving would lose something. */
+    private boolean hasUnsavedWork() {
+        String primary = primaryField == null ? "" : primaryField.getText().toString().trim();
+        String aliases = aliasesField == null ? "" : aliasesField.getText().toString().trim();
+        boolean enabled = enabledField == null || enabledField.isChecked();
+        if (existing == null) {
+            return !primary.isEmpty() || !aliases.isEmpty() || !selectedRoutineId.isEmpty();
+        }
+        return !primary.equals(existing.primaryPhrase.trim())
+                || !aliases.equals(joinAliases(existing).trim())
+                || !selectedRoutineId.equals(existing.routineId)
+                || enabled != existing.enabled;
     }
 
     @Override protected void onResume() {
@@ -91,7 +117,7 @@ public final class CustomCommandEditorActivity extends Activity {
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
         ImageButton back = iconButton();
-        back.setOnClickListener(v -> finish());
+        back.setOnClickListener(v -> navigation.performBack());
         header.addView(back, new LinearLayout.LayoutParams(UiKit.dp(this, 44), UiKit.dp(this, 44)));
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);

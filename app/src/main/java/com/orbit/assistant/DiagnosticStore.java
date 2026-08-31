@@ -79,34 +79,42 @@ public final class DiagnosticStore {
     }
 
     /**
-     * How the last back gesture in a conversation ended, and how much of it Orbit drew.
+     * How the last back gesture ended, on which kind of screen, and how much of it Orbit drew.
      *
-     * <p>The progress count is the honest part: it is the number of {@code onBackProgressed}
-     * events Orbit was handed and turned into frames. Zero means the conversation did not move,
-     * whatever the configuration claims it should have done. No coordinates and no conversation
-     * are recorded — the count and the outcome word are the whole of it.
+     * <p>The progress count is the honest part: it is the number of {@code onBackProgressed} events
+     * Orbit was handed and turned into frames. Zero means the page did not move, whatever the
+     * configuration claims it should have done. The screen is a category name from
+     * {@link OrbitNavigation} — "Settings", "Chat", "Memory" — never a conversation, a section
+     * value, a routine, or anything typed into a form. The count, the outcome word and the category
+     * are the whole of it, and there are deliberately no coordinates anywhere in this file.
+     *
+     * @param moved false when the screen declined to move because leaving was not unconditional,
+     *              which is what an editor holding unsaved work does.
      */
-    public static void recordBackGesture(Context c, String outcome, int progressEvents) {
+    public static void recordBackGesture(Context c, String screen, String outcome,
+                                         int progressEvents, boolean moved) {
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
                 .putString("back_outcome", safe(outcome))
-                .putString("back_path", "Orbit progress")
+                .putString("back_path", moved ? "Orbit progress" : "dirty-state guarded")
+                .putString("back_screen", safe(screen))
                 .putInt("back_progress_events", Math.max(0, progressEvents))
                 .putLong("back_updated", System.currentTimeMillis())
                 .apply();
     }
 
-    /** Whether the last gesture genuinely uncovered Chats or only Orbit's own background. */
+    /** Whether the last gesture genuinely uncovered the previous page or only Orbit's background. */
     public static void recordBackReveal(Context c, boolean realDestination) {
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
                 .putBoolean("back_real_destination", realDestination)
                 .apply();
     }
 
-    /** A back that was not a gesture at all: the conversation's own Back control. */
-    public static void recordBackButton(Context c) {
+    /** A back that was not a gesture at all: a screen's own Back control. */
+    public static void recordBackButton(Context c, String screen) {
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
                 .putString("back_outcome", "committed")
                 .putString("back_path", "Back control")
+                .putString("back_screen", safe(screen))
                 .putInt("back_progress_events", 0)
                 .putLong("back_updated", System.currentTimeMillis())
                 .apply();

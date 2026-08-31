@@ -546,3 +546,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Every Diagnostics section has its own Copy button, which works without opening the section first.
   - The Chat deleted bar now floats above the list instead of cutting a hard edge across it.
   - Chat swipes to delete and pin are unchanged.
+
+- **v0.7.7.9-beta.3**: Orbit's interactive swipe back now works throughout Settings and the rest of the app, not just in conversations.
+  - Swipe back from any Settings section and it follows your finger, with the Settings list appearing behind it.
+  - The same gesture now works on Memory, Routines, Extensions, Diagnostics, About & updates and Orbit's other pages.
+  - Each swipe goes back exactly one screen, revealing the real page you came from rather than a picture of it.
+  - Editors keep their existing behaviour: a screen with unsaved changes still asks before discarding them.
+  - The setting is now called Swipe to go back, and your existing choice is kept.
+  - Chat delete and pin swipes and the Side-button overlay are unchanged.

@@ -40,7 +40,7 @@ public final class OrbitRoutineTileService extends TileService {
             return;
         }
         Intent intent = new Intent(this, RoutinesActivity.class);
-        PendingIntent pending = QuickSettingsTiles.activityPendingIntent(this, intent, 6502);
+        PendingIntent pending = QuickSettingsTiles.orbitPagePendingIntent(this, 6502, intent);
         if (Build.VERSION.SDK_INT >= 34) startActivityAndCollapse(pending);
         else startActivityAndCollapse(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
     }

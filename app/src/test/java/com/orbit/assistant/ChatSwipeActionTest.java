@@ -558,7 +558,7 @@ public final class ChatSwipeActionTest {
     /** On by default, both of them. */
     @Test public void bothGestureSettingsShipOn() {
         assertTrue(Prefs.chatSwipeActions(context));
-        assertTrue(Prefs.enhancedChatBack(context));
+        assertTrue(Prefs.swipeToGoBack(context));
     }
 
     /** Diagnostics records the category of the gesture and nothing about the chat. */

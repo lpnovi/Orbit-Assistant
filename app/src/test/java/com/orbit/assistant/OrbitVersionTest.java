@@ -157,19 +157,29 @@ public final class OrbitVersionTest {
      * should reach the Stable channel on the strength of a Robolectric run, so this guard fails
      * publication if the version quietly loses its Beta metadata.
      */
+    /**
+     * This build is a 0.7.7.9 Beta, and everything derived from its version name agrees.
+     *
+     * <p>Written against the beta counter rather than against one frozen number. The earlier version
+     * of this test hardcoded "Beta 1" and so began failing the moment 0.7.7.9 reached its second
+     * Beta — which went unnoticed because that release ran its suite before the version bump rather
+     * than after. Pinning the shape catches what this test is actually for (a Beta that is tagged,
+     * titled and ranked correctly) without needing an edit on every release.
+     */
     @Test public void thisBuildIsAFullAppGestureBeta() {
+        String version = BuildConfig.VERSION_NAME;
         assertTrue(OrbitVersion.installedIsBeta());
-        assertTrue(OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
-        assertEquals("0.7.7.9", OrbitVersion.baseVersion(BuildConfig.VERSION_NAME));
-        assertTrue("a Beta build carries a real beta counter",
-                OrbitVersion.betaNumber(BuildConfig.VERSION_NAME) >= 1);
-        assertEquals("Orbit Assistant v0.7.7.9 Beta 1",
-                OrbitVersion.releaseTitle(BuildConfig.VERSION_NAME));
-        assertEquals("v0.7.7.9-beta.1", OrbitVersion.tagFor(BuildConfig.VERSION_NAME));
+        assertTrue(OrbitVersion.isBeta(version));
+        assertFalse(OrbitVersion.isStable(version));
+        assertEquals("0.7.7.9", OrbitVersion.baseVersion(version));
+
+        int beta = OrbitVersion.betaNumber(version);
+        assertTrue("a Beta build carries a real beta counter", beta >= 1);
+        assertEquals("Orbit Assistant v0.7.7.9 Beta " + beta, OrbitVersion.releaseTitle(version));
+        assertEquals("v0.7.7.9-beta." + beta, OrbitVersion.tagFor(version));
         assertTrue("the release workflow must publish it as a prerelease",
-                OrbitVersion.isBetaTag(OrbitVersion.tagFor(BuildConfig.VERSION_NAME)));
+                OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
         assertTrue("and it must still outrank the Stable release it follows",
-                OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.7.7.8") > 0);
+                OrbitVersion.compareVersions(version, "0.7.7.8") > 0);
     }
 }

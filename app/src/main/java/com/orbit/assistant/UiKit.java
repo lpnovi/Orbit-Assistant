@@ -1552,7 +1552,7 @@ public final class UiKit {
     public static boolean applyPredictiveBackTransition(Activity activity) {
         if (activity == null || activity.getWindow() == null) return false;
         if (!OrbitBackHandler.predictiveTransitionAvailable()) return false;
-        if (!Prefs.enhancedChatBack(activity)) return false;
+        if (!Prefs.swipeToGoBack(activity)) return false;
         try {
             activity.getWindow().setWindowAnimations(predictiveTransitionStyle(activity));
             return true;

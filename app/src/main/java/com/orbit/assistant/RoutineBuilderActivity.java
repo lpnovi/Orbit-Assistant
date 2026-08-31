@@ -34,6 +34,9 @@ public class RoutineBuilderActivity extends Activity {
     private RoutineDraft draft;
     private String automationNotice = "";
 
+    /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
+    private OrbitPredictiveBack navigation;
+
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         UiKit.syncTheme(this);
@@ -43,6 +46,17 @@ public class RoutineBuilderActivity extends Activity {
         View content = buildContent();
         setContentView(content);
         UiKit.applyActivityInsets(this, content, true);
+        // Nothing here is stored until the routine is saved, so Back has always discarded a typed
+        // description without asking. That is unchanged. What is new is that the page only slides
+        // away when there is nothing to discard: once there is, Back still leaves, but it does so
+        // without the animation that says "leaving is settled".
+        navigation = OrbitPredictiveBack.install(this, new OrbitPredictiveBack.Screen() {
+            @Override public boolean canNavigate() { return !hasUnsavedWork(); }
+            @Override public void navigateBack() { finish(); }
+            @Override public String screenName() {
+                return OrbitNavigation.labelFor(RoutineBuilderActivity.class);
+            }
+        });
 
         if (savedInstanceState != null) {
             // The typed description and any generated draft survive a recreation, and no request
@@ -52,6 +66,15 @@ public class RoutineBuilderActivity extends Activity {
             draft = RoutineDraft.fromPayload(this, savedInstanceState.getString(STATE_DRAFT, ""));
             if (draft != null) showDraft();
         }
+    }
+
+    /** The shared Back navigation this page installed. For tests. */
+    OrbitPredictiveBack navigationForTest() { return navigation; }
+
+    /** True while this screen holds typing or a generated draft that leaving would discard. */
+    private boolean hasUnsavedWork() {
+        if (draft != null) return true;
+        return description != null && !description.getText().toString().trim().isEmpty();
     }
 
     @Override protected void onSaveInstanceState(Bundle out) {
@@ -82,7 +105,7 @@ public class RoutineBuilderActivity extends Activity {
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
         ImageButton back = iconButton(R.drawable.ic_back, "Back");
-        back.setOnClickListener(v -> finish());
+        back.setOnClickListener(v -> navigation.performBack());
         LinearLayout.LayoutParams backLp = new LinearLayout.LayoutParams(
                 UiKit.dp(this, 48), UiKit.dp(this, 48));
         backLp.rightMargin = UiKit.dp(this, 12);

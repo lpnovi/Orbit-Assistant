@@ -67,6 +67,9 @@ public class RoutineEditorActivity extends Activity {
     private EditText pendingConditionLongitude;
     private Button pendingConditionLocationButton;
 
+    /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
+    private OrbitPredictiveBack navigation;
+
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         UiKit.syncTheme(this);
@@ -103,6 +106,16 @@ public class RoutineEditorActivity extends Activity {
         initializing = false;
         dirty = false;
         refreshSteps();
+        // Offered only while there is nothing to lose. handleBack is unchanged and still owns the
+        // discard question, so a dirty editor reaches it by exactly the route it always did — the
+        // page simply does not slide away first, because leaving is not yet decided.
+        navigation = OrbitPredictiveBack.install(this, new OrbitPredictiveBack.Screen() {
+            @Override public boolean canNavigate() { return !dirty || !hasActualChanges(); }
+            @Override public void navigateBack() { handleBack(); }
+            @Override public String screenName() {
+                return OrbitNavigation.labelFor(RoutineEditorActivity.class);
+            }
+        });
     }
 
     @Override protected void onResume() {
@@ -117,6 +130,15 @@ public class RoutineEditorActivity extends Activity {
 
     @Override public void onBackPressed() {
         handleBack();
+    }
+
+    /** The shared Back navigation this page installed. For tests. */
+    OrbitPredictiveBack navigationForTest() { return navigation; }
+
+    /** Marks the editor as holding unsaved changes, as editing a field does. For tests. */
+    void markDirtyForTest(String name) {
+        if (nameField != null) nameField.setText(name);
+        dirty = true;
     }
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {

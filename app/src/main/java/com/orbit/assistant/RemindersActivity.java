@@ -22,6 +22,9 @@ import java.util.List;
 public final class RemindersActivity extends Activity {
     private LinearLayout reminderList;
 
+    /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
+    private OrbitPredictiveBack navigation;
+
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         UiKit.syncTheme(this);
@@ -31,6 +34,7 @@ public final class RemindersActivity extends Activity {
         View content = buildContent();
         setContentView(content);
         UiKit.applyActivityInsets(this, content, true);
+        navigation = OrbitPredictiveBack.install(this);
     }
 
     @Override protected void onResume() {
@@ -60,7 +64,7 @@ public final class RemindersActivity extends Activity {
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
         ImageButton back = iconButton(R.drawable.ic_back, "Back");
-        back.setOnClickListener(v -> finish());
+        back.setOnClickListener(v -> navigation.performBack());
         LinearLayout.LayoutParams backLp = new LinearLayout.LayoutParams(UiKit.dp(this, 48), UiKit.dp(this, 48));
         backLp.rightMargin = UiKit.dp(this, 12);
         header.addView(back, backLp);

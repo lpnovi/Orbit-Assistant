@@ -58,9 +58,13 @@ public final class ExtensionsActivity extends Activity {
     private ScrollView activeScroll;
     private int bundledLoadFailures;
 
+    /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
+    private OrbitPredictiveBack navigation;
+
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         UiKit.syncTheme(this);
+        navigation = OrbitPredictiveBack.install(this);
         Window window = getWindow();
         window.setStatusBarColor(UiKit.BG);
         window.setNavigationBarColor(UiKit.BG);
@@ -143,7 +147,7 @@ public final class ExtensionsActivity extends Activity {
         back.setContentDescription("Back to Settings");
         back.setPadding(UiKit.dp(this, 10), UiKit.dp(this, 10),
                 UiKit.dp(this, 10), UiKit.dp(this, 10));
-        back.setOnClickListener(v -> finish());
+        back.setOnClickListener(v -> navigation.performBack());
         UiKit.pressScale(back);
         header.addView(back, new LinearLayout.LayoutParams(UiKit.dp(this, 44), UiKit.dp(this, 44)));
 
@@ -779,7 +783,7 @@ public final class ExtensionsActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 46)));
 
         Button back = secondaryButton("Back");
-        back.setOnClickListener(v -> finish());
+        back.setOnClickListener(v -> navigation.performBack());
         LinearLayout.LayoutParams backLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 46));
         backLp.topMargin = UiKit.dp(this, 9);
