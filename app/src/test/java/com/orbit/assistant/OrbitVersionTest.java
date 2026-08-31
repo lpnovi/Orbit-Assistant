@@ -168,19 +168,27 @@ public final class OrbitVersionTest {
      * hardware before any of it is called Stable, so the version string says so and the release
      * workflow publishes it as a prerelease.
      */
-    @Test public void thisBuildIsTheFirstDeviceActionBeta() {
+    /**
+     * The second Beta of the 0.7.8 line: a corrective pass, still a prerelease.
+     *
+     * <p>Beta 2 fixes what a real Galaxy S25 Ultra found in Beta 1. It is not Stable, and it must
+     * outrank the Beta it corrects while still ranking below the Stable it is working towards.
+     */
+    @Test public void thisBuildIsTheCorrectiveDeviceActionBeta() {
         String version = BuildConfig.VERSION_NAME;
         assertTrue(OrbitVersion.installedIsBeta());
         assertTrue(OrbitVersion.isBeta(version));
         assertFalse(OrbitVersion.isStable(version));
         assertEquals("0.7.8.0", OrbitVersion.baseVersion(version));
 
-        assertEquals(1, OrbitVersion.betaNumber(version));
-        assertEquals("Orbit Assistant v0.7.8.0 Beta 1", OrbitVersion.releaseTitle(version));
-        assertEquals("v0.7.8.0-beta.1", OrbitVersion.tagFor(version));
+        assertEquals(2, OrbitVersion.betaNumber(version));
+        assertEquals("Orbit Assistant v0.7.8.0 Beta 2", OrbitVersion.releaseTitle(version));
+        assertEquals("v0.7.8.0-beta.2", OrbitVersion.tagFor(version));
         assertTrue("the release workflow must publish it as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
-        assertTrue("and it must outrank the 0.7.7.9 line it follows",
+        assertTrue("and it must outrank the Beta it corrects",
+                OrbitVersion.compareVersions(version, "0.7.8.0-beta.1") > 0);
+        assertTrue("and the 0.7.7.9 line it follows",
                 OrbitVersion.compareVersions(version, "0.7.7.9") > 0);
         assertTrue("while ranking below the Stable 0.7.8.0 it is working towards",
                 OrbitVersion.compareVersions(version, "0.7.8.0") < 0);

@@ -54,6 +54,15 @@ public final class ReplyDraftContext {
         boolean perspectiveCorrection = false;
         String screenFingerprint = "";
         long updatedAt = 0L;
+        /**
+         * Orbit's last reply-draft turn was a question back to the user.
+         *
+         * <p>What makes the <em>answer</em> to that question still part of the drafting flow. "Im
+         * neither im Lou and this is a gc" is not a draft request by any wording rule, and without
+         * this the turn that finally produces the sendable draft would not be treated as one — which
+         * is exactly what left the controls attached to the clarification on the device.
+         */
+        boolean awaitingClarification = false;
     }
 
     /** Observe a user turn and return the trusted context frozen for this request. */
@@ -95,11 +104,56 @@ public final class ReplyDraftContext {
             // previous draft used the wrong side and must not simply be repeated.
         }
 
-        if (!state.identity.isEmpty() || state.perspectiveCorrection || !state.screenFingerprint.isEmpty()) {
+        // Whether this turn belongs to a reply-drafting flow at all: either the user asked for a
+        // draft, or Orbit asked them something last time and this is the answer.
+        boolean draftTurn = isDraftRequest(text) || state.awaitingClarification;
+        if (draftTurn) state.updatedAt = now;
+
+        if (!state.identity.isEmpty() || state.perspectiveCorrection
+                || !state.screenFingerprint.isEmpty() || state.awaitingClarification) {
             state.updatedAt = now;
             save(context, conversationId, state);
         }
-        return buildTrustedContext(state);
+        String trusted = buildTrustedContext(state);
+        if (!draftTurn) return trusted;
+        // The classification contract rides along with the trusted context, so it is Orbit-authored,
+        // per-request, and reaches every provider on the path the request already takes.
+        return trusted.isEmpty()
+                ? ReplyDraftOutcome.contractInstruction()
+                : trusted + "\n\n" + ReplyDraftOutcome.contractInstruction();
+    }
+
+    /** True when this turn is part of a reply-drafting flow, request or clarification answer. */
+    public static synchronized boolean isReplyDraftTurn(Context context, String conversationId,
+                                                        String prompt) {
+        if (isDraftRequest(prompt)) return true;
+        return awaitingClarification(context, conversationId);
+    }
+
+    /** Whether Orbit's last reply-draft turn asked the user a question. */
+    public static synchronized boolean awaitingClarification(Context context, String conversationId) {
+        State state = load(context, conversationId);
+        if (state.updatedAt > 0 && System.currentTimeMillis() - state.updatedAt > MAX_AGE_MS) {
+            return false;
+        }
+        return state.awaitingClarification;
+    }
+
+    /**
+     * Records what Orbit's reply-draft turn turned out to be.
+     *
+     * <p>Set when a clarification is shown, cleared the moment a sendable draft arrives, so the flow
+     * extends exactly as far as the questions do and no further.
+     */
+    public static synchronized void recordOutcome(Context context, String conversationId,
+                                                  ReplyDraftOutcome.Kind kind) {
+        if (context == null || conversationId == null || conversationId.trim().isEmpty()) return;
+        State state = load(context, conversationId);
+        boolean awaiting = kind == ReplyDraftOutcome.Kind.CLARIFICATION;
+        if (state.awaitingClarification == awaiting && state.updatedAt > 0) return;
+        state.awaitingClarification = awaiting;
+        state.updatedAt = System.currentTimeMillis();
+        save(context, conversationId, state);
     }
 
     /** Return previously established context without changing it. */
@@ -261,6 +315,7 @@ public final class ReplyDraftContext {
             state.perspectiveCorrection = o.optBoolean("perspectiveCorrection", false);
             state.screenFingerprint = o.optString("screenFingerprint", "");
             state.updatedAt = o.optLong("updatedAt", 0L);
+            state.awaitingClarification = o.optBoolean("awaitingClarification", false);
         } catch (Exception ignored) {}
         return state;
     }
@@ -271,6 +326,7 @@ public final class ReplyDraftContext {
                     .put("identity", state.identity)
                     .put("perspectiveCorrection", state.perspectiveCorrection)
                     .put("screenFingerprint", state.screenFingerprint)
+                    .put("awaitingClarification", state.awaitingClarification)
                     .put("updatedAt", state.updatedAt);
             context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
                     .putString(conversationId, o.toString()).apply();

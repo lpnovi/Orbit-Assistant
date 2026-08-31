@@ -962,6 +962,34 @@ finishing it. What actually shipped:
 Still open on item 1: the allowlist beyond those ten actions, relative-follow-up handling through
 the semantic path, and multi-action requests, which Beta 1 refuses outright.
 
+`0.7.8.0-beta.2` is a corrective pass over Beta 1, not a second feature release. Beta 1 held up on
+the Galaxy S25 Ultra; four things did not, and all four were found by using it rather than by
+reading it:
+
+- **A status question behaved differently depending on how it was phrased.** "What is my media
+  volume right now" reached the provider while "what's my media volume right now" was answered
+  locally, seconds apart. Two orderings compounded: the shared politeness rule removed the trailing
+  "right now", taking the cue that marked the question as being about a current value, and the
+  generic conceptual-question guard matched the expanded opener while missing the contraction. The
+  cue is now read before politeness stripping, contractions are expanded before anything is
+  classified, and the guard has been replaced by an explicit how-to rule. `LanguageNormalizer` is
+  untouched, and the contracted and expanded forms are asserted as pairs
+- **The status readings sounded like a debug dump.** They are now written in Orbit's own voice, and
+  are still entirely deterministic — no reading is ever sent to a model to be reworded
+- **"Use in chat" was SMS-specific and was being offered everywhere.** An email reply drafted in
+  Gmail opened a text message to the sender, because the only "use this reply" path resolved a
+  visible name to a phone number. The medium is now decided by `ReplySurface` from the foreground
+  package, the helper is named `openSmsReplyComposer`, and a surface Orbit cannot insert into offers
+  no insert control at all rather than a misleading one
+- **A clarification could be mistaken for a sendable draft.** When Orbit asked which participant the
+  user was, the overlay offered to send that question into the group, and the controls stayed on it
+  after the real draft arrived. Reply-draft turns now carry an explicit `ReplyDraftOutcome`
+  classification on a contract Orbit writes and strips, and the control row is bound to a turn
+- **The Launch Sequence bodies did not follow the finger.** Move events were consumed and discarded
+  and a nudge was applied at release. They are now driven from the touch on every move event, with
+  bounded release momentum, and the orbiters are deliberately unnamed — Luna, Terra and Sol are Auto
+  routing codenames and reading them in the easter egg suggested it selected a model
+
 Beta 1 shipped:
 
 - **Back in a conversation became Android's own gesture.** The requirement was an interaction that

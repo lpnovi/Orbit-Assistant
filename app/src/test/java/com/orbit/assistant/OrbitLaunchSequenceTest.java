@@ -8,6 +8,7 @@ import static org.junit.Assert.assertTrue;
 
 import android.content.Context;
 import android.provider.Settings;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
@@ -151,20 +152,228 @@ public final class OrbitLaunchSequenceTest {
         for (int i = 0; i < 400; i++) view.advance(0.016f);
         // Nothing to assert about position; what matters is that stepping it never throws and never
         // produces a value the drawing cannot use.
-        assertEquals(3, OrbitLaunchSequenceView.names().length);
+        assertEquals(3, OrbitLaunchSequenceView.bodyCount());
     }
 
-    @Test public void theBodiesAreNamedButNeverFunctional() {
-        assertEquals("Luna", OrbitLaunchSequenceView.names()[0]);
-        assertEquals("Terra", OrbitLaunchSequenceView.names()[1]);
-        assertEquals("Sol", OrbitLaunchSequenceView.names()[2]);
-
+    /**
+     * The orbiters have no names, and never did select anything.
+     *
+     * <p>Beta 1 called them Luna, Terra and Sol, which are Orbit's Fast/Balanced/Deep model
+     * codenames. On a real device that read as though touching one changed the AI mode, so the names
+     * are gone from the scene entirely. They remain the Auto routing codenames everywhere else,
+     * which {@code theAutoModelCodenamesAreUnchanged} below pins.
+     */
+    @Test public void theBodiesAreUnnamedAndNeverFunctional() {
         String source = ComponentUninstallTest.readRepositoryFile(
                 "app/src/main/java/com/orbit/assistant/OrbitLaunchSequenceView.java");
+        for (String codename : new String[]{"Luna", "Terra", "Sol"}) {
+            assertFalse("the scene must not name an orbiter " + codename,
+                    source.contains("\"" + codename + "\""));
+        }
+        String activity = ComponentUninstallTest.readRepositoryFile(
+                "app/src/main/java/com/orbit/assistant/OrbitLaunchSequenceActivity.java");
+        for (String codename : new String[]{"Luna", "Terra", "Sol"}) {
+            assertFalse(activity.contains("\"" + codename + "\""));
+        }
+
         for (String forbidden : new String[]{"Prefs.", "AiProviders", "AssistantClient",
                 "MODE_FAST", "MODE_BALANCED", "MODE_DEEP", "DiagnosticStore"}) {
             assertFalse("the scene must not reach " + forbidden, source.contains(forbidden));
         }
+    }
+
+    /**
+     * Removing the names from the scene did not rename Orbit's Auto routing.
+     *
+     * <p>Luna, Terra and Sol are the Fast, Balanced and Deep model codenames and stay exactly that.
+     * The easter egg simply stopped borrowing them.
+     */
+    @Test public void theAutoModelCodenamesAreUnchanged() {
+        String prefs = ComponentUninstallTest.readRepositoryFile(
+                "app/src/main/java/com/orbit/assistant/Prefs.java");
+        for (String mode : new String[]{"fast", "balanced", "deep"}) {
+            assertTrue("Auto must still know " + mode, prefs.contains("\"" + mode + "\""));
+        }
+    }
+
+    // ---- dragging ------------------------------------------------------------------------------
+
+    /** A laid-out scene, so bodies have real coordinates to be grabbed at. */
+    private OrbitLaunchSequenceView laidOutScene() {
+        OrbitLaunchSequenceView view = new OrbitLaunchSequenceView(context);
+        view.measure(View.MeasureSpec.makeMeasureSpec(1000, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(1000, View.MeasureSpec.EXACTLY));
+        view.layout(0, 0, 1000, 1000);
+        view.start();
+        return view;
+    }
+
+    private static MotionEvent motion(int action, float x, float y) {
+        return MotionEvent.obtain(0L, 0L, action, x, y, 0);
+    }
+
+    /**
+     * The Beta 2 fix, stated as directly as it can be.
+     *
+     * <p>Beta 1 consumed every move event and did nothing, then applied a one-off nudge at release,
+     * so nothing moved while the finger was down. This asserts the opposite: the body has moved
+     * before the finger is lifted.
+     */
+    @Test public void aBodyFollowsTheFingerBeforeRelease() {
+        OrbitLaunchSequenceView view = laidOutScene();
+        float startX = view.bodyX(2);
+        float startY = view.bodyY(2);
+
+        view.onTouchEvent(motion(MotionEvent.ACTION_DOWN, startX, startY));
+        assertTrue("touching a body must take hold of it", view.isDragging());
+
+        view.onTouchEvent(motion(MotionEvent.ACTION_MOVE, startX + 120f, startY + 40f));
+        float movedX = view.bodyX(2);
+        float movedY = view.bodyY(2);
+
+        assertTrue("the body must move on the move event, not after release",
+                Math.hypot(movedX - startX, movedY - startY) > 10d);
+        view.onTouchEvent(motion(MotionEvent.ACTION_UP, startX + 120f, startY + 40f));
+        view.stop();
+    }
+
+    /** And it keeps tracking across a sequence of moves rather than jumping once. */
+    @Test public void multipleMovesTrackContinuously() {
+        OrbitLaunchSequenceView view = laidOutScene();
+        float startX = view.bodyX(2);
+        float startY = view.bodyY(2);
+        view.onTouchEvent(motion(MotionEvent.ACTION_DOWN, startX, startY));
+
+        double previous = 0d;
+        for (int step = 1; step <= 5; step++) {
+            view.onTouchEvent(motion(MotionEvent.ACTION_MOVE, startX - step * 25f, startY + step * 25f));
+            double travelled = Math.hypot(view.bodyX(2) - startX, view.bodyY(2) - startY);
+            assertTrue("each move must carry the body further, step " + step, travelled > previous);
+            previous = travelled;
+        }
+        view.onTouchEvent(motion(MotionEvent.ACTION_UP, startX - 125f, startY + 125f));
+        view.stop();
+    }
+
+    /** The body's own orbital motion does not fight the finger while it is held. */
+    @Test public void heldBodiesDoNotOrbitUnderneathTheFinger() {
+        OrbitLaunchSequenceView view = laidOutScene();
+        float startX = view.bodyX(0);
+        float startY = view.bodyY(0);
+        view.onTouchEvent(motion(MotionEvent.ACTION_DOWN, startX, startY));
+        view.onTouchEvent(motion(MotionEvent.ACTION_MOVE, 700f, 500f));
+
+        float heldX = view.bodyX(0);
+        float heldY = view.bodyY(0);
+        for (int i = 0; i < 30; i++) view.advance(0.016f);
+
+        assertEquals("a held body must not drift while the finger is still down",
+                heldX, view.bodyX(0), 0.5f);
+        assertEquals(heldY, view.bodyY(0), 0.5f);
+        view.onTouchEvent(motion(MotionEvent.ACTION_UP, 700f, 500f));
+        view.stop();
+    }
+
+    /** Release lets go, keeps the perturbation bounded, and settles back towards the ring. */
+    @Test public void releaseIsBoundedAndSettlesBack() {
+        OrbitLaunchSequenceView view = laidOutScene();
+        float startX = view.bodyX(1);
+        float startY = view.bodyY(1);
+        float centre = 500f;
+
+        view.onTouchEvent(motion(MotionEvent.ACTION_DOWN, startX, startY));
+        // A deliberately absurd drag, far outside the view.
+        view.onTouchEvent(motion(MotionEvent.ACTION_MOVE, 40000f, 40000f));
+        double heldRadius = Math.hypot(view.bodyX(1) - centre, view.bodyY(1) - centre);
+        assertTrue("a drag must never put a body at a pathological coordinate",
+                heldRadius < 1000d);
+
+        view.onTouchEvent(motion(MotionEvent.ACTION_UP, 40000f, 40000f));
+        assertFalse("release must let go", view.isDragging());
+
+        double afterRelease = Math.hypot(view.bodyX(1) - centre, view.bodyY(1) - centre);
+        for (int i = 0; i < 240; i++) view.advance(0.016f);
+        double settled = Math.hypot(view.bodyX(1) - centre, view.bodyY(1) - centre);
+
+        double naturalRadius = 500d * 0.52d;
+        assertTrue("the orbit must settle back towards its own ring",
+                Math.abs(settled - naturalRadius) < Math.abs(afterRelease - naturalRadius) + 1d);
+        assertTrue("and land on it", Math.abs(settled - naturalRadius) < 12d);
+        view.stop();
+    }
+
+    /** A cancelled gesture releases at once and keeps nothing. */
+    @Test public void cancelReleasesImmediately() {
+        OrbitLaunchSequenceView view = laidOutScene();
+        float startX = view.bodyX(2);
+        float startY = view.bodyY(2);
+        view.onTouchEvent(motion(MotionEvent.ACTION_DOWN, startX, startY));
+        view.onTouchEvent(motion(MotionEvent.ACTION_MOVE, startX + 90f, startY));
+        assertTrue(view.isDragging());
+
+        view.onTouchEvent(motion(MotionEvent.ACTION_CANCEL, startX + 90f, startY));
+        assertFalse("a cancelled gesture must not leave a body held", view.isDragging());
+        view.stop();
+    }
+
+    /** Touching nothing drags nothing. */
+    @Test public void emptySpaceGrabsNoBody() {
+        OrbitLaunchSequenceView view = laidOutScene();
+        // Just inside the corner, far from every ring.
+        view.onTouchEvent(motion(MotionEvent.ACTION_DOWN, 20f, 20f));
+        assertFalse(view.isDragging());
+        view.onTouchEvent(motion(MotionEvent.ACTION_MOVE, 200f, 200f));
+        view.onTouchEvent(motion(MotionEvent.ACTION_UP, 200f, 200f));
+        view.stop();
+    }
+
+    /** The touch target is bigger than the drawn body, which is only a few pixels across. */
+    @Test public void theHitTargetIsGenerous() {
+        OrbitLaunchSequenceView view = laidOutScene();
+        float x = view.bodyX(0);
+        float y = view.bodyY(0);
+        // Well outside the drawn radius of the innermost body, which is 3% of the half-size.
+        view.onTouchEvent(motion(MotionEvent.ACTION_DOWN, x + 34f, y));
+        assertTrue("a near miss must still take hold", view.isDragging());
+        view.onTouchEvent(motion(MotionEvent.ACTION_CANCEL, x + 34f, y));
+        view.stop();
+    }
+
+    /** A short, still touch is still a tap, and still pulses. */
+    @Test public void tapsStillWork() {
+        OrbitLaunchSequenceView view = laidOutScene();
+        float x = view.bodyX(2);
+        float y = view.bodyY(2);
+        view.onTouchEvent(motion(MotionEvent.ACTION_DOWN, x, y));
+        view.onTouchEvent(motion(MotionEvent.ACTION_UP, x, y));
+        assertFalse(view.isDragging());
+
+        // The core, which is not a body and pulses separately.
+        view.onTouchEvent(motion(MotionEvent.ACTION_DOWN, 500f, 500f));
+        view.onTouchEvent(motion(MotionEvent.ACTION_UP, 500f, 500f));
+        assertFalse(view.isDragging());
+        view.stop();
+    }
+
+    /** Dragging works on a reduced-motion device, without starting a permanent animation. */
+    @Test public void reducedMotionStillDrags() {
+        Settings.Global.putFloat(context.getContentResolver(),
+                Settings.Global.ANIMATOR_DURATION_SCALE, 0f);
+        OrbitLaunchSequenceView view = laidOutScene();
+        view.refreshTheme();
+        view.start();
+
+        float startX = view.bodyX(2);
+        float startY = view.bodyY(2);
+        view.onTouchEvent(motion(MotionEvent.ACTION_DOWN, startX, startY));
+        view.onTouchEvent(motion(MotionEvent.ACTION_MOVE, startX - 110f, startY - 60f));
+        assertTrue("a reduced-motion device still gets a body that follows the finger",
+                Math.hypot(view.bodyX(2) - startX, view.bodyY(2) - startY) > 10d);
+        view.onTouchEvent(motion(MotionEvent.ACTION_UP, startX - 110f, startY - 60f));
+        view.stop();
+
+        Settings.Global.putFloat(context.getContentResolver(),
+                Settings.Global.ANIMATOR_DURATION_SCALE, 1f);
     }
 
     // ---- what it must never do -----------------------------------------------------------------

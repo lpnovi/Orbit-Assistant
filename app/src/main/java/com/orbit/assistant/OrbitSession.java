@@ -113,6 +113,15 @@ public class OrbitSession extends VoiceInteractionSession {
     private String screenText = "";
     private String foregroundPackage = "";
     private String foregroundAppLabel = "";
+    /**
+     * The reply-draft action row currently on screen, and the turn it belongs to.
+     *
+     * <p>One row, one owner. A new assistant turn detaches the previous row before adding its own,
+     * so the controls can never act on a reply the user has already moved past — which is what let a
+     * clarification keep the Use control after the real draft had arrived.
+     */
+    private LinearLayout draftActionRow;
+    private String activeDraftTurnId = "";
     private Bitmap screenshot;
     private Bitmap selectedScreenshot;
     private boolean screenAttached = false;
@@ -825,6 +834,9 @@ public class OrbitSession extends VoiceInteractionSession {
         // leave the control showing the previous one's state.
         updateComposerAction();
         if (messages == null) return;
+        // The rows are about to be detached wholesale, so the live-row bookkeeping goes with them.
+        draftActionRow = null;
+        activeDraftTurnId = "";
         messages.removeAllViews();
         if (history.isEmpty()) {
             addBubbleNow("What can I help with?", false, false);
@@ -846,10 +858,22 @@ public class OrbitSession extends VoiceInteractionSession {
                 addMemoryUsageIndicator(item);
                 if (i == history.size() - 1) addMemorySuggestion(item);
 
-                boolean draftReply = i > 0 && isDraftReplyRequest(history.get(i - 1).content);
+                // Only the newest assistant turn can own reply-draft controls after a rebuild. An
+                // older one is by definition something the user has moved past, and the markers are
+                // deliberately not persisted, so there is nothing to reclassify an older turn from.
+                boolean newest = i == history.size() - 1;
+                boolean draftReply = newest && i > 0
+                        && ReplyDraftContext.isDraftRequest(history.get(i - 1).content);
                 if (visible.startsWith("Orbit could not finish")) addFailureRetryAction(PendingRequestStore.latestFailedForConversation(getContext(), conversationId));
-                else if (draftReply) addDraftReplyActions(visible, i == history.size() - 1);
-                else {
+                else if (draftReply) {
+                    // Whether that turn was a clarification is remembered in the conversation's own
+                    // reply-draft state, which survives the rebuild; the marker in the text does not.
+                    ReplyDraftOutcome.Kind kind =
+                            ReplyDraftContext.awaitingClarification(getContext(), conversationId)
+                                    ? ReplyDraftOutcome.Kind.CLARIFICATION
+                                    : ReplyDraftOutcome.Kind.DRAFT;
+                    addDraftReplyActions(visible, kind, "history-" + i, true);
+                } else {
                     addSourceLink(rawVisible);
                 }
                 addPersistedActionCards(i);
@@ -1831,7 +1855,14 @@ public class OrbitSession extends VoiceInteractionSession {
                 String text = reply.text == null || reply.text.trim().isEmpty()
                         ? "Done."
                         : removeEmDashes(reply.text.trim());
-                final String storedText = text;
+                // The marker is read here and removed before anything else sees the reply, so it
+                // never reaches the bubble, the spoken text, or the stored conversation.
+                final ReplyDraftOutcome outcome = ReplyDraftOutcome.parse(text);
+                final String storedText = outcome.text.isEmpty() ? text : outcome.text;
+                final String draftTurnId = requestId == null ? "" : requestId;
+                if (draftedReply) {
+                    ReplyDraftContext.recordOutcome(getContext(), requestConversationId, outcome.kind);
+                }
                 main.post(() -> {
                     boolean ownsUi = ownsCurrentUi();
                     if (ownsUi) {
@@ -1850,8 +1881,10 @@ public class OrbitSession extends VoiceInteractionSession {
                         finishStreamingBubble(storedText);
                         addMemoryUsageIndicator(assistantItem);
                         addMemorySuggestion(assistantItem);
-                        if (draftedReply) addDraftReplyActions(storedText, true);
-                        else {
+                        if (draftedReply) {
+                            addDraftReplyActions(storedText, outcome.kind, draftTurnId, true);
+                        } else {
+                            clearDraftReplyActions();
                             if (!voiceRequest) addSourceLink(storedText);
                         }
                         executeActions(reply.actions, 0);
@@ -2099,8 +2132,16 @@ public class OrbitSession extends VoiceInteractionSession {
         updateComposerAction();
     }
 
+    /**
+     * Whether this turn belongs to a reply-drafting flow.
+     *
+     * <p>Wider than "the user asked for a draft" since Beta 2, because answering Orbit's own
+     * clarification is part of the same flow and is worded like nothing in particular — "Im neither
+     * im Lou and this is a gc" matches no draft-request rule, and the turn that finally produced the
+     * sendable draft was therefore not treated as one at all.
+     */
     private boolean isDraftReplyRequest(String prompt) {
-        return ReplyDraftContext.isDraftRequest(prompt);
+        return ReplyDraftContext.isReplyDraftTurn(getContext(), conversationId, prompt);
     }
 
     private void addMemoryUsageIndicator(AssistantClient.History item) {
@@ -2304,9 +2345,31 @@ public class OrbitSession extends VoiceInteractionSession {
         scrollBottom();
     }
 
-    private void addDraftReplyActions(String draft, boolean canRegenerate) {
+    /**
+     * The action row under a reply-draft turn, bound to that turn.
+     *
+     * <p>Two Beta 2 corrections live here. The row now knows <em>what kind</em> of reply it belongs
+     * to, so a clarification Orbit asked the user never offers to send itself into somebody else's
+     * conversation; and the row knows <em>which turn</em> it belongs to, so an older row cannot act
+     * once a newer assistant turn has arrived. Before this, the captured {@code draft} string was
+     * whatever had been on screen when the row was built, and the clarification's row stayed live
+     * after the real draft appeared.
+     *
+     * <p>The insert control is offered only where {@link ReplySurface} says Orbit genuinely has a
+     * supported way to put text into that app. Everywhere else the row is Copy and Regenerate, which
+     * is the whole truth about what Orbit can do there.
+     */
+    private void addDraftReplyActions(String draft, ReplyDraftOutcome.Kind kind,
+                                      String turnId, boolean canRegenerate) {
         if (messages == null || draft == null || draft.trim().isEmpty()) return;
+        // One live row at a time. The previous turn's row is detached rather than left in the
+        // layout, so a stale control cannot be pressed at all.
+        clearDraftReplyActions();
+        activeDraftTurnId = turnId == null ? "" : turnId;
+
         Context c = getContext();
+        final ReplySurface.Kind surface = ReplySurface.of(c, foregroundPackage);
+        final String appLabel = foregroundAppLabel == null ? "" : foregroundAppLabel;
         LinearLayout row = new LinearLayout(c);
         row.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
 
@@ -2316,42 +2379,59 @@ public class OrbitSession extends VoiceInteractionSession {
                 blend(UiKit.accent(c), UiKit.SURFACE_2, 0.45f), UiKit.accent(c), 15, c));
         copy.setPadding(UiKit.dp(c, 14), 0, UiKit.dp(c, 14), 0);
         copy.setOnClickListener(v -> {
+            if (!ownsDraftTurn(turnId)) return;
             ClipboardManager cm = (ClipboardManager) c.getSystemService(Context.CLIPBOARD_SERVICE);
             if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Orbit reply", draft));
             copy.setText("Copied ✓");
-            stateTextSafe("Reply copied");
+            stateTextSafe(kind == ReplyDraftOutcome.Kind.DRAFT
+                    ? ReplySurface.copiedMessage(surface, appLabel) : "Copied");
+            DiagnosticStore.recordReplyDestination(c,
+                    ReplySurface.diagnosticsName(surface, false));
             if (Prefs.haptics(c)) vibrate(12);
             main.postDelayed(() -> {
                 if (copy != null) copy.setText("Copy");
                 stateTextSafe(readyState());
-            }, 1200);
+            }, 1400);
         });
         row.addView(copy, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(c, 38)));
 
-        Button use = tinyTextButton("Use in chat");
-        use.setTextColor(UiKit.onAccent(c));
-        use.setBackground(UiKit.ripple(UiKit.accent(c), UiKit.onAccent(c), 15, c));
-        use.setPadding(UiKit.dp(c, 14), 0, UiKit.dp(c, 14), 0);
-        LinearLayout.LayoutParams useLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(c, 38));
-        useLp.setMargins(UiKit.dp(c, 8), 0, 0, 0);
-        row.addView(use, useLp);
-        use.setOnClickListener(v -> {
-            if (Prefs.haptics(c)) vibrate(14);
-            String result = DeviceActionExecutor.openReplyComposer(c, screenText, draft);
-            if (result.startsWith("OPENED:")) {
-                stateTextSafe(result.substring("OPENED:".length()).trim());
-                main.postDelayed(() -> dismissAnimated(OverlayLaunchTrace.REASON_REPLY_COMPOSER), 140);
-            } else {
-                ClipboardManager cm = (ClipboardManager) c.getSystemService(Context.CLIPBOARD_SERVICE);
-                if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Orbit reply", draft));
-                stateTextSafe(result);
-                use.setText("Copied instead ✓");
-                main.postDelayed(() -> {
-                    if (use != null) use.setText("Use in chat");
-                    stateTextSafe(readyState());
-                }, 1700);
-            }
-        });
+        // Only a reply Orbit knows is sendable, on a surface Orbit can genuinely insert into, gets a
+        // control that puts it somewhere. A clarification never does, and neither does an unmarked
+        // reply: Orbit will not offer to send something it cannot vouch for.
+        boolean offerInsert = kind == ReplyDraftOutcome.Kind.DRAFT && ReplySurface.canInsert(surface);
+        if (offerInsert) {
+            Button use = tinyTextButton(ReplySurface.insertLabel(surface));
+            use.setTextColor(UiKit.onAccent(c));
+            use.setBackground(UiKit.ripple(UiKit.accent(c), UiKit.onAccent(c), 15, c));
+            use.setPadding(UiKit.dp(c, 14), 0, UiKit.dp(c, 14), 0);
+            LinearLayout.LayoutParams useLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(c, 38));
+            useLp.setMargins(UiKit.dp(c, 8), 0, 0, 0);
+            row.addView(use, useLp);
+            use.setOnClickListener(v -> {
+                if (!ownsDraftTurn(turnId)) return;
+                if (Prefs.haptics(c)) vibrate(14);
+                String result = DeviceActionExecutor.openSmsReplyComposer(c, screenText, draft);
+                if (result.startsWith("OPENED:")) {
+                    DiagnosticStore.recordReplyDestination(c,
+                            ReplySurface.diagnosticsName(surface, true));
+                    stateTextSafe(result.substring("OPENED:".length()).trim());
+                    main.postDelayed(() ->
+                            dismissAnimated(OverlayLaunchTrace.REASON_REPLY_COMPOSER), 140);
+                } else {
+                    ClipboardManager cm = (ClipboardManager) c.getSystemService(Context.CLIPBOARD_SERVICE);
+                    if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Orbit reply", draft));
+                    DiagnosticStore.recordReplyDestination(c,
+                            ReplySurface.diagnosticsName(surface, false));
+                    stateTextSafe(result);
+                    use.setText("Copied instead ✓");
+                    main.postDelayed(() -> {
+                        if (use != null) use.setText(ReplySurface.insertLabel(surface));
+                        stateTextSafe(readyState());
+                    }, 1700);
+                }
+            });
+        }
 
         if (canRegenerate) {
             ImageButton regen = tinyIconButton(com.orbit.assistant.R.drawable.ic_regenerate);
@@ -2360,14 +2440,40 @@ public class OrbitSession extends VoiceInteractionSession {
             LinearLayout.LayoutParams regenLp = new LinearLayout.LayoutParams(UiKit.dp(c, 38), UiKit.dp(c, 38));
             regenLp.setMargins(UiKit.dp(c, 8), 0, 0, 0);
             row.addView(regen, regenLp);
-            regen.setOnClickListener(v -> regenerateLastResponse());
+            // Regenerates the turn this row is under, which is the newest one, because a row stops
+            // being the live one the moment a newer turn arrives.
+            regen.setOnClickListener(v -> {
+                if (!ownsDraftTurn(turnId)) return;
+                regenerateLastResponse();
+            });
         }
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.gravity = Gravity.START;
         lp.setMargins(0, 0, 0, UiKit.dp(c, 7));
         messages.addView(row, lp);
+        draftActionRow = row;
         scrollBottom();
+    }
+
+    /**
+     * Whether a row is still the one that owns the reply-draft controls.
+     *
+     * <p>Belt and braces beside {@link #clearDraftReplyActions()}: the stale row is detached, and if
+     * one ever survived, its handlers still refuse. The alternative — a single row whose target is
+     * "whatever was last put in the draft variable" — is exactly the shape of the bug this replaces.
+     */
+    private boolean ownsDraftTurn(String turnId) {
+        return turnId != null && !turnId.isEmpty() && turnId.equals(activeDraftTurnId);
+    }
+
+    /** Detaches the live reply-draft row, if there is one. */
+    private void clearDraftReplyActions() {
+        if (draftActionRow != null && messages != null) {
+            messages.removeView(draftActionRow);
+        }
+        draftActionRow = null;
+        activeDraftTurnId = "";
     }
 
     private void regenerateLastResponse() {
@@ -2445,7 +2551,14 @@ public class OrbitSession extends VoiceInteractionSession {
             }
             @Override public void onSuccess(String requestId, AssistantReply reply) {
                 String text = reply.text == null || reply.text.trim().isEmpty() ? "Done." : removeEmDashes(reply.text.trim());
-                final String storedText = text;
+                // Same contract as the fresh-request path: read the marker, then remove it before
+                // the reply reaches the screen or the stored conversation.
+                final ReplyDraftOutcome outcome = ReplyDraftOutcome.parse(text);
+                final String storedText = outcome.text.isEmpty() ? text : outcome.text;
+                final String draftTurnId = requestId == null ? "" : requestId;
+                if (draftedReply) {
+                    ReplyDraftContext.recordOutcome(getContext(), requestConversationId, outcome.kind);
+                }
                 main.post(() -> {
                     if (!ownsCurrentUi()) return;
                     busy = false; uiRequestConversationId = null; stopThinkingIndicator(); stateTextSafe(readyState());
@@ -2458,8 +2571,10 @@ public class OrbitSession extends VoiceInteractionSession {
                         finishStreamingBubble(storedText);
                         addMemoryUsageIndicator(assistantItem);
                         addMemorySuggestion(assistantItem);
-                        if (draftedReply) addDraftReplyActions(storedText, true);
-                        else {
+                        if (draftedReply) {
+                            addDraftReplyActions(storedText, outcome.kind, draftTurnId, true);
+                        } else {
+                            clearDraftReplyActions();
                             if (!voiceRequest) addSourceLink(storedText);
                         }
                         executeActions(reply.actions, 0);

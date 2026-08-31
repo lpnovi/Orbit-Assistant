@@ -19,6 +19,12 @@ import android.provider.Settings;
  *
  * <p>Brightness in particular is read through the same interpretation Orbit writes with, so
  * "what's my brightness" and "set brightness to 40%" can never disagree about what 40% means.
+ *
+ * <p><b>Voice, since v0.7.8.0 Beta 2.</b> The values were right and the sentences read like a debug
+ * dump: "Media volume is 47%." These are answers to a question somebody asked out loud, so they are
+ * written the way an assistant would say them, in the second person, and a failure is a plain "I
+ * couldn't read …" rather than a formal report about Orbit. Nothing about how a value is obtained
+ * changed, and nothing here is ever sent to a model to be rewritten.
  */
 public final class DeviceStatusReader {
     private DeviceStatusReader() {}
@@ -53,20 +59,20 @@ public final class DeviceStatusReader {
      * guess this class exists to avoid.
      */
     public static Reading battery(Context c) {
-        if (c == null) return Reading.unavailable("Orbit could not read the battery.");
+        if (c == null) return Reading.unavailable("I couldn't read your battery level.");
         Intent status;
         try {
             status = c.getApplicationContext().registerReceiver(null,
                     new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
         } catch (Exception e) {
-            return Reading.unavailable("Orbit could not read the battery.");
+            return Reading.unavailable("I couldn't read your battery level.");
         }
-        if (status == null) return Reading.unavailable("Orbit could not read the battery.");
+        if (status == null) return Reading.unavailable("I couldn't read your battery level.");
 
         int level = status.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
         int scale = status.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
         if (level < 0 || scale <= 0) {
-            return Reading.unavailable("Android did not report a battery level on this device.");
+            return Reading.unavailable("Android didn't report a battery level on this phone.");
         }
         int percent = Math.max(0, Math.min(100, Math.round(level * 100f / scale)));
 
@@ -77,11 +83,23 @@ public final class DeviceStatusReader {
                 || plugged != 0;
         boolean full = state == BatteryManager.BATTERY_STATUS_FULL;
 
-        if (!charging) return Reading.of("Battery is " + percent + "%, not charging.");
+        if (!charging) return Reading.of("Your battery is at " + percent + "% and isn't charging.");
+        String how = chargingPhrase(plugged);
+        if (full) return Reading.of("Your battery is at " + percent + "% and fully charged" + how + ".");
+        return Reading.of("Your battery is at " + percent + "% and charging" + how + ".");
+    }
+
+    /**
+     * How it is charging, as a phrase that reads as part of the sentence.
+     *
+     * <p>A plug Android names something Orbit has no word for produces no phrase at all, rather
+     * than a bracketed code the reader has to interpret.
+     */
+    static String chargingPhrase(int plugged) {
         String source = plugSource(plugged);
-        String tail = source.isEmpty() ? "" : " (" + source + ")";
-        if (full) return Reading.of("Battery is " + percent + "% and fully charged" + tail + ".");
-        return Reading.of("Battery is " + percent + "% and charging" + tail + ".");
+        if (source.isEmpty()) return "";
+        if ("wireless".equals(source)) return " wirelessly";
+        return " over " + source;
     }
 
     /** The plug Android named, or "" when it named one Orbit has no word for. */
@@ -96,15 +114,15 @@ public final class DeviceStatusReader {
 
     /** The screen brightness, in the same percentage Orbit sets it with. */
     public static Reading brightness(Context c) {
-        if (c == null) return Reading.unavailable("Orbit could not read the screen brightness.");
+        if (c == null) return Reading.unavailable("I couldn't read your screen brightness.");
         int percent = DeviceActionExecutor.currentBrightnessPercent(c, -1);
         if (percent < 0) {
-            return Reading.unavailable("Android did not report a screen brightness on this device.");
+            return Reading.unavailable("Android didn't report a screen brightness on this phone.");
         }
-        String line = "Brightness is " + percent + "%.";
+        String line = "Your brightness is at " + percent + "%.";
         if (adaptiveBrightness(c)) {
             // A single reading of an adaptive screen is true right now and will not stay true.
-            line += " Adaptive brightness is on, so Android keeps adjusting it.";
+            line += " Adaptive brightness is on, so that can change automatically.";
         }
         return Reading.of(line);
     }
@@ -124,9 +142,9 @@ public final class DeviceStatusReader {
     /** The media stream, as the percentage Orbit's own volume commands work in. */
     public static Reading mediaVolume(Context c) {
         int percent = mediaVolumePercent(c);
-        if (percent < 0) return Reading.unavailable("Orbit could not read the media volume.");
-        if (percent == 0) return Reading.of("Media volume is 0%, so media is silent.");
-        return Reading.of("Media volume is " + percent + "%.");
+        if (percent < 0) return Reading.unavailable("I couldn't read your media volume.");
+        if (percent == 0) return Reading.of("Your media volume is all the way down, so media is silent.");
+        return Reading.of("Your media volume is at " + percent + "%.");
     }
 
     /** The media stream as a percentage, or -1 when it cannot be read. */
@@ -149,8 +167,12 @@ public final class DeviceStatusReader {
     /** The ringer mode, which Android reports without any special access. */
     public static Reading ringer(Context c) {
         String mode = ringerModeName(c);
-        if (mode.isEmpty()) return Reading.unavailable("Orbit could not read the ringer mode.");
-        return Reading.of("The ringer is set to " + mode + ".");
+        if (mode.isEmpty()) return Reading.unavailable("I couldn't read your ringer mode.");
+        switch (mode) {
+            case "Vibrate": return Reading.of("Your phone is on vibrate.");
+            case "Silent": return Reading.of("Your phone is on silent.");
+            default: return Reading.of("Your ringer is on.");
+        }
     }
 
     /** "Normal", "Vibrate", "Silent", or "" when the mode could not be read. */
@@ -180,12 +202,13 @@ public final class DeviceStatusReader {
      * prompt for a permission simply to make a sentence available.
      */
     public static Reading doNotDisturb(Context c) {
-        if (c == null) return Reading.unavailable("Orbit could not read Do Not Disturb.");
+        if (c == null) return Reading.unavailable("I couldn't read Do Not Disturb.");
         NotificationManager nm =
                 (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
-        if (nm == null) return Reading.unavailable("Orbit could not read Do Not Disturb.");
+        if (nm == null) return Reading.unavailable("I couldn't read Do Not Disturb.");
         if (!nm.isNotificationPolicyAccessGranted()) {
-            return Reading.blocked("Orbit cannot see Do Not Disturb without Do Not Disturb access. "
+            // The one reading that genuinely needs an access, so the sentence keeps naming it.
+            return Reading.blocked("I can't see Do Not Disturb without Do Not Disturb access. "
                     + "You can grant it in Settings > Voice, context & permissions.");
         }
         try {
@@ -194,16 +217,16 @@ public final class DeviceStatusReader {
                 case NotificationManager.INTERRUPTION_FILTER_ALL:
                     return Reading.of("Do Not Disturb is off.");
                 case NotificationManager.INTERRUPTION_FILTER_NONE:
-                    return Reading.of("Do Not Disturb is on, and nothing is allowed through.");
+                    return Reading.of("Do Not Disturb is on, and nothing is getting through.");
                 case NotificationManager.INTERRUPTION_FILTER_PRIORITY:
                     return Reading.of("Do Not Disturb is on, with priority interruptions allowed.");
                 case NotificationManager.INTERRUPTION_FILTER_ALARMS:
                     return Reading.of("Do Not Disturb is on, with alarms allowed.");
                 default:
-                    return Reading.unavailable("Android did not report a Do Not Disturb state.");
+                    return Reading.unavailable("Android didn't report a Do Not Disturb state.");
             }
         } catch (Exception e) {
-            return Reading.unavailable("Orbit could not read Do Not Disturb.");
+            return Reading.unavailable("I couldn't read Do Not Disturb.");
         }
     }
 }

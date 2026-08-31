@@ -318,5 +318,23 @@ public final class DiagnosticStore {
                 .apply();
     }
 
+    /**
+     * Where a reply draft was last sent, as a destination category.
+     *
+     * <p>One closed word from {@link ReplySurface#diagnosticsName}: "sms", "email-copy",
+     * "app-copy", "copy". Never a recipient, an address, a phone number, an app package, or a single
+     * character of the draft — which is the whole reason it is a category rather than a description.
+     */
+    public static void recordReplyDestination(Context c, String destination) {
+        prefs(c).edit()
+                .putString("reply_destination", safe(destination))
+                .putLong("reply_destination_updated", System.currentTimeMillis())
+                .apply();
+    }
+
+    public static String lastReplyDestination(Context c) {
+        return prefs(c).getString("reply_destination", "");
+    }
+
     private static String safe(String s) { return s == null ? "" : s; }
 }

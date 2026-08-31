@@ -127,30 +127,31 @@ public final class DeviceStatusTest {
         broadcastBattery(41, 100, BatteryManager.BATTERY_STATUS_DISCHARGING, 0);
         DeviceStatusReader.Reading reading = DeviceStatusReader.battery(context);
         assertTrue(reading.available);
-        assertEquals("Battery is 41%, not charging.", reading.text);
+        assertEquals("Your battery is at 41% and isn't charging.", reading.text);
     }
 
     @Test public void aChargingBatteryNamesItsSource() {
         broadcastBattery(68, 100, BatteryManager.BATTERY_STATUS_CHARGING,
                 BatteryManager.BATTERY_PLUGGED_USB);
-        assertEquals("Battery is 68% and charging (USB).",
+        assertEquals("Your battery is at 68% and charging over USB.",
                 DeviceStatusReader.battery(context).text);
 
         broadcastBattery(90, 100, BatteryManager.BATTERY_STATUS_CHARGING,
                 BatteryManager.BATTERY_PLUGGED_WIRELESS);
-        assertEquals("Battery is 90% and charging (wireless).",
+        assertEquals("Your battery is at 90% and charging wirelessly.",
                 DeviceStatusReader.battery(context).text);
 
         broadcastBattery(100, 100, BatteryManager.BATTERY_STATUS_FULL,
                 BatteryManager.BATTERY_PLUGGED_AC);
-        assertEquals("Battery is 100% and fully charged (mains).",
+        assertEquals("Your battery is at 100% and fully charged over mains.",
                 DeviceStatusReader.battery(context).text);
     }
 
     /** A device that reports on a different scale still produces the right percentage. */
     @Test public void thePercentageComesFromLevelAndScale() {
         broadcastBattery(50, 200, BatteryManager.BATTERY_STATUS_DISCHARGING, 0);
-        assertEquals("Battery is 25%, not charging.", DeviceStatusReader.battery(context).text);
+        assertEquals("Your battery is at 25% and isn't charging.",
+                DeviceStatusReader.battery(context).text);
     }
 
     /** No value is better than an invented one. */
@@ -158,7 +159,7 @@ public final class DeviceStatusTest {
         broadcastBattery(-1, -1, BatteryManager.BATTERY_STATUS_UNKNOWN, 0);
         DeviceStatusReader.Reading reading = DeviceStatusReader.battery(context);
         assertFalse(reading.available);
-        assertTrue(reading.text.contains("did not report"));
+        assertTrue(reading.text.contains("didn't report"));
         assertFalse("and never a percentage", reading.text.contains("%"));
     }
 
@@ -173,11 +174,11 @@ public final class DeviceStatusTest {
     @Test public void brightnessNormalisesTheRawAndroidValue() {
         Settings.System.putInt(context.getContentResolver(),
                 Settings.System.SCREEN_BRIGHTNESS, 255);
-        assertEquals("Brightness is 100%.", DeviceStatusReader.brightness(context).text);
+        assertEquals("Your brightness is at 100%.", DeviceStatusReader.brightness(context).text);
 
         Settings.System.putInt(context.getContentResolver(),
                 Settings.System.SCREEN_BRIGHTNESS, 128);
-        assertEquals("Brightness is 50%.", DeviceStatusReader.brightness(context).text);
+        assertEquals("Your brightness is at 50%.", DeviceStatusReader.brightness(context).text);
     }
 
     @Test public void mediaVolumeIsAPercentageOfTheRealStream() {
@@ -185,7 +186,7 @@ public final class DeviceStatusTest {
         int max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
         audio.setStreamVolume(AudioManager.STREAM_MUSIC, max, 0);
         assertEquals(100, DeviceStatusReader.mediaVolumePercent(context));
-        assertEquals("Media volume is 100%.", DeviceStatusReader.mediaVolume(context).text);
+        assertEquals("Your media volume is at 100%.", DeviceStatusReader.mediaVolume(context).text);
 
         audio.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0);
         assertEquals(0, DeviceStatusReader.mediaVolumePercent(context));
@@ -196,7 +197,7 @@ public final class DeviceStatusTest {
         AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         audio.setRingerMode(AudioManager.RINGER_MODE_VIBRATE);
         assertEquals("Vibrate", DeviceStatusReader.ringerModeName(context));
-        assertEquals("The ringer is set to Vibrate.", DeviceStatusReader.ringer(context).text);
+        assertEquals("Your phone is on vibrate.", DeviceStatusReader.ringer(context).text);
 
         audio.setRingerMode(AudioManager.RINGER_MODE_NORMAL);
         assertEquals("Normal", DeviceStatusReader.ringerModeName(context));
@@ -231,7 +232,7 @@ public final class DeviceStatusTest {
         broadcastBattery(55, 100, BatteryManager.BATTERY_STATUS_DISCHARGING, 0);
         AssistantReply reply = DeviceStatusRouter.tryHandle(context, "what's my battery at");
         assertNotNull(reply);
-        assertEquals("Battery is 55%, not charging.", reply.text);
+        assertEquals("Your battery is at 55% and isn't charging.", reply.text);
         assertTrue("a status answer performs no action", reply.actions.isEmpty());
     }
 }

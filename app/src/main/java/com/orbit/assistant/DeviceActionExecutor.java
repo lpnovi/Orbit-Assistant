@@ -351,14 +351,24 @@ public final class DeviceActionExecutor {
     }
 
     /**
-     * Best-effort safe "use this reply" path for SMS/RCS. Android does not expose
-     * a generic API that lets a third-party assistant inject text into arbitrary
-     * apps such as Discord or WhatsApp. For a Messages screen, however, we can
-     * resolve the visible contact and open the system SMS/RCS composer with the
-     * draft prefilled. The caller can fall back to clipboard when this returns a
-     * non-OPENED result.
+     * The SMS/RCS "use this reply" path, and <em>only</em> the SMS/RCS one.
+     *
+     * <p>Android does not expose a generic API that lets a third-party assistant inject text into
+     * an arbitrary app. It does define a standard SMS composer intent with a body extra, so on a
+     * Messages screen Orbit can resolve the visible contact and open that composer prefilled. Every
+     * step of that — reading a name off the screen, resolving it to a phone number, opening
+     * {@code smsto:} — is correct there and wrong anywhere else.
+     *
+     * <p>The name says so since v0.7.8.0 Beta 2. It was called {@code openReplyComposer}, which read
+     * like a universal helper, and the overlay called it for every reply draft regardless of app —
+     * so an email reply drafted in Gmail opened an SMS to the sender. {@link ReplySurface} now
+     * decides the medium before anything reaches here, and this method is reachable only for a
+     * surface that is genuinely SMS/RCS.
+     *
+     * <p>Returns {@code OPENED:…} when the composer was actually opened. Anything else is a reason,
+     * and the caller falls back to the clipboard.
      */
-    public static String openReplyComposer(Context c, String screenText, String body) {
+    public static String openSmsReplyComposer(Context c, String screenText, String body) {
         if (body == null || body.trim().isEmpty()) return "Nothing to insert";
         if (c.checkSelfPermission(android.Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
             return "Copied instead · grant Contacts permission for Use in chat";

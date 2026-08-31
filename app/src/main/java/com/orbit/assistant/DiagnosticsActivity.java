@@ -621,7 +621,11 @@ public final class DiagnosticsActivity extends Activity {
                         + (OrbitPermissionHelper.hasDndAccess(this)
                                 ? "available" : "needs Do Not Disturb access") +
                 "\n  Last deterministic route: " + (utilityUpdated == 0L ? "none"
-                        : blankAs(d.getString("utility_route", ""), "none"));
+                        : blankAs(d.getString("utility_route", ""), "none")) +
+                // A destination category and nothing else. Never a recipient, an address, a number,
+                // an app package, or any part of the draft itself.
+                "\n  Last reply destination: "
+                        + blankAs(DiagnosticStore.lastReplyDestination(this), "none");
     }
 
     private static String blankAs(String value, String fallback) {

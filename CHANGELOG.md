@@ -570,3 +570,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Ask what your battery, brightness, media volume, ringer or Do Not Disturb is actually set to, and Orbit reads the real value.
   - Pause, resume, and skip whatever is playing, and switch the ringer between normal, vibrate, and silent.
   - Something quiet is hidden on the Chats screen, for anyone who finds it.
+
+- **v0.7.8.0-beta.2**: Corrects what the first Beta got wrong on the phone: status questions, reply destinations, and the hidden scene.
+  - Asking about your volume, battery or brightness now works the same way whichever wording you use, including "what is..." and "what's...".
+  - Those answers now read like Orbit talking to you rather than a status readout.
+  - A drafted reply now respects the app you are actually in, so an email reply can never open a text message to that person.
+  - When Orbit asks which participant you are, that question can no longer be mistaken for a message to send.
+  - The reply controls now belong to the final draft instead of staying on the question before it.
+  - In the hidden Launch Sequence, the orbiters genuinely follow your finger and settle back afterwards.
