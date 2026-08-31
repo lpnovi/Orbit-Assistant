@@ -184,11 +184,11 @@ public final class ReleaseModularityTest {
                 workflow.contains("Orbit-Assistant-v${EXPECTED_VERSION_NAME}.apk"));
     }
 
-    /** Thinking updates and attachment continuity passed device validation, so this is Stable. */
-    @Test public void thisReleaseIsStableAfterDeviceValidation() {
-        assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
-                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.installedIsBeta());
+    /** Full-app gestures need real-hardware validation first, so this release is a Beta. */
+    @Test public void thisReleaseIsABetaAwaitingDeviceValidation() {
+        assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
+                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
+        assertTrue(OrbitVersion.installedIsBeta());
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
     }
 

@@ -44,6 +44,31 @@
         <item name="android:activityCloseExitAnimation">@anim/orbit_activity_close_exit</item>
     </style>
 
+    <!--
+      The same three page transitions, minus the close animations.
+
+      A window that declares activityClose* animations gets those animations for Back, which means
+      the system's predictive transition never runs: Android will not track a finishing activity
+      with the finger if the app has already said how it wants that activity to leave. Orbit's
+      entrance is its own and worth keeping, so these styles keep the open animations exactly as
+      chosen under Page transitions and simply say nothing about closing, leaving Back to the
+      platform. Used only where predictive back is actually available.
+    -->
+    <style name="OrbitWindowAnimation.PredictiveSlide">
+        <item name="android:activityOpenEnterAnimation">@anim/orbit_slide_open_enter</item>
+        <item name="android:activityOpenExitAnimation">@anim/orbit_slide_open_exit</item>
+    </style>
+
+    <style name="OrbitWindowAnimation.PredictiveFade">
+        <item name="android:activityOpenEnterAnimation">@anim/orbit_activity_open_enter</item>
+        <item name="android:activityOpenExitAnimation">@anim/orbit_activity_open_exit</item>
+    </style>
+
+    <style name="OrbitWindowAnimation.PredictiveNone">
+        <item name="android:activityOpenEnterAnimation">@null</item>
+        <item name="android:activityOpenExitAnimation">@null</item>
+    </style>
+
     <!-- None: no Orbit transition at all; navigation completes immediately. -->
     <style name="OrbitWindowAnimation.None">
         <item name="android:activityOpenEnterAnimation">@null</item>

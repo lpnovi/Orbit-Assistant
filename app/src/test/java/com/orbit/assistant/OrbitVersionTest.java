@@ -147,34 +147,29 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * The 0.7.7.8 line ran as four Betas and is now promoted to Stable.
+     * The 0.7.7.9 line ships as Betas until its gestures are validated on a Galaxy S25 Ultra.
      *
-     * <p>Every one of them changed something visible in ordinary conversations and none of them was
-     * provable from unit tests: Beta 1 proved on a Galaxy S25 Ultra that the backend really does
-     * produce safe reasoning summaries; Beta 2 turned the feature on by default and gave a stopped
-     * turn something to leave behind; Beta 3 anchored that mark to its own turn; Beta 4 changed
-     * what a follow-up question actually sends to the model and finished the stopped mark. Each
-     * earned its own device validation, which is why the guard existed.
-     *
-     * <p>It now runs the other way. The finished release must not quietly regain prerelease
-     * metadata and be published to the Beta channel by accident, so this fails before publication
-     * rather than on a phone.
+     * <p>A gesture is the one kind of change unit tests can say least about. They can prove that a
+     * card's position tracks the events it was given and that a scroll is never taken as a swipe;
+     * they cannot say whether the movement arrives with the finger, whether the commit point is
+     * findable, or whether the platform's back transition actually reveals Chats on a real device
+     * at 120 Hz. This also changes how Back behaves in a conversation, which is the last thing that
+     * should reach the Stable channel on the strength of a Robolectric run, so this guard fails
+     * publication if the version quietly loses its Beta metadata.
      */
-    @Test public void thisBuildIsThinkingUpdatesAndAttachmentContinuityStable() {
-        assertFalse(OrbitVersion.installedIsBeta());
-        assertFalse(OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
-        assertTrue(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
-        assertEquals("0.7.7.8", OrbitVersion.baseVersion(BuildConfig.VERSION_NAME));
-        assertEquals("a Stable build carries no beta counter",
-                0, OrbitVersion.betaNumber(BuildConfig.VERSION_NAME));
-        assertEquals("Orbit Assistant v0.7.7.8",
+    @Test public void thisBuildIsAFullAppGestureBeta() {
+        assertTrue(OrbitVersion.installedIsBeta());
+        assertTrue(OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+        assertEquals("0.7.7.9", OrbitVersion.baseVersion(BuildConfig.VERSION_NAME));
+        assertTrue("a Beta build carries a real beta counter",
+                OrbitVersion.betaNumber(BuildConfig.VERSION_NAME) >= 1);
+        assertEquals("Orbit Assistant v0.7.7.9 Beta 1",
                 OrbitVersion.releaseTitle(BuildConfig.VERSION_NAME));
-        assertEquals("v0.7.7.8", OrbitVersion.tagFor(BuildConfig.VERSION_NAME));
-        assertFalse("the release workflow must publish it as Stable",
+        assertEquals("v0.7.7.9-beta.1", OrbitVersion.tagFor(BuildConfig.VERSION_NAME));
+        assertTrue("the release workflow must publish it as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(BuildConfig.VERSION_NAME)));
-        assertTrue("and it must outrank 0.7.7.7 and every Beta it was built from",
-                OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.7.7.7") > 0
-                        && OrbitVersion.compareVersions(
-                                BuildConfig.VERSION_NAME, "0.7.7.8-beta.4") > 0);
+        assertTrue("and it must still outrank the Stable release it follows",
+                OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.7.7.8") > 0);
     }
 }

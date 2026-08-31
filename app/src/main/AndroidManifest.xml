@@ -96,8 +96,17 @@
         android:theme="@style/Theme.Orbit"
         android:usesCleartextTraffic="false">
 
+        <!--
+          Chats and the full conversation opt into Android's back-callback API, which is what makes
+          the system's predictive back transition available between them: the finishing chat is
+          tracked by the finger and the real Chats screen is revealed behind it. Declared per
+          activity on purpose. Every other Orbit screen still overrides onBackPressed for its own
+          discard prompts and cancelled results, and those overrides stop being called once a
+          screen opts in, so the flag is granted only where the migration has actually been done.
+        -->
         <activity
             android:name=".MainActivity"
+            android:enableOnBackInvokedCallback="true"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
@@ -110,7 +119,15 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".ChatActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <!--
+          parentActivityName gives a conversation opened from a widget, a notification, or the
+          assistant overlay a real Chats screen to go back to, instead of the task ending at the
+          launcher. A conversation opened from Chats already has one and is unaffected.
+        -->
+        <activity android:name=".ChatActivity" android:exported="false"
+            android:enableOnBackInvokedCallback="true"
+            android:parentActivityName=".MainActivity"
+            android:windowSoftInputMode="adjustResize" />
         <activity android:name=".ScreenSelectionActivity" android:exported="false"
             android:excludeFromRecents="true" />
         <activity android:name=".AttachmentPickerActivity" android:exported="false"

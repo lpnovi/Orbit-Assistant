@@ -85,6 +85,8 @@ public class ChatActivity extends Activity {
      * animation plays on the one the user just stopped, and the older marks are simply there.
      */
     private String animateStoppedRequestId = "";
+    /** Owns what Back means on this screen. See {@link #installBackHandling()}. */
+    private OrbitBackHandler backHandler;
     private TextView streamingBubble;
     private String currentMode;
 
@@ -140,6 +142,10 @@ public class ChatActivity extends Activity {
         View content = buildContent();
         setContentView(content);
         UiKit.applyActivityInsets(this, content, true);
+        // Applied after the ordinary page transition and still before the window is added, so the
+        // chat is never animated one way and then corrected.
+        UiKit.applyPredictiveBackTransition(this);
+        installBackHandling();
 
         boolean assistantHandoff = getIntent() != null
                 && getIntent().getBooleanExtra(EXTRA_ASSISTANT_HANDOFF, false);
@@ -186,9 +192,62 @@ public class ChatActivity extends Activity {
         intent.removeExtra(EXTRA_FOCUS_COMPOSER);
     }
 
+    /**
+     * Back belongs to Android here, except while this screen has a chooser of its own open.
+     *
+     * <p>{@link OrbitBackHandler} is armed only for as long as the attachment chooser is on
+     * screen. Every other moment nothing is registered, so the system sees an ordinary finishable
+     * activity and the back gesture becomes its own predictive transition: the conversation is
+     * tracked by the finger and the real Chats screen is revealed behind it. Orbit draws none of
+     * that and must not, because anything it registered here would replace it.
+     *
+     * <p>The chooser's presence is observed rather than remembered. It can also close by being
+     * chosen from or tapped outside, and a remembered flag would miss both and leave this screen
+     * silently holding on to a gesture it no longer has any use for.
+     */
+    private void installBackHandling() {
+        backHandler = OrbitBackHandler.attach(this, () -> {
+            // Closes the chooser and leaves the draft, the scroll position and the keyboard as
+            // they were. Nothing about the conversation changes and the activity does not finish.
+            OrbitAttachmentMenu.dismiss(menuHost());
+            syncBackHandler();
+        });
+        ViewGroup host = menuHost();
+        if (host != null) {
+            host.setOnHierarchyChangeListener(new ViewGroup.OnHierarchyChangeListener() {
+                @Override public void onChildViewAdded(View parent, View child) { syncBackHandler(); }
+                @Override public void onChildViewRemoved(View parent, View child) { syncBackHandler(); }
+            });
+        }
+        syncBackHandler();
+    }
+
+    /** Arms back for this screen exactly while the chooser is showing, and never otherwise. */
+    private void syncBackHandler() {
+        if (backHandler != null) backHandler.setArmed(OrbitAttachmentMenu.isShowing(menuHost()));
+    }
+
+    /** Whether this screen is currently holding on to back. For tests. */
+    boolean backHandlerArmedForTest() {
+        return backHandler != null && backHandler.isArmed();
+    }
+
+    /** Performs Back the way the gesture and the Back control both do. For tests. */
+    void performBackForTest() {
+        if (backHandler != null) backHandler.performBack();
+    }
+
+    /** Opens the attachment chooser the way the composer's control does. For tests. */
+    void showAttachmentMenuForTest() {
+        showAttachmentMenu(findViewById(android.R.id.content));
+    }
+
+    /**
+     * The legacy path, for devices with no back-callback API. Unused on API 33+, where the system
+     * stops calling this and asks whatever {@link OrbitBackHandler} has registered instead.
+     */
     @Override public void onBackPressed() {
-        // Back closes the chooser first, leaving the draft and keyboard as they were.
-        if (OrbitAttachmentMenu.dismiss(menuHost())) return;
+        if (backHandler != null && backHandler.consumeLegacyBack()) return;
         super.onBackPressed();
     }
 
@@ -211,7 +270,13 @@ public class ChatActivity extends Activity {
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
         ImageButton back = iconButton(com.orbit.assistant.R.drawable.ic_back, "Back");
-        back.setOnClickListener(v -> finish());
+        // Routed through the same handler the gesture reaches, so a tap and a swipe cannot end up
+        // at two different destinations. It does not imitate the gesture: a tap is not a drag, and
+        // the platform's committed transition is the honest result of one.
+        back.setOnClickListener(v -> {
+            if (backHandler != null) backHandler.performBack();
+            else finish();
+        });
         top.addView(back, new LinearLayout.LayoutParams(UiKit.dp(this, 46), UiKit.dp(this, 46)));
         // Keep the in-chat chrome deliberately minimal, similar to ChatGPT's
         // mobile conversation view. Titles remain available in the Chats list,
@@ -2305,6 +2370,7 @@ public class ChatActivity extends Activity {
         if (followBottom) scrollBottom();
     }
     @Override protected void onDestroy() {
+        if (backHandler != null) backHandler.detach();
         attachmentExecutor.shutdownNow();
         if (voiceController != null) voiceController.destroy();
         if (listeningHalo != null) listeningHalo.stop();

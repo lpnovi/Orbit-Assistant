@@ -530,3 +530,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Ask a follow-up about a screen or file you shared and Orbit still understands it, without attaching it again.
   - What you attach stays on the message you sent it with, exactly like a photo in any chat app.
   - Diagnostics opens on a short overview, with every detailed section one tap away.
+
+- **v0.7.7.9-beta.1**: Orbit's full app gains gestures: swipe a conversation away to Chats, and swipe chats to delete or pin them.
+  - Swipe from the screen edge in a conversation and it follows your finger, with Chats revealed behind it.
+  - Let go early and the conversation comes back; carry on and you arrive at Chats.
+  - Swipe a chat left to delete it, with a moment to tap Undo if you did not mean to.
+  - Swipe a chat right to pin it to the top, and swipe again to unpin.
+  - Pinned chats get their own section above the rest.
+  - New Gestures controls under Settings, Look & Feel, if you would rather turn either off.

@@ -1535,6 +1535,41 @@ public final class UiKit {
     }
 
     /**
+     * Hands Back to Android on a page where the system's predictive transition is the better one.
+     *
+     * <p>Orbit's page transitions declare how a window both enters and leaves. The leaving half is
+     * what silently costs a screen its predictive back: a window that has already said how it
+     * closes is closed that way, so the system never tracks it with the finger and never reveals
+     * the real page underneath. This keeps the entrance the user chose under Page transitions and
+     * says nothing at all about closing, which is what lets the platform take over.
+     *
+     * <p>Applies only when the device can actually run that transition and the user has left the
+     * enhanced treatment on. Otherwise the ordinary page transition stays, because a page with no
+     * close animation on a device that cannot animate back would simply blink away.
+     *
+     * @return true when Back was handed to the platform.
+     */
+    public static boolean applyPredictiveBackTransition(Activity activity) {
+        if (activity == null || activity.getWindow() == null) return false;
+        if (!OrbitBackHandler.predictiveTransitionAvailable()) return false;
+        if (!Prefs.enhancedChatBack(activity)) return false;
+        try {
+            activity.getWindow().setWindowAnimations(predictiveTransitionStyle(activity));
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    /** The current page transition with its close half removed, for the path above. */
+    static int predictiveTransitionStyle(Context c) {
+        String choice = Prefs.pageTransition(c);
+        if (Prefs.PAGE_TRANSITION_FADE.equals(choice)) return R.style.OrbitWindowAnimation_PredictiveFade;
+        if (Prefs.PAGE_TRANSITION_NONE.equals(choice)) return R.style.OrbitWindowAnimation_PredictiveNone;
+        return R.style.OrbitWindowAnimation_PredictiveSlide;
+    }
+
+    /**
      * Suppresses the page transition for one specific launch, for a handoff where another surface
      * has already played the movement. Applies to this window only and reads no preference, so the
      * user's Page transitions choice is neither changed nor consulted and every other navigation

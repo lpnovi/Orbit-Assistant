@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Stable ids for Orbit's own accessibility actions.
+
+  Declared rather than generated so the same action keeps the same id across builds, which is what
+  lets a screen reader, a keyboard, or an assistive service refer to Pin and Delete without ever
+  performing the swipe that normally reveals them.
+-->
+<resources>
+    <item name="orbit_action_pin" type="id" />
+    <item name="orbit_action_delete" type="id" />
+</resources>

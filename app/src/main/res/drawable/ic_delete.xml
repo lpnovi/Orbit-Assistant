@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Orbit's delete glyph. Drawn in the same 24dp / 24-unit frame and the same solid single-path
+  style as the rest of Orbit's icons, so the swipe action reads as part of the app rather than a
+  borrowed Material asset.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M9,3L9,4L4,4L4,6L20,6L20,4L15,4L15,3ZM6,7.5L6,19.5C6,20.6 6.9,21.5 8,21.5L16,21.5C17.1,21.5 18,20.6 18,19.5L18,7.5ZM9.5,10L11,10L11,18.5L9.5,18.5ZM13,10L14.5,10L14.5,18.5L13,18.5Z"/>
+</vector>

@@ -49,6 +49,20 @@ public final class DiagnosticStore {
                 .apply();
     }
 
+    /**
+     * The last full-app gesture Orbit completed, as a category word and nothing else.
+     *
+     * <p>No chat title, no conversation text, and no conversation id. Which chat was pinned or
+     * deleted is not a question Diagnostics needs to answer; whether the gesture reached its action
+     * at all is, and that is all this records.
+     */
+    public static void recordGesture(Context c, String action) {
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+                .putString("gesture_last_action", safe(action))
+                .putLong("gesture_updated", System.currentTimeMillis())
+                .apply();
+    }
+
     public static void recordAutoRouting(Context c, String mode, int confidence,
                                          String reason, String model, String reasoning) {
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()

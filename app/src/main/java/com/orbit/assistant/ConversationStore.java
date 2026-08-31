@@ -32,17 +32,31 @@ public final class ConversationStore {
         public final List<AssistantClient.History> messages;
         /** Empty means this chat follows the current global default until the user changes it. */
         public final String intelligenceMode;
+        /**
+         * Whether the user has pinned this chat to the top of Chats.
+         *
+         * <p>Absent from every conversation written before this release, and that is the whole
+         * migration: a stored chat with no {@code pinned} key reads as false, which is what an
+         * unpinned chat is. Nothing has to be rewritten to gain the field.
+         */
+        public final boolean pinned;
 
         public Conversation(String id, String title, long updatedAt, List<AssistantClient.History> messages) {
             this(id, title, updatedAt, messages, "");
         }
 
         public Conversation(String id, String title, long updatedAt, List<AssistantClient.History> messages, String intelligenceMode) {
+            this(id, title, updatedAt, messages, intelligenceMode, false);
+        }
+
+        public Conversation(String id, String title, long updatedAt, List<AssistantClient.History> messages,
+                            String intelligenceMode, boolean pinned) {
             this.id = id == null || id.isEmpty() ? UUID.randomUUID().toString() : id;
             this.title = title == null || title.trim().isEmpty() ? "Untitled chat" : title.trim();
             this.updatedAt = updatedAt;
             this.messages = messages == null ? new ArrayList<>() : new ArrayList<>(messages);
             this.intelligenceMode = intelligenceMode == null ? "" : intelligenceMode.trim();
+            this.pinned = pinned;
         }
     }
 
@@ -99,7 +113,8 @@ public final class ConversationStore {
         String computedTitle = titleFor(clipped);
         String finalTitle = existing != null && existing.title != null && !existing.title.trim().isEmpty()
                 && !existing.title.equals(titleFor(existing.messages)) ? existing.title : computedTitle;
-        all.add(new Conversation(wantedId, finalTitle, System.currentTimeMillis(), clipped, existing == null ? "" : existing.intelligenceMode));
+        all.add(new Conversation(wantedId, finalTitle, System.currentTimeMillis(), clipped,
+                existing == null ? "" : existing.intelligenceMode, existing != null && existing.pinned));
         all.sort((a, b) -> Long.compare(b.updatedAt, a.updatedAt));
         if (all.size() > MAX_CONVERSATIONS) all = new ArrayList<>(all.subList(0, MAX_CONVERSATIONS));
         writeAll(c, all);
@@ -175,7 +190,7 @@ public final class ConversationStore {
             if (last == null || last.isStopped()) return false;
             messages.set(messages.size() - 1, last.withStoppedRequestId(wanted));
             all.set(x, new Conversation(existing.id, existing.title, existing.updatedAt, messages,
-                    existing.intelligenceMode));
+                    existing.intelligenceMode, existing.pinned));
             writeAll(c, all);
             return true;
         }
@@ -193,13 +208,45 @@ public final class ConversationStore {
         return out;
     }
 
+    /**
+     * Pins or unpins a chat, leaving everything else about it alone.
+     *
+     * <p>Deliberately does not touch {@code updatedAt}: pinning is not activity, and moving a chat
+     * to the top of Recent as a side effect of pinning it to the top of Pinned would be two
+     * different reorderings for one gesture. Unpinning therefore returns the chat to exactly the
+     * position in Recent it would have held all along.
+     *
+     * @return the resulting pinned state, or {@code false} when there is no such chat.
+     */
+    public static synchronized boolean setPinned(Context c, String id, boolean pinned) {
+        if (id == null || id.trim().isEmpty()) return false;
+        List<Conversation> all = readAll(c);
+        for (int i = 0; i < all.size(); i++) {
+            Conversation item = all.get(i);
+            if (!id.equals(item.id)) continue;
+            if (item.pinned == pinned) return pinned;
+            all.set(i, new Conversation(item.id, item.title, item.updatedAt, item.messages,
+                    item.intelligenceMode, pinned));
+            writeAll(c, all);
+            return pinned;
+        }
+        return false;
+    }
+
+    /** True when this chat is pinned. False for an unknown chat, which is not an error. */
+    public static synchronized boolean isPinned(Context c, String id) {
+        Conversation item = load(c, id);
+        return item != null && item.pinned;
+    }
+
     public static synchronized void rename(Context c, String id, String title) {
         if (id == null || title == null || title.trim().isEmpty()) return;
         List<Conversation> all = readAll(c);
         for (int i = 0; i < all.size(); i++) {
             Conversation item = all.get(i);
             if (!id.equals(item.id)) continue;
-            all.set(i, new Conversation(item.id, title.trim(), System.currentTimeMillis(), item.messages, item.intelligenceMode));
+            all.set(i, new Conversation(item.id, title.trim(), System.currentTimeMillis(), item.messages,
+                    item.intelligenceMode, item.pinned));
             break;
         }
         writeAll(c, all);
@@ -222,7 +269,7 @@ public final class ConversationStore {
         for (int i = 0; i < all.size(); i++) {
             Conversation item = all.get(i);
             if (!id.equals(item.id)) continue;
-            all.set(i, new Conversation(item.id, item.title, item.updatedAt, item.messages, normalized));
+            all.set(i, new Conversation(item.id, item.title, item.updatedAt, item.messages, normalized, item.pinned));
             found = true;
             break;
         }
@@ -237,7 +284,8 @@ public final class ConversationStore {
         for (int i = 0; i < all.size(); i++) {
             Conversation item = all.get(i);
             if (!id.equals(item.id)) continue;
-            all.set(i, new Conversation(item.id, "Untitled chat", System.currentTimeMillis(), new ArrayList<>(), item.intelligenceMode));
+            all.set(i, new Conversation(item.id, "Untitled chat", System.currentTimeMillis(), new ArrayList<>(),
+                    item.intelligenceMode, item.pinned));
             writeAll(c, all);
             ActionResultStore.clearConversation(c, id);
             return;
@@ -259,7 +307,8 @@ public final class ConversationStore {
             }
             // This is an intentional edit, not a lifecycle save, so bypass the
             // stale-prefix protection used by save().
-            all.set(x, new Conversation(existing.id, existing.title, System.currentTimeMillis(), messages, existing.intelligenceMode));
+            all.set(x, new Conversation(existing.id, existing.title, System.currentTimeMillis(), messages,
+                    existing.intelligenceMode, existing.pinned));
             writeAll(c, all);
             return messages;
         }
@@ -285,6 +334,9 @@ public final class ConversationStore {
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().remove(KEY).apply();
         c.getSharedPreferences("orbit_action_results", Context.MODE_PRIVATE).edit().clear().apply();
     }
+
+    /** The raw stored form, for a test that checks what old data does and does not contain. */
+    static String backupJsonForTest(Context c) { return backupJson(c); }
 
     static synchronized String backupJson(Context c) {
         return c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(KEY, "[]");
@@ -426,7 +478,11 @@ public final class ConversationStore {
                                 m.optString("stoppedRequestId", "")));
                     }
                 }
-                result.add(new Conversation(o.optString("id"), o.optString("title"), o.optLong("updatedAt", 0), history, o.optString("intelligenceMode", "")));
+                // A chat stored before pinning existed simply has no "pinned" key, and false is
+                // exactly what an unpinned chat means, so old data needs no migration step.
+                result.add(new Conversation(o.optString("id"), o.optString("title"),
+                        o.optLong("updatedAt", 0), history, o.optString("intelligenceMode", ""),
+                        o.optBoolean("pinned", false)));
             }
         } catch (Exception ignored) {}
         return result;
@@ -441,6 +497,9 @@ public final class ConversationStore {
                 o.put("title", item.title);
                 o.put("updatedAt", item.updatedAt);
                 o.put("intelligenceMode", item.intelligenceMode);
+                // Written only when true, so an unpinned chat's record is byte-for-byte what it
+                // was before pinning existed and a downgrade reads it back unchanged.
+                if (item.pinned) o.put("pinned", true);
                 JSONArray msgs = new JSONArray();
                 for (AssistantClient.History h : item.messages) {
                     msgs.put(new JSONObject()

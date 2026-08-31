@@ -828,6 +828,21 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
 
         page.addView(styleCard);
 
+        page.addView(sectionTitle("GESTURES", "appearance"));
+        LinearLayout gestureCard = card();
+        tagSectionCard(gestureCard, "appearance");
+        gestureCard.addView(toggle("Swipe back to Chats",
+                "Lets Android's own back gesture carry a conversation away with your finger, "
+                        + "revealing Chats underneath. Turn this off to use Orbit's page "
+                        + "transition instead. Back itself always works either way.",
+                Prefs.ENHANCED_CHAT_BACK, true));
+        gestureCard.addView(toggle("Chat swipe actions",
+                "Swipe a chat left to delete it, or right to pin and unpin it. Deleting always "
+                        + "offers Undo. With this off, chats scroll and open as normal and both "
+                        + "actions stay on the chat's own menu.",
+                Prefs.CHAT_SWIPE_ACTIONS, true));
+        page.addView(gestureCard);
+
         TextView footer = UiKit.text(this, "Orbit " + BuildConfig.VERSION_NAME + " • Power Assistant", 12, UiKit.MUTED, false);
         footer.setGravity(Gravity.CENTER);
         footer.setOnClickListener(v -> handleLeloSecretTap());

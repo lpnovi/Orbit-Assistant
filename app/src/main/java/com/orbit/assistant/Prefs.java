@@ -79,6 +79,18 @@ public final class Prefs {
     public static final String CHANNEL_STABLE = "stable";
     public static final String CHANNEL_BETA = "beta";
     public static final String PAGE_TRANSITION = "page_transition";
+    /**
+     * Whether Orbit hands the back gesture to Android's predictive transition in a conversation.
+     *
+     * <p>Deliberately not a switch for Android's Back gesture, which Orbit neither owns nor may
+     * disable. It chooses which animation a finished conversation leaves by: on, Orbit stands aside
+     * so the platform runs its own finger-tracked transition and reveals the real Chats screen
+     * underneath; off, Orbit keeps the page transition chosen under Page transitions. Back itself
+     * works identically either way, from the gesture, the buttons, and Orbit's own Back control.
+     */
+    public static final String ENHANCED_CHAT_BACK = "enhanced_chat_back";
+    /** Whether chat cards respond to horizontal drags. Menu Delete and Pin never depend on it. */
+    public static final String CHAT_SWIPE_ACTIONS = "chat_swipe_actions";
     // Onboarding keys intentionally remain outside Backup & Restore. A backup cannot
     // restore account credentials, Android permissions, or default-assistant state.
 
@@ -121,7 +133,8 @@ public final class Prefs {
             THINKING_UPDATES,
             LELO_MODE, BACKGROUND_NOTIFICATIONS, WEATHER_USE_DEVICE_LOCATION,
             MEMORY_ENABLED, MEMORY_USAGE_INDICATOR, MEMORY_SUGGESTIONS,
-            NOTIFICATION_AI_ENABLED, AMOLED_MODE, UPDATE_NOTIFICATIONS));
+            NOTIFICATION_AI_ENABLED, AMOLED_MODE, UPDATE_NOTIFICATIONS,
+            ENHANCED_CHAT_BACK, CHAT_SWIPE_ACTIONS));
     private static final Set<String> BACKUP_INTEGER_KEYS = new HashSet<>(
             Arrays.asList(NOTIFICATION_RETENTION_DAYS));
 
@@ -205,6 +218,8 @@ public final class Prefs {
     public static boolean screenshot(Context c) { return get(c).getBoolean(SCREENSHOT, true); }
     public static boolean contextChips(Context c) { return get(c).getBoolean(CONTEXT_CHIPS, true); }
     public static boolean attachScreenByDefault(Context c) { return get(c).getBoolean(ATTACH_SCREEN_BY_DEFAULT, false); }
+    public static boolean enhancedChatBack(Context c) { return get(c).getBoolean(ENHANCED_CHAT_BACK, true); }
+    public static boolean chatSwipeActions(Context c) { return get(c).getBoolean(CHAT_SWIPE_ACTIONS, true); }
     public static boolean speak(Context c) { return get(c).getBoolean(SPEAK, true); }
     public static boolean haptics(Context c) { return get(c).getBoolean(HAPTICS, true); }
     public static boolean autoListen(Context c) { return get(c).getBoolean(AUTO_LISTEN, false); }

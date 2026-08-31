@@ -907,28 +907,52 @@ provider one. It is small, it is optional, and it is off by default, so it was w
 the larger runtime work rather than behind it. Orbit Local device actions remain unstarted and
 unchanged at the head of this list, and the release below them is untouched.
 
-`0.7.7.8` has now reached Stable, so the following Beta slot is `0.7.7.9`, a full-app gesture
-release. It is a UX release like `0.7.7.8` rather than a provider one, and it is taken next because
-the navigation model it establishes is something later screens should be built on rather than
-retrofitted to. Nothing in it was started in `0.7.7.8-beta.4`; it is recorded here as sequencing
-only. **Orbit Local device actions remain unstarted and unchanged at the head of the numbered list
-below**, and `0.7.7.9` does not displace them from that position — it takes the Beta slot in front
-of them, exactly as `0.7.7.7` and `0.7.7.8` each did.
+`0.7.7.8` reached Stable and `0.7.7.9` is now the active release: the full-app gesture system,
+shipped as `0.7.7.9-beta.1` and awaiting device validation. It is a UX release like `0.7.7.8`
+rather than a provider one, and it was taken next because the navigation model it establishes is
+something later screens should be built on rather than retrofitted to. **Orbit Local device actions
+remain unstarted and unchanged at the head of the numbered list below**, and `0.7.7.9` does not
+displace them from that position — it takes the Beta slot in front of them, exactly as `0.7.7.7`
+and `0.7.7.8` each did.
 
-`0.7.7.9` is expected to cover:
+Beta 1 shipped:
 
-- **Interactive back-navigation in full chat.** A left-to-right swipe returns `ChatActivity` to the
-  chat list. It has to be genuinely interactive rather than a gesture detector that plays a
-  canned animation: the conversation follows the finger continuously, the Chats surface is visibly
-  revealed beneath it, releasing below the threshold springs back, releasing past it or with enough
-  velocity completes the navigation, and a subtle haptic marks the commit threshold
-- **Chat-list actions.** Swipe left on a chat for Delete and right for Pin/Unpin, with Orbit's
-  existing reversible-action and Undo treatment where it applies
-- **Settings > Look & feel > Gestures.** The mappings are optional and can be turned off, because a
-  gesture that cannot be disabled is a gesture that gets in someone's way
+- **Back in a conversation became Android's own gesture.** The requirement was an interaction that
+  moves under the finger rather than a swipe detector that plays an animation afterwards, and the
+  correct implementation of that turned out to be a subtraction. Two things were quietly costing
+  Orbit the platform's predictive transition: `ChatActivity` overrode `onBackPressed`, and every
+  Orbit window declares `activityClose*` animations through the Page transitions preference, which
+  tells Android how the window leaves and therefore stops it tracking one with the finger. Back is
+  now `OrbitBackHandler`, which registers a platform callback only while the attachment chooser is
+  open and otherwise leaves back entirely alone, and the conversation window uses a page-transition
+  variant with no close half. Chats and the conversation opt into the back-callback API per
+  activity in the manifest; every other screen keeps its own `onBackPressed` and is untouched.
+  The result is the real system transition revealing the real Chats screen: no screenshot of Home,
+  no touch listener competing with system navigation, and no animation code of Orbit's own
+- **Chat cards move with the finger.** `OrbitSwipeRow` holds one piece of state, written directly
+  by touch, and everything drawn is a function of it. Arbitration is deliberate rather than a
+  threshold on `dx`: vertical intent is decided once and is final, so a scroll that curves sideways
+  can never become a delete, and horizontal intent has to beat vertical outright before the row
+  takes the gesture. Release commits on distance or on velocity, one haptic marks the crossing into
+  the committed region, and only one card in the list may ever be displaced
+- **Delete is undoable because nothing is deleted.** The chat is held aside by id and stays exactly
+  where it is in storage until the window closes, another delete arrives, or Chats leaves the
+  foreground. Undo is Orbit forgetting it was asked rather than a restore, which is what makes it
+  complete: no snapshot can omit the messages, attachment references, stopped-turn anchors, mode or
+  pinned state, because none of them were ever removed
+- **Pin/Unpin, and a Pinned section.** Persisted on the conversation and written only when true, so
+  a chat stored before this release reads as unpinned and nothing needed migrating. Pinning does not
+  touch `updatedAt`, so it is not mistaken for activity and unpinning returns a chat to exactly
+  where it always belonged in Recent
+- **Both actions exist without the gesture.** Pin and Delete are on the chat's own menu and exposed
+  as accessibility actions, and the action surfaces are drawn rather than laid out, so a resting
+  card hides nothing for a screen reader to find
+- **Settings > Look & Feel > Gestures.** Two switches, both on. Neither disables Android's back
+  gesture, which is not Orbit's to disable: the first chooses whether the conversation hands its
+  transition to the platform or keeps Orbit's own
 
-Deliberately **not** in that scope: per-message swipe actions, and any horizontal gesture in the
-Side-button overlay. The overlay's vertical swipe behaviour is settled and is not being reopened.
+Deliberately **not** in scope, then or now: per-message swipe actions, and any horizontal gesture in
+the Side-button overlay. The overlay's vertical swipe behaviour is settled and is not being reopened.
 
 1. **Orbit Local device actions** — a lightweight local intent/function model installed beside the
    chat model (the `ModelSpec` architecture already keeps their files and state independent). The

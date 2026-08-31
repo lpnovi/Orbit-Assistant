@@ -235,6 +235,7 @@ public final class DiagnosticsActivity extends Activity {
         sections.add(new Section("Calendar", CalendarDiagnostics.body(this)));
         sections.add(new Section("Orbit Local", orbitLocal(d)));
         sections.add(new Section("Routines", routines(d)));
+        sections.add(new Section("Gestures", gestures(d)));
         sections.add(new Section("Advanced", advanced()));
         return sections;
     }
@@ -547,6 +548,26 @@ public final class DiagnosticsActivity extends Activity {
                 (failure.isEmpty() ? "" : "\n  Failure: " + failure) +
                 "\n  Planned at: " + DateFormat.getDateTimeInstance().format(new Date(updated)) +
                 "\n  Raw planner response: kept on device, see its own section";
+    }
+
+    /**
+     * Enough to tell whether the full-app gestures are on and which path back is taking.
+     *
+     * <p>Settings and capability, plus the category of the last completed chat gesture. Nothing
+     * about which chat: no title, no text, not even a truncated id, because knowing that a pin
+     * happened is what validates the feature and knowing what was pinned is not.
+     */
+    private String gestures(SharedPreferences d) {
+        long updated = d.getLong("gesture_updated", 0L);
+        String path = !OrbitBackHandler.supported() ? "legacy back"
+                : OrbitBackHandler.predictiveTransitionAvailable()
+                        ? (Prefs.enhancedChatBack(this) ? "system predictive" : "Orbit page transition")
+                        : "back callback, no predictive transition";
+        return "\n  Swipe back to Chats: " + (Prefs.enhancedChatBack(this) ? "enabled" : "disabled") +
+                "\n  Back path in a conversation: " + path +
+                "\n  Chat swipe actions: " + (Prefs.chatSwipeActions(this) ? "enabled" : "disabled") +
+                "\n  Last chat gesture: " + (updated == 0L ? "none recorded"
+                        : orNone(d.getString("gesture_last_action", "")) + " · " + stamp(updated));
     }
 
     private String advanced() {
