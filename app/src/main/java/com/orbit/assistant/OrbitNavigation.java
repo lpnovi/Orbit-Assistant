@@ -112,6 +112,11 @@ public final class OrbitNavigation {
         // Invisible bridges to Android-owned surfaces. Back is a denial or a cancellation, and
         // there is deliberately no Orbit page to reveal because these draw nothing.
         put(AttachmentPickerActivity.class, Policy.LOCAL, "Attachment picker");
+        // The external Share doorway. Not a page in Orbit's hierarchy at all: it arrives from
+        // another app, draws nothing, and finishes as soon as it has opened the conversation, so
+        // there is no Orbit screen underneath it for a page gesture to reveal. The conversation it
+        // opens has a real Chats stack behind it and keeps the ordinary predictive Back.
+        put(ShareToOrbitActivity.class, Policy.LOCAL, "Share to Orbit");
         put(CalendarPermissionActivity.class, Policy.LOCAL, "Calendar permission");
         put(OrbitWidgetActionActivity.class, Policy.LOCAL, "Widget action");
         // Widget configuration answers the launcher with a result; leaving it is not navigation.

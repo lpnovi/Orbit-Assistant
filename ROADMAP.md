@@ -990,6 +990,59 @@ reading it:
   bounded release momentum, and the orbiters are deliberately unnamed — Luna, Terra and Sol are Auto
   routing codenames and reading them in the easter egg suggested it selected a model
 
+`0.7.8.0-beta.3` is a focused feature Beta built on a Beta 2 that held up on the device. It is not
+corrective: nothing in Beta 1 or Beta 2 was found wrong. It does three things, one of which was
+found by using the phone and is release-blocking:
+
+- **Attachments became a set rather than a slot.** Orbit modelled a manually attached thing as one
+  `ComposerAttachment` everywhere it mattered — the tray drew one, the request carried one image,
+  and a stored turn recorded one path — so "four photos" could not be expressed at all. There is
+  now one canonical ordered `ComposerAttachments` collection, and Gallery, Camera, File, Clipboard
+  and Share all add to it; there is deliberately no second list for a multi mode. One central limit
+  of ten per turn governs every route. Screen context stayed out of it: manual Use screen, Select
+  area, automatic context and an app profile's Attach policy keep their own state and their own
+  semantics, so the `0.7.7.8` manual-versus-policy rule is untouched
+- **Multiple gallery selection, through the user's own Gallery.** The chosen picker is launched as
+  itself with `EXTRA_ALLOW_MULTIPLE`, which a picker that supports multi-select honours and one that
+  does not simply ignores — so Samsung Gallery is never quietly swapped for the system photo picker
+  to make multi-select easier. Results are read from `getData`, `ClipData` and the platform's own
+  result shapes at once, deduplicated on normalized URI identity rather than filename, in first-seen
+  order. Decoding is sequential through the existing `AttachmentLoader`; there is no second image
+  decoder and no unbounded executor, and one unreadable item costs that item rather than the batch
+- **The request, the history and the providers all learned to count past one.** A turn sends one
+  user message containing its text and every image, in order — never one turn per photo and never a
+  stitched composite. `AssistantClient.History`, `PendingRequestStore` and `ConversationStore` carry
+  an ordered path list beside the original single-path field, so a conversation written before this
+  loads unchanged and no migration runs. Attachment continuity was generalised rather than widened:
+  the retention budget is still three images, now spent newest-first across at most three turns, so
+  "3 turns × 1 image" did not silently become "3 turns × unlimited". `AiCapabilities` gained
+  `multipleImages`, which ChatGPT declares and the relay does not; the relay sends the first image
+  and says so, to the model and in Diagnostics, rather than dropping the rest quietly. Orbit Local
+  claims no vision at all, as before
+- **Share to Orbit.** A dedicated exported `ShareToOrbitActivity` is the only surface that reads
+  content from another app: it validates the action, MIME, extras and item count, collects and
+  deduplicates the streams, stages them under a private one-shot token, opens a real conversation
+  through `OrbitNavigation.stackFor`, and finishes. Nothing shared is ever executed or interpreted,
+  no instruction is prepended, and nothing is sent — a share opens a composer holding the material
+  and waits. URI grants are re-granted forward as `ClipData` so the composer can still read the
+  photos after the doorway closes, and nothing larger than a URI crosses the Binder
+- **A protected emergency and crisis dialing boundary.** Real-device testing produced the sharpest
+  finding of the release: a model answering a safety question wrote sensible advice *and* returned a
+  `DIAL` action for 911 with `requiresConfirmation` false, and Orbit opened the dialer on its own.
+  Nothing had failed — every layer did exactly what it was designed to do — which is the point. The
+  gate is now in the shared action layer: `DeviceActionExecutor` is the only place in Orbit that
+  builds a dialer Intent, and it will not build one for a protected number without a grant that only
+  a human tapping a confirmation can issue. So no provider, model, deterministic router, routine,
+  widget or tile can bypass it, because none of them is asked. Protected numbers are 911 and 988,
+  matched on the whole normalized number so `9-1-1` counts and `1911` does not, with the map as the
+  extension point for more later; Orbit does not claim a worldwide database. The Intent stays
+  `ACTION_DIAL` and has never been `ACTION_CALL`, so the call itself still belongs to the user. The
+  assistant's ability to recommend emergency help is deliberately untouched — recommending and
+  acting are different things, and separating them is the whole design
+
+`0.7.8.0` is not Stable yet. If device testing finds a concrete issue, a corrective Beta follows;
+otherwise the next step is promoting `0.7.8.0` to Stable.
+
 Beta 1 shipped:
 
 - **Back in a conversation became Android's own gesture.** The requirement was an interaction that

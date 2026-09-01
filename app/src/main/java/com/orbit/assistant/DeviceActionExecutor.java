@@ -73,6 +73,35 @@ public final class DeviceActionExecutor {
 
     private DeviceActionExecutor() {}
 
+    /**
+     * The only place in Orbit that asks Android to open a dialer.
+     *
+     * <p>Every dial - from the cloud provider, from a deterministic router, from a saved Routine,
+     * from a widget, from a contact lookup - arrives here, which is why the emergency gate is here
+     * and not in a screen or a provider. A protected number without a live grant produces no
+     * Intent at all: not a delayed one, not a silent one, none. The grant is issued only by
+     * {@link EmergencyDialGuard.Confirmation#confirm()}, which only a person tapping a
+     * confirmation can reach, and it is spent as it is read so one confirmation opens one dialer.
+     *
+     * <p>The Intent stays {@link Intent#ACTION_DIAL}. Orbit populates Android's dialer and stops;
+     * it has never used {@code ACTION_CALL} and must not start, because after the confirmation the
+     * decision to actually place the call still belongs to the user and to their phone.
+     */
+    private static Result dial(Context c, String number) {
+        String category = EmergencyDialGuard.categoryFor(number);
+        if (!EmergencyDialGuard.CATEGORY_NONE.equals(category)
+                && !EmergencyDialGuard.consumeGrant(number)) {
+            DiagnosticStore.recordProtectedDial(c, category, "blocked");
+            return Result.unavailable("Orbit needs you to confirm before it opens the dialer for "
+                    + EmergencyDialGuard.normalize(number) + ".");
+        }
+        start(c, new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(number))));
+        if (!EmergencyDialGuard.CATEGORY_NONE.equals(category)) {
+            DiagnosticStore.recordProtectedDial(c, category, "confirmed");
+        }
+        return Result.success("Dialer opened");
+    }
+
     public static String execute(Context c, AssistantReply.Action action) {
         return executeDetailed(c, action).message;
     }
@@ -144,8 +173,7 @@ public final class DeviceActionExecutor {
                     break;
                 }
                 case "DIAL":
-                    start(c, new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(p.optString("number", "")))));
-                    result = Result.success("Dialer opened");
+                    result = dial(c, p.optString("number", ""));
                     break;
                 case "DIAL_CONTACT": {
                     String number = findPhoneNumber(c, p.optString("name", ""));
@@ -155,8 +183,10 @@ public final class DeviceActionExecutor {
                                 : Result.permission("Grant Contacts permission or use a phone number");
                         break;
                     }
-                    start(c, new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(number))));
-                    result = Result.success("Dialer opened");
+                    // A contact can resolve to a protected number, and the confirmation upstream
+                    // could not have known that, because until this moment neither could Orbit.
+                    // The same gate applies to the resolved number.
+                    result = dial(c, number);
                     break;
                 }
                 case "SMS": {

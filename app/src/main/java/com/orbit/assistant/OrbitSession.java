@@ -95,9 +95,7 @@ public class OrbitSession extends VoiceInteractionSession {
     private int stretchBaseHeight;
     private int stretchMaxHeight;
     private ValueAnimator stretchSettle;
-    private LinearLayout attachmentTray;
-    private TextView attachmentTrayLabel;
-    private ImageView attachmentTrayPreview;
+    private AttachmentStripView attachmentStrip;
     private TextView stateText;
     private TextView modeChip;
     private TextView contextText;
@@ -188,7 +186,14 @@ public class OrbitSession extends VoiceInteractionSession {
     private ViewTreeObserver.OnDrawListener firstFrameListener;
     private String attachmentCallbackToken = "";
     private boolean attachmentOpening = false;
-    private ComposerAttachment genericAttachment;
+    /**
+     * Everything the overlay composer is holding, in the order the user attached it.
+     *
+     * <p>The same collection type full chat uses, so the two surfaces cannot disagree about what a
+     * staged attachment is. Screen context is deliberately not in here: screenAttached and
+     * screenAttachedByPolicy still own that, which is what keeps a standing Attach policy standing.
+     */
+    private final ComposerAttachments composerAttachments = new ComposerAttachments();
     private String uiRequestConversationId = null;
 
     public OrbitSession(Context context) {
@@ -637,34 +642,15 @@ public class OrbitSession extends VoiceInteractionSession {
         sheet.addView(messageScroll, scrollLp);
         renderConversation();
 
-        attachmentTray = new LinearLayout(c);
-        attachmentTray.setGravity(Gravity.CENTER_VERTICAL);
-        attachmentTray.setPadding(UiKit.dp(c, 10), UiKit.dp(c, 6),
-                UiKit.dp(c, 6), UiKit.dp(c, 6));
-        attachmentTray.setBackground(UiKit.outlined(UiKit.SURFACE_2,
-                UiKit.withAlpha(UiKit.accent(c), 90), 13, c));
-        attachmentTray.setVisibility(genericAttachment == null ? View.GONE : View.VISIBLE);
-        attachmentTrayLabel = UiKit.text(c, genericAttachment == null ? "" : genericAttachment.label,
-                11.5f, UiKit.TEXT, true);
-        attachmentTray.addView(attachmentTrayLabel, new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        attachmentTrayPreview = new ImageView(c);
-        attachmentTrayPreview.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        attachmentTrayPreview.setBackground(UiKit.rounded(UiKit.SURFACE_3, 8, c));
-        attachmentTrayPreview.setClipToOutline(true);
-        attachmentTray.addView(attachmentTrayPreview, new LinearLayout.LayoutParams(
-                UiKit.dp(c, 54), UiKit.dp(c, 36)));
-        ImageButton removeAttachment = tinyIconButton(com.orbit.assistant.R.drawable.ic_close);
-        removeAttachment.setContentDescription("Remove attachment");
-        removeAttachment.setOnClickListener(v -> clearGenericAttachment());
-        LinearLayout.LayoutParams removeLp = new LinearLayout.LayoutParams(
-                UiKit.dp(c, 36), UiKit.dp(c, 36));
-        removeLp.setMargins(UiKit.dp(c, 4), 0, 0, 0);
-        attachmentTray.addView(removeAttachment, removeLp);
+        // The same strip full chat uses, in its tighter sizing. One row whatever it holds, so the
+        // sheet's height is unchanged by a second, third or tenth attachment and the composer
+        // never gets pushed off the screen it is floating over.
+        attachmentStrip = new AttachmentStripView(c, true);
+        attachmentStrip.setOnRemove(this::removeComposerAttachment);
         LinearLayout.LayoutParams trayLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         trayLp.setMargins(0, 0, 0, UiKit.dp(c, 7));
-        sheet.addView(attachmentTray, trayLp);
+        sheet.addView(attachmentStrip, trayLp);
         refreshGenericAttachmentTray();
 
         LinearLayout composer = new LinearLayout(c);
@@ -1021,7 +1007,7 @@ public class OrbitSession extends VoiceInteractionSession {
         foregroundAppLabel = "";
         screenshot = null;
         selectedScreenshot = null;
-        genericAttachment = null;
+        composerAttachments.clear();
         screenAttached = false;
         screenAttachedByPolicy = false;
         selectionAttached = false;
@@ -1548,18 +1534,23 @@ public class OrbitSession extends VoiceInteractionSession {
 
     private void openAttachmentPicker(String pickerKind) {
         if (attachmentOpening) return;
+        final int capacity = composerAttachments.remainingCapacity();
+        if (capacity <= 0) {
+            stateTextSafe("Up to " + ComposerAttachments.MAX_PER_TURN + " attachments per message");
+            return;
+        }
         screenSelectionComposerText = input == null ? "" : input.getText().toString();
         screenSelectionRestoreFocus = input != null && input.hasFocus();
         screenSelectionRestoreKeyboard = orbitOwnsIme && screenSelectionRestoreFocus;
         stopListening();
         attachmentOpening = true;
-        String token = AttachmentBridge.register((attachment, error) -> main.post(() -> {
+        // The token is this invocation's ownership of the picker. A batch that comes back after
+        // the sheet has moved on resolves to a registration that is already gone, so a stale
+        // result cannot attach photos to a message the user is no longer writing.
+        String token = AttachmentBridge.register(batch -> main.post(() -> {
             attachmentCallbackToken = "";
             attachmentOpening = false;
-            if (attachment != null) setGenericAttachment(attachment);
-            String status = attachment != null ? attachment.label + " attached" :
-                    (error == null ? "" : error);
-            resumeFromScreenSelection(status);
+            resumeFromScreenSelection(applyAttachmentBatch(batch));
         }));
         attachmentCallbackToken = token;
         GalleryAppPreference.Target galleryTarget =
@@ -1567,6 +1558,7 @@ public class OrbitSession extends VoiceInteractionSession {
         Intent intent = new Intent(getContext(), AttachmentPickerActivity.class)
                 .putExtra(AttachmentPickerActivity.EXTRA_TOKEN, token)
                 .putExtra(AttachmentPickerActivity.EXTRA_KIND, pickerKind)
+                .putExtra(AttachmentPickerActivity.EXTRA_CAPACITY, capacity)
                 // The exact stored target, read here from durable preferences, so the overlay and
                 // the chat always open the same component even on a cold Orbit process.
                 .putExtra(AttachmentPickerActivity.EXTRA_GALLERY_PACKAGE, galleryTarget.packageName)
@@ -1626,50 +1618,61 @@ public class OrbitSession extends VoiceInteractionSession {
     }
 
     private void setGenericAttachment(ComposerAttachment attachment) {
-        genericAttachment = attachment;
-        if (attachment != null) {
+        if (attachment == null) return;
+        applyAttachmentBatch(AttachmentBatch.of(
+                java.util.Collections.singletonList(attachment), 1, 0, ""));
+    }
+
+    /**
+     * Adds a finished picker batch to the overlay composer and returns the line to show for it.
+     *
+     * <p>Arming an attachment still stands the live screen down, because the user has now said
+     * explicitly what this message is about. A screen armed by policy stands down here too and is
+     * re-armed by the next invocation, exactly as it was before several attachments were possible.
+     */
+    private String applyAttachmentBatch(AttachmentBatch batch) {
+        if (batch == null || batch.cancelled) return "";
+        DiagnosticStore.recordAttachmentBatch(getContext(), "picker", batch.selected,
+                batch.accepted(), batch.rejected);
+        if (batch.isEmpty()) return batch.error;
+
+        ComposerAttachments.AddResult added = composerAttachments.addAll(batch.attachments);
+        if (added.accepted > 0) {
             screenAttached = false;
             screenAttachedByPolicy = false;
             selectionAttached = false;
             selectedScreenshot = null;
             updateContextUi();
-            stateTextSafe(attachment.label + " attached");
             if (Prefs.haptics(getContext())) vibrate(10);
         }
         refreshGenericAttachmentTray();
+        if (added.hitLimit()) {
+            return added.accepted + " added · up to " + ComposerAttachments.MAX_PER_TURN
+                    + " attachments per message";
+        }
+        return batch.summary();
+    }
+
+    private void removeComposerAttachment(String id) {
+        // Exactly this item. Composer text, the other attachments, and screen state are untouched.
+        if (composerAttachments.remove(id)) refreshGenericAttachmentTray();
     }
 
     private void clearGenericAttachment() {
-        genericAttachment = null;
+        composerAttachments.clear();
         refreshGenericAttachmentTray();
     }
 
     private void refreshGenericAttachmentTray() {
-        if (attachmentTray == null) return;
-        if (genericAttachment == null) {
-            attachmentTray.setVisibility(View.GONE);
-            if (attachmentTrayPreview != null) {
-                attachmentTrayPreview.setImageDrawable(null);
-                attachmentTrayPreview.setVisibility(View.GONE);
-            }
-            return;
-        }
-        attachmentTray.setVisibility(View.VISIBLE);
-        attachmentTrayLabel.setText(genericAttachment.label);
-        if (genericAttachment.image != null) {
-            attachmentTrayPreview.setImageBitmap(genericAttachment.image);
-            attachmentTrayPreview.setVisibility(View.VISIBLE);
-        } else {
-            attachmentTrayPreview.setImageDrawable(null);
-            attachmentTrayPreview.setVisibility(View.GONE);
-        }
+        if (attachmentStrip == null) return;
+        attachmentStrip.bind(composerAttachments.items());
     }
 
     private void submit() {
         if (input == null || busy) return;
         String q = input.getText().toString().trim();
-        if (q.isEmpty() && genericAttachment == null) return;
-        if (q.isEmpty()) q = defaultAttachmentPrompt(genericAttachment);
+        if (q.isEmpty() && composerAttachments.isEmpty()) return;
+        if (q.isEmpty()) q = defaultAttachmentPrompt(composerAttachments.items());
         traceComposer("submit.before-clear");
         clearComposerInPlace();
         traceComposer("submit.after-clear");
@@ -1719,12 +1722,33 @@ public class OrbitSession extends VoiceInteractionSession {
         updateComposerAction();
     }
 
-    private String defaultAttachmentPrompt(ComposerAttachment attachment) {
-        if (attachment == null) return "What can you help me with?";
+    private String defaultAttachmentPrompt(List<ComposerAttachment> attachments) {
+        if (attachments == null || attachments.isEmpty()) return "What can you help me with?";
+        if (attachments.size() > 1) {
+            return "What can you tell me about these " + attachments.size() + " attachments?";
+        }
+        ComposerAttachment attachment = attachments.get(0);
         if ("file_text".equals(attachment.kind)) return "Summarize this file and tell me what matters.";
         if ("pdf".equals(attachment.kind)) return "Analyze this PDF preview and tell me the important points.";
         if ("clipboard".equals(attachment.kind)) return "Help me with this clipboard content.";
         return "What can you tell me about this image?";
+    }
+
+    /** One image as a list, or an empty list. The screen is one capture, never a set. */
+    private static List<Bitmap> oneImage(Bitmap image) {
+        List<Bitmap> images = new ArrayList<>();
+        if (image != null) images.add(image);
+        return images;
+    }
+
+    /** Screen captures follow the screenshot preference, which saveHistoryScreen enforces. */
+    private List<String> historyScreenPaths(List<Bitmap> images) {
+        List<String> paths = new ArrayList<>();
+        for (Bitmap image : images) {
+            String path = AttachmentStore.saveHistoryScreen(getContext(), image);
+            if (!path.isEmpty()) paths.add(path);
+        }
+        return paths;
     }
 
     private void submitPrompt(String q) {
@@ -1764,46 +1788,52 @@ public class OrbitSession extends VoiceInteractionSession {
             hideKeyboard();
         }
 
-        final ComposerAttachment submittedGeneric = genericAttachment;
+        // Frozen as an immutable copy: the request and the conversation's own record must not
+        // share a list with the live composer, so removing a thumbnail after Send cannot change
+        // the message that has already gone.
+        final List<ComposerAttachment> submittedGeneric = composerAttachments.snapshot();
         // Frozen before anything below can clear it. The composer returns to unattached as part
         // of this send, so every later line in this method has to describe the message that was
         // sent rather than the composer as it now is.
         final boolean submittedSelection = selectionAttached;
-        final boolean submittedWithScreen = submittedGeneric == null && screenAttached &&
+        final boolean hasManual = !submittedGeneric.isEmpty();
+        final boolean submittedWithScreen = !hasManual && screenAttached &&
                 (submittedSelection && selectedScreenshot != null ||
                         (screenText != null && !screenText.trim().isEmpty()) || screenshot != null);
 
         // Freeze the exact screen context at submission time. The same immutable
         // values are used for local chat history and for the background request,
         // so later assistant-session updates cannot change what this message meant.
-        final String submittedScreenText = submittedGeneric != null
-                ? submittedGeneric.contextText : submittedWithScreen
+        final String submittedScreenText = hasManual
+                ? ComposerAttachments.contextTextOf(submittedGeneric) : submittedWithScreen
                 ? (submittedSelection ? selectedScreenContext() :
                         (screenText == null ? "" : screenText)) : "";
-        final Bitmap submittedScreenshot = submittedGeneric != null
-                ? submittedGeneric.image : submittedWithScreen
-                ? (submittedSelection ? selectedScreenshot : screenshot) : null;
+        final List<Bitmap> submittedImages = hasManual
+                ? ComposerAttachments.imagesOf(submittedGeneric)
+                : submittedWithScreen
+                        ? oneImage(submittedSelection ? selectedScreenshot : screenshot)
+                        : new ArrayList<>();
 
         addUserBubble(q);
-        if (submittedGeneric != null) addScreenAttachmentBadge(submittedGeneric.label);
+        if (hasManual) addScreenAttachmentBadge(ComposerAttachments.labelOf(submittedGeneric));
         else if (submittedWithScreen) addScreenAttachmentBadge(
                 submittedSelection ? "Selection attached" : "Screen attached");
 
-        final boolean submittedWithAttachment = submittedGeneric != null || submittedWithScreen;
-        final String historyAttachmentPath = submittedWithAttachment
-                ? (submittedGeneric != null
-                ? AttachmentStore.saveHistoryAttachment(getContext(), submittedScreenshot)
-                : AttachmentStore.saveHistoryScreen(getContext(), submittedScreenshot))
-                : "";
+        final boolean submittedWithAttachment = hasManual || submittedWithScreen;
+        final List<String> historyAttachmentPaths = hasManual
+                ? AttachmentStore.saveHistoryAttachments(getContext(), submittedImages)
+                : submittedWithScreen
+                        ? historyScreenPaths(submittedImages)
+                        : new ArrayList<>();
         AssistantClient.History userItem = new AssistantClient.History(
-                "user", q, submittedWithAttachment, historyAttachmentPath,
-                submittedGeneric != null ? submittedGeneric.kind :
+                "user", q, submittedWithAttachment, historyAttachmentPaths,
+                hasManual ? ComposerAttachments.kindOf(submittedGeneric) :
                         submittedWithScreen ? (submittedSelection ? "screen_selection" : "screen") : "",
-                submittedGeneric != null ? submittedGeneric.label :
+                hasManual ? ComposerAttachments.labelOf(submittedGeneric) :
                         submittedWithScreen ? (submittedSelection ? "Selection attached" : "Screen attached") : "",
-                submittedScreenText);
+                submittedScreenText, "", "", "", "");
         history.add(userItem);
-        consumeSubmittedAttachment(submittedGeneric != null, submittedWithScreen);
+        consumeSubmittedAttachment(hasManual, submittedWithScreen);
 
         final String requestConversationId = conversationId;
         final List<AssistantClient.History> requestHistory = new ArrayList<>(history);
@@ -1926,8 +1956,8 @@ public class OrbitSession extends VoiceInteractionSession {
         };
 
         OrbitRequestManager.enqueue(getContext(), requestConversationId, submitted, submittedScreenText,
-                submittedScreenshot, voiceRequest, draftedReply, currentMode,
-                submittedGeneric != null || submittedSelection, listener);
+                submittedImages, voiceRequest, draftedReply, currentMode,
+                hasManual || submittedSelection, listener);
     }
 
     /**
@@ -1957,8 +1987,9 @@ public class OrbitSession extends VoiceInteractionSession {
      * profile's Attach policy are standing instructions to keep supplying the live screen, so
      * consuming one would turn a continuous feature into a one-shot without the user asking.
      */
-    private void consumeSubmittedAttachment(boolean submittedGeneric, boolean submittedWithScreen) {
-        if (submittedGeneric) clearGenericAttachment();
+    private void consumeSubmittedAttachment(boolean submittedManualAttachments,
+                                            boolean submittedWithScreen) {
+        if (submittedManualAttachments) clearGenericAttachment();
         if (!screenAttachmentIsConsumedBySend(submittedWithScreen, screenAttachedByPolicy)) return;
         screenAttached = false;
         selectionAttached = false;
@@ -2490,11 +2521,19 @@ public class OrbitSession extends VoiceInteractionSession {
         history.clear();
         history.addAll(ConversationStore.removeLastAssistantTurn(getContext(), conversationId));
         renderConversation();
-        Bitmap savedScreen = user.screenAttached ? AttachmentStore.load(user.attachmentPath) : null;
+        // The original attachment set, in the original order: regenerating asks the same question
+        // again, so it carries everything that question carried.
+        List<Bitmap> savedScreen = user.screenAttached
+                ? AttachmentStore.loadAll(user.attachmentPaths) : new ArrayList<>();
         boolean explicit = user.screenAttached && "screen_selection".equals(user.attachmentKind);
         startExistingUserRequest(user.content, user.attachmentText, savedScreen,
                 isDraftReplyRequest(user.content), false, explicit);
-        if (user.screenAttached && savedScreen == null) stateTextSafe("Regenerating without the original screen image");
+        if (user.screenAttached && savedScreen.size() < user.attachmentCount()) {
+            stateTextSafe(savedScreen.isEmpty()
+                    ? "Regenerating without the original screen image"
+                    : "Regenerating with " + savedScreen.size() + " of "
+                            + user.attachmentCount() + " original images");
+        }
     }
 
     private void addFailureRetryAction(PendingRequestStore.Item failed) {
@@ -2528,7 +2567,7 @@ public class OrbitSession extends VoiceInteractionSession {
         }
     }
 
-    private void startExistingUserRequest(String prompt, String screen, Bitmap image,
+    private void startExistingUserRequest(String prompt, String screen, List<Bitmap> images,
                                           boolean draftReply, boolean voiceRequest,
                                           boolean explicitAttachment) {
         busy = true;
@@ -2537,7 +2576,7 @@ public class OrbitSession extends VoiceInteractionSession {
         stateTextSafe("Thinking");
         updateComposerAction();
         OrbitRequestManager.Listener listener = requestListenerForExistingUser(prompt, draftReply, voiceRequest);
-        OrbitRequestManager.enqueue(getContext(), conversationId, prompt, screen, image,
+        OrbitRequestManager.enqueue(getContext(), conversationId, prompt, screen, images,
                 voiceRequest, draftReply, currentMode, explicitAttachment, listener);
     }
 
@@ -2903,6 +2942,10 @@ public class OrbitSession extends VoiceInteractionSession {
      * genuinely more than one writable calendar to move it to.
      */
     private void showActionConfirmation(AssistantReply.Action action, Runnable yes, Runnable no) {
+        if (EmergencyDialGuard.isProtectedDialAction(action)) {
+            showProtectedDialConfirmation(action, yes, no);
+            return;
+        }
         if (!CalendarActionExecutor.isCalendarWrite(action)) {
             drawActionConfirmation(action, null, yes, no);
             return;
@@ -2912,6 +2955,74 @@ public class OrbitSession extends VoiceInteractionSession {
         // destination to show and no list to choose from.
         CalendarTargetResolver.prepare(getContext(),
                 state -> main.post(() -> drawActionConfirmation(action, state, yes, no)));
+    }
+
+    /**
+     * The overlay's confirmation for a protected emergency or crisis number.
+     *
+     * <p>Same rule as full chat and the same words, drawn in the sheet's own idiom: the number is
+     * named, the consequence is stated as opening the dialer, Cancel comes first, and nothing
+     * happens on its own. No timer, no default, and no way for the sheet closing to count as yes.
+     *
+     * <p>The card is announced for accessibility as soon as it appears, because the overlay sits
+     * over another app and a screen-reader user must not have to discover that Orbit is waiting.
+     */
+    private void showProtectedDialConfirmation(AssistantReply.Action action, Runnable yes,
+                                               Runnable no) {
+        Context c = getContext();
+        EmergencyDialGuard.Confirmation confirmation =
+                EmergencyDialGuard.arm(action, conversationId);
+        if (confirmation == null || messages == null) {
+            no.run();
+            return;
+        }
+        DiagnosticStore.recordProtectedDial(c, confirmation.category, "shown");
+
+        LinearLayout box = new LinearLayout(c);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(UiKit.dp(c, 14), UiKit.dp(c, 12), UiKit.dp(c, 14), UiKit.dp(c, 12));
+        box.setBackground(UiKit.outlined(UiKit.SURFACE_2, UiKit.accent(c), 18, c));
+
+        TextView title = UiKit.text(c, EmergencyDialGuard.titleFor(confirmation.displayNumber()),
+                14, UiKit.TEXT, true);
+        box.addView(title);
+        TextView detail = UiKit.text(c, EmergencyDialGuard.messageFor(confirmation.displayNumber()),
+                12, UiKit.MUTED, false);
+        detail.setLineSpacing(0, 1.12f);
+        detail.setPadding(0, UiKit.dp(c, 6), 0, 0);
+        box.addView(detail);
+
+        LinearLayout row = new LinearLayout(c);
+        row.setGravity(Gravity.END);
+        Button cancel = tinyTextButton(EmergencyDialGuard.cancelLabel());
+        Button allow = tinyTextButton(EmergencyDialGuard.confirmLabel());
+        allow.setTextColor(UiKit.accent(c));
+        // Cancel is first in both reading order and focus order, so the safe answer is the one a
+        // screen reader reaches first.
+        row.addView(cancel);
+        row.addView(allow);
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowLp.topMargin = UiKit.dp(c, 4);
+        box.addView(row, rowLp);
+        messages.addView(box, bubbleLp(Gravity.START, UiKit.dp(c, 330)));
+        scrollBottom();
+        box.announceForAccessibility(EmergencyDialGuard.titleFor(confirmation.displayNumber())
+                + " " + EmergencyDialGuard.messageFor(confirmation.displayNumber()));
+
+        cancel.setOnClickListener(v -> {
+            messages.removeView(box);
+            confirmation.cancel();
+            DiagnosticStore.recordProtectedDial(c, confirmation.category, "cancelled");
+            no.run();
+        });
+        allow.setOnClickListener(v -> {
+            messages.removeView(box);
+            // One grant, spent by the executor. A second tap, or a card left over from an earlier
+            // turn, returns false here and opens nothing.
+            if (confirmation.confirm()) yes.run();
+            else no.run();
+        });
     }
 
     /** The confirmation sheet itself, with the destination as an editable field inside it. */

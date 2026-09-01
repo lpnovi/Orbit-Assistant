@@ -33,8 +33,25 @@ import java.util.Set;
  * than invent a picture.
  */
 public final class HistoryAttachments {
-    /** Turns nearest the present that may still contribute image bytes. */
+    /**
+     * Images, across the whole reconstructed window, that may still be re-sent.
+     *
+     * <p>A budget of pictures, never a budget of turns, and that distinction is the whole reason
+     * this number did not change when a turn stopped being able to hold only one. Three retained
+     * turns used to mean at most three images because a turn was one image; leaving the rule
+     * phrased that way once a turn can hold ten would have turned "3" into "30" without anyone
+     * deciding to. The intent of the original policy was a bounded request, so the bound stays
+     * exactly where it was and is now spent newest-first across however many images each turn has.
+     */
     public static final int MAX_IMAGES = 3;
+    /**
+     * Turns nearest the present that may contribute image bytes at all.
+     *
+     * <p>The other half of the same intent. Without it, one turn holding ten photos could spend
+     * the entire image budget and leave the two turns after it wordless pictures of nothing; with
+     * it, the budget is still three images but they may come from up to three different turns.
+     */
+    public static final int MAX_IMAGE_TURNS = 3;
     /** Per-turn cap on reconstructed attachment text, well under the current turn's allowance. */
     public static final int MAX_TEXT_CHARS = 8000;
 
@@ -52,21 +69,35 @@ public final class HistoryAttachments {
         public final String kind;
         /** Bounded attachment text, or empty when the turn carried none. */
         public final String text;
-        /** Stored image to re-send with this turn, or empty for none. */
+        /**
+         * The first stored image to re-send with this turn, or empty for none.
+         *
+         * <p>Always the head of {@link #imagePaths}. Kept as its own field because the common turn
+         * has one image and reading one field is clearer than taking a head everywhere.
+         */
         public final String imagePath;
+        /**
+         * Every stored image to re-send with this turn, in the order the user attached them.
+         *
+         * <p>Order is what makes the reconstruction faithful: a question about "the second photo"
+         * only means anything if the second photo is still second.
+         */
+        public final List<String> imagePaths;
         /** True when the turn's record claimed an image and the file is no longer there. */
         public final boolean assetMissing;
 
-        Turn(int index, String kind, String text, String imagePath, boolean assetMissing) {
+        Turn(int index, String kind, String text, List<String> imagePaths, boolean assetMissing) {
             this.index = index;
             this.kind = kind;
             this.text = text;
-            this.imagePath = imagePath;
+            this.imagePaths = Collections.unmodifiableList(new ArrayList<>(imagePaths));
+            this.imagePath = this.imagePaths.isEmpty() ? "" : this.imagePaths.get(0);
             this.assetMissing = assetMissing;
         }
 
-        public boolean hasImage() { return !imagePath.isEmpty(); }
-        public boolean isEmpty() { return text.isEmpty() && imagePath.isEmpty(); }
+        public boolean hasImage() { return !imagePaths.isEmpty(); }
+        public int imageCount() { return imagePaths.size(); }
+        public boolean isEmpty() { return text.isEmpty() && imagePaths.isEmpty(); }
     }
 
     /** Everything the request builder needs, plus the counts Diagnostics reports. */
@@ -128,6 +159,7 @@ public final class HistoryAttachments {
         Set<String> kinds = new LinkedHashSet<>();
         int images = 0;
         int missing = 0;
+        int imageTurns = 0;
 
         // Walked newest-first so the image budget is spent on the turns the user is most likely to
         // still be talking about. The result is put back in order before it is handed out.
@@ -139,29 +171,39 @@ public final class HistoryAttachments {
             String kind = category(h.attachmentKind);
             String text = clip(h.attachmentText, MAX_TEXT_CHARS);
 
-            String imagePath = "";
+            List<String> imagePaths = new ArrayList<>();
             boolean assetMissing = false;
-            String stored = h.attachmentPath == null ? "" : h.attachmentPath.trim();
-            if (!stored.isEmpty()) {
+            boolean turnCharged = false;
+            // Both bounds apply at once: the whole request may carry MAX_IMAGES pictures, and they
+            // may come from at most MAX_IMAGE_TURNS different turns. A turn that shared ten photos
+            // therefore contributes the first few of them rather than all ten, and never crowds
+            // every other turn out of the budget.
+            for (String stored : h.attachmentPaths) {
+                if (stored == null || stored.trim().isEmpty()) continue;
+                stored = stored.trim();
                 if (!exists(stored)) {
                     // The record says an image was shared and the file is gone. The conversation
                     // survives on its text; nothing is fabricated to fill the hole.
                     assetMissing = true;
                     missing++;
-                } else if (!imageAllowed(kind, allowScreenImages)) {
-                    // Present, readable, and not ours to re-send under the current settings.
-                    imagePath = "";
-                } else if (usedPaths.contains(stored)) {
-                    // The same stored file already went into this request for another turn.
-                    imagePath = "";
-                } else if (images < MAX_IMAGES) {
-                    imagePath = stored;
-                    usedPaths.add(stored);
-                    images++;
+                    continue;
+                }
+                // Present, readable, and not ours to re-send under the current settings.
+                if (!imageAllowed(kind, allowScreenImages)) continue;
+                // The same stored file already went into this request for another turn.
+                if (usedPaths.contains(stored)) continue;
+                if (images >= MAX_IMAGES) continue;
+                if (!turnCharged && imageTurns >= MAX_IMAGE_TURNS) continue;
+                imagePaths.add(stored);
+                usedPaths.add(stored);
+                images++;
+                if (!turnCharged) {
+                    turnCharged = true;
+                    imageTurns++;
                 }
             }
 
-            Turn turn = new Turn(i, kind, text, imagePath, assetMissing);
+            Turn turn = new Turn(i, kind, text, imagePaths, assetMissing);
             if (turn.isEmpty() && !assetMissing) continue;
             reversed.add(turn);
             kinds.add(kind);

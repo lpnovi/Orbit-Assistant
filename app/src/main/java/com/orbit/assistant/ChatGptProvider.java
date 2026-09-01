@@ -18,6 +18,7 @@ final class ChatGptProvider implements AiProvider {
             .streaming(true)
             .deviceActions(true)
             .images(true)
+            .multipleImages(true)
             .offline(false)
             .needsCredentials(true)
             .reasoningLevels(true)
@@ -56,7 +57,7 @@ final class ChatGptProvider implements AiProvider {
             callback.onError(SIGN_IN_ERROR);
             return;
         }
-        ChatGptClient.send(context, request.prompt, request.screenText, request.screenshot,
+        ChatGptClient.send(context, request.prompt, request.screenText, request.images,
                 request.history, request.intelligenceMode, request.explicitAttachment,
                 request.notificationContext, request.memoryContext, request.trustedTaskContext,
                 request.thinkingUpdates, callback);

@@ -56,7 +56,15 @@ public final class AssistantReply {
             // that forgets requiresConfirmation, a restored backup, or a hand-built action must
             // not be able to reach a calendar write unconfirmed, so the requirement is a property
             // of the action itself rather than something each execution path remembers to check.
-            this.requiresConfirmation = confirm || CalendarActionExecutor.alwaysConfirms(this.type);
+            //
+            // A dial to a protected emergency or crisis number joins it for the same reason and a
+            // sharper one: a model writing "call 911 if you are in danger" once returned a DIAL
+            // action alongside the advice, and Orbit opened the dialer on its own. Making the
+            // requirement a property of the action means no provider, router, or routine can
+            // produce one that skips the question.
+            this.requiresConfirmation = confirm
+                    || CalendarActionExecutor.alwaysConfirms(this.type)
+                    || EmergencyDialGuard.alwaysConfirms(this.type, this.params);
         }
     }
 }

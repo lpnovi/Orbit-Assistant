@@ -39,6 +39,9 @@ final class RelayProvider implements AiProvider {
             .streaming(false)
             .deviceActions(true)
             .images(true)
+            // The relay payload carries one image field. Orbit sends the first and states that
+            // it did rather than pretending the rest arrived.
+            .multipleImages(false)
             .offline(false)
             .needsCredentials(true)
             .reasoningLevels(true)
@@ -90,7 +93,17 @@ final class RelayProvider implements AiProvider {
                 if (!token.isEmpty()) conn.setRequestProperty("Authorization", "Bearer " + token);
 
                 JSONObject payload = new JSONObject();
-                payload.put("prompt", request.prompt);
+                // The relay's payload carries one image field. When the user attached more, the
+                // extras are not quietly forgotten: the turn says plainly how many arrived and how
+                // many did not, so neither the model nor the user is left believing Orbit sent
+                // pictures it never sent.
+                boolean imagesAllowed = Prefs.screenshot(context) || request.explicitAttachment;
+                int offeredImages = imagesAllowed ? request.images.size() : 0;
+                payload.put("prompt", offeredImages > 1
+                        ? request.prompt + "\n\n[Orbit note: the user attached " + offeredImages
+                                + " images. This backend accepts one image per message, so only the"
+                                + " first was sent. Say so if the answer depends on the others.]"
+                        : request.prompt);
                 payload.put("model", Prefs.effectiveModelForMode(context, request.intelligenceMode, request.prompt));
                 payload.put("reasoning", Prefs.effectiveReasoningForMode(context, request.intelligenceMode, request.prompt));
                 payload.put("clientTime", OffsetDateTime.now().toString());
@@ -102,8 +115,12 @@ final class RelayProvider implements AiProvider {
                 payload.put("notificationContext", safe(request.notificationContext, 24000));
                 payload.put("screenText", (Prefs.screenContext(context) || request.explicitAttachment)
                         ? safe(request.screenText, request.explicitAttachment ? 105000 : 18000) : "");
-                if ((Prefs.screenshot(context) || request.explicitAttachment) && request.screenshot != null) {
+                if (imagesAllowed && request.screenshot != null) {
                     payload.put("screenshotBase64", bitmapToBase64(request.screenshot));
+                    // Counts only, so a relay that grows multi-image support later can see what it
+                    // was asked for without Orbit having to guess what it received.
+                    payload.put("attachedImageCount", offeredImages);
+                    payload.put("sentImageCount", 1);
                 }
                 JSONArray h = new JSONArray();
                 java.util.List<AssistantClient.History> history = request.history;

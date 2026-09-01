@@ -151,23 +151,57 @@ public final class GalleryAppPreference {
 
     /** Intent for an exact target, or null when it names an Activity that cannot be built. */
     public static Intent intentForTarget(Target target) {
+        return intentForTarget(target, 1);
+    }
+
+    /**
+     * Intent for an exact target, asking for several items when the composer has room for them.
+     *
+     * <p>{@code EXTRA_ALLOW_MULTIPLE} is the documented, long-standing way to ask any picker for a
+     * multiple selection, and it is a request rather than a requirement: a Gallery that supports it
+     * returns several URIs through {@code ClipData}, and one that does not returns the single item
+     * it always returned. Sending it therefore cannot break a picker that ignores it, which is why
+     * the user's chosen app keeps being launched as itself instead of being quietly replaced by
+     * the system photo picker whenever multi-select is wanted.
+     */
+    public static Intent intentForTarget(Target target, int capacity) {
         if (target == null || target.isSystem() || target.needsResolution()) return null;
         Intent intent = imagePickIntent(target.action);
+        if (capacity > 1) intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
         intent.setComponent(new ComponentName(target.packageName, target.className));
         return intent;
     }
 
     /** Picker Intent for the current selection, used by the full chat. */
     public static Intent createIntent(Context context) {
+        return createIntent(context, 1);
+    }
+
+    /** As above, allowing several items when the composer can still take several. */
+    public static Intent createIntent(Context context, int capacity) {
         Target target = storedTarget(context);
-        Intent explicit = intentForTarget(target);
-        return explicit == null ? systemPickerIntent() : explicit;
+        Intent explicit = intentForTarget(target, capacity);
+        return explicit == null ? systemPickerIntent(capacity) : explicit;
     }
 
     public static Intent systemPickerIntent() {
+        return systemPickerIntent(1);
+    }
+
+    /**
+     * Android's own picker, asked for a multiple selection when there is room for one.
+     *
+     * <p>{@code ACTION_OPEN_DOCUMENT} with {@code EXTRA_ALLOW_MULTIPLE} is the platform's
+     * supported multi-select for every API level Orbit runs on, and it is the same mechanism the
+     * modern photo picker exposes behind the documents UI, so there is one code path rather than a
+     * version fork. The result arrives as {@code ClipData} and is parsed by
+     * {@link AttachmentUriCollector}.
+     */
+    public static Intent systemPickerIntent(int capacity) {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("image/*");
+        if (capacity > 1) intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
                 Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
         return intent;

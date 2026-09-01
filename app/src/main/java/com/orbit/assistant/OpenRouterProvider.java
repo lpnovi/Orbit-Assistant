@@ -17,6 +17,8 @@ final class OpenRouterProvider implements AiProvider {
             .streaming(true)
             .deviceActions(true)
             .images(true)
+            // Chat does not run here at all, so there is nothing to claim.
+            .multipleImages(false)
             .offline(false)
             .needsCredentials(true)
             .reasoningLevels(true)

@@ -578,3 +578,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - When Orbit asks which participant you are, that question can no longer be mistaken for a message to send.
   - The reply controls now belong to the final draft instead of staying on the question before it.
   - In the hidden Launch Sequence, the orbiters genuinely follow your finger and settle back afterwards.
+
+- **v0.7.8.0-beta.3**: Several photos in one message, Share to Orbit from any app, and a confirmation before any emergency number is dialled.
+  - Open your gallery once and pick several photos; they all go in one message, in the order you chose them.
+  - Attachments now sit in a row you can scroll, and each one has its own remove button.
+  - Share text, a link, photos or a PDF to Orbit from any app and it lands in a new conversation.
+  - Shared content is never sent on its own: it waits in the composer until you add what you want to ask.
+  - Orbit will no longer open the dialer for 911 or 988 without asking you first, even if it suggested calling.

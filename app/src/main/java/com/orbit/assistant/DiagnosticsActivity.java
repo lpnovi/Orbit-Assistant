@@ -550,7 +550,62 @@ public final class DiagnosticsActivity extends Activity {
                 "\n  Historical attachments in last request: " + d.getInt("attachment_history_turns", 0) +
                 "\n  Of those, re-sent as images: " + d.getInt("attachment_history_images", 0) +
                 "\n  Historical attachment types: " + orNone(d.getString("attachment_history_kinds", "")) +
-                "\n  Historical assets missing: " + d.getInt("attachment_history_missing", 0);
+                "\n  Historical assets missing: " + d.getInt("attachment_history_missing", 0) +
+                attachmentBatches(d);
+    }
+
+    /**
+     * Whether a multi-item selection survived being selected, and whether a share arrived intact.
+     *
+     * <p>Counts and Orbit's own shape words only. No filename, no URI, no MIME type read off an
+     * external Intent, no shared text and no URL: "did eight selected photos become eight
+     * attachments" is answerable without any idea what was in them.
+     */
+    private String attachmentBatches(SharedPreferences d) {
+        StringBuilder out = new StringBuilder();
+        out.append("\n  Attachment limit per message: ").append(ComposerAttachments.MAX_PER_TURN);
+        if (d.getLong("attachment_batch_updated", 0L) == 0L) {
+            out.append("\n  Last attachment batch: none yet");
+        } else {
+            out.append("\n  Last attachment batch source: ")
+                    .append(orNone(d.getString("attachment_batch_source", "")))
+                    .append("\n  Last batch selected: ").append(d.getInt("attachment_batch_selected", 0))
+                    .append("\n  Last batch accepted: ").append(d.getInt("attachment_batch_accepted", 0))
+                    .append("\n  Last batch rejected: ").append(d.getInt("attachment_batch_rejected", 0));
+        }
+        if (d.getLong("share_updated", 0L) == 0L) {
+            out.append("\n  Share to Orbit: none yet");
+        } else {
+            out.append("\n  Last share type: ").append(orNone(d.getString("share_shape", "")))
+                    .append("\n  Last share result: ").append(orNone(d.getString("share_outcome", "")))
+                    .append("\n  Last share items staged: ").append(d.getInt("share_accepted", 0));
+        }
+        return out.toString();
+    }
+
+    /**
+     * Whether the protected-dial gate ran, and what the person decided.
+     *
+     * <p>Deliberately no number. That Orbit refused to open a dialer on its own, and that a human
+     * then answered, is what a Beta report needs; which emergency line someone was looking at is
+     * not Orbit's to keep or to copy into a report they might paste anywhere.
+     */
+    private String protectedDial(SharedPreferences d) {
+        StringBuilder out = new StringBuilder();
+        out.append("\n  Protected dial numbers: ")
+                .append(EmergencyDialGuard.protectedNumbers().size())
+                .append(" (emergency and crisis)")
+                .append("\n  Dial intent used: ACTION_DIAL (never ACTION_CALL)");
+        if (d.getLong("protected_dial_updated", 0L) == 0L) {
+            out.append("\n  Protected confirmation shown: no");
+            return out.toString();
+        }
+        out.append("\n  Protected confirmation shown: yes")
+                .append("\n  Protected category: ")
+                .append(orNone(d.getString("protected_dial_category", "")))
+                .append("\n  Protected dial result: ")
+                .append(orNone(d.getString("protected_dial_outcome", "")));
+        return out.toString();
     }
 
     private String memory() {
@@ -625,7 +680,8 @@ public final class DiagnosticsActivity extends Activity {
                 // A destination category and nothing else. Never a recipient, an address, a number,
                 // an app package, or any part of the draft itself.
                 "\n  Last reply destination: "
-                        + blankAs(DiagnosticStore.lastReplyDestination(this), "none");
+                        + blankAs(DiagnosticStore.lastReplyDestination(this), "none")
+                + protectedDial(d);
     }
 
     private static String blankAs(String value, String fallback) {

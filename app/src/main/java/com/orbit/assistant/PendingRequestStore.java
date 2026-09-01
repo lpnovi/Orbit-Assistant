@@ -29,6 +29,14 @@ public final class PendingRequestStore {
 
     public static final class Item {
         public final String id, conversationId, prompt, screenText, screenshotPath, status, error, intelligenceMode, trustedTaskContext;
+        /**
+         * Every image frozen for this request, in the order the user attached them.
+         *
+         * <p>{@link #screenshotPath} is always its head, and a request written before v0.7.8.0
+         * Beta 3 reads back as the single path it recorded, so an in-flight request that survives
+         * an app update is not lost or misread.
+         */
+        public final List<String> screenshotPaths;
         public final long createdAt, updatedAt;
         public final boolean voiceRequest, draftReply, explicitAttachment;
         /**
@@ -53,12 +61,33 @@ public final class PendingRequestStore {
                     String status, String error, long createdAt, long updatedAt, boolean voiceRequest, boolean draftReply,
                     String intelligenceMode, boolean explicitAttachment, String trustedTaskContext,
                     boolean committed) {
+            this(id, conversationId, prompt, screenText,
+                    screenshotPath == null || screenshotPath.trim().isEmpty()
+                            ? java.util.Collections.emptyList()
+                            : java.util.Collections.singletonList(screenshotPath),
+                    status, error, createdAt, updatedAt, voiceRequest, draftReply, intelligenceMode,
+                    explicitAttachment, trustedTaskContext, committed);
+        }
+
+        /** The full constructor: a request frozen with any number of images. */
+        public Item(String id, String conversationId, String prompt, String screenText,
+                    List<String> screenshotPaths, String status, String error, long createdAt,
+                    long updatedAt, boolean voiceRequest, boolean draftReply,
+                    String intelligenceMode, boolean explicitAttachment, String trustedTaskContext,
+                    boolean committed) {
             this.committed = committed;
             this.id = id;
             this.conversationId = conversationId;
             this.prompt = prompt;
             this.screenText = screenText;
-            this.screenshotPath = screenshotPath;
+            List<String> paths = new ArrayList<>();
+            if (screenshotPaths != null) {
+                for (String path : screenshotPaths) {
+                    if (path != null && !path.trim().isEmpty()) paths.add(path);
+                }
+            }
+            this.screenshotPaths = java.util.Collections.unmodifiableList(paths);
+            this.screenshotPath = paths.isEmpty() ? "" : paths.get(0);
             this.status = status;
             this.error = error;
             this.createdAt = createdAt;
@@ -75,11 +104,22 @@ public final class PendingRequestStore {
                                            String screenshotPath, boolean voiceRequest, boolean draftReply,
                                            String intelligenceMode, boolean explicitAttachment,
                                            String trustedTaskContext) {
+        return create(c, conversationId, prompt, screenText,
+                screenshotPath == null || screenshotPath.trim().isEmpty()
+                        ? java.util.Collections.emptyList()
+                        : java.util.Collections.singletonList(screenshotPath),
+                voiceRequest, draftReply, intelligenceMode, explicitAttachment, trustedTaskContext);
+    }
+
+    public static synchronized Item create(Context c, String conversationId, String prompt, String screenText,
+                                           List<String> screenshotPaths, boolean voiceRequest, boolean draftReply,
+                                           String intelligenceMode, boolean explicitAttachment,
+                                           String trustedTaskContext) {
         long now = System.currentTimeMillis();
         Item item = new Item(UUID.randomUUID().toString(), conversationId, prompt == null ? "" : prompt,
-                screenText == null ? "" : screenText, screenshotPath == null ? "" : screenshotPath,
+                screenText == null ? "" : screenText, screenshotPaths,
                 QUEUED, "", now, now, voiceRequest, draftReply, intelligenceMode, explicitAttachment,
-                trustedTaskContext);
+                trustedTaskContext, false);
         List<Item> all = readAll(c);
         all.add(0, item);
         trim(all);
@@ -171,7 +211,7 @@ public final class PendingRequestStore {
             Item i = all.get(x);
             if (!i.id.equals(id)) continue;
             if (i.committed || isTerminal(i.status)) return false;
-            all.set(x, new Item(i.id, i.conversationId, i.prompt, i.screenText, i.screenshotPath,
+            all.set(x, new Item(i.id, i.conversationId, i.prompt, i.screenText, i.screenshotPaths,
                     i.status, i.error, i.createdAt, System.currentTimeMillis(), i.voiceRequest,
                     i.draftReply, i.intelligenceMode, i.explicitAttachment, i.trustedTaskContext,
                     true));
@@ -206,7 +246,7 @@ public final class PendingRequestStore {
         for (int x = 0; x < all.size(); x++) {
             Item i = all.get(x);
             if (!i.id.equals(id)) continue;
-            all.set(x, new Item(i.id, i.conversationId, i.prompt, i.screenText, i.screenshotPath,
+            all.set(x, new Item(i.id, i.conversationId, i.prompt, i.screenText, i.screenshotPaths,
                     status, error, i.createdAt, now, i.voiceRequest, i.draftReply,
                     i.intelligenceMode, i.explicitAttachment, i.trustedTaskContext, i.committed));
             break;
@@ -229,7 +269,7 @@ public final class PendingRequestStore {
             for (int x=0; x<arr.length(); x++) {
                 JSONObject o = arr.optJSONObject(x); if (o == null) continue;
                 result.add(new Item(o.optString("id"), o.optString("conversationId"), o.optString("prompt"),
-                        o.optString("screenText"), o.optString("screenshotPath"), o.optString("status", QUEUED),
+                        o.optString("screenText"), readScreenshotPaths(o), o.optString("status", QUEUED),
                         o.optString("error"), o.optLong("createdAt"), o.optLong("updatedAt"),
                         o.optBoolean("voiceRequest"), o.optBoolean("draftReply"),
                         o.optString("intelligenceMode", Prefs.MODE_BALANCED),
@@ -241,6 +281,23 @@ public final class PendingRequestStore {
         return result;
     }
 
+    /** A stored request's ordered image paths, whichever shape it was written in. */
+    private static List<String> readScreenshotPaths(JSONObject record) {
+        List<String> paths = new ArrayList<>();
+        JSONArray stored = record.optJSONArray("screenshotPaths");
+        if (stored != null) {
+            for (int i = 0; i < stored.length(); i++) {
+                String path = stored.optString(i, "");
+                if (path != null && !path.trim().isEmpty()) paths.add(path);
+            }
+        }
+        if (paths.isEmpty()) {
+            String legacy = record.optString("screenshotPath", "");
+            if (legacy != null && !legacy.trim().isEmpty()) paths.add(legacy);
+        }
+        return paths;
+    }
+
     private static void writeAll(Context c, List<Item> all) {
         writeAll(c, all, false);
     }
@@ -250,7 +307,15 @@ public final class PendingRequestStore {
         JSONArray arr = new JSONArray();
         try {
             for (Item i : all) {
-                arr.put(new JSONObject().put("id", i.id).put("conversationId", i.conversationId)
+                JSONObject record = new JSONObject();
+                // Written only for a genuinely multi-image request, so a one-image request's
+                // record is byte-for-byte what it was before this existed.
+                if (i.screenshotPaths.size() > 1) {
+                    JSONArray paths = new JSONArray();
+                    for (String path : i.screenshotPaths) paths.put(path);
+                    record.put("screenshotPaths", paths);
+                }
+                arr.put(record.put("id", i.id).put("conversationId", i.conversationId)
                         .put("prompt", i.prompt).put("screenText", i.screenText).put("screenshotPath", i.screenshotPath)
                         .put("status", i.status).put("error", i.error).put("createdAt", i.createdAt).put("updatedAt", i.updatedAt)
                         .put("voiceRequest", i.voiceRequest).put("draftReply", i.draftReply)

@@ -28,7 +28,23 @@ public final class AssistantClient {
         public final String content;
         /** Kept for backward compatibility; true now means any attachment exists. */
         public final boolean screenAttached;
+        /**
+         * The first stored image of this turn, or empty.
+         *
+         * <p>Kept as its own field because everything written before v0.7.8.0 Beta 3 recorded
+         * exactly one, and an older conversation must keep loading unchanged. It is always the
+         * first element of {@link #attachmentPaths}; nothing may set one without the other.
+         */
         public final String attachmentPath;
+        /**
+         * Every stored image this turn carried, in the order the user attached them.
+         *
+         * <p>A turn now holds a set rather than a slot, and the set is what makes a follow-up
+         * about "the third photo" answerable. Reading a conversation saved before this existed
+         * yields the single legacy path as a one-element list, so no migration runs and nothing
+         * stored is rewritten.
+         */
+        public final List<String> attachmentPaths;
         public final String attachmentKind;
         public final String attachmentLabel;
         /** Local request context needed for regeneration of text/PDF/screen attachments. */
@@ -86,11 +102,36 @@ public final class AssistantClient {
                        String attachmentKind, String attachmentLabel, String attachmentText,
                        String memoryUsage, String memorySuggestionText,
                        String memorySuggestionCategory, String stoppedRequestId) {
+            this(role, content, attached,
+                    attachmentPath == null || attachmentPath.trim().isEmpty()
+                            ? java.util.Collections.emptyList()
+                            : java.util.Collections.singletonList(attachmentPath),
+                    attachmentKind, attachmentLabel, attachmentText, memoryUsage,
+                    memorySuggestionText, memorySuggestionCategory, stoppedRequestId);
+        }
+
+        /**
+         * The full constructor: a turn with any number of stored images.
+         *
+         * <p>Every other constructor funnels here, so "one image" is simply the one-element case
+         * and there is no second code path for it to drift away from.
+         */
+        public History(String role, String content, boolean attached, List<String> attachmentPaths,
+                       String attachmentKind, String attachmentLabel, String attachmentText,
+                       String memoryUsage, String memorySuggestionText,
+                       String memorySuggestionCategory, String stoppedRequestId) {
             this.stoppedRequestId = stoppedRequestId == null ? "" : stoppedRequestId.trim();
             this.role = role;
             this.content = content;
             this.screenAttached = attached;
-            this.attachmentPath = attachmentPath == null ? "" : attachmentPath;
+            List<String> paths = new java.util.ArrayList<>();
+            if (attachmentPaths != null) {
+                for (String path : attachmentPaths) {
+                    if (path != null && !path.trim().isEmpty()) paths.add(path);
+                }
+            }
+            this.attachmentPaths = java.util.Collections.unmodifiableList(paths);
+            this.attachmentPath = paths.isEmpty() ? "" : paths.get(0);
             this.attachmentKind = attachmentKind == null ? "" : attachmentKind;
             this.attachmentLabel = attachmentLabel == null ? "" : attachmentLabel;
             this.attachmentText = attachmentText == null ? "" : attachmentText;
@@ -104,10 +145,13 @@ public final class AssistantClient {
 
         /** A copy of this message carrying the stopped request id, everything else untouched. */
         public History withStoppedRequestId(String requestId) {
-            return new History(role, content, screenAttached, attachmentPath, attachmentKind,
+            return new History(role, content, screenAttached, attachmentPaths, attachmentKind,
                     attachmentLabel, attachmentText, memoryUsage, memorySuggestionText,
                     memorySuggestionCategory, requestId);
         }
+
+        /** How many stored images this turn carries. */
+        public int attachmentCount() { return attachmentPaths.size(); }
     }
 
     private AssistantClient() {}
@@ -138,6 +182,26 @@ public final class AssistantClient {
                             String intelligenceMode, boolean explicitAttachment,
                             String trustedTaskContext, java.util.function.BooleanSupplier cancelled,
                             Callback cb) {
+        send(context, prompt, screenText,
+                screenshot == null ? java.util.Collections.emptyList()
+                        : java.util.Collections.singletonList(screenshot),
+                history, intelligenceMode, explicitAttachment, trustedTaskContext, cancelled, cb);
+    }
+
+    /**
+     * The full entry point: a turn carrying any number of images, in the user's order.
+     *
+     * <p>Every other {@code send} funnels here, so a one-image turn is simply the one-element case
+     * and the deterministic routers, memory selection, and Auto routing above the provider see one
+     * pipeline rather than two.
+     */
+    public static void send(Context context, String prompt, String screenText, List<Bitmap> images,
+                            List<History> history, String intelligenceMode,
+                            boolean explicitAttachment, String trustedTaskContext,
+                            java.util.function.BooleanSupplier cancelled, Callback cb) {
+        final Bitmap screenshot = images == null || images.isEmpty() ? null : images.get(0);
+        final List<Bitmap> requestImages = images == null
+                ? java.util.Collections.emptyList() : images;
         // Explicit Orbit Memory commands stay local, inspectable, and instant.
         AssistantReply memory = MemoryCommandRouter.tryHandle(context, prompt, history);
         if (memory != null) {
@@ -221,7 +285,7 @@ public final class AssistantClient {
 
         final String resolvedNotificationContext = notificationContext;
         final Runnable continueToProvider = () -> sendToProvider(context, prompt, screenText,
-                screenshot, history, intelligenceMode, explicitAttachment, trustedTaskContext,
+                requestImages, history, intelligenceMode, explicitAttachment, trustedTaskContext,
                 cancelled, resolvedNotificationContext, cb);
 
         // The last stop before the network. When Orbit Local's action model is installed and
@@ -245,11 +309,12 @@ public final class AssistantClient {
      * reached either directly or after the on-device action model declined.
      */
     private static void sendToProvider(Context context, String prompt, String screenText,
-                                       Bitmap screenshot, List<History> history,
+                                       List<Bitmap> images, List<History> history,
                                        String intelligenceMode, boolean explicitAttachment,
                                        String trustedTaskContext,
                                        java.util.function.BooleanSupplier cancelled,
                                        String notificationContext, Callback cb) {
+        final Bitmap screenshot = images == null || images.isEmpty() ? null : images.get(0);
         final MemoryStore.Selection memorySelection =
                 MemoryStore.select(context, prompt, screenText, history);
         final MemoryStore.Suggestion memorySuggestion =
@@ -288,6 +353,7 @@ public final class AssistantClient {
                 .prompt(prompt)
                 .screenText(screenText)
                 .screenshot(screenshot)
+                .images(images)
                 .history(history)
                 .intelligenceMode(requestMode)
                 .explicitAttachment(explicitAttachment)

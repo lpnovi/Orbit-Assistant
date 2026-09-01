@@ -246,22 +246,39 @@ public final class OrbitRequestManager {
     public static String enqueue(Context c, String conversationId, String prompt, String screenText, Bitmap screenshot,
                                  boolean voiceRequest, boolean draftReply, String intelligenceMode,
                                  boolean explicitAttachment, Listener listener) {
+        return enqueue(c, conversationId, prompt, screenText,
+                screenshot == null ? java.util.Collections.emptyList()
+                        : java.util.Collections.singletonList(screenshot),
+                voiceRequest, draftReply, intelligenceMode, explicitAttachment, listener);
+    }
+
+    /**
+     * Queues a turn carrying any number of images, in the order the user attached them.
+     *
+     * <p>The list handed in here is already a snapshot: the composer's live collection is copied
+     * at Send, so removing a thumbnail afterwards cannot change a request that is already on its
+     * way, and the conversation's own record of the turn cannot be edited from the composer either.
+     */
+    public static String enqueue(Context c, String conversationId, String prompt, String screenText,
+                                 List<Bitmap> images, boolean voiceRequest, boolean draftReply,
+                                 String intelligenceMode, boolean explicitAttachment, Listener listener) {
         ConversationStore.Conversation conversation = ConversationStore.load(c, conversationId);
         List<AssistantClient.History> history = conversation == null
                 ? java.util.Collections.emptyList() : conversation.messages;
+        Bitmap first = images == null || images.isEmpty() ? null : images.get(0);
         String trustedTaskContext = ReplyDraftContext.observeAndGet(
-                c, conversationId, prompt, screenText, screenshot, history);
-        return enqueueFrozen(c, conversationId, prompt, screenText, screenshot, voiceRequest,
+                c, conversationId, prompt, screenText, first, history);
+        return enqueueFrozen(c, conversationId, prompt, screenText, images, voiceRequest,
                 draftReply, intelligenceMode, explicitAttachment, trustedTaskContext, listener);
     }
 
     private static String enqueueFrozen(Context c, String conversationId, String prompt, String screenText,
-                                        Bitmap screenshot, boolean voiceRequest, boolean draftReply,
+                                        List<Bitmap> images, boolean voiceRequest, boolean draftReply,
                                         String intelligenceMode, boolean explicitAttachment,
                                         String trustedTaskContext, Listener listener) {
-        String pendingScreen = AttachmentStore.savePendingScreen(c, screenshot);
+        List<String> pendingScreens = AttachmentStore.savePendingScreens(c, images);
         PendingRequestStore.Item item = PendingRequestStore.create(c, conversationId, prompt, screenText,
-                pendingScreen, voiceRequest, draftReply, intelligenceMode, explicitAttachment,
+                pendingScreens, voiceRequest, draftReply, intelligenceMode, explicitAttachment,
                 trustedTaskContext);
         if (listener != null) addListener(item.id, listener);
         Data input = new Data.Builder().putString(OrbitRequestWorker.KEY_REQUEST_ID, item.id).build();
@@ -292,12 +309,12 @@ public final class OrbitRequestManager {
     public static String retry(Context c, String failedRequestId, Listener listener) {
         PendingRequestStore.Item failed = PendingRequestStore.load(c, failedRequestId);
         if (failed == null) return "";
-        Bitmap screenshot = AttachmentStore.load(failed.screenshotPath);
+        List<Bitmap> images = AttachmentStore.loadAll(failed.screenshotPaths);
         PendingRequestStore.markSuperseded(c, failedRequestId);
-        String next = enqueueFrozen(c, failed.conversationId, failed.prompt, failed.screenText, screenshot,
+        String next = enqueueFrozen(c, failed.conversationId, failed.prompt, failed.screenText, images,
                 failed.voiceRequest, failed.draftReply, failed.intelligenceMode,
                 failed.explicitAttachment, failed.trustedTaskContext, listener);
-        AttachmentStore.delete(failed.screenshotPath);
+        AttachmentStore.deleteAll(failed.screenshotPaths);
         return next;
     }
 
@@ -347,7 +364,7 @@ public final class OrbitRequestManager {
             ConversationStore.markTurnStopped(c, current.conversationId, requestId);
             cancelWork(c, requestId);
         }
-        AttachmentStore.delete(item.screenshotPath);
+        AttachmentStore.deleteAll(item.screenshotPaths);
         dispatchCancelled(requestId, partial);
         return true;
     }

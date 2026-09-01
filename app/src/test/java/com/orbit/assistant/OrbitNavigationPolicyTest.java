@@ -61,7 +61,10 @@ public final class OrbitNavigationPolicyTest {
             "ScreenSelectionActivity", "AttachmentPickerActivity", "CalendarPermissionActivity",
             "OrbitWidgetActionActivity", "OrbitWidgetConfigureActivity", "OnboardingActivity",
             // A decorative full-screen scene. Back closes it; it is not a page to be revealed from.
-            "OrbitLaunchSequenceActivity"
+            "OrbitLaunchSequenceActivity",
+            // The external Share doorway. It arrives from another app, draws nothing, and finishes
+            // once it has opened a conversation, so there is no Orbit page beneath it to reveal.
+            "ShareToOrbitActivity"
     };
 
     /** Orbit's root. Back is the task's business and Orbit invents nothing behind it. */

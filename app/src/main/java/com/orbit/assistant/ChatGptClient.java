@@ -58,6 +58,7 @@ public final class ChatGptClient {
             "Use concise Markdown when structure improves the answer, including headings, lists, tables, quotes, links, and fenced code. Only use Markdown image syntax when you already have a real concrete public HTTPS image URL. Never invent or guess image URLs; answer with text when no usable image URL is available. " +
             "When the user asks for multiple device actions, return one action object per step in the correct execution order. Prefer the smallest action plan that fully satisfies the request. " +
             "For calls and SMS, Orbit opens the relevant Android UI; do not falsely claim something was sent. " +
+            "Saying someone should call for help and making the phone do it are different things. Keep advising people to contact emergency or crisis services whenever that is the right advice, in plain words, as often as it is needed. But never return a DIAL or DIAL_CONTACT action for an emergency or crisis number such as 911 or 988 as part of that advice. Return one only if the user has directly asked you to place or start that call in this message, and set requiresConfirmation true when you do. The phone asks the user before any dialer opens, so a dial action you add on your own initiative is not help - it is Orbit acting without being asked. " +
             "Calendar has two different actions and they are not interchangeable. CREATE_EVENT opens Android's event composer for the user to review and save, and suits a single event the user wants to edit first. ADD_CALENDAR_EVENTS is Orbit writing events into the phone's calendar itself, and is the correct action whenever the user asks you to put a schedule, a fixture list, or several dates on their calendar. Return ADD_CALENDAR_EVENTS once with every event in its events array, never one action per event, and never twelve CREATE_EVENT actions. Always set requiresConfirmation true for ADD_CALENDAR_EVENTS. " +
             "You do not perform the calendar write and you cannot know whether it succeeded. Never state that events were added, saved, created, or are now on the calendar. Before the action runs, say only what you found and what you can do, for example: I found Michigan's 12 regular-season games and can add them to your calendar. The phone asks for confirmation, writes the events, checks the result, and reports the real counts itself. " +
             "For ADD_CALENDAR_EVENTS give ordinary calendar values and never epoch milliseconds. Each event takes title, date as YYYY-MM-DD, and optionally hour (0-23), minute, timezone as an IANA id such as America/Detroit, durationMinutes, allDay, timeTba, location, description, and sourceUrl. If a start time is genuinely not announced yet, set timeTba true and omit hour and minute so Orbit records a correct all-day entry; never invent 9:00 AM, noon, or any other placeholder time. If the date itself is unknown, leave that event out entirely rather than guessing. Use a real timezone id or omit the field; never invent one. Keep a batch to 50 events or fewer. " +
@@ -235,9 +236,30 @@ public final class ChatGptClient {
                             boolean explicitAttachment, String notificationContext,
                             String memoryContext, String trustedTaskContext,
                             boolean thinkingUpdates, AssistantClient.Callback cb) {
+        send(context, prompt, screenText,
+                screenshot == null ? java.util.Collections.emptyList()
+                        : java.util.Collections.singletonList(screenshot),
+                history, intelligenceMode, explicitAttachment, notificationContext, memoryContext,
+                trustedTaskContext, thinkingUpdates, cb);
+    }
+
+    /**
+     * The full entry point: a turn carrying any number of images.
+     *
+     * <p>All of them travel inside the one user message, in the order the user attached them,
+     * because that is what makes "compare these three screenshots" a question the model can
+     * actually answer. Splitting them across several user turns would describe a conversation that
+     * never happened, and combining them into one picture would destroy the very thing being
+     * compared.
+     */
+    public static void send(Context context, String prompt, String screenText, List<Bitmap> images,
+                            List<AssistantClient.History> history, String intelligenceMode,
+                            boolean explicitAttachment, String notificationContext,
+                            String memoryContext, String trustedTaskContext,
+                            boolean thinkingUpdates, AssistantClient.Callback cb) {
         ChatGptAuth.getValidTokens(context, false, new ChatGptAuth.TokenCallback() {
             @Override public void onSuccess(SecureStore.ChatGptTokens tokens) {
-                EXEC.execute(() -> doSend(context, prompt, screenText, screenshot, history,
+                EXEC.execute(() -> doSend(context, prompt, screenText, images, history,
                         intelligenceMode, explicitAttachment, notificationContext, memoryContext,
                         trustedTaskContext, thinkingUpdates, tokens, false, cb));
             }
@@ -245,7 +267,7 @@ public final class ChatGptClient {
         });
     }
 
-    private static void doSend(Context context, String prompt, String screenText, Bitmap screenshot,
+    private static void doSend(Context context, String prompt, String screenText, List<Bitmap> images,
                                List<AssistantClient.History> history, String intelligenceMode,
                                boolean explicitAttachment, String notificationContext,
                                String memoryContext, String trustedTaskContext,
@@ -256,7 +278,7 @@ public final class ChatGptClient {
         // not already refused them on this device.
         final boolean askForSummary = thinkingUpdates && ReasoningSummarySupport.mayRequest(context);
         try {
-            JSONObject body = requestBody(context, prompt, screenText, screenshot, history,
+            JSONObject body = requestBody(context, prompt, screenText, images, history,
                     intelligenceMode, explicitAttachment, notificationContext, memoryContext,
                     trustedTaskContext, askForSummary);
             conn = (HttpURLConnection) new URL(RESPONSES_URL).openConnection();
@@ -284,7 +306,7 @@ public final class ChatGptClient {
                 conn.disconnect();
                 ChatGptAuth.getValidTokens(context, true, new ChatGptAuth.TokenCallback() {
                     @Override public void onSuccess(SecureStore.ChatGptTokens fresh) {
-                        EXEC.execute(() -> doSend(context, prompt, screenText, screenshot, history,
+                        EXEC.execute(() -> doSend(context, prompt, screenText, images, history,
                                 intelligenceMode, explicitAttachment, notificationContext, memoryContext,
                                 trustedTaskContext, thinkingUpdates, fresh, true, cb));
                     }
@@ -306,7 +328,7 @@ public final class ChatGptClient {
                     conn = null;
                     // Thinking updates stay on for the retry: only the summary request is dropped,
                     // so the user still sees Orbit's own progress for this turn.
-                    doSend(context, prompt, screenText, screenshot, history, intelligenceMode,
+                    doSend(context, prompt, screenText, images, history, intelligenceMode,
                             explicitAttachment, notificationContext, memoryContext,
                             trustedTaskContext, thinkingUpdates, tokens, alreadyRefreshed, cb);
                     return;
@@ -338,7 +360,7 @@ public final class ChatGptClient {
         }
     }
 
-    private static JSONObject requestBody(Context context, String prompt, String screenText, Bitmap screenshot,
+    private static JSONObject requestBody(Context context, String prompt, String screenText, List<Bitmap> images,
                                           List<AssistantClient.History> history, String intelligenceMode,
                                           boolean explicitAttachment, String notificationContext,
                                           String memoryContext, String trustedTaskContext,
@@ -418,15 +440,15 @@ public final class ChatGptClient {
                 parts.put(new JSONObject().put("type", "input_text")
                         .put("text", safe(h.content, 6000)
                                 + HistoryAttachments.wrap(attachment.kind, attachment.text)));
-                if (attachment.hasImage()) {
-                    Bitmap stored = AttachmentStore.load(attachment.imagePath);
-                    // A file that will not decode is treated exactly like one that is gone: the
-                    // turn keeps its text and Orbit invents nothing to stand in for the image.
-                    if (stored != null) {
-                        parts.put(new JSONObject()
-                                .put("type", "input_image")
-                                .put("image_url", "data:image/jpeg;base64," + bitmapToBase64(stored)));
-                    }
+                // Every image that turn still owns, in the order it was shared, on that turn's own
+                // message. A file that will not decode is treated exactly like one that is gone:
+                // the turn keeps its text and Orbit invents nothing to stand in for the image.
+                for (String storedPath : attachment.imagePaths) {
+                    Bitmap stored = AttachmentStore.load(storedPath);
+                    if (stored == null) continue;
+                    parts.put(new JSONObject()
+                            .put("type", "input_image")
+                            .put("image_url", "data:image/jpeg;base64," + bitmapToBase64(stored)));
                 }
                 input.put(new JSONObject().put("role", role).put("content", parts));
             }
@@ -454,10 +476,17 @@ public final class ChatGptClient {
                     .append("\n</orbit_notification_context>");
         }
         currentContent.put(new JSONObject().put("type", "input_text").put("text", text.toString()));
-        if ((Prefs.screenshot(context) || explicitAttachment) && screenshot != null) {
-            currentContent.put(new JSONObject()
-                    .put("type", "input_image")
-                    .put("image_url", "data:image/jpeg;base64," + bitmapToBase64(screenshot)));
+        // Every image the user attached to this message, in their order, inside this one user
+        // turn. Not one turn per photo, which would describe a conversation that never happened,
+        // and not a stitched composite, which would destroy the thing being compared.
+        if (Prefs.screenshot(context) || explicitAttachment) {
+            List<Bitmap> current = images == null ? java.util.Collections.emptyList() : images;
+            for (Bitmap image : current) {
+                if (image == null) continue;
+                currentContent.put(new JSONObject()
+                        .put("type", "input_image")
+                        .put("image_url", "data:image/jpeg;base64," + bitmapToBase64(image)));
+            }
         }
         input.put(new JSONObject().put("role", "user").put("content", currentContent));
         root.put("input", input);

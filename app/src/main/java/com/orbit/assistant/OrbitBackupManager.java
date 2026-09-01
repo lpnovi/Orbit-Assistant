@@ -251,8 +251,14 @@ public final class OrbitBackupManager {
                 if (!("user".equals(role) || "assistant".equals(role)) || content.isEmpty() ||
                         content.length() > 12000 || m.optString("attachmentText", "").length() > 105000)
                     invalid("conversation history");
-                // Local paths are never accepted from an imported file.
+                // Local paths are never accepted from an imported file, in either shape. A path in
+                // a backup is a path into someone else's device; the bytes travel as attachment
+                // records and are written to fresh files on this one.
                 if (!m.optString("attachmentPath", "").isEmpty()) invalid("conversation attachments");
+                JSONArray importedPaths = m.optJSONArray("attachmentPaths");
+                if (importedPaths != null && importedPaths.length() > 0) {
+                    invalid("conversation attachments");
+                }
             }
         }
         return ids;
@@ -482,26 +488,49 @@ public final class OrbitBackupManager {
             JSONArray messages = conversations.getJSONObject(i).getJSONArray("messages");
             for (int j = 0; j < messages.length(); j++) {
                 JSONObject message = messages.getJSONObject(j);
-                String path = message.optString("attachmentPath", "").trim();
-                message.put("attachmentPath", "");
-                if (path.isEmpty()) continue;
-                File file;
-                try { file = new File(path).getCanonicalFile(); }
-                catch (Exception ignored) { continue; }
-                if (!file.getPath().startsWith(rootPrefix) || !file.isFile()) continue;
-                String ref = refs.get(file.getPath());
-                if (ref == null) {
-                    byte[] bytes;
-                    try (InputStream in = new FileInputStream(file)) { bytes = readLimited(in, MAX_ATTACHMENT_BYTES); }
-                    if (!isJpeg(bytes)) continue;
-                    total += bytes.length;
-                    if (total > MAX_TOTAL_ATTACHMENT_BYTES) throw new IllegalStateException("Conversation attachments are too large to back up safely.");
-                    ref = UUID.randomUUID().toString();
-                    refs.put(file.getPath(), ref);
-                    attachments.put(new JSONObject().put("id", ref).put("mimeType", "image/jpeg")
-                            .put("size", bytes.length).put("data", Base64.encodeToString(bytes, Base64.NO_WRAP)));
+                // Both shapes are read and both are blanked, so no device-local path leaves this
+                // phone whichever way the turn was written.
+                List<String> paths = new ArrayList<>();
+                JSONArray storedPaths = message.optJSONArray("attachmentPaths");
+                if (storedPaths != null) {
+                    for (int k = 0; k < storedPaths.length(); k++) {
+                        String candidate = storedPaths.optString(k, "").trim();
+                        if (!candidate.isEmpty()) paths.add(candidate);
+                    }
                 }
-                message.put("attachmentRef", ref);
+                if (paths.isEmpty()) {
+                    String legacy = message.optString("attachmentPath", "").trim();
+                    if (!legacy.isEmpty()) paths.add(legacy);
+                }
+                message.put("attachmentPath", "");
+                message.remove("attachmentPaths");
+                if (paths.isEmpty()) continue;
+
+                JSONArray messageRefs = new JSONArray();
+                for (String path : paths) {
+                    File file;
+                    try { file = new File(path).getCanonicalFile(); }
+                    catch (Exception ignored) { continue; }
+                    if (!file.getPath().startsWith(rootPrefix) || !file.isFile()) continue;
+                    String ref = refs.get(file.getPath());
+                    if (ref == null) {
+                        byte[] bytes;
+                        try (InputStream in = new FileInputStream(file)) { bytes = readLimited(in, MAX_ATTACHMENT_BYTES); }
+                        if (!isJpeg(bytes)) continue;
+                        total += bytes.length;
+                        if (total > MAX_TOTAL_ATTACHMENT_BYTES) throw new IllegalStateException("Conversation attachments are too large to back up safely.");
+                        ref = UUID.randomUUID().toString();
+                        refs.put(file.getPath(), ref);
+                        attachments.put(new JSONObject().put("id", ref).put("mimeType", "image/jpeg")
+                                .put("size", bytes.length).put("data", Base64.encodeToString(bytes, Base64.NO_WRAP)));
+                    }
+                    messageRefs.put(ref);
+                }
+                if (messageRefs.length() == 0) continue;
+                // The scalar stays for a backup read by an older Orbit; the array is what a
+                // current one restores from.
+                message.put("attachmentRef", messageRefs.getString(0));
+                if (messageRefs.length() > 1) message.put("attachmentRefs", messageRefs);
             }
         }
         data.put("attachments", attachments);
@@ -531,9 +560,22 @@ public final class OrbitBackupManager {
             JSONArray messages = conversations.getJSONObject(i).getJSONArray("messages");
             for (int j = 0; j < messages.length(); j++) {
                 JSONObject message = messages.getJSONObject(j);
-                String ref = message.optString("attachmentRef", "");
-                message.put("attachmentPath", ref.isEmpty() ? "" : paths.get(ref));
+                JSONArray refs = message.optJSONArray("attachmentRefs");
+                if (refs == null) {
+                    String single = message.optString("attachmentRef", "");
+                    refs = new JSONArray();
+                    if (!single.isEmpty()) refs.put(single);
+                }
+                JSONArray restored = new JSONArray();
+                for (int k = 0; k < refs.length(); k++) {
+                    String path = paths.get(refs.optString(k, ""));
+                    if (path != null && !path.isEmpty()) restored.put(path);
+                }
+                message.put("attachmentPath", restored.length() == 0 ? "" : restored.getString(0));
+                if (restored.length() > 1) message.put("attachmentPaths", restored);
+                else message.remove("attachmentPaths");
                 message.remove("attachmentRef");
+                message.remove("attachmentRefs");
             }
         }
         data.put("attachments", new JSONArray());

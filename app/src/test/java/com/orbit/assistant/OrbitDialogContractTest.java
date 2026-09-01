@@ -282,8 +282,18 @@ public final class OrbitDialogContractTest {
                 calendarBridge.contains("new AlertDialog.Builder"));
         assertFalse(calendarBridge.contains("styleOrbitDialog"));
 
-        assertTrue("invisible picker, calendar, and widget bridges keep their dedicated non-page theme",
-                count(manifest, "android:theme=\"@style/Theme.Orbit.Bridge\"") == 3);
+        // Picker, calendar permission, widget action, and now the external Share doorway. All four
+        // are invisible bridges rather than pages, and all four keep the dedicated non-page theme.
+        assertTrue("invisible picker, calendar, widget and share bridges keep their non-page theme",
+                count(manifest, "android:theme=\"@style/Theme.Orbit.Bridge\"") == 4);
+
+        // The exported Share doorway draws nothing of its own. It validates, stages, and starts a
+        // real conversation; a dialog here would be Orbit painting a window over another app's
+        // share sheet.
+        String shareBridge = ComponentUninstallTest.readRepositoryFile(
+                "app/src/main/java/com/orbit/assistant/ShareToOrbitActivity.java");
+        assertFalse(shareBridge.contains("new AlertDialog.Builder"));
+        assertFalse(shareBridge.contains("styleOrbitDialog"));
     }
 
     // ---- resource and popup motion --------------------------------------------------------------

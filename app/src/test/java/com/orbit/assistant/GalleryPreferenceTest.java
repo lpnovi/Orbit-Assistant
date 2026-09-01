@@ -215,25 +215,25 @@ public final class GalleryPreferenceTest {
 
     @Test public void aTokenIsPendingOnlyUntilItsResultArrives() {
         final int[] calls = {0};
-        String token = AttachmentBridge.register((attachment, error) -> calls[0]++);
+        String token = AttachmentBridge.register(batch -> calls[0]++);
         assertTrue(AttachmentBridge.isPending(token));
 
-        AttachmentBridge.deliver(token, null, "");
+        AttachmentBridge.deliver(token, AttachmentBatch.cancelled());
         assertEquals(1, calls[0]);
         assertFalse("a delivered token must not look in flight", AttachmentBridge.isPending(token));
 
         // A later lifecycle fallback cannot deliver a second time.
-        AttachmentBridge.deliver(token, null, "");
+        AttachmentBridge.deliver(token, AttachmentBatch.cancelled());
         assertEquals(1, calls[0]);
     }
 
     @Test public void cancellingATokenAlsoEndsItsPendingState() {
         final int[] calls = {0};
-        String token = AttachmentBridge.register((attachment, error) -> calls[0]++);
+        String token = AttachmentBridge.register(batch -> calls[0]++);
         AttachmentBridge.cancel(token);
 
         assertFalse(AttachmentBridge.isPending(token));
-        AttachmentBridge.deliver(token, null, "");
+        AttachmentBridge.deliver(token, AttachmentBatch.cancelled());
         assertEquals("a cancelled token must never fire", 0, calls[0]);
     }
 
@@ -241,9 +241,9 @@ public final class GalleryPreferenceTest {
         // Gallery, cancel, Gallery again: no flow may leave the next one blocked.
         for (int i = 0; i < 5; i++) {
             final int[] calls = {0};
-            String token = AttachmentBridge.register((attachment, error) -> calls[0]++);
+            String token = AttachmentBridge.register(batch -> calls[0]++);
             assertTrue(AttachmentBridge.isPending(token));
-            AttachmentBridge.deliver(token, null, "");
+            AttachmentBridge.deliver(token, AttachmentBatch.cancelled());
             assertEquals(1, calls[0]);
             assertFalse(AttachmentBridge.isPending(token));
         }

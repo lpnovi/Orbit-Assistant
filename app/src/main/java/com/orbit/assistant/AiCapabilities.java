@@ -14,6 +14,16 @@ public final class AiCapabilities {
     public final boolean deviceActions;
     /** Screenshots and image attachments can be sent with a request. */
     public final boolean images;
+    /**
+     * Several images can travel inside one user message.
+     *
+     * <p>Narrower than {@link #images} and deliberately separate from it. "Can send a picture" and
+     * "can send four pictures the model will compare" are different facts, and a provider that
+     * answers true here must genuinely place every image in the same turn. False is not a failure
+     * mode: it means Orbit sends the first image and tells both the user and the model that it
+     * did, which is the honest outcome. Nothing may claim this to avoid the extra sentence.
+     */
+    public final boolean multipleImages;
     /** Requests work with no network connection. */
     public final boolean offline;
     /** Sign-in or an API key is required before the provider can answer. */
@@ -39,6 +49,7 @@ public final class AiCapabilities {
         this.streaming = b.streaming;
         this.deviceActions = b.deviceActions;
         this.images = b.images;
+        this.multipleImages = b.multipleImages && b.images;
         this.offline = b.offline;
         this.needsCredentials = b.needsCredentials;
         this.reasoningLevels = b.reasoningLevels;
@@ -53,6 +64,7 @@ public final class AiCapabilities {
         private boolean streaming;
         private boolean deviceActions;
         private boolean images;
+        private boolean multipleImages;
         private boolean offline;
         private boolean needsCredentials;
         private boolean reasoningLevels;
@@ -63,6 +75,7 @@ public final class AiCapabilities {
         public Builder streaming(boolean v) { streaming = v; return this; }
         public Builder deviceActions(boolean v) { deviceActions = v; return this; }
         public Builder images(boolean v) { images = v; return this; }
+        public Builder multipleImages(boolean v) { multipleImages = v; return this; }
         public Builder offline(boolean v) { offline = v; return this; }
         public Builder needsCredentials(boolean v) { needsCredentials = v; return this; }
         public Builder reasoningLevels(boolean v) { reasoningLevels = v; return this; }

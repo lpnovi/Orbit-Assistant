@@ -35,6 +35,8 @@ final class OrbitLocalProvider implements AiProvider {
             .streaming(true)
             .deviceActions(false)
             .images(false)
+            // Orbit Local has no vision at all. Claiming multi-image would be a lie twice over.
+            .multipleImages(false)
             .offline(true)
             .needsCredentials(false)
             .reasoningLevels(false)

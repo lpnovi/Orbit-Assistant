@@ -85,7 +85,7 @@ public final class OrbitRequestWorker extends Worker {
 
         ConversationStore.Conversation chat = ConversationStore.load(c, item.conversationId);
         List<AssistantClient.History> history = chat == null ? new ArrayList<>() : new ArrayList<>(chat.messages);
-        Bitmap screenshot = AttachmentStore.load(item.screenshotPath);
+        List<Bitmap> images = AttachmentStore.loadAll(item.screenshotPaths);
 
         // Handle deterministic weather requests before invoking the language model.
         // This keeps weather fast, current, and available directly inside Orbit chat.
@@ -99,7 +99,7 @@ public final class OrbitRequestWorker extends Worker {
             return Result.success();
         }
 
-        RequestOutcome outcome = performRequest(c, item, screenshot, history,
+        RequestOutcome outcome = performRequest(c, item, images, history,
                 item.intelligenceMode, id, true, 4);
         if (cancelled(c, id)) return Result.success();
 
@@ -111,7 +111,7 @@ public final class OrbitRequestWorker extends Worker {
         if (outcome.reply == null && AiProviders.active(c).capabilities().hostedWebSearch
                 && ChatGptClient.shouldOfferHostedWebSearch(item.prompt)
                 && looksServerOverloaded(outcome.error)) {
-            outcome = performRequest(c, item, screenshot, history,
+            outcome = performRequest(c, item, images, history,
                     Prefs.MODE_FAST, id, true, 2);
             if (cancelled(c, id)) return Result.success();
         }
@@ -200,7 +200,7 @@ public final class OrbitRequestWorker extends Worker {
             ConversationStore.appendMessage(c, item.conversationId, message);
             PendingRequestStore.markDone(c, id);
             RequestTrace.lifecycle(id, "completed");
-            AttachmentStore.delete(item.screenshotPath);
+            AttachmentStore.deleteAll(item.screenshotPaths);
             OrbitRequestManager.dispatchSuccess(id, reply);
             if (Prefs.backgroundNotifications(c) && !UiPresence.isVisible()) {
                 NotificationHelper.notifyResponseComplete(c, item.conversationId, item.prompt, notificationText);
@@ -242,14 +242,14 @@ public final class OrbitRequestWorker extends Worker {
     }
 
     private RequestOutcome performRequest(Context c, PendingRequestStore.Item item,
-                                          Bitmap screenshot, List<AssistantClient.History> history,
+                                          List<Bitmap> images, List<AssistantClient.History> history,
                                           String mode, String requestId,
                                           boolean streamDeltas, int timeoutMinutes) {
         CountDownLatch latch = new CountDownLatch(1);
         AtomicReference<AssistantReply> replyRef = new AtomicReference<>();
         AtomicReference<String> errorRef = new AtomicReference<>();
 
-        AssistantClient.send(c, item.prompt, item.screenText, screenshot, history,
+        AssistantClient.send(c, item.prompt, item.screenText, images, history,
                 mode, item.explicitAttachment, item.trustedTaskContext,
                 () -> isStopped() || OrbitRequestManager.isCancelled(c, requestId),
                 new AssistantClient.Callback() {

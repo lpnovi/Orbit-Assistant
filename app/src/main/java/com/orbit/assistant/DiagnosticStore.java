@@ -336,5 +336,64 @@ public final class DiagnosticStore {
         return prefs(c).getString("reply_destination", "");
     }
 
+    /**
+     * The shape of the last batch of attachments the user staged.
+     *
+     * <p>Counts and one source word from Orbit's own closed set: "picker", "share", "camera",
+     * "clipboard", "screen". Never a filename, never a URI, never a MIME type read off an external
+     * Intent, and nothing decoded out of the files themselves - the useful Beta question is "did
+     * eight selected photos become eight attachments", and answering it needs no idea what was in
+     * any of them.
+     */
+    public static void recordAttachmentBatch(Context c, String source, int selected,
+                                             int accepted, int rejected) {
+        prefs(c).edit()
+                .putString("attachment_batch_source", safe(source))
+                .putInt("attachment_batch_selected", Math.max(0, selected))
+                .putInt("attachment_batch_accepted", Math.max(0, accepted))
+                .putInt("attachment_batch_rejected", Math.max(0, rejected))
+                .putLong("attachment_batch_updated", System.currentTimeMillis())
+                .apply();
+    }
+
+    /**
+     * What the last Share to Orbit carried, as a shape word.
+     *
+     * <p>One of "text", "image", "images", "file", "files", "mixed", "none". Not the shared text,
+     * not the URL, not the filename, not the sending app - which is the entire point of recording
+     * a shape rather than a description.
+     */
+    public static void recordShareToOrbit(Context c, String shape, String outcome, int accepted) {
+        prefs(c).edit()
+                .putString("share_shape", safe(shape))
+                .putString("share_outcome", safe(outcome))
+                .putInt("share_accepted", Math.max(0, accepted))
+                .putLong("share_updated", System.currentTimeMillis())
+                .apply();
+    }
+
+    /**
+     * That a protected emergency or crisis number was intercepted, and what the user chose.
+     *
+     * <p>Deliberately no number. That Orbit stopped a dial and that the user then confirmed or
+     * cancelled is what a Beta report needs; which emergency number a person was looking at on a
+     * particular evening is not Orbit's to keep, and a category is enough to prove the gate ran.
+     *
+     * @param category "emergency" or "crisis".
+     * @param outcome  "shown", "confirmed" or "cancelled".
+     */
+    public static void recordProtectedDial(Context c, String category, String outcome) {
+        prefs(c).edit()
+                .putString("protected_dial_category", safe(category))
+                .putString("protected_dial_outcome", safe(outcome))
+                .putBoolean("protected_dial_shown", true)
+                .putLong("protected_dial_updated", System.currentTimeMillis())
+                .apply();
+    }
+
+    public static String lastProtectedDialOutcome(Context c) {
+        return prefs(c).getString("protected_dial_outcome", "");
+    }
+
     private static String safe(String s) { return s == null ? "" : s; }
 }

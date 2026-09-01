@@ -9,7 +9,9 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -86,7 +88,7 @@ public final class ConversationStore {
                     "assistant".equalsIgnoreCase(h.role) ? "assistant" : "user",
                     clip(h.content, MAX_MESSAGE_CHARS),
                     h.screenAttached,
-                    h.attachmentPath,
+                    h.attachmentPaths,
                     h.attachmentKind,
                     h.attachmentLabel,
                     clip(h.attachmentText, 105000),
@@ -137,11 +139,35 @@ public final class ConversationStore {
         return all.isEmpty() ? null : all.get(0);
     }
 
+    /**
+     * Removes a conversation and the private image files only it referred to.
+     *
+     * <p>Deleting a chat used to leave its stored attachment JPEGs behind forever, which was
+     * tolerable while a turn held one small screenshot and is not once a turn can hold ten photos.
+     * The files are collected from this conversation's own record first, then every other stored
+     * conversation is checked, so a file a restored backup happens to share with another chat is
+     * never removed out from under it.
+     *
+     * <p>This is the commit point, not the gesture. Chats defers the delete for the length of the
+     * Undo window and calls here only once that window has genuinely closed, so an undone deletion
+     * never reaches this method and nothing it could have destroyed is at risk.
+     */
     public static synchronized void delete(Context c, String id) {
         List<Conversation> all = readAll(c);
+        List<String> owned = new ArrayList<>();
+        for (Conversation item : all) {
+            if (item.id.equals(id)) owned.addAll(ownedAttachmentPaths(item));
+        }
         all.removeIf(item -> item.id.equals(id));
         writeAll(c, all);
         ActionResultStore.clearConversation(c, id);
+
+        if (owned.isEmpty()) return;
+        Set<String> stillReferenced = new HashSet<>();
+        for (Conversation item : all) stillReferenced.addAll(ownedAttachmentPaths(item));
+        for (String path : owned) {
+            if (!stillReferenced.contains(path)) AttachmentStore.delete(path);
+        }
     }
 
     public static synchronized void appendMessage(Context c, String id, AssistantClient.History message) {
@@ -468,7 +494,10 @@ public final class ConversationStore {
                                 "assistant".equals(m.optString("role")) ? "assistant" : "user",
                                 content,
                                 attached,
-                                m.optString("attachmentPath", ""),
+                                // A conversation written before v0.7.8.0 Beta 3 has no
+                                // attachmentPaths array and simply reads back as the one path it
+                                // always had. Nothing stored is rewritten and no migration runs.
+                                readAttachmentPaths(m),
                                 m.optString("attachmentKind", attached ? "screen" : ""),
                                 m.optString("attachmentLabel", attached ? "Screen attached" : ""),
                                 m.optString("attachmentText", ""),
@@ -502,7 +531,16 @@ public final class ConversationStore {
                 if (item.pinned) o.put("pinned", true);
                 JSONArray msgs = new JSONArray();
                 for (AssistantClient.History h : item.messages) {
-                    msgs.put(new JSONObject()
+                    JSONObject message = new JSONObject();
+                    // Both are written: attachmentPath keeps a turn readable by anything that only
+                    // knows the old shape, and attachmentPaths is what a current Orbit reads. They
+                    // can never disagree because History derives the first from the list.
+                    if (h.attachmentPaths.size() > 1) {
+                        JSONArray paths = new JSONArray();
+                        for (String path : h.attachmentPaths) paths.put(path);
+                        message.put("attachmentPaths", paths);
+                    }
+                    msgs.put(message
                             .put("role", h.role)
                             .put("content", h.content)
                             .put("screenAttached", h.screenAttached)
@@ -520,6 +558,45 @@ public final class ConversationStore {
             }
         } catch (Exception ignored) {}
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putString(KEY, arr.toString()).apply();
+    }
+
+    /**
+     * A stored message's ordered image paths, whichever shape it was written in.
+     *
+     * <p>The array wins when present, and the single legacy field is the answer when it is not. A
+     * record that somehow carries both keeps the array, because the array is a superset by
+     * construction and the scalar is only ever its head.
+     */
+    private static List<String> readAttachmentPaths(JSONObject message) {
+        List<String> paths = new ArrayList<>();
+        JSONArray stored = message.optJSONArray("attachmentPaths");
+        if (stored != null) {
+            for (int i = 0; i < stored.length(); i++) {
+                String path = stored.optString(i, "");
+                if (path != null && !path.trim().isEmpty()) paths.add(path);
+            }
+        }
+        if (paths.isEmpty()) {
+            String legacy = message.optString("attachmentPath", "");
+            if (legacy != null && !legacy.trim().isEmpty()) paths.add(legacy);
+        }
+        return paths;
+    }
+
+    /**
+     * Every private image file one conversation owns.
+     *
+     * <p>Read from the conversation's own record rather than from the filesystem, so nothing that
+     * belongs to another chat, to a pending request, or to the last-screen cache can be caught up
+     * in a deletion.
+     */
+    private static List<String> ownedAttachmentPaths(Conversation conversation) {
+        List<String> paths = new ArrayList<>();
+        if (conversation == null) return paths;
+        for (AssistantClient.History h : conversation.messages) {
+            if (h != null) paths.addAll(h.attachmentPaths);
+        }
+        return paths;
     }
 
     private static String safe(String s) { return s == null ? "" : s; }
