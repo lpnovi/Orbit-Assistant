@@ -286,7 +286,7 @@ public final class EmergencyDialGuard {
 
     /** The confirmation's body. Says exactly what the button will do, and no more. */
     public static String messageFor(String number) {
-        return "Do you want to open the dialer for " + number + "?";
+        return "Open the phone dialer for " + number + "?";
     }
 
     /** The affirmative button. Names the real consequence: a dialer opens, not a call is placed. */

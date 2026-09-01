@@ -12,6 +12,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -26,7 +27,9 @@ import java.util.List;
  * <p>Shared by full chat and the Side-button overlay rather than written twice, which is what stops
  * the two surfaces drifting into different ideas of what an attachment looks like. It draws only:
  * it holds no attachment state, decides nothing about limits, and reports a removal by id to
- * whoever owns the collection.
+ * whoever owns the collection. The one thing it does remember is what it drew last time, which is
+ * a fact about the picture on screen rather than about the attachments, and is only used to decide
+ * where the strip should be looking after a redraw.
  */
 public final class AttachmentStripView extends HorizontalScrollView {
 
@@ -35,9 +38,43 @@ public final class AttachmentStripView extends HorizontalScrollView {
         void onRemove(String attachmentId);
     }
 
+    /**
+     * Where a redraw should leave the strip looking.
+     *
+     * <p>Kept as a plain decision, separate from the drawing, because "the strip jumped somewhere
+     * surprising" is a question about which case the redraw was - not about views. Every rebuild
+     * is one of four things and only one of them is a reason to move the viewport at all.
+     */
+    public static final class ScrollPlan {
+        /** Leave the viewport where the user left it. A retheme, a rebuild, a removal. */
+        public static final int KEEP = 0;
+        /** Show the beginning. The strip was empty and now is not. */
+        public static final int START = 1;
+        /** Bring a newly appended item into view. */
+        public static final int REVEAL = 2;
+
+        public final int mode;
+        /** For {@link #REVEAL}, the index of the first item that was not there before. */
+        public final int revealIndex;
+
+        private ScrollPlan(int mode, int revealIndex) {
+            this.mode = mode;
+            this.revealIndex = revealIndex;
+        }
+    }
+
     private final LinearLayout row;
     private final boolean compact;
     private OnRemove onRemove;
+
+    /**
+     * The ids drawn by the previous {@link #bind}, in order.
+     *
+     * <p>View-only, and never a second copy of the composer's collection: it holds ids and nothing
+     * else, it is written only by {@code bind}, and nothing reads it to answer a question about
+     * what is attached. {@link ComposerAttachments} remains the one place that knows that.
+     */
+    private final List<String> previousIds = new ArrayList<>();
 
     public AttachmentStripView(Context context) {
         this(context, false);
@@ -64,6 +101,39 @@ public final class AttachmentStripView extends HorizontalScrollView {
     public void setOnRemove(OnRemove listener) { this.onRemove = listener; }
 
     /**
+     * What a redraw from {@code previous} to {@code next} should do with the viewport.
+     *
+     * <p>Written as a pure function of the two id lists so the rule can be stated and tested
+     * without a laid-out view, and so the drawing below has nothing to decide.
+     *
+     * <p>The rule is that movement has to be earned. Before this, every rebuild ended with a jump
+     * to the far right, which is right for exactly one case and wrong for the rest: attaching a
+     * first batch of three photos slammed the strip to Photo 3 with Photo 1 off-screen, removing
+     * an item threw the user to the end of a list they were reading the middle of, and a theme
+     * change moved the strip for no reason at all. So: a strip that was empty starts at the
+     * beginning, a strip that grew by items appended after everything it already had shows the
+     * first of them, and anything else - a removal, a rebind of the same list, a redraw - is left
+     * exactly where it was.
+     */
+    public static ScrollPlan planScroll(List<String> previous, List<String> next) {
+        int nextSize = next == null ? 0 : next.size();
+        if (nextSize == 0) return new ScrollPlan(ScrollPlan.START, 0);
+        int previousSize = previous == null ? 0 : previous.size();
+        if (previousSize == 0) return new ScrollPlan(ScrollPlan.START, 0);
+        if (nextSize <= previousSize) return new ScrollPlan(ScrollPlan.KEEP, 0);
+        for (int i = 0; i < previousSize; i++) {
+            String was = previous.get(i);
+            String now = next.get(i);
+            boolean same = was == null ? now == null : was.equals(now);
+            // Not an append: the items the user already had are not still where they were, so this
+            // is a reordering or a replacement and guessing at a destination would be worse than
+            // staying put.
+            if (!same) return new ScrollPlan(ScrollPlan.KEEP, 0);
+        }
+        return new ScrollPlan(ScrollPlan.REVEAL, previousSize);
+    }
+
+    /**
      * Redraws the strip for the given ordered attachments.
      *
      * <p>A full rebuild rather than a diff. The list is at most ten items and is only rebuilt on a
@@ -71,6 +141,18 @@ public final class AttachmentStripView extends HorizontalScrollView {
      * rebuild cannot leave a stale remove button wired to an attachment that has already gone.
      */
     public void bind(List<ComposerAttachment> attachments) {
+        List<String> nextIds = new ArrayList<>();
+        if (attachments != null) {
+            for (ComposerAttachment attachment : attachments) {
+                if (attachment != null) nextIds.add(attachment.id);
+            }
+        }
+        ScrollPlan plan = planScroll(previousIds, nextIds);
+        // Read before the rebuild, because removing the children resets it.
+        int previousScrollX = getScrollX();
+        previousIds.clear();
+        previousIds.addAll(nextIds);
+
         row.removeAllViews();
         if (attachments == null || attachments.isEmpty()) {
             setVisibility(GONE);
@@ -88,8 +170,58 @@ public final class AttachmentStripView extends HorizontalScrollView {
             if (i > 0) lp.setMarginStart(UiKit.dp(c, 6));
             row.addView(card, lp);
         }
-        // A new batch is appended to the end, so that is where the user is shown.
-        post(() -> fullScroll(FOCUS_RIGHT));
+        applyScrollPlan(plan, previousScrollX);
+    }
+
+    /**
+     * Carries out the plan once the rebuilt row has a width.
+     *
+     * <p>Posted rather than applied inline: every destination here is expressed in the new
+     * content's coordinates, and immediately after {@code addView} the row has not been measured,
+     * so a scroll issued now would be clamped against a width of zero and land on nothing.
+     */
+    private void applyScrollPlan(ScrollPlan plan, int previousScrollX) {
+        post(() -> {
+            switch (plan.mode) {
+                case ScrollPlan.START:
+                    fullScroll(isRtl() ? FOCUS_RIGHT : FOCUS_LEFT);
+                    break;
+                case ScrollPlan.REVEAL:
+                    revealChild(plan.revealIndex);
+                    break;
+                default:
+                    // HorizontalScrollView clamps for us, so a strip that became shorter than the
+                    // old offset settles at its new end rather than scrolling into empty space.
+                    scrollTo(previousScrollX, 0);
+                    break;
+            }
+        });
+    }
+
+    /**
+     * Brings the first newly appended card to the leading edge of the viewport.
+     *
+     * <p>Deliberately not "scroll to the end". Appending two photos to three should show Photo 4
+     * with Photo 5 beside it, which is what the user just did; landing on Photo 5 alone hides one
+     * of the two things that just arrived. The scroll view's own clamping handles the case where
+     * there is not that much content to the right.
+     */
+    private void revealChild(int index) {
+        if (index < 0 || index >= row.getChildCount()) {
+            fullScroll(isRtl() ? FOCUS_LEFT : FOCUS_RIGHT);
+            return;
+        }
+        View child = row.getChildAt(index);
+        int lead = UiKit.dp(getContext(), 6);
+        int target = isRtl()
+                ? child.getRight() - getWidth() + lead
+                : child.getLeft() - lead;
+        if (UiKit.animationsEnabled()) smoothScrollTo(Math.max(0, target), 0);
+        else scrollTo(Math.max(0, target), 0);
+    }
+
+    private boolean isRtl() {
+        return getLayoutDirection() == LAYOUT_DIRECTION_RTL;
     }
 
     private View buildCard(Context c, ComposerAttachment attachment, int position, int total) {
@@ -126,10 +258,15 @@ public final class AttachmentStripView extends HorizontalScrollView {
             card.addView(tile, tileLp);
         }
 
-        TextView label = UiKit.text(c, attachment.label, compact ? 11.5f : 12, UiKit.TEXT, true);
+        // A photo's caption is its position; a document's is its real name. The cap is tighter for
+        // a name than the strip used to allow, because one long filename taking a third of the
+        // strip is the same problem in a smaller form.
+        boolean photo = AttachmentLabels.isPhoto(attachment);
+        TextView label = UiKit.text(c, AttachmentLabels.displayLabel(attachment, position),
+                compact ? 11.5f : 12, UiKit.TEXT, true);
         label.setSingleLine(true);
         label.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
-        label.setMaxWidth(UiKit.dp(c, compact ? 128 : 156));
+        label.setMaxWidth(UiKit.dp(c, photo ? 96 : (compact ? 104 : 124)));
         label.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         card.addView(label, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -141,9 +278,8 @@ public final class AttachmentStripView extends HorizontalScrollView {
                 99, c));
         remove.setColorFilter(UiKit.MUTED);
         remove.setPadding(UiKit.dp(c, 7), UiKit.dp(c, 7), UiKit.dp(c, 7), UiKit.dp(c, 7));
-        remove.setContentDescription(total == 1
-                ? "Remove " + attachment.label
-                : "Remove " + attachment.label + ", attachment " + position + " of " + total);
+        remove.setContentDescription(
+                AttachmentLabels.removeDescription(attachment, position, total));
         final String id = attachment.id;
         remove.setOnClickListener(v -> {
             if (Prefs.haptics(c)) UiKit.haptic(v, HapticFeedbackConstants.CLOCK_TICK);
@@ -157,10 +293,11 @@ public final class AttachmentStripView extends HorizontalScrollView {
         card.addView(remove, removeLp);
 
         // The card itself carries the description a screen reader reads before reaching the
-        // remove control, so the order is "what this is" then "how to remove it".
-        card.setContentDescription(total == 1
-                ? "Attachment: " + attachment.label
-                : "Attachment " + position + " of " + total + ": " + attachment.label);
+        // remove control, so the order is "what this is" then "how to remove it". The shortened
+        // caption never reaches this: a screen reader is told the kind and the position, and a
+        // document is still told its name.
+        card.setContentDescription(
+                AttachmentLabels.cardDescription(attachment, position, total));
         card.setFocusable(true);
         return card;
     }

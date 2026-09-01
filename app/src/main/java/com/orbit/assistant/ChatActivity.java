@@ -12,6 +12,7 @@ import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.MediaStore;
@@ -1096,11 +1097,17 @@ public class ChatActivity extends Activity {
     /**
      * The confirmation a protected emergency or crisis number always gets.
      *
-     * <p>Deliberately plain. It names the number, says exactly what the button does - open the
-     * dialer, not place a call - and offers Cancel first. There is no countdown, no default
-     * action, and no way for silence to mean yes: the dialog waits, and if the user walks away
-     * nothing at all happens. Someone reaching this screen may be in a very bad moment, and the
-     * respectful thing to put in front of them is a calm question rather than an alarm.
+     * <p>Deliberately plain, and deliberately the same card the Side-button overlay shows. It
+     * names the number, says exactly what the button does - open the dialer, not place a call -
+     * and offers Cancel first. There is no countdown, no default action, and no way for silence to
+     * mean yes: the dialog waits, and if the user walks away nothing at all happens. Someone
+     * reaching this screen may be in a very bad moment, and the respectful thing to put in front
+     * of them is a calm question rather than an alarm.
+     *
+     * <p>The shared component is the dialog's whole content rather than being poured into
+     * AlertDialog's title, message, and buttons, because those are what made this look like a
+     * system warning: a full-width panel with a large empty middle and two oversized actions. The
+     * window itself is transparent so the card's own outline and corners are the visible shape.
      *
      * <p>Cancelling is a real answer and costs nothing: no Intent, no dialer, and the user stays
      * exactly where they were in Orbit.
@@ -1116,28 +1123,31 @@ public class ChatActivity extends Activity {
             return;
         }
         DiagnosticStore.recordProtectedDial(this, confirmation.category, "shown");
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(EmergencyDialGuard.titleFor(confirmation.displayNumber()))
-                .setMessage(EmergencyDialGuard.messageFor(confirmation.displayNumber()))
-                .setNegativeButton(EmergencyDialGuard.cancelLabel(), (d, w) -> {
+        AlertDialog dialog = new AlertDialog.Builder(this).create();
+        View card = ProtectedDialConfirmationView.build(this, confirmation.displayNumber(), false,
+                () -> {
                     confirmation.cancel();
                     DiagnosticStore.recordProtectedDial(this, confirmation.category, "cancelled");
+                    dialog.dismiss();
                     onCancel.run();
-                })
-                .setPositiveButton(EmergencyDialGuard.confirmLabel(), (d, w) -> {
+                },
+                () -> {
+                    dialog.dismiss();
                     // One grant, spent by the executor. A duplicated callback or a dialog left
                     // over from an earlier turn returns false here and opens nothing.
                     if (confirmation.confirm()) onAllow.run();
                     else onCancel.run();
-                })
-                .create();
+                });
+        dialog.setView(card);
         // Dismissing by tapping outside or pressing Back is a cancellation, never an approval.
         dialog.setOnCancelListener(d -> {
             confirmation.cancel();
             DiagnosticStore.recordProtectedDial(this, confirmation.category, "cancelled");
             onCancel.run();
         });
-        styleOrbitDialog(dialog);
+        UiKit.styleOrbitDialog(dialog, this, false, new ColorDrawable(Color.TRANSPARENT), -1f,
+                () -> card.announceForAccessibility(
+                        ProtectedDialConfirmationView.announcement(confirmation.displayNumber())));
         dialog.show();
     }
 

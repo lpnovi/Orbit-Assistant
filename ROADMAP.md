@@ -1040,8 +1040,21 @@ found by using the phone and is release-blocking:
   assistant's ability to recommend emergency help is deliberately untouched — recommending and
   acting are different things, and separating them is the whole design
 
-`0.7.8.0` is not Stable yet. If device testing finds a concrete issue, a corrective Beta follows;
-otherwise the next step is promoting `0.7.8.0` to Stable.
+`0.7.8.0-beta.4` is the final device-polish pass for the `0.7.8.0` line. Beta 3 held up on the
+Galaxy S25 Ultra, so this adds nothing and reopens nothing: it fixes the four things that only a
+phone could show. Photos in the composer are captioned by position rather than by a forty-character
+gallery filename, while documents keep the real names that are the only thing identifying them. The
+strip stopped ending every redraw with a jump to the far right - a first batch now starts at the
+beginning, an appended batch reveals what was just added, and a removal or a retheme leaves the
+viewport alone. The protected-dial confirmation was correct and looked like a system warning, so it
+became one compact shared card used by both full chat and the Side-button overlay rather than two
+hand-built ones. And the wording was made to match the state: the reply path now distinguishes a
+protected action that is awaiting confirmation from one that has executed, so Orbit can no longer
+say it is opening the dialer before the user has agreed. The gate itself is untouched.
+
+`0.7.8.0` is not Stable yet. If Beta 4 passes device validation on the Galaxy S25 Ultra, the
+expected next step is promoting `0.7.8.0` to Stable; if validation finds a concrete issue, a
+corrective Beta follows first.
 
 Beta 1 shipped:
 

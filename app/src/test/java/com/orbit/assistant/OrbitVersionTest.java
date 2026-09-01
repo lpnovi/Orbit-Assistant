@@ -169,25 +169,25 @@ public final class OrbitVersionTest {
      * workflow publishes it as a prerelease.
      */
     /**
-     * The second Beta of the 0.7.8 line: a corrective pass, still a prerelease.
+     * The fourth Beta of the 0.7.8 line: a device-polish pass, still a prerelease.
      *
-     * <p>Beta 2 fixes what a real Galaxy S25 Ultra found in Beta 1. It is not Stable, and it must
-     * outrank the Beta it corrects while still ranking below the Stable it is working towards.
+     * <p>Beta 4 fixes what a real Galaxy S25 Ultra found in Beta 3. It is not Stable, and it must
+     * outrank every Beta before it while still ranking below the Stable it is working towards.
      */
-    @Test public void thisBuildIsTheMultiAttachmentAndShareBeta() {
+    @Test public void thisBuildIsTheDevicePolishBeta() {
         String version = BuildConfig.VERSION_NAME;
         assertTrue(OrbitVersion.installedIsBeta());
         assertTrue(OrbitVersion.isBeta(version));
         assertFalse(OrbitVersion.isStable(version));
         assertEquals("0.7.8.0", OrbitVersion.baseVersion(version));
 
-        assertEquals(3, OrbitVersion.betaNumber(version));
-        assertEquals("Orbit Assistant v0.7.8.0 Beta 3", OrbitVersion.releaseTitle(version));
-        assertEquals("v0.7.8.0-beta.3", OrbitVersion.tagFor(version));
+        assertEquals(4, OrbitVersion.betaNumber(version));
+        assertEquals("Orbit Assistant v0.7.8.0 Beta 4", OrbitVersion.releaseTitle(version));
+        assertEquals("v0.7.8.0-beta.4", OrbitVersion.tagFor(version));
         assertTrue("the release workflow must publish it as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
-        assertTrue("and it must outrank both Betas before it",
-                OrbitVersion.compareVersions(version, "0.7.8.0-beta.2") > 0);
+        assertTrue("and it must outrank every Beta before it",
+                OrbitVersion.compareVersions(version, "0.7.8.0-beta.3") > 0);
         assertTrue("and the 0.7.7.9 line it follows",
                 OrbitVersion.compareVersions(version, "0.7.7.9") > 0);
         assertTrue("while ranking below the Stable 0.7.8.0 it is working towards",

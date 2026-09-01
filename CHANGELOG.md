@@ -585,3 +585,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Share text, a link, photos or a PDF to Orbit from any app and it lands in a new conversation.
   - Shared content is never sent on its own: it waits in the composer until you add what you want to ask.
   - Orbit will no longer open the dialer for 911 or 988 without asking you first, even if it suggested calling.
+
+- **v0.7.8.0-beta.4**: A polish pass on Beta 3, from testing on the phone.
+  - Photos in the composer are now labelled Photo 1, Photo 2, Photo 3 instead of long filenames, so more of them fit.
+  - PDFs and files keep their real names, shortened to one line so no single document fills the row.
+  - The attachment row now opens at the first photo instead of jumping to the last one.
+  - Adding more photos scrolls to the ones you just added, and removing one leaves the row where it was.
+  - The confirmation before dialling 911 or 988 is smaller and cleaner, with Cancel first as before.
+  - Orbit no longer says it is opening the dialer before you have confirmed it.

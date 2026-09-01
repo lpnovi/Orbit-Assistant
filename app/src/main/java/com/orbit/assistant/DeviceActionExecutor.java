@@ -96,10 +96,14 @@ public final class DeviceActionExecutor {
                     + EmergencyDialGuard.normalize(number) + ".");
         }
         start(c, new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(number))));
-        if (!EmergencyDialGuard.CATEGORY_NONE.equals(category)) {
-            DiagnosticStore.recordProtectedDial(c, category, "confirmed");
-        }
-        return Result.success("Dialer opened");
+        if (EmergencyDialGuard.CATEGORY_NONE.equals(category)) return Result.success("Dialer opened");
+        DiagnosticStore.recordProtectedDial(c, category, "confirmed");
+        // Past tense, said here and only here. This line is written after the Intent has gone to
+        // Android, which is the first moment at which "opened" is a true thing to say about a
+        // protected number - and it names the number, because the whole complaint about the old
+        // wording was that Orbit described this act before it had performed it.
+        return Result.success(
+                ActionNarration.dialerOpenedText(EmergencyDialGuard.normalize(number)));
     }
 
     public static String execute(Context c, AssistantReply.Action action) {

@@ -198,7 +198,12 @@ public final class AssistantClient {
     public static void send(Context context, String prompt, String screenText, List<Bitmap> images,
                             List<History> history, String intelligenceMode,
                             boolean explicitAttachment, String trustedTaskContext,
-                            java.util.function.BooleanSupplier cancelled, Callback cb) {
+                            java.util.function.BooleanSupplier cancelled, Callback callback) {
+        // Every answer in Orbit leaves through this callback - the deterministic routers below,
+        // Orbit Local, and whichever cloud provider is active - so this is where the reply's prose
+        // is checked against what has actually been done. A protected dial that is about to be put
+        // to the user for confirmation cannot leave here described as though it already happened.
+        final Callback cb = ActionNarration.guard(callback);
         final Bitmap screenshot = images == null || images.isEmpty() ? null : images.get(0);
         final List<Bitmap> requestImages = images == null
                 ? java.util.Collections.emptyList() : images;

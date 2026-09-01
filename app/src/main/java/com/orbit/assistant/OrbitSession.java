@@ -2960,9 +2960,10 @@ public class OrbitSession extends VoiceInteractionSession {
     /**
      * The overlay's confirmation for a protected emergency or crisis number.
      *
-     * <p>Same rule as full chat and the same words, drawn in the sheet's own idiom: the number is
-     * named, the consequence is stated as opening the dialer, Cancel comes first, and nothing
-     * happens on its own. No timer, no default, and no way for the sheet closing to count as yes.
+     * <p>Same rule as full chat and now literally the same card: the shared component is built
+     * once and shown here inline in the sheet, so the number is named, the consequence is stated
+     * as opening the dialer, Cancel comes first, and nothing happens on its own. No timer, no
+     * default, and no way for the sheet closing to count as yes.
      *
      * <p>The card is announced for accessibility as soon as it appears, because the overlay sits
      * over another app and a screen-reader user must not have to discover that Orbit is waiting.
@@ -2978,51 +2979,25 @@ public class OrbitSession extends VoiceInteractionSession {
         }
         DiagnosticStore.recordProtectedDial(c, confirmation.category, "shown");
 
-        LinearLayout box = new LinearLayout(c);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(UiKit.dp(c, 14), UiKit.dp(c, 12), UiKit.dp(c, 14), UiKit.dp(c, 12));
-        box.setBackground(UiKit.outlined(UiKit.SURFACE_2, UiKit.accent(c), 18, c));
-
-        TextView title = UiKit.text(c, EmergencyDialGuard.titleFor(confirmation.displayNumber()),
-                14, UiKit.TEXT, true);
-        box.addView(title);
-        TextView detail = UiKit.text(c, EmergencyDialGuard.messageFor(confirmation.displayNumber()),
-                12, UiKit.MUTED, false);
-        detail.setLineSpacing(0, 1.12f);
-        detail.setPadding(0, UiKit.dp(c, 6), 0, 0);
-        box.addView(detail);
-
-        LinearLayout row = new LinearLayout(c);
-        row.setGravity(Gravity.END);
-        Button cancel = tinyTextButton(EmergencyDialGuard.cancelLabel());
-        Button allow = tinyTextButton(EmergencyDialGuard.confirmLabel());
-        allow.setTextColor(UiKit.accent(c));
-        // Cancel is first in both reading order and focus order, so the safe answer is the one a
-        // screen reader reaches first.
-        row.addView(cancel);
-        row.addView(allow);
-        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rowLp.topMargin = UiKit.dp(c, 4);
-        box.addView(row, rowLp);
-        messages.addView(box, bubbleLp(Gravity.START, UiKit.dp(c, 330)));
+        final View[] card = new View[1];
+        card[0] = ProtectedDialConfirmationView.build(c, confirmation.displayNumber(), true,
+                () -> {
+                    messages.removeView(card[0]);
+                    confirmation.cancel();
+                    DiagnosticStore.recordProtectedDial(c, confirmation.category, "cancelled");
+                    no.run();
+                },
+                () -> {
+                    messages.removeView(card[0]);
+                    // One grant, spent by the executor. A second tap, or a card left over from an
+                    // earlier turn, returns false here and opens nothing.
+                    if (confirmation.confirm()) yes.run();
+                    else no.run();
+                });
+        messages.addView(card[0], bubbleLp(Gravity.START, UiKit.dp(c, 330)));
         scrollBottom();
-        box.announceForAccessibility(EmergencyDialGuard.titleFor(confirmation.displayNumber())
-                + " " + EmergencyDialGuard.messageFor(confirmation.displayNumber()));
-
-        cancel.setOnClickListener(v -> {
-            messages.removeView(box);
-            confirmation.cancel();
-            DiagnosticStore.recordProtectedDial(c, confirmation.category, "cancelled");
-            no.run();
-        });
-        allow.setOnClickListener(v -> {
-            messages.removeView(box);
-            // One grant, spent by the executor. A second tap, or a card left over from an earlier
-            // turn, returns false here and opens nothing.
-            if (confirmation.confirm()) yes.run();
-            else no.run();
-        });
+        card[0].announceForAccessibility(
+                ProtectedDialConfirmationView.announcement(confirmation.displayNumber()));
     }
 
     /** The confirmation sheet itself, with the destination as an editable field inside it. */
