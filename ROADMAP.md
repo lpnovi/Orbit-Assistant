@@ -892,6 +892,27 @@ failure that shaped it; in short:
   app, with every Activity classified as predictive, guarded, local or root so that editors keep
   their unsaved-work protection and result-returning or bridge screens keep their own Back
 
+### 0.7.8.0 — Orbit Local device actions, multi-attachments, and protected dialing
+Validated on a Galaxy S25 Ultra across four Betas (`beta.1`-`beta.4`) and released as `0.7.8.0`
+Stable. The line is recorded in full under **Near-term order** below; in short:
+
+- **Beta 1** opened item 1 of the numbered list without finishing it: a second, much smaller model
+  beside the chat model, so Orbit Local can read a phone command in the user's own words and
+  *request* an existing Orbit action through the shared executor. It also added deterministic
+  everyday utilities — a calculator, conversions beyond the kitchen, device-status reads, and media
+  and ringer control — and the hidden Launch Sequence
+- **Beta 2** corrected what the device found: status questions phrased as "what's" reaching the
+  command parser, drafted replies routing to SMS from a Gmail screen, clarifications being offered
+  send controls they should never have had, and the Launch Sequence not actually dragging
+- **Beta 3** rebuilt attachments as one canonical ordered set rather than a slot, so several photos
+  go in one message through whichever Gallery the user has; added `ShareToOrbitActivity` as a narrow
+  exported share target that never sends on its own; and added the protected emergency and crisis
+  dialing boundary after a model returned an unprompted `DIAL` for 911 on a real phone
+- **Beta 4** fixed the four presentation faults only a phone could show: long photo filenames in the
+  attachment strip, a strip that jumped to the far right after every redraw, a protected-dial
+  confirmation that read as a system warning, and a reply claiming the dialer was open before the
+  user had confirmed it
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever
@@ -907,7 +928,7 @@ genuinely unfinished remainder of the line, in the order the next patches should
 The long-term goal is unchanged: Orbit becomes a **hybrid, provider-agnostic Android assistant
 runtime** rather than an app tied to one model service.
 
-#### Near-term order, after v0.7.7.9
+#### Near-term order, after v0.7.8.0
 v0.7.7.4 shipped the Beta channel, so this order is now also the order these are expected to be
 *tested* in: a feature becomes a numbered Beta, is validated on a real device, and only then
 becomes a Stable release.
@@ -932,9 +953,9 @@ establishes is something later screens should be built on rather than retrofitte
 Beta slot in front of Orbit Local device actions exactly as `0.7.7.7` and `0.7.7.8` each did, and
 never displaced them.
 
-`0.7.8.0-beta.1` — **Orbit Local device-action foundation, plus everyday utilities** — has now
-shipped as a Beta and awaits device validation. It opens item 1 of the numbered list below without
-finishing it. What actually shipped:
+`0.7.8.0-beta.1` — **Orbit Local device-action foundation, plus everyday utilities** — opened the
+line and has since been validated on the device and released as part of `0.7.8.0` Stable. It opens
+item 1 of the numbered list below without finishing it. What actually shipped:
 
 - **A second, much smaller model beside the chat model.** The component stopped holding one model
   and started holding two, keyed by slot: independent download, pause, resume, verification,
@@ -1052,9 +1073,15 @@ hand-built ones. And the wording was made to match the state: the reply path now
 protected action that is awaiting confirmation from one that has executed, so Orbit can no longer
 say it is opening the dialer before the user has agreed. The gate itself is untouched.
 
-`0.7.8.0` is not Stable yet. If Beta 4 passes device validation on the Galaxy S25 Ultra, the
-expected next step is promoting `0.7.8.0` to Stable; if validation finds a concrete issue, a
-corrective Beta follows first.
+`0.7.8.0` has now reached Stable. Beta 4 passed device validation on the Galaxy S25 Ultra, so the
+line was promoted unchanged: the Stable build is the Beta 4 build with its version metadata and
+release guards flipped, and no behaviour was retuned during promotion.
+
+**Development continues at item 1 below — Orbit Local device actions**, which this line opened and
+deliberately did not finish. Its stated remainder is unchanged: growing the allowlist past the
+initial ten actions, letting the semantic path resolve short follow-ups the way the deterministic
+one already does, and multi-action requests, which are still rejected outright rather than partly
+obeyed. Nothing below item 1 was started here, and no future item is complete.
 
 Beta 1 shipped:
 

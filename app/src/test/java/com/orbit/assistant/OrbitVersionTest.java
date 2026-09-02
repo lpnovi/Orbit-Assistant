@@ -147,50 +147,34 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * The 0.7.7.9 line ran as three Betas and is now promoted to Stable.
+     * The 0.7.8.0 line ran as four Betas and is now promoted to Stable.
      *
-     * <p>A gesture is the one kind of change unit tests can say least about, which is why this line
-     * earned three device validations rather than one. They can prove that a card's position tracks
-     * the events it was given and that a scroll is never taken as a swipe; they cannot say whether
-     * the movement arrives with the finger. Beta 1 proved exactly that gap: every off-device check
-     * passed while the conversation did not move at all on a Galaxy S25 Ultra. Beta 2 replaced the
-     * platform-only path with Orbit's own progress-driven one and the device agreed; Beta 3 spread
-     * that working interaction across the app and the device agreed again.
+     * <p>Four rather than one because of what this line contained. An on-device action model, a
+     * multi-attachment composer fed by whichever Gallery the user actually has, an exported share
+     * target, and a confirmation standing between a model and a 911 dialer are all things a
+     * Robolectric run can describe but not settle: Beta 1 introduced them, Beta 2 corrected what a
+     * Galaxy S25 Ultra found wrong about phrasing and reply destinations, Beta 3 rebuilt
+     * attachments as a set and added the emergency boundary after the device produced an
+     * unprompted dialer, and Beta 4 fixed the four presentation faults only a phone could show.
      *
      * <p>The guard now runs the other way. The finished release must not quietly regain prerelease
      * metadata and be published to the Beta channel by accident, so this fails before publication
      * rather than on a phone.
      */
-    /**
-     * This build opens the 0.7.8 line, and it is a Beta.
-     *
-     * <p>Orbit Local device actions and every new utility in this release need validation on real
-     * hardware before any of it is called Stable, so the version string says so and the release
-     * workflow publishes it as a prerelease.
-     */
-    /**
-     * The fourth Beta of the 0.7.8 line: a device-polish pass, still a prerelease.
-     *
-     * <p>Beta 4 fixes what a real Galaxy S25 Ultra found in Beta 3. It is not Stable, and it must
-     * outrank every Beta before it while still ranking below the Stable it is working towards.
-     */
-    @Test public void thisBuildIsTheDevicePolishBeta() {
+    @Test public void thisBuildIsTheOrbitLocalActionsAndAttachmentsStable() {
         String version = BuildConfig.VERSION_NAME;
-        assertTrue(OrbitVersion.installedIsBeta());
-        assertTrue(OrbitVersion.isBeta(version));
-        assertFalse(OrbitVersion.isStable(version));
+        assertFalse(OrbitVersion.installedIsBeta());
+        assertFalse(OrbitVersion.isBeta(version));
+        assertTrue(OrbitVersion.isStable(version));
         assertEquals("0.7.8.0", OrbitVersion.baseVersion(version));
 
-        assertEquals(4, OrbitVersion.betaNumber(version));
-        assertEquals("Orbit Assistant v0.7.8.0 Beta 4", OrbitVersion.releaseTitle(version));
-        assertEquals("v0.7.8.0-beta.4", OrbitVersion.tagFor(version));
-        assertTrue("the release workflow must publish it as a prerelease",
+        assertEquals("a Stable build carries no beta counter", 0, OrbitVersion.betaNumber(version));
+        assertEquals("Orbit Assistant v0.7.8.0", OrbitVersion.releaseTitle(version));
+        assertEquals("v0.7.8.0", OrbitVersion.tagFor(version));
+        assertFalse("the release workflow must publish it as Stable",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
-        assertTrue("and it must outrank every Beta before it",
-                OrbitVersion.compareVersions(version, "0.7.8.0-beta.3") > 0);
-        assertTrue("and the 0.7.7.9 line it follows",
-                OrbitVersion.compareVersions(version, "0.7.7.9") > 0);
-        assertTrue("while ranking below the Stable 0.7.8.0 it is working towards",
-                OrbitVersion.compareVersions(version, "0.7.8.0") < 0);
+        assertTrue("and it must outrank 0.7.7.9 and every Beta it was built from",
+                OrbitVersion.compareVersions(version, "0.7.7.9") > 0
+                        && OrbitVersion.compareVersions(version, "0.7.8.0-beta.4") > 0);
     }
 }

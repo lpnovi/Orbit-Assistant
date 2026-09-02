@@ -185,16 +185,17 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * On-device device actions need real hardware before they are called finished, so this is a Beta.
+     * On-device actions, attachments, sharing and the dialing boundary passed four device Betas.
      *
-     * <p>Nothing in this release has been through a Galaxy S25 Ultra yet: the action model's
-     * behaviour cannot be validated anywhere else, and neither can media control, the ringer, or the
-     * device-status readings.
+     * <p>The action model, media control, the ringer and the device-status readings were all
+     * validated on a Galaxy S25 Ultra, as were the multi-attachment composer, Share to Orbit, and
+     * the protected-dial confirmation. So this release is Stable, and the guard's job is now to
+     * stop a versionName that quietly regains prerelease metadata from being published here.
      */
-    @Test public void thisReleaseIsABetaAwaitingDeviceValidation() {
-        assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
-                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
-        assertTrue(OrbitVersion.installedIsBeta());
+    @Test public void thisReleaseIsStableAfterDeviceValidation() {
+        assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
+                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.installedIsBeta());
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
     }
 

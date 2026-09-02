@@ -593,3 +593,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Adding more photos scrolls to the ones you just added, and removing one leaves the row where it was.
   - The confirmation before dialling 911 or 988 is smaller and cleaner, with Cancel first as before.
   - Orbit no longer says it is opening the dialer before you have confirmed it.
+
+- **v0.7.8.0**: Orbit Local can work out phone commands on its own, several photos go in one message, anything can be shared to Orbit, and replies land in the right app.
+  - Orbit Local understands phone commands in your own words with an optional on-device model, working with no internet.
+  - Ask for a calculation, a unit conversion, or what your battery, brightness, volume, ringer or Do Not Disturb is really set to.
+  - Control playback and the ringer by voice or text: play, pause, skip, and switch between ring, vibrate and silent.
+  - Pick several photos from your gallery at once, and hold up to ten attachments in one scrollable row.
+  - Share text, links, photos or a PDF to Orbit from any app; it opens a conversation and waits for you.
+  - Orbit asks before opening the dialer for 911 or 988, and never says it has opened it before you confirm.
