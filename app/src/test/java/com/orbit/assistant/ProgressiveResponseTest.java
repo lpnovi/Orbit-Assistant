@@ -256,6 +256,138 @@ public final class ProgressiveResponseTest {
         assertEquals("no duplicated rows", 1, countOccurrences(text, "3"));
     }
 
+    // ---- combined emphasis while streaming -----------------------------------------------------------------------
+
+    /**
+     * Bold-italic settles once, rather than flickering through its own delimiters.
+     *
+     * <p>The device showed the finished form of this bug — a stray asterisk left at each end — but
+     * the streaming form matters just as much: while the six delimiters are arriving one at a time
+     * the reader must never watch stars appear and disappear around a phrase they are trying to
+     * read. The existing dangling-delimiter policy covers it, once it knows that {@code ***} is a
+     * delimiter in its own right.
+     */
+    @Test public void combinedEmphasisSettlesCleanlyAsItArrives() {
+        ProgressiveResponseView view = view();
+
+        view.update("This is ***bo", true);
+        String early = allText(view);
+        assertTrue("the words keep arriving", early.contains("bo"));
+        assertFalse("with no delimiter noise while it is still being decided", early.contains("*"));
+
+        view.update("This is ***bold ita", true);
+        assertFalse(allText(view).contains("*"));
+        assertTrue(allText(view).contains("bold ita"));
+
+        view.update("This is ***bold italic*** text.", false);
+        String finished = allText(view).trim();
+        assertEquals("This is bold italic text.", finished);
+        assertFalse("no raw syntax survives", finished.contains("*"));
+        assertTrue("and the phrase is genuinely bold and italic", boldItalicSomewhere(view));
+    }
+
+    /** A half-written triple never loses characters, even if the answer stops there. */
+    @Test public void anUnfinishedTripleKeepsItsWords() {
+        ProgressiveResponseView view = view();
+        view.update("This is ***unfinished", true);
+        assertTrue(allText(view).contains("unfinished"));
+        view.settle("This is ***unfinished");
+        assertTrue("a stopped answer keeps every character it was given",
+                allText(view).contains("***unfinished"));
+    }
+
+    /** Completing a triple redraws its own paragraph and nothing else. */
+    @Test public void completingCombinedEmphasisLeavesEarlierBlocksAlone() {
+        ProgressiveResponseView view = view();
+        view.update("Intro paragraph.\n\nThis is ***very", true);
+        View intro = view.getChildAt(0);
+        view.update("Intro paragraph.\n\nThis is ***very important*** now.", false);
+        assertSame("a settled block must not be rebuilt by later text", intro, view.getChildAt(0));
+    }
+
+    // ---- task lists while streaming --------------------------------------------------------------------------
+
+    /**
+     * A task item is recognised as soon as its box is written, and does not change its mind.
+     *
+     * <p>The oscillation this rules out is bullet, then a literal "[x]", then a checkbox: three
+     * presentations of one line while the reader watches. Once {@code - [x]} exists there is
+     * nothing left to decide, so the box appears then and stays.
+     */
+    @Test public void aTaskItemIsRecognisedAsSoonAsItsBoxIsWritten() {
+        ProgressiveResponseView view = view();
+
+        view.update("- [x", true);
+        assertFalse("a half-written box is not a box yet", hasTaskBox(view));
+        assertTrue("but nothing is lost while it waits", allText(view).contains("x"));
+
+        view.update("- [x]", true);
+        assertTrue("the box appears the moment it is complete", hasTaskBox(view));
+        assertEquals(1, taskBoxes(view).size());
+
+        view.update("- [x] Headings rendered", true);
+        assertEquals("and the text fills in behind the same box", 1, taskBoxes(view).size());
+        assertTrue(taskBoxes(view).get(0).isChecked());
+        assertTrue(allText(view).contains("Headings rendered"));
+        assertFalse(allText(view).contains("[x]"));
+    }
+
+    /** Later items arrive without disturbing the ones already ticked off above them. */
+    @Test public void earlierTasksStayStableAsLaterOnesArrive() {
+        ProgressiveResponseView view = stream(
+                "- [x] Done",
+                "- [x] Done\n- [ ] Not",
+                "- [x] Done\n- [ ] Not done yet");
+        List<TaskBoxSpan> boxes = taskBoxes(view);
+        assertEquals("exactly one box per item, never one per update", 2, boxes.size());
+        assertTrue(boxes.get(0).isChecked());
+        assertFalse(boxes.get(1).isChecked());
+        String text = allText(view);
+        assertTrue(text.contains("Done"));
+        assertTrue(text.contains("Not done yet"));
+        assertFalse(text.contains("[ ]"));
+    }
+
+    /** Streaming a task list character by character lands exactly where a direct render does. */
+    @Test public void aStreamedTaskListMatchesADirectRender() {
+        String answer = "## Progress\n\n- [x] Headings rendered\n- [ ] Run device test\n"
+                + "- [x] ***Bold italic*** item";
+        assertEquals(normalise(allText(OrbitRichResponseRenderer.render(context, answer, fill, false))),
+                normalise(allText(streamCharacterByCharacter(answer))));
+    }
+
+    // ---- table geometry while streaming ----------------------------------------------------------------------
+
+    /**
+     * The equal-height rule holds on a table that is still growing.
+     *
+     * <p>Fixing only the completed renderer would leave a streaming table fragmented for the whole
+     * time the user is actually watching it. It holds here for free because both paths build their
+     * table with the same block builder, and that is the property worth pinning.
+     */
+    @Test public void everyRowOfAStreamingTableKeepsItsCellsTogether() {
+        ProgressiveResponseView view = view();
+        String[] fragments = {
+                "| A | B | C |\n| --- | --- | --- |",
+                "| A | B | C |\n| --- | --- | --- |\n| 1 | 2 | 3 |",
+                "| A | B | C |\n| --- | --- | --- |\n| 1 | 2 | 3 |\n| 4 | 5 | 6 |",
+        };
+        for (int i = 0; i < fragments.length; i++) {
+            view.update(fragments[i], true);
+            assertEquals("one table, promoted once", 1, tables(view).size());
+            for (android.widget.TableRow row : tableRows(view)) {
+                for (int cell = 0; cell < row.getChildCount(); cell++) {
+                    assertEquals("a streaming table's cells must fill their row too",
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            row.getChildAt(cell).getLayoutParams().height);
+                }
+            }
+        }
+        view.settle(fragments[fragments.length - 1]);
+        assertEquals("the finished table has its header and both rows", 3, tableRows(view).size());
+        assertEquals("still exactly one horizontal scroller", 1, tables(view).size());
+    }
+
     // ---- final parity ----------------------------------------------------------------------------------------
 
     /**
@@ -452,6 +584,58 @@ public final class ProgressiveResponseTest {
             if (view instanceof Button && "Copy".contentEquals(((Button) view).getText())) {
                 found.add((Button) view);
             }
+        }
+        return found;
+    }
+
+    /** True when some run of some TextView in the tree is both bold and italic. */
+    private static boolean boldItalicSomewhere(View root) {
+        for (View view : descendants(root)) {
+            if (!(view instanceof TextView)) continue;
+            CharSequence text = ((TextView) view).getText();
+            if (!(text instanceof android.text.Spanned)) continue;
+            android.text.Spanned spanned = (android.text.Spanned) text;
+            for (android.text.style.StyleSpan span :
+                    spanned.getSpans(0, spanned.length(), android.text.style.StyleSpan.class)) {
+                int mask = 0;
+                int start = spanned.getSpanStart(span);
+                int end = spanned.getSpanEnd(span);
+                for (android.text.style.StyleSpan other :
+                        spanned.getSpans(start, end, android.text.style.StyleSpan.class)) {
+                    if (spanned.getSpanStart(other) <= start && spanned.getSpanEnd(other) >= end) {
+                        mask |= other.getStyle();
+                    }
+                }
+                if ((mask & android.graphics.Typeface.BOLD) != 0
+                        && (mask & android.graphics.Typeface.ITALIC) != 0) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasTaskBox(View root) { return !taskBoxes(root).isEmpty(); }
+
+    /** Every task checkbox drawn in the tree, in order. */
+    private static List<TaskBoxSpan> taskBoxes(View root) {
+        List<TaskBoxSpan> found = new ArrayList<>();
+        for (View view : descendants(root)) {
+            if (!(view instanceof TextView)) continue;
+            CharSequence text = ((TextView) view).getText();
+            if (!(text instanceof android.text.Spanned)) continue;
+            android.text.Spanned spanned = (android.text.Spanned) text;
+            for (TaskBoxSpan span : spanned.getSpans(0, spanned.length(), TaskBoxSpan.class)) {
+                found.add(span);
+            }
+        }
+        return found;
+    }
+
+    private static List<android.widget.TableRow> tableRows(View root) {
+        List<android.widget.TableRow> found = new ArrayList<>();
+        for (View view : descendants(root)) {
+            if (view instanceof android.widget.TableRow) found.add((android.widget.TableRow) view);
         }
         return found;
     }

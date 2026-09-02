@@ -149,19 +149,23 @@ public final class OrbitVersionTest {
     /**
      * This build continues the 0.7.8.1 line, and it is a Beta.
      *
-     * <p>Beta 1 shipped the attachment viewer and Ask Orbit and was validated on a Galaxy S25 Ultra.
-     * Beta 2 is a refinement pass over how every answer is presented while it is being written, and
-     * it is exactly the kind of change off-device tests describe rather than settle: they can prove
-     * that a heading formats the moment its line is established, that a table waits for its divider
-     * row, and that a thousand fragments become two render passes. They cannot say whether the
-     * result reads as an answer arriving or as a screen flinching, and they cannot say whether the
-     * Side-button overlay behaves the same way over another app.
+     * <p>Beta 1 shipped the attachment viewer and Ask Orbit. Beta 2 rebuilt how an answer is
+     * presented while it is being written, and a Galaxy S25 Ultra confirmed the architecture works
+     * — and showed four presentation defects it could not have shown off-device: combined emphasis
+     * leaving stray asterisks, table rows breaking into cells of different heights, task syntax
+     * arriving as literal brackets, and a fully opaque jump-to-latest covering the text behind it.
      *
-     * <p>So the version says Beta and the release workflow publishes it as a prerelease. It must
-     * outrank the whole 0.7.8.0 line and its own Beta 1, while still ranking below the Stable it is
-     * working towards.
+     * <p>Beta 3 corrects exactly those four things and changes nothing else, which makes it the
+     * kind of release that has to be looked at rather than only measured: a test can prove that a
+     * range carries both bold and italic, that every cell in a row asks for the row's height, and
+     * that a checkbox is not a control, but not whether the result reads well on a purple bubble
+     * in a real conversation.
+     *
+     * <p>So the version still says Beta and the release workflow still publishes it as a
+     * prerelease. It must outrank the whole 0.7.8.0 line and both Betas before it, while still
+     * ranking below the Stable it is working towards.
      */
-    @Test public void thisBuildIsTheProgressiveResponsesBeta() {
+    @Test public void thisBuildIsTheMarkdownPresentationPolishBeta() {
 
         String version = BuildConfig.VERSION_NAME;
         assertTrue(OrbitVersion.installedIsBeta());
@@ -169,14 +173,16 @@ public final class OrbitVersionTest {
         assertFalse(OrbitVersion.isStable(version));
         assertEquals("0.7.8.1", OrbitVersion.baseVersion(version));
 
-        assertEquals(2, OrbitVersion.betaNumber(version));
-        assertEquals("Orbit Assistant v0.7.8.1 Beta 2", OrbitVersion.releaseTitle(version));
-        assertEquals("v0.7.8.1-beta.2", OrbitVersion.tagFor(version));
+        assertEquals(3, OrbitVersion.betaNumber(version));
+        assertEquals("Orbit Assistant v0.7.8.1 Beta 3", OrbitVersion.releaseTitle(version));
+        assertEquals("v0.7.8.1-beta.3", OrbitVersion.tagFor(version));
         assertTrue("the release workflow must publish it as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
         assertTrue("it must outrank the Stable line it was built from",
                 OrbitVersion.compareVersions(version, "0.7.8.0") > 0);
         assertTrue("and the Beta before it",
+                OrbitVersion.compareVersions(version, "0.7.8.1-beta.2") > 0);
+        assertTrue("and the one before that",
                 OrbitVersion.compareVersions(version, "0.7.8.1-beta.1") > 0);
         assertTrue("and must still rank below the Stable it is working towards",
                 OrbitVersion.compareVersions(version, "0.7.8.1") < 0);

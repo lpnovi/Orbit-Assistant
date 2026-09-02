@@ -1270,6 +1270,45 @@ Deliberately **not** in scope, then or now: per-message swipe actions, forward o
 navigation, and any horizontal gesture in the Side-button overlay. The overlay's vertical swipe
 behaviour is settled and is not being reopened.
 
+### 0.7.8.1-beta.3 - Markdown & Chat Presentation Polish
+`0.7.8.1-beta.3` is real-device polish over Beta 2, not a second refinement pass and not new
+capability. A Galaxy S25 Ultra confirmed the progressive architecture works: headings, lists, code,
+tables, links and quotes all format while the response is arriving instead of waiting for it to
+finish. The same test showed four presentation defects that only a screen could show, and this Beta
+corrects exactly those four and leaves the Beta 2 architecture alone. Orbit Local device actions
+remain unstarted and unchanged at item 1 below, and nothing here touches the action model, the
+allowlist, the deterministic router, the protected-dial boundary, the request-integrity gates, or
+the Beta 1 attachment viewer and Ask Orbit doorway.
+
+What actually shipped:
+
+- **Combined emphasis is one construct.** `***bold italic***` was coming out as a bold phrase with
+  a literal asterisk still visible at each end, because the `**` matcher got first refusal and
+  consumed the middle four of the six delimiters. Combined emphasis is now its own alternative
+  above the runs it contains, and it applies two ordinary style spans over one range rather than a
+  third kind of emphasis, so bold-italic composes with everything around it. The same pass put the
+  full renderer on the word-boundary rules the Chats-list preview already used, so `2 * 4 = 8` and
+  `some_variable_name` keep their characters
+- **A table row is one row.** Cells were laid out at their own content height, so a row with
+  unevenly wrapped columns broke into cards of four different heights with the assistant bubble
+  showing through underneath the shorter ones. Cells now take their row's height, which is layout
+  behaviour rather than measurement: a horizontal `LinearLayout` whose own height wraps already
+  re-measures its match-parent children against the tallest of them. Rows keep independent heights,
+  no height is hardcoded, and horizontal scrolling, cell width bounds and header styling are
+  untouched
+- **Task lists are shown, not operated.** `- [x] Done` reached the screen with its brackets intact.
+  It is now a `TaskBoxSpan` drawn over a leading placeholder inside the item's own TextView, so the
+  box and the words are one row that indents, wraps and scales together, and the text after the box
+  is ordinary rich Markdown. There is deliberately no control to press — these boxes present what
+  the assistant wrote, and tapping one must never edit a stored reply — and state is announced in
+  words rather than as a toggle
+- **Jump to latest stopped covering the answer.** Same control, same place, same appearance rules,
+  same touch target; it simply rests slightly translucent, with the entrance animating straight to
+  that value rather than to fully opaque and correcting itself afterwards
+
+All three Markdown fixes apply to full chat and the Side-button overlay together, because both
+surfaces share one parser and one block builder.
+
 1. **Orbit Local device actions** — *foundation shipped in `0.7.8.0-beta.1`, not finished.* The
    pipeline is now real and is the one that was written down: user request → deterministic routers
    → lightweight local action model → normalized Orbit action → `LocalActionSchema` validation →

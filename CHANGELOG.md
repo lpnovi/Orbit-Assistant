@@ -616,3 +616,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Moving from Thinking into the answer, and new content arriving, both got gentler motion.
   - If you scroll up while Orbit is answering, it leaves you there; jump-to-latest works exactly as before.
   - Turning Android animations down still gives you the full formatting, just without the movement.
+
+- **v0.7.8.1-beta.3**: Presentation polish for answers, from real-device testing of the new progressive formatting.
+  - Text written as bold *and* italic together now shows as both, with no leftover asterisks.
+  - Every cell in a table row now shares that row's height, so a row reads as one continuous row.
+  - Rows still size to their own content, and wide tables still scroll sideways.
+  - Checklists in an answer now show proper ticked and empty boxes instead of literal `[x]` and `[ ]`.
+  - Those boxes are part of the answer, so they are shown rather than tapped, and read out as checked or unchecked.
+  - Jump to latest is now slightly see-through, so it covers less of the message behind it.

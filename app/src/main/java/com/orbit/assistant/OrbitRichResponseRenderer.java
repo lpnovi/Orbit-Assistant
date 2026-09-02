@@ -9,6 +9,7 @@ import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.net.Uri;
+import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.method.LinkMovementMethod;
 import android.view.Gravity;
@@ -150,9 +151,14 @@ public final class OrbitRichResponseRenderer {
                     Matcher item = ResponseBlocks.LIST.matcher(line);
                     if (!item.matches()) continue;
                     int indent = Math.min(3, item.group(1).replace("\t", "    ").length() / 2);
-                    String marker = item.group(2).matches("\\d+.*") ? item.group(2) : "•";
-                    TextView itemView = richText(c, marker + "  " + item.group(3),
-                            chatSize(c, compact ? 14 : 15), foreground, false, fill);
+                    ResponseBlocks.Task task = ResponseBlocks.task(item.group(2), item.group(3));
+                    float size = chatSize(c, compact ? 14 : 15);
+                    TextView itemView = task != null
+                            ? taskItem(c, task, size, foreground, fill)
+                            : richText(c, (item.group(2).matches("\\d+.*") ? item.group(2) : "•")
+                                    + "  " + item.group(3), size, foreground, false, fill);
+                    // Identical padding either way, so a task list and a bullet list sitting one
+                    // above the other line their text up rather than stepping in and out.
                     itemView.setPadding(UiKit.dp(c, 8 + indent * 14), UiKit.dp(c, 2), 0,
                             UiKit.dp(c, 2));
                     listBlock.addView(itemView);
@@ -200,6 +206,36 @@ public final class OrbitRichResponseRenderer {
             rows.add(splitTableRow(lines[i]));
         }
         return rows;
+    }
+
+    /**
+     * One Markdown task item: a read-only checkbox followed by the item's own rich text.
+     *
+     * <p>The same {@link TextView} an ordinary bullet gets, with the box drawn by a
+     * {@link TaskBoxSpan} over a leading placeholder rather than added as a second view. That is
+     * what keeps the box and the words one row: they wrap together, scale together, indent
+     * together, and the box cannot end up beside the wrong line of a three-line task.
+     *
+     * <p>The text after the box is rendered by the ordinary inline renderer, so bold, italic,
+     * combined emphasis, inline code and links all work inside a task exactly as they do anywhere
+     * else. Accessibility is handled by describing the row as its state plus its words; the box
+     * itself is never announced as something to operate, because it is not.
+     */
+    private static TextView taskItem(Context c, ResponseBlocks.Task task, float size,
+                                     int foreground, int surface) {
+        TextView view = text(c, "", size, foreground, false);
+        SpannableStringBuilder line = new SpannableStringBuilder(TaskBoxSpan.PLACEHOLDER);
+        line.setSpan(TaskBoxSpan.on(c, task.checked, surface), 0, line.length(),
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        CharSequence body = OrbitMarkdown.renderInline(c, task.text, foreground, surface);
+        line.append(body);
+        view.setText(line);
+        view.setMovementMethod(LinkMovementMethod.getInstance());
+        view.setLinksClickable(true);
+        view.setLinkTextColor(UiKit.linkColorOn(c, surface));
+        view.setContentDescription((task.checked ? "Checked, " : "Unchecked, ") + body);
+        UiKit.applyBubbleTextMetrics(view);
+        return view;
     }
 
     private static TextView richText(Context c, String value, float size, int color, boolean bold,
@@ -305,6 +341,26 @@ public final class OrbitRichResponseRenderer {
         return clean.split("\\|", -1);
     }
 
+    /**
+     * A Markdown table, with every cell in a row sharing that row's height.
+     *
+     * <p>Each cell used to be laid out at {@code WRAP_CONTENT} height, so a row whose columns held
+     * different amounts of text ended up as cells of four different heights. Each cell's background
+     * and border stopped where its own words did, and the assistant bubble showed through
+     * underneath the shorter ones — on a purple bubble, a row of dark cards floating over purple
+     * gutters rather than one table row.
+     *
+     * <p>The fix is layout behaviour, not measurement. A {@link TableRow} is a horizontal
+     * {@link LinearLayout}, and a horizontal LinearLayout whose own height wraps already knows how
+     * to give a {@code MATCH_PARENT} child the height of the tallest sibling: it measures the row
+     * once, then re-measures exactly those children against the height it found. So the row still
+     * grows from its own content and its own text size — nothing here is a fixed height — and the
+     * work is one extra measure of the cells in one row, not a walk of the table on every token.
+     *
+     * <p>Because that resolution happens per row, rows keep their independent heights: a short
+     * header row stays short above a tall body row. Widths, wrapping, header styling, borders and
+     * the horizontal scroller around the whole table are all untouched.
+     */
     private static View table(Context c, List<String[]> rows, int foreground, int surface) {
         HorizontalScrollView scroll = new HorizontalScrollView(c);
         scroll.setHorizontalScrollBarEnabled(true);
@@ -324,7 +380,7 @@ public final class OrbitRichResponseRenderer {
                 view.setBackground(UiKit.outlined(r == 0 ? UiKit.SURFACE_3 : UiKit.SURFACE_2,
                         UiKit.withAlpha(UiKit.MUTED, 50), 0, c));
                 row.addView(view, new TableRow.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
             }
             table.addView(row);
         }

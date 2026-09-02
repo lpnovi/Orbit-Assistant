@@ -55,6 +55,111 @@ public final class ChatActivityJumpToLatestTest {
                 isDescendant(composer.getParent(), jump));
     }
 
+    // ---- resting opacity -----------------------------------------------------------------------
+
+    /**
+     * The visible control rests slightly translucent, so it covers less of the answer behind it.
+     *
+     * <p>Asserted against the named constant rather than against a number: the entrance animation,
+     * the reduced-motion path and the press-release spring all have to land on the same value, and
+     * a literal in any one of them is exactly how a button ends up snapping between two opacities.
+     */
+    @Test public void theVisibleControlRestsSlightlyTranslucent() {
+        ChatActivity activity = openChat();
+        ImageButton jump = findJump(activity);
+
+        activity.applyJumpLatestForTest(true);
+        settleAnimations();
+
+        assertEquals(View.VISIBLE, jump.getVisibility());
+        assertEquals("the settled control must land on the shared resting alpha",
+                ChatActivity.JUMP_LATEST_ALPHA, jump.getAlpha(), 0.001f);
+        assertEquals("and must not be left mid-entrance", 0f, jump.getTranslationY(), 0.001f);
+    }
+
+    /** The chosen value is a slight translucency, not a glass effect. */
+    @Test public void theRestingAlphaIsSubtle() {
+        assertTrue("it must still read as a solid control",
+                ChatActivity.JUMP_LATEST_ALPHA >= 0.88f);
+        assertTrue("but must let the text behind it through",
+                ChatActivity.JUMP_LATEST_ALPHA < 1f);
+    }
+
+    /** With animations off the control arrives at the same resting value immediately. */
+    @Test public void reducedMotionLandsOnTheSameRestingAlpha() throws Exception {
+        setAnimationScale(0f);
+        try {
+            ChatActivity activity = openChat();
+            ImageButton jump = findJump(activity);
+            activity.applyJumpLatestForTest(true);
+
+            assertEquals(View.VISIBLE, jump.getVisibility());
+            assertEquals("reduced motion changes the journey, never the destination",
+                    ChatActivity.JUMP_LATEST_ALPHA, jump.getAlpha(), 0.001f);
+            assertEquals(0f, jump.getTranslationY(), 0.001f);
+        } finally {
+            setAnimationScale(1f);
+        }
+    }
+
+    /** Hidden still means invisible, not merely faint. */
+    @Test public void theHiddenControlIsStillFullyHidden() {
+        ChatActivity activity = openChat();
+        ImageButton jump = findJump(activity);
+        activity.applyJumpLatestForTest(true);
+        settleAnimations();
+        activity.applyJumpLatestForTest(false);
+        settleAnimations();
+
+        assertEquals(View.GONE, jump.getVisibility());
+        assertEquals(0f, jump.getAlpha(), 0.001f);
+    }
+
+    /** Transparency is appearance only: one control, same place, same behaviour. */
+    @Test public void thereIsStillExactlyOneJumpControlAndItStillJumps() {
+        ChatActivity activity = openChat();
+        assertEquals("a second scroll control must never be introduced",
+                1, countByDescription(activity.getWindow().getDecorView(), "Jump to latest"));
+
+        ImageButton jump = findJump(activity);
+        assertTrue("it is still a button that can be pressed", jump.hasOnClickListeners());
+        assertTrue("with its touch target unchanged",
+                jump.getLayoutParams().width == UiKit.dp(activity, 42)
+                        && jump.getLayoutParams().height == UiKit.dp(activity, 42));
+
+        activity.setFollowBottomForTest(false);
+        jump.performClick();
+        assertTrue("and tapping it still returns to the newest messages",
+                activity.followBottomForTest());
+    }
+
+    /** Robolectric's own animator scale, matching how the rest of the suite disables motion. */
+    private static void setAnimationScale(float scale) throws Exception {
+        java.lang.reflect.Method setScale = org.robolectric.shadows.ShadowValueAnimator.class
+                .getDeclaredMethod("setDurationScale", float.class);
+        setScale.setAccessible(true);
+        setScale.invoke(null, scale);
+    }
+
+    /** Runs the posted animation frames so an entrance has actually finished. */
+    private static void settleAnimations() {
+        org.robolectric.shadows.ShadowLooper.idleMainLooper();
+        org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks();
+    }
+
+    private static int countByDescription(View view, String description) {
+        int count = 0;
+        CharSequence label = view.getContentDescription();
+        if (description.equals(label == null ? null : label.toString())) count++;
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                count += countByDescription(group.getChildAt(i), description);
+            }
+        }
+        return count;
+    }
+
     private ChatActivity openChat() {
         Intent intent = new Intent(RuntimeEnvironment.getApplication(), ChatActivity.class)
                 .putExtra(ChatActivity.EXTRA_CONVERSATION_ID, "jump-latest-test");

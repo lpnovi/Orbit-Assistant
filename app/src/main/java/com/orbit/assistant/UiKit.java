@@ -1719,13 +1719,24 @@ public final class UiKit {
      * springs back on release, and emits a subtle system-respecting haptic tick.
      */
     public static void pressScale(View v) {
+        pressScale(v, 1f);
+    }
+
+    /**
+     * As {@link #pressScale(View)}, for a control that rests at less than full opacity.
+     *
+     * <p>The press dip is unchanged — it is relative to whatever the control rests at — but the
+     * release and cancel springs return to {@code restingAlpha} instead of to 1. Without this a
+     * translucent control would be left fully opaque by the first touch and stay that way.
+     */
+    public static void pressScale(View v, float restingAlpha) {
         v.setOnTouchListener((view, event) -> {
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
                     view.animate().cancel();
                     view.animate()
                             .scaleX(0.94f).scaleY(0.94f)
-                            .alpha(0.84f)
+                            .alpha(0.84f * restingAlpha)
                             .translationY(dp(view.getContext(), 1))
                             .setDuration(65)
                             .start();
@@ -1738,7 +1749,7 @@ public final class UiKit {
                     view.animate().cancel();
                     view.animate()
                             .scaleX(1f).scaleY(1f)
-                            .alpha(1f)
+                            .alpha(restingAlpha)
                             .translationY(0f)
                             .setInterpolator(new OvershootInterpolator(1.35f))
                             .setDuration(180)
@@ -1748,7 +1759,7 @@ public final class UiKit {
                     view.animate().cancel();
                     view.animate()
                             .scaleX(1f).scaleY(1f)
-                            .alpha(1f)
+                            .alpha(restingAlpha)
                             .translationY(0f)
                             .setDuration(110)
                             .start();

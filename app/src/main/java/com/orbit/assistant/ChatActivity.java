@@ -91,6 +91,18 @@ public class ChatActivity extends Activity {
     private ScrollView scroll;
     private ImageButton jumpLatest;
     private boolean jumpLatestVisible;
+    /**
+     * The opacity Jump to latest rests at while it is visible.
+     *
+     * <p>The control floats over the conversation, so at full opacity it hides whatever line of
+     * the answer happens to be behind it. Slightly translucent, the text underneath stays faintly
+     * perceptible while the button still reads as a solid control rather than as glass — the
+     * accent arrow and its outlined surface keep their contrast on AMOLED and on a coloured
+     * assistant bubble alike. Named rather than repeated, because the entrance animation, the
+     * reduced-motion path and the press-release spring all have to land on the same value; a
+     * literal in any one of them is how a button ends up snapping between two opacities.
+     */
+    static final float JUMP_LATEST_ALPHA = 0.90f;
     private EditText input;
     private ImageButton mic;
     private ImageButton send;
@@ -2608,7 +2620,9 @@ public class ChatActivity extends Activity {
         jumpLatest.setVisibility(View.GONE);
         jumpLatest.setAlpha(0f);
         jumpLatest.setOnClickListener(v -> jumpToLatest());
-        UiKit.pressScale(jumpLatest);
+        // Springs back to the resting translucency rather than to fully opaque, so a press does
+        // not quietly leave the control more opaque than it was before it was touched.
+        UiKit.pressScale(jumpLatest, JUMP_LATEST_ALPHA);
         return jumpLatest;
     }
 
@@ -2632,9 +2646,15 @@ public class ChatActivity extends Activity {
     }
 
     private void updateJumpLatest() {
-        boolean show = JumpToLatest.shouldShow(
+        applyJumpLatest(JumpToLatest.shouldShow(
                 scrollContentHeight(), scrollViewportHeight(),
-                scroll == null ? 0 : scroll.getScrollY(), JumpToLatest.slopPx(this));
+                scroll == null ? 0 : scroll.getScrollY(), JumpToLatest.slopPx(this)));
+    }
+
+    /** For tests: the visibility transition itself, with the geometry decision already made. */
+    void applyJumpLatestForTest(boolean show) { applyJumpLatest(show); }
+
+    private void applyJumpLatest(boolean show) {
         if (jumpLatest == null || show == jumpLatestVisible) return;
         jumpLatestVisible = show;
         jumpLatest.animate().cancel();
@@ -2659,13 +2679,15 @@ public class ChatActivity extends Activity {
         }
         jumpLatest.setVisibility(View.VISIBLE);
         if (!UiKit.animationsEnabled()) {
-            jumpLatest.setAlpha(1f);
+            jumpLatest.setAlpha(JUMP_LATEST_ALPHA);
             jumpLatest.setTranslationY(0f);
             return;
         }
         jumpLatest.setAlpha(0f);
         jumpLatest.setTranslationY(UiKit.dp(this, 8));
-        jumpLatest.animate().alpha(1f).translationY(0f)
+        // Straight to the resting value. Fading to 1 and correcting afterwards would show a
+        // visible opacity snap the moment the control finished arriving.
+        jumpLatest.animate().alpha(JUMP_LATEST_ALPHA).translationY(0f)
                 .setDuration(UiKit.MOTION_STANDARD)
                 .setInterpolator(UiKit.motionEasing())
                 .start();

@@ -50,6 +50,56 @@ public final class ResponseBlocks {
             "^\\s*\\|?\\s*:?-{3,}:?\\s*(\\|\\s*:?-{3,}:?\\s*)+\\|?\\s*$");
     static final Pattern RULE = Pattern.compile("^[-*_]{3,}$");
 
+    /**
+     * A task item's checkbox, matched against the body of a list item and nowhere else.
+     *
+     * <p>Deliberately anchored, and deliberately only ever applied to {@link #LIST} group 3. The
+     * risk with this syntax is false positives: a sentence such as "The token [x] means something"
+     * contains the same three characters, and promoting that into a checkbox would rewrite the
+     * assistant's prose. Requiring a list marker first means the construct has to have been
+     * written as a list item to be read as one.
+     *
+     * <p>The body is optional so that {@code - [x]} is already a task item the moment it is
+     * written, before its text arrives. That is what stops a streaming item flickering from bullet
+     * to checkbox once the words catch up.
+     */
+    static final Pattern TASK = Pattern.compile("^\\[([ xX])](?:\\s+(.*))?$");
+
+    /** List markers that may carry a checkbox. A numbered item is a step, not a task. */
+    private static final String TASK_MARKERS = "-+*";
+
+    /** One task item: whether it is ticked, and the Markdown that follows the box. */
+    public static final class Task {
+        public final boolean checked;
+        public final String text;
+
+        Task(boolean checked, String text) {
+            this.checked = checked;
+            this.text = text == null ? "" : text;
+        }
+    }
+
+    /**
+     * The task item a list item is, or null if it is an ordinary one.
+     *
+     * @param marker the list marker itself, from {@link #LIST} group 2
+     * @param body   everything after it, from {@link #LIST} group 3
+     */
+    public static Task task(String marker, String body) {
+        if (marker == null || body == null) return null;
+        if (marker.length() != 1 || TASK_MARKERS.indexOf(marker.charAt(0)) < 0) return null;
+        Matcher box = TASK.matcher(body);
+        if (!box.matches()) return null;
+        char state = box.group(1).charAt(0);
+        return new Task(state == 'x' || state == 'X', box.group(2) == null ? "" : box.group(2));
+    }
+
+    /** A list item's body with its checkbox removed, for surfaces that cannot draw one. */
+    static String withoutTaskMarker(String body) {
+        Task task = task("-", body);
+        return task == null ? body : task.text;
+    }
+
     /** One block, and everything the builder needs to draw it. */
     public static final class Block {
         public final Kind kind;
@@ -285,9 +335,11 @@ public final class ResponseBlocks {
     public static String activeText(String source) {
         if (source == null || source.isEmpty()) return "";
         String text = source;
-        // Longest first, so the two asterisks of an opening "**" are removed together rather than
-        // leaving a stray one behind that would immediately read as italics instead.
-        for (String delimiter : new String[]{"~~", "**", "__", "`", "*", "_"}) {
+        // Longest first, so the three asterisks of an opening "***" are removed together rather
+        // than leaving a shorter run behind that would immediately read as plain bold instead.
+        // Each pass only ever considers runs of exactly its own length, so a completed "**bold**"
+        // is invisible to the "*" pass and a half-written "***bold ital" is invisible to "**".
+        for (String delimiter : new String[]{"~~", "***", "___", "**", "__", "`", "*", "_"}) {
             text = withoutDanglingDelimiter(text, delimiter);
         }
         return text;

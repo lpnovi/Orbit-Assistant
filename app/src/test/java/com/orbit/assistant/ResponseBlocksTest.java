@@ -245,10 +245,32 @@ public final class ResponseBlocksTest {
         assertEquals("", ResponseBlocks.activeText(null));
     }
 
+    /**
+     * A half-written triple is withheld whole, not left as a shorter run.
+     *
+     * <p>Each pass only ever sees runs of exactly its own length, so a growing {@code ***} is
+     * invisible to the {@code **} and {@code *} passes and cannot be trimmed down into one of
+     * them. Without the {@code ***} pass the three asterisks simply stayed on screen; with a naive
+     * one they would have become a bold run that flipped to bold-italic a fragment later.
+     */
+    @Test public void ahalfWrittenCombinedEmphasisIsWithheldWhole() {
+        assertEquals("This is very", ResponseBlocks.activeText("This is ***very"));
+        assertEquals("This is ", ResponseBlocks.activeText("This is ***"));
+        assertEquals("A bold ital", ResponseBlocks.activeText("A ___bold ital"));
+    }
+
+    /** A completed triple is finished formatting and keeps every one of its six delimiters. */
+    @Test public void acompletedCombinedEmphasisIsLeftAlone() {
+        assertEquals("This is ***very important***",
+                ResponseBlocks.activeText("This is ***very important***"));
+        assertEquals("A ___bold italic___", ResponseBlocks.activeText("A ___bold italic___"));
+    }
+
     /** Ordinary text is never touched. */
     @Test public void plainTextPassesThroughUnchanged() {
         assertEquals("2 * 4 = 8", ResponseBlocks.activeText("2 * 4 = 8"));
         assertEquals("The answer.", ResponseBlocks.activeText("The answer."));
+        assertEquals("some_variable_name", ResponseBlocks.activeText("some_variable_name"));
     }
 
     // ---- signatures ---------------------------------------------------------------------------------------------

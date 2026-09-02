@@ -185,12 +185,14 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * A zoom gesture and an entry in Samsung's text-selection menu need real hardware, so this is
-     * a Beta.
+     * How a table row, a checkbox and a translucent control actually look needs real hardware, so
+     * this is a Beta.
      *
-     * <p>Nothing in this release has been through a Galaxy S25 Ultra yet. Whether a pinch and a
-     * pan feel right, and whether Ask Orbit actually appears where the user selects text, are both
-     * questions that can only be answered on the phone.
+     * <p>Every defect this release corrects was found by looking at a Galaxy S25 Ultra rather than
+     * by a failing test, and the corrections have to be judged the same way. Whether a row now
+     * reads as one row on a purple bubble, whether a tick is legible at the user's text size, and
+     * whether a slightly translucent button is still easy to find on AMOLED are all questions only
+     * the phone can answer.
      */
     @Test public void thisReleaseIsABetaAwaitingDeviceValidation() {
         assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",

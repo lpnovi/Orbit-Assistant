@@ -20,14 +20,36 @@ public final class OrbitMarkdown {
     private static final Pattern HEADING = Pattern.compile("^(#{1,6})\\s+(.+)$");
     private static final Pattern BULLET = Pattern.compile("^[-*+]\\s+(.+)$");
     private static final Pattern NUMBERED = Pattern.compile("^(\\d+[.)])\\s+(.+)$");
+    /**
+     * Inline markup, in the order a reader means it.
+     *
+     * <p>Two rules decide this expression, and both of them came from what a device actually
+     * showed.
+     *
+     * <p><b>Longest delimiter first.</b> Alternatives are tried left to right at each position, so
+     * a shorter run of the same character must never get first refusal on a longer one. While
+     * {@code **} led, {@code ***bold italic***} matched one character in: the leading and trailing
+     * asterisk fell outside the match and were printed as literal stars around a merely bold
+     * phrase. Combined emphasis is therefore its own alternative, above both of the runs it
+     * contains, so all six of its delimiters are consumed by the construct that owns them.
+     *
+     * <p><b>Emphasis sits on word boundaries.</b> Prose is full of these characters used as
+     * themselves — "2 * 4 = 8", "5*3" — and identifiers such as {@code some_variable_name} or
+     * {@code content_description_value} are full of underscores. So a delimiter may not open on
+     * whitespace, may not close on whitespace, and — for underscores, and for a lone asterisk —
+     * may not sit against a word character. That is the rule {@link #PREVIEW_INLINE} has always
+     * applied in the Chats list; the two now agree rather than reading the same reply differently.
+     */
     private static final Pattern INLINE = Pattern.compile(
-            "\\[([^\\]]+)]\\((https?://[^\\s)]+)\\)" +
-            "|\\*\\*([^*\\n]+)\\*\\*" +
-            "|__([^_\\n]+)__" +
-            "|(?<!\\*)\\*([^*\\n]+)\\*(?!\\*)" +
-            "|(?<!_)_([^_\\n]+)_(?!_)" +
-            "|~~([^~\\n]+)~~" +
-            "|`([^`\\n]+)`");
+            "\\[(?<linkText>[^\\]]+)]\\((?<linkUrl>https?://[^\\s)]+)\\)" +
+            "|\\*\\*\\*(?!\\s)(?<strongEmStar>[^*\\n]*[^*\\s])\\*\\*\\*" +
+            "|(?<![\\w_])___(?!\\s)(?<strongEmBar>[^_\\n]*[^_\\s])___(?![\\w_])" +
+            "|\\*\\*(?!\\s)(?<strongStar>[^*\\n]*[^*\\s])\\*\\*" +
+            "|(?<![\\w_])__(?!\\s)(?<strongBar>[^_\\n]*[^_\\s])__(?![\\w_])" +
+            "|(?<![\\w*])\\*(?!\\s)(?<emStar>[^*\\n]*[^*\\s])\\*(?![\\w*])" +
+            "|(?<![\\w_])_(?!\\s)(?<emBar>[^_\\n]*[^_\\s])_(?![\\w_])" +
+            "|~~(?!\\s)(?<strike>[^~\\n]*[^~\\s])~~" +
+            "|`(?<code>[^`\\n]+)`");
 
     private static final Pattern HRULE = Pattern.compile("^([-*_])\\1{2,}$");
     /**
@@ -39,6 +61,10 @@ public final class OrbitMarkdown {
     private static final Pattern PREVIEW_INLINE = Pattern.compile(
             "\\[([^\\]]+)]\\((https?://[^\\s)]+)\\)" +
             "|\\[\\s*]\\((https?://[^\\s)]+)\\)" +
+            // Combined emphasis leads here for the same reason it leads in INLINE: otherwise the
+            // shorter run matches inside it and the preview keeps a stray star at either end.
+            "|\\*\\*\\*(?!\\s)([^*\\n]*[^*\\s])\\*\\*\\*" +
+            "|(?<![\\w_])___(?!\\s)([^_\\n]*[^_\\s])___(?![\\w_])" +
             "|\\*\\*(?!\\s)([^*\\n]*[^*\\s])\\*\\*" +
             "|(?<![\\w_])__(?!\\s)([^_\\n]*[^_\\s])__(?![\\w_])" +
             "|(?<![\\w*])\\*(?!\\s)([^*\\n]*[^*\\s])\\*(?![\\w*])" +
@@ -87,7 +113,10 @@ public final class OrbitMarkdown {
             } else {
                 Matcher bullet = BULLET.matcher(line);
                 Matcher numbered = NUMBERED.matcher(line);
-                if (bullet.matches()) line = bullet.group(1);
+                // A preview is one flattened line, so a task item contributes its words. The
+                // checkbox itself is presentation and has nothing to draw with here; what must not
+                // happen is the literal "[x]" surviving into the Chats list.
+                if (bullet.matches()) line = ResponseBlocks.withoutTaskMarker(bullet.group(1));
                 else if (numbered.matches()) line = numbered.group(2);
             }
 
@@ -234,7 +263,12 @@ public final class OrbitMarkdown {
                 .replaceAll("\\[([^]]+)]\\(https?://[^\\s)]+\\)", "$1")
                 .replaceAll("(?m)^#{1,6}\\s+", "")
                 .replaceAll("(?m)^>\\s?", "")
+                // Task syntax is spoken as its state. Stripping the bullet first would leave a
+                // bare "[x]", which a speech engine reads out as its brackets.
+                .replaceAll("(?m)^(\\s*)[-+*]\\s+\\[[xX]](\\s+|$)", "$1Done: ")
+                .replaceAll("(?m)^(\\s*)[-+*]\\s+\\[ ](\\s+|$)", "$1Not done: ")
                 .replaceAll("(?m)^[-+*]\\s+", "")
+                .replace("***", "").replace("___", "")
                 .replace("**", "").replace("__", "")
                 .replace("~~", "").replace("`", "")
                 .replaceAll("\\n{3,}", "\n\n").trim();
@@ -247,24 +281,36 @@ public final class OrbitMarkdown {
         while (matcher.find()) {
             output.append(line, cursor, matcher.start());
             int start = output.length();
-            if (matcher.group(1) != null) {
-                output.append(matcher.group(1));
-                output.setSpan(new URLSpan(matcher.group(2)), start, output.length(),
+            String link = matcher.group("linkText");
+            String strongEm = first(matcher, "strongEmStar", "strongEmBar");
+            String strong = first(matcher, "strongStar", "strongBar");
+            String emphasis = first(matcher, "emStar", "emBar");
+            String strike = matcher.group("strike");
+            if (link != null) {
+                output.append(link);
+                output.setSpan(new URLSpan(matcher.group("linkUrl")), start, output.length(),
                         Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-            } else if (matcher.group(3) != null || matcher.group(4) != null) {
-                output.append(matcher.group(3) != null ? matcher.group(3) : matcher.group(4));
-                output.setSpan(new StyleSpan(Typeface.BOLD), start, output.length(),
-                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-            } else if (matcher.group(5) != null || matcher.group(6) != null) {
-                output.append(matcher.group(5) != null ? matcher.group(5) : matcher.group(6));
-                output.setSpan(new StyleSpan(Typeface.ITALIC), start, output.length(),
-                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-            } else if (matcher.group(7) != null) {
-                output.append(matcher.group(7));
+            } else if (strongEm != null) {
+                output.append(strongEm);
+                // Two ordinary spans over one range rather than a third kind of emphasis. A
+                // StyleSpan ORs itself into whatever face the paint already carries, so bold and
+                // italic compose into bold-italic here exactly as they would where a bold phrase
+                // happens to sit inside an italic one. Nothing downstream has to know that
+                // "combined emphasis" was ever a case.
+                emphasise(output, start, Typeface.BOLD);
+                emphasise(output, start, Typeface.ITALIC);
+            } else if (strong != null) {
+                output.append(strong);
+                emphasise(output, start, Typeface.BOLD);
+            } else if (emphasis != null) {
+                output.append(emphasis);
+                emphasise(output, start, Typeface.ITALIC);
+            } else if (strike != null) {
+                output.append(strike);
                 output.setSpan(new StrikethroughSpan(), start, output.length(),
                         Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
             } else {
-                output.append(matcher.group(8));
+                output.append(matcher.group("code"));
                 // Taken from the source line, on either side of the backticks, so the pill knows
                 // whether it is about to be followed by a full stop or opened by a bracket. The
                 // characters are read for their category only and are never carried any further.
@@ -274,6 +320,22 @@ public final class OrbitMarkdown {
             cursor = matcher.end();
         }
         output.append(line, cursor, line.length());
+    }
+
+    /** The first of these named groups the match actually filled, or null. */
+    private static String first(Matcher matcher, String... names) {
+        for (String name : names) {
+            String value = matcher.group(name);
+            if (value != null) return value;
+        }
+        return null;
+    }
+
+    /** One typeface style over the run just appended. */
+    private static void emphasise(SpannableStringBuilder output, int start, int style) {
+        if (output.length() <= start) return;
+        output.setSpan(new StyleSpan(style), start, output.length(),
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
     }
 
     /**
