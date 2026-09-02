@@ -1413,6 +1413,27 @@ public final class UiKit {
         return t;
     }
 
+    /** What Orbit calls itself in the companion app when it is only being Orbit. */
+    public static final String APP_TITLE = "Orbit";
+
+    /** What it calls itself for Lelo. */
+    public static final String LELO_TITLE = "Lelo's Cutie";
+
+    /** And the one thing it wants her to read while she is here. */
+    public static final String LELO_NOTE = "You are wanted and needed. Never forget that. 💜";
+
+    /**
+     * The title the companion app draws in its header.
+     *
+     * <p>Lelo mode has been a hidden preference since v0.4.6, and this reads that same preference
+     * rather than introducing one of its own, so the title follows the existing footer gesture in
+     * Settings with nothing new to keep in sync. With it off, this is the string it has always
+     * been and the header is built exactly as before.
+     */
+    public static String appTitle(Context c) {
+        return Prefs.leloMode(c) ? LELO_TITLE : APP_TITLE;
+    }
+
     /** The chevron a selector field uses to say it opens something. */
     public static final String SELECTOR_CHEVRON = "▾";
 

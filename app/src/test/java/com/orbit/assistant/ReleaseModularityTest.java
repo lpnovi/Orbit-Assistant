@@ -185,19 +185,19 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * How a table row, a checkbox and a translucent control actually look needs real hardware, so
-     * this is a Beta.
+     * The attachment viewer, Ask Orbit and progressive responses passed three device Betas.
      *
-     * <p>Every defect this release corrects was found by looking at a Galaxy S25 Ultra rather than
-     * by a failing test, and the corrections have to be judged the same way. Whether a row now
-     * reads as one row on a purple bubble, whether a tick is legible at the user's text size, and
-     * whether a slightly translucent button is still easy to find on AMOLED are all questions only
-     * the phone can answer.
+     * <p>Everything this line changed was a thing that had to be looked at: a full-screen image on
+     * a black background, text selected in somebody else's app, an answer formatting itself as it
+     * arrives, a table row on a purple bubble, a tick at the user's own text size. A Galaxy S25
+     * Ultra found the faults and confirmed the corrections, so this release is Stable, and the
+     * guard's job is now to stop a versionName that quietly regains prerelease metadata from being
+     * published here.
      */
-    @Test public void thisReleaseIsABetaAwaitingDeviceValidation() {
-        assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
-                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
-        assertTrue(OrbitVersion.installedIsBeta());
+    @Test public void thisReleaseIsStableAfterDeviceValidation() {
+        assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
+                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.installedIsBeta());
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
     }
 

@@ -913,6 +913,24 @@ Stable. The line is recorded in full under **Near-term order** below; in short:
   confirmation that read as a system warning, and a reply claiming the dialer was open before the
   user had confirmed it
 
+### 0.7.8.1 — Attachment viewer, Ask Orbit, and progressive responses
+Validated on a Galaxy S25 Ultra across three Betas (`beta.1`-`beta.3`) and released as `0.7.8.1`
+Stable. The line is recorded in full under **Near-term order** below; in short:
+
+- **Beta 1** added the full-screen attachment viewer — zoom, pan, and swiping between the images on
+  one message — and the `PROCESS_TEXT` doorway that turns text selected in almost any app into a new
+  Orbit conversation without ever editing the app it came from
+- **Beta 2** rebuilt how an answer is presented while it is being written: one parser and one block
+  builder shared by streaming and completed replies, so headings, lists, quotes, tables and code
+  format as they arrive instead of snapping into shape at the end, with gentler motion around it
+- **Beta 3** corrected the four presentation defects only a screen could show: combined emphasis
+  leaving stray asterisks, table rows breaking into cells of different heights, task syntax arriving
+  as literal brackets, and a fully opaque jump-to-latest covering the message behind it
+- **Stable** carries Beta 3's behaviour unchanged, plus one deliberate addition: the hidden Lelo
+  mode that has existed since v0.4.6 now also changes what the companion app's header says. It is a
+  title and a line of muted text behind the existing preference, and with the mode off Chats is
+  built exactly as before
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever

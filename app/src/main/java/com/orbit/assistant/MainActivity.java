@@ -34,7 +34,7 @@ public class MainActivity extends Activity {
     private TextView pendingHeader;
     private EditText search;
     private ScrollView chatScroller;
-    private String appliedAccentName;
+    private String appliedPresentation;
     private boolean rebuildingTheme;
     private boolean foregroundActive;
     private boolean postUpdatePromptShown;
@@ -81,7 +81,7 @@ public class MainActivity extends Activity {
         View content = buildContent();
         setContentView(content);
         UiKit.applyActivityInsets(this, content, true);
-        appliedAccentName = currentAccentName();
+        appliedPresentation = currentPresentationSignature();
         maybeOpenConversation(getIntent());
         if (launchOnboarding) {
             getWindow().getDecorView().post(() ->
@@ -257,10 +257,17 @@ public class MainActivity extends Activity {
         });
     }
 
-    private String currentAccentName() {
+    /**
+     * Everything Settings can change that is baked into these views when they are built.
+     *
+     * <p>Lelo mode joins the accent, AMOLED and the app font here because it decides which title
+     * the header is built with, and it is set from the same Settings screen the other three are.
+     */
+    private String currentPresentationSignature() {
         return Prefs.get(this).getString(Prefs.ACCENT, "dynamic") +
                 "|amoled=" + Prefs.amoledMode(this) +
-                "|font=" + Prefs.appFont(this);
+                "|font=" + Prefs.appFont(this) +
+                "|lelo=" + Prefs.leloMode(this);
     }
 
     /**
@@ -271,8 +278,8 @@ public class MainActivity extends Activity {
      */
     private boolean syncThemeIfNeeded() {
         if (rebuildingTheme) return false;
-        String desired = currentAccentName();
-        if (desired.equals(appliedAccentName)) return false;
+        String desired = currentPresentationSignature();
+        if (desired.equals(appliedPresentation)) return false;
         rebuildingTheme = true;
         try {
             String query = search == null ? "" : search.getText().toString();
@@ -281,7 +288,7 @@ public class MainActivity extends Activity {
             View content = buildContent();
             setContentView(content);
             UiKit.applyActivityInsets(this, content, true);
-            appliedAccentName = desired;
+            appliedPresentation = desired;
 
             if (search != null && !query.isEmpty()) {
                 search.setText(query);
@@ -331,8 +338,14 @@ public class MainActivity extends Activity {
         top.addView(mark, markLp);
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
-        titles.addView(UiKit.text(this, "Orbit", 26, UiKit.TEXT, true));
+        titles.addView(UiKit.text(this, UiKit.appTitle(this), 26, UiKit.TEXT, true));
         titles.addView(UiKit.text(this, "Chats", 13, UiKit.MUTED, false));
+        // Lelo mode only. The note is added rather than added-and-hidden, so with the mode off the
+        // header keeps exactly the title and subtitle it always had, at the height it always had,
+        // with no reserved gap and nothing extra in the accessibility tree.
+        if (Prefs.leloMode(this)) {
+            titles.addView(UiKit.text(this, UiKit.LELO_NOTE, 12, UiKit.MUTED, false));
+        }
         top.addView(titles, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         ImageButton settings = iconButton(com.orbit.assistant.R.drawable.ic_settings, "Settings");
         settings.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));

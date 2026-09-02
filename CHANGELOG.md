@@ -624,3 +624,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Checklists in an answer now show proper ticked and empty boxes instead of literal `[x]` and `[ ]`.
   - Those boxes are part of the answer, so they are shown rather than tapped, and read out as checked or unchecked.
   - Jump to latest is now slightly see-through, so it covers less of the message behind it.
+
+- **v0.7.8.1**: Attachments open full screen, Orbit answers text you select anywhere, and replies now format as they arrive.
+  - Tap any attached image to view it full screen, pinch or double-tap to zoom, and swipe between images.
+  - Select text in almost any app and choose **Ask Orbit** to open it in a new conversation, ready for your question.
+  - Headings, lists, bold, quotes, tables and code now format while Orbit is still writing, with gentler motion throughout.
+  - Combined bold and italic renders properly, table rows line up as one row, and checklists show real tick boxes.
+  - Jump to latest is slightly see-through, so it covers less of the message behind it.
+  - A tiny hidden Lelo-mode easter egg got a little more personal. 💜
