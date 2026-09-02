@@ -372,9 +372,7 @@ public class RoutinesActivity extends Activity {
                             if (old == null) continue;
                             int delta = old - child.getTop();
                             if (delta == 0) continue;
-                            child.setTranslationY(delta);
-                            child.animate().translationY(0f).setDuration(190)
-                                    .setInterpolator(new DecelerateInterpolator()).start();
+                            UiKit.settleReorder(child, delta);
                         }
                         return true;
                     }
@@ -414,9 +412,7 @@ public class RoutinesActivity extends Activity {
                             if (old == null) continue;
                             int delta = old - child.getTop();
                             if (delta == 0) continue;
-                            child.setTranslationY(delta);
-                            child.animate().translationY(0f).setDuration(210)
-                                    .setInterpolator(new DecelerateInterpolator()).start();
+                            UiKit.settleReorder(child, delta);
                         }
                         return true;
                     }

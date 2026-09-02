@@ -33,14 +33,15 @@ import java.util.regex.Pattern;
 
 /** Shared native assistant-response renderer for full chat and the assistant sheet. */
 public final class OrbitRichResponseRenderer {
-    private static final Pattern HEADING = Pattern.compile("^(#{1,6})\\s+(.+)$");
-    private static final Pattern LIST = Pattern.compile("^(\\s*)([-+*]|\\d+[.)])\\s+(.+)$");
-    private static final Pattern IMAGE = Pattern.compile("^!\\[([^]]*)]\\(([^\\s)]+)\\)\\s*$");
-    private static final Pattern TABLE_DIVIDER = Pattern.compile(
-            "^\\s*\\|?\\s*:?-{3,}:?\\s*(\\|\\s*:?-{3,}:?\\s*)+\\|?\\s*$");
+    // What a block is lives in ResponseBlocks, which both this renderer and the progressive one
+    // parse with. Keeping a second copy of these expressions here is exactly how a response comes
+    // to format one way while it streams and another way once it lands.
     private static final int MAX_IMAGES = 4;
 
     private OrbitRichResponseRenderer() {}
+
+    /** How many images one response may actually load, shared with the progressive path. */
+    static int maxImages() { return MAX_IMAGES; }
 
     public static boolean prefersWideLayout(String raw) {
         if (raw == null) return false;
@@ -50,12 +51,7 @@ public final class OrbitRichResponseRenderer {
 
     public static View render(Context context, String rawText, int bubbleFill, boolean compact) {
         LinearLayout bubble = new LinearLayout(context);
-        bubble.setOrientation(LinearLayout.VERTICAL);
-        int horizontal = UiKit.dp(context, compact ? 13 : 15);
-        int vertical = UiKit.dp(context, compact ? 10 : 12);
-        bubble.setPadding(horizontal, vertical, horizontal, vertical);
-        bubble.setBackground(UiKit.rounded(bubbleFill, 18, context));
-        bubble.setForceDarkAllowed(false);
+        applyBubbleChrome(bubble, bubbleFill, compact);
 
         String source = rawText == null ? "" : rawText.replace("\r", "");
         try { renderBlocks(context, bubble, source, bubbleFill, compact); }
@@ -79,88 +75,80 @@ public final class OrbitRichResponseRenderer {
 
     private static void renderBlocks(Context c, LinearLayout out, String source,
                                      int fill, boolean compact) {
-        String[] lines = source.split("\n", -1);
         int foreground = UiKit.onBubble(fill);
-        int i = 0;
         int images = 0;
-        while (i < lines.length) {
-            String line = lines[i];
-            String trimmed = line.trim();
-            if (trimmed.isEmpty()) { i++; continue; }
+        for (ResponseBlocks.Block block : ResponseBlocks.parse(source)) {
+            boolean asImage = block.kind == ResponseBlocks.Kind.IMAGE && images < MAX_IMAGES;
+            if (block.kind == ResponseBlocks.Kind.IMAGE) images++;
+            addBlock(out, buildBlock(c, block, fill, compact, asImage), c,
+                    spacingFor(block, asImage), topSpacingFor(block));
+        }
+        if (out.getChildCount() == 0) out.addView(text(c, source,
+                chatSize(c, compact ? 14 : 15),
+                foreground, false));
+    }
 
-            if (trimmed.startsWith("```")) {
-                String language = trimmed.length() > 3 ? trimmed.substring(3).trim() : "";
-                StringBuilder code = new StringBuilder();
-                i++;
-                while (i < lines.length && !lines[i].trim().startsWith("```")) {
-                    if (code.length() > 0) code.append('\n');
-                    code.append(lines[i++]);
-                }
-                if (i < lines.length) i++;
-                addBlock(out, codeBlock(c, code.toString(), language), c, 7);
-                continue;
+    /**
+     * Builds the view for exactly one block.
+     *
+     * <p>The single place a block becomes a View, used by the completed render above and by
+     * {@link ProgressiveResponseView} while a response is still arriving. That is the whole reason
+     * it is separated out: before this, a streaming answer was a raw {@code TextView} and a
+     * finished one was this tree, so they could not help but look different. Now the only
+     * difference between the two paths is <em>when</em> they ask, not <em>what</em> they get.
+     *
+     * @param asImage whether an image block may load its picture. Beyond {@link #MAX_IMAGES} a
+     *                response falls back to a link, exactly as it always has.
+     */
+    static View buildBlock(Context c, ResponseBlocks.Block block, int fill, boolean compact,
+                           boolean asImage) {
+        int foreground = UiKit.onBubble(fill);
+        // A block still being written shows everything that has arrived, minus a delimiter whose
+        // partner has not. Completed blocks, and blocks whose text is not Markdown at all, are
+        // never touched - which is what stops a trailing backtick being trimmed out of a snippet.
+        String source = block.displaySource();
+        switch (block.kind) {
+            case CODE:
+                return codeBlock(c, source, block.language, block.complete);
+            case TABLE:
+                return table(c, tableRows(source), foreground, fill);
+            case IMAGE: {
+                Matcher image = ResponseBlocks.IMAGE.matcher(source.trim());
+                if (!image.matches()) break;
+                return asImage
+                        ? image(c, image.group(1), image.group(2), foreground)
+                        : linkedFallback(c, image.group(1), image.group(2), foreground, fill);
             }
-
-            if (i + 1 < lines.length && line.contains("|") &&
-                    TABLE_DIVIDER.matcher(lines[i + 1]).matches()) {
-                List<String[]> rows = new ArrayList<>();
-                rows.add(splitTableRow(line));
-                i += 2;
-                while (i < lines.length && lines[i].contains("|") &&
-                        !lines[i].trim().isEmpty()) rows.add(splitTableRow(lines[i++]));
-                addBlock(out, table(c, rows, foreground, fill), c, 7);
-                continue;
-            }
-
-            Matcher image = IMAGE.matcher(trimmed);
-            if (image.matches()) {
-                if (images++ < MAX_IMAGES) addBlock(out,
-                        image(c, image.group(1), image.group(2), foreground), c, 8);
-                else addBlock(out, linkedFallback(c, image.group(1), image.group(2), foreground, fill), c, 4);
-                i++;
-                continue;
-            }
-
-            Matcher heading = HEADING.matcher(trimmed);
-            if (heading.matches()) {
+            case HEADING: {
+                Matcher heading = ResponseBlocks.HEADING.matcher(source.trim());
+                if (!heading.matches()) break;
                 int level = heading.group(1).length();
-                float size = level == 1 ? (compact ? 18 : 19) :
-                        level == 2 ? (compact ? 16.5f : 17.5f) : 15.5f;
-                TextView view = richText(c, heading.group(2), chatSize(c, size), foreground, true, fill);
-                addBlock(out, view, c, level == 1 ? 9 : 6);
-                i++;
-                continue;
+                float size = level == 1 ? (compact ? 18 : 19)
+                        : level == 2 ? (compact ? 16.5f : 17.5f) : 15.5f;
+                return richText(c, heading.group(2), chatSize(c, size), foreground, true, fill);
             }
-
-            if (trimmed.matches("^[-*_]{3,}$")) {
+            case RULE: {
                 View rule = new View(c);
                 rule.setBackgroundColor(UiKit.withAlpha(foreground, 60));
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(c, 1));
-                lp.setMargins(0, UiKit.dp(c, 7), 0, UiKit.dp(c, 7));
-                out.addView(rule, lp);
-                i++;
-                continue;
+                rule.setMinimumHeight(UiKit.dp(c, 1));
+                return rule;
             }
-
-            if (trimmed.startsWith(">")) {
+            case QUOTE: {
                 StringBuilder quote = new StringBuilder();
-                while (i < lines.length && lines[i].trim().startsWith(">")) {
-                    String part = lines[i++].trim().substring(1).trim();
+                for (String line : source.split("\n", -1)) {
+                    String part = line.trim();
+                    if (part.startsWith(">")) part = part.substring(1).trim();
                     if (quote.length() > 0) quote.append('\n');
                     quote.append(part);
                 }
-                addBlock(out, quote(c, quote.toString(), foreground, fill), c, 6);
-                continue;
+                return quote(c, quote.toString(), foreground, fill);
             }
-
-            Matcher list = LIST.matcher(line);
-            if (list.matches()) {
+            case LIST: {
                 LinearLayout listBlock = new LinearLayout(c);
                 listBlock.setOrientation(LinearLayout.VERTICAL);
-                while (i < lines.length) {
-                    Matcher item = LIST.matcher(lines[i]);
-                    if (!item.matches()) break;
+                for (String line : source.split("\n", -1)) {
+                    Matcher item = ResponseBlocks.LIST.matcher(line);
+                    if (!item.matches()) continue;
                     int indent = Math.min(3, item.group(1).replace("\t", "    ").length() / 2);
                     String marker = item.group(2).matches("\\d+.*") ? item.group(2) : "•";
                     TextView itemView = richText(c, marker + "  " + item.group(3),
@@ -168,34 +156,50 @@ public final class OrbitRichResponseRenderer {
                     itemView.setPadding(UiKit.dp(c, 8 + indent * 14), UiKit.dp(c, 2), 0,
                             UiKit.dp(c, 2));
                     listBlock.addView(itemView);
-                    i++;
                 }
-                addBlock(out, listBlock, c, 5);
-                continue;
+                return listBlock;
             }
-
-            StringBuilder paragraph = new StringBuilder(line.trim());
-            i++;
-            while (i < lines.length && !lines[i].trim().isEmpty() &&
-                    !startsBlock(lines, i)) {
-                paragraph.append('\n').append(lines[i].trim());
-                i++;
-            }
-            addBlock(out, richText(c, paragraph.toString(), chatSize(c, compact ? 14 : 15),
-                    foreground, false, fill), c, 6);
+            default:
+                break;
         }
-        if (out.getChildCount() == 0) out.addView(text(c, source,
-                chatSize(c, compact ? 14 : 15),
-                foreground, false));
+        return richText(c, source, chatSize(c, compact ? 14 : 15), foreground, false, fill);
     }
 
-    private static boolean startsBlock(String[] lines, int i) {
-        String value = lines[i].trim();
-        return value.startsWith("```") || value.startsWith(">") ||
-                HEADING.matcher(value).matches() || LIST.matcher(lines[i]).matches() ||
-                IMAGE.matcher(value).matches() || value.matches("^[-*_]{3,}$") ||
-                (i + 1 < lines.length && lines[i].contains("|") &&
-                        TABLE_DIVIDER.matcher(lines[i + 1]).matches());
+    /** The gap below one block, matching the spacing the completed renderer has always used. */
+    static int spacingFor(ResponseBlocks.Block block, boolean asImage) {
+        switch (block.kind) {
+            case CODE:
+            case TABLE:
+                return 7;
+            case IMAGE:
+                return asImage ? 8 : 4;
+            case HEADING:
+                return ResponseBlocks.HEADING.matcher(block.source.trim()).matches()
+                        && block.source.trim().startsWith("# ") ? 9 : 6;
+            case RULE:
+                return 7;
+            case LIST:
+                return 5;
+            default:
+                return 6;
+        }
+    }
+
+    /** A rule needs its own vertical breathing room above as well as below. */
+    static int topSpacingFor(ResponseBlocks.Block block) {
+        return block.kind == ResponseBlocks.Kind.RULE ? 7 : 0;
+    }
+
+    private static List<String[]> tableRows(String source) {
+        List<String[]> rows = new ArrayList<>();
+        String[] lines = source.split("\n", -1);
+        for (int i = 0; i < lines.length; i++) {
+            // The divider row is structure, never content, and is not drawn as a row.
+            if (i == 1 && ResponseBlocks.TABLE_DIVIDER.matcher(lines[i]).matches()) continue;
+            if (lines[i].trim().isEmpty()) continue;
+            rows.add(splitTableRow(lines[i]));
+        }
+        return rows;
     }
 
     private static TextView richText(Context c, String value, float size, int color, boolean bold,
@@ -239,10 +243,20 @@ public final class OrbitRichResponseRenderer {
     }
 
     private static View codeBlock(Context c, String code, String language) {
+        return codeBlock(c, code, language, true);
+    }
+
+    /**
+     * @param complete false while the closing fence has not arrived. The block is drawn either
+     *                 way - once Orbit knows a fence opened, the user should be looking at a code
+     *                 surface rather than at backticks - but Copy waits, because copying a
+     *                 half-written snippet silently gives someone code that will not compile.
+     */
+    private static View codeBlock(Context c, String code, String language, boolean complete) {
         LinearLayout card = new LinearLayout(c);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(UiKit.dp(c, 11), UiKit.dp(c, 7), UiKit.dp(c, 8), UiKit.dp(c, 9));
-        card.setBackground(UiKit.rounded(UiKit.SURFACE_2, 12, c));
+        card.setBackground(UiKit.rounded(UiKit.SURFACE_2, UiKit.RADIUS_CARD, c));
 
         LinearLayout header = new LinearLayout(c);
         header.setGravity(Gravity.CENTER_VERTICAL);
@@ -264,6 +278,10 @@ public final class OrbitRichResponseRenderer {
             if (manager != null) manager.setPrimaryClip(ClipData.newPlainText("Orbit code", code));
             Toast.makeText(c, "Code copied", Toast.LENGTH_SHORT).show();
         });
+        // Held back rather than hidden, so the header does not change shape when the block closes
+        // and the code below it does not shift up and down as the answer finishes.
+        copy.setVisibility(complete ? View.VISIBLE : View.INVISIBLE);
+        copy.setEnabled(complete);
         header.addView(copy, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 UiKit.dp(c, 32)));
         card.addView(header);
@@ -416,10 +434,30 @@ public final class OrbitRichResponseRenderer {
     }
 
     private static void addBlock(LinearLayout out, View child, Context c, int bottomDp) {
+        addBlock(out, child, c, bottomDp, 0);
+    }
+
+    private static void addBlock(LinearLayout out, View child, Context c, int bottomDp, int topDp) {
+        out.addView(child, blockLayout(c, bottomDp, topDp));
+    }
+
+    /** The layout one block sits under, shared with the progressive path so spacing cannot drift. */
+    static LinearLayout.LayoutParams blockLayout(Context c, int bottomDp, int topDp) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(0, 0, 0, UiKit.dp(c, bottomDp));
-        out.addView(child, lp);
+        lp.setMargins(0, UiKit.dp(c, topDp), 0, UiKit.dp(c, bottomDp));
+        return lp;
+    }
+
+    /** The bubble's own padding, shared so a streamed answer and a stored one sit identically. */
+    static void applyBubbleChrome(LinearLayout bubble, int bubbleFill, boolean compact) {
+        Context context = bubble.getContext();
+        int horizontal = UiKit.dp(context, compact ? 13 : 15);
+        int vertical = UiKit.dp(context, compact ? 10 : 12);
+        bubble.setOrientation(LinearLayout.VERTICAL);
+        bubble.setPadding(horizontal, vertical, horizontal, vertical);
+        bubble.setBackground(UiKit.rounded(bubbleFill, UiKit.RADIUS_BUBBLE, context));
+        bubble.setForceDarkAllowed(false);
     }
 
     /**

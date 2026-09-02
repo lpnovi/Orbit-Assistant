@@ -608,3 +608,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Remove an image you have not sent yet from the viewer, without losing what you had typed.
   - Select text in almost any app and choose **Ask Orbit** to open it in a new conversation, ready for your question.
   - Nothing is sent automatically, and Orbit never changes the text in the app you selected it from.
+
+- **v0.7.8.1-beta.2**: Answers now format as they arrive instead of turning from raw text into a tidy response at the end.
+  - Headings, lists, bold, quotes, tables and code now format while Orbit is still writing the answer.
+  - Code appears in a proper code block as it is typed out, with Copy ready once the snippet is finished.
+  - The finished answer settles in place instead of flashing into a different-looking one.
+  - Moving from Thinking into the answer, and new content arriving, both got gentler motion.
+  - If you scroll up while Orbit is answering, it leaves you there; jump-to-latest works exactly as before.
+  - Turning Android animations down still gives you the full formatting, just without the movement.

@@ -1615,6 +1615,44 @@ public final class UiKit {
         return new DecelerateInterpolator(1.6f);
     }
 
+    // Orbit's shared corner radii. These were scattered as literals across the renderer, the
+    // bubbles, the strip and the confirmation cards, which is how the same visual component class
+    // ended up with three different corners depending on which file drew it. Different component
+    // classes are still allowed different shapes - a bubble is not a chip - but one class now has
+    // one number.
+    /** Chat bubbles, in both surfaces. */
+    public static final float RADIUS_BUBBLE = 18f;
+    /** Cards inside a response or a sheet: code blocks, confirmation cards, image cards. */
+    public static final float RADIUS_CARD = 12f;
+    /** Small inline chips and attachment cards. */
+    public static final float RADIUS_CHIP = 14f;
+
+    /**
+     * Arrival for one block of a response that is still being written.
+     *
+     * <p>Deliberately smaller and quicker than {@link #enterContent}: a streamed answer can grow
+     * several blocks in a second, and a full entrance on each one reads as the screen flinching
+     * rather than as an answer arriving. It also applies only to a block appearing for the first
+     * time — text updating inside a block that is already on screen is never animated, because
+     * fading a paragraph every time a word lands on it is the thing that makes streaming feel
+     * cheap.
+     */
+    public static void enterBlock(View v) {
+        if (v == null) return;
+        if (!animationsEnabled()) {
+            v.setAlpha(1f);
+            v.setTranslationY(0f);
+            return;
+        }
+        v.setAlpha(0f);
+        v.setTranslationY(dp(v.getContext(), 4));
+        v.animate().cancel();
+        v.animate().alpha(1f).translationY(0f)
+                .setDuration(MOTION_FAST)
+                .setInterpolator(motionEasing())
+                .start();
+    }
+
     /**
      * Subtle arrival for newly added content: a short fade with a small upward settle. Applies
      * only to the view given, so existing content is never re-animated, and becomes a no-op when
@@ -1632,6 +1670,29 @@ public final class UiKit {
         v.animate().cancel();
         v.animate().alpha(1f).translationY(0f)
                 .setDuration(MOTION_ENTER)
+                .setInterpolator(motionEasing())
+                .start();
+    }
+
+    /**
+     * Settles a row that has just moved to a new position in a list.
+     *
+     * <p>The caller offsets the row to where it used to be and this slides it home. Shared because
+     * it was written twice with different numbers — 190ms in one place and 210ms in another, both
+     * with their own raw interpolator and neither of them checking whether the device wants motion
+     * at all — so the same gesture settled at two different speeds depending on which list the user
+     * was reordering.
+     */
+    public static void settleReorder(View v, float fromTranslationY) {
+        if (v == null || fromTranslationY == 0f) return;
+        if (!animationsEnabled()) {
+            v.setTranslationY(0f);
+            return;
+        }
+        v.setTranslationY(fromTranslationY);
+        v.animate().cancel();
+        v.animate().translationY(0f)
+                .setDuration(MOTION_STANDARD)
                 .setInterpolator(motionEasing())
                 .start();
     }

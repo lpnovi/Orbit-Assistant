@@ -1110,6 +1110,55 @@ Both features are gesture- and platform-shaped, which is exactly what a Beta exi
 whether a pinch and a pan feel right on the panel, and whether Ask Orbit actually appears in
 Samsung's own selection menu, are not questions a Robolectric run can answer.
 
+### 0.7.8.1-beta.2 - Progressive Responses & Motion Polish
+`0.7.8.1-beta.2` is a refinement release, not a new assistant capability. It adds nothing Orbit
+could not already do and answers no question it could not already answer; what it changes is how
+every answer looks while it is being produced, which is why it was worth a Beta slot ahead of more
+feature work. Orbit Local device actions remain unstarted and unchanged at item 1 below, and
+nothing here touches the action model, the allowlist, the deterministic router, the protected-dial
+boundary, or the Beta 1 attachment viewer and Ask Orbit doorway.
+
+The problem it fixes was visible on essentially every response. Orbit had two different ideas of
+what a reply was: while one was arriving it was a single raw `TextView`, so the user watched
+`## Heading`, `- item` and triple backticks scroll past as literal characters, and when it finished
+that view was thrown away and a completely separate rich tree was built in its place. Every answer
+therefore ended with a raw-to-rich jump, and the nicer of the two presentations was the one the
+user spent the least time looking at.
+
+What actually shipped:
+
+- **One presentation instead of two.** `ResponseBlocks` names the step both paths were missing -
+  deciding what the blocks of a response are - as pure text work with no Context, no View and no
+  measurement. `OrbitRichResponseRenderer` exposes a single per-block builder, and the completed
+  render and the streaming render now feed from the same parser and the same builder, so they
+  cannot drift apart in what they think a response contains
+- **A response that is conservative about what it commits to.** A construct is recognised only once
+  the text proves it: an open fence is already a code block, but a line of pipes stays ordinary
+  prose until the divider row arrives, a rule at the very end of a stream waits one fragment, and a
+  half-written image URL is never fetched. A delimiter whose partner has not been generated is
+  withheld while its words are kept, so "This is \*\*impor" reads as "This is impor" rather than
+  showing the machinery
+- **Rendering paced away from the provider.** `StreamRenderScheduler` accumulates deltas
+  immediately and rate-limits the presentation to roughly twenty passes a second, expressed against
+  an injected clock and poster so the coalescing rule is tested as a rule rather than with a
+  stopwatch. A thousand fragments inside one window become two passes, and the newest text always
+  wins
+- **A diff that leaves settled content alone.** `ProgressiveResponseView` rebuilds only the blocks
+  whose displayed text actually changed, which is what keeps a code block's Copy control, a link's
+  clickability, a table's horizontal scroll offset and a screen reader's focus alive while the rest
+  of the answer is still arriving. Block identity is keyed on what a block displays rather than on
+  its raw state, so a paragraph is not rebuilt merely because a list started below it
+- **Shared between both surfaces.** Full chat and the Side-button overlay use the same view, so the
+  overlay stopped being a second streaming implementation. Two hand-written bubble animations in
+  the overlay that ignored the system animation scale were replaced by Orbit's shared arrival, and
+  list reordering, which had been written twice at two different durations with two raw
+  interpolators and no reduced-motion check, was consolidated into one `UiKit` primitive
+
+Motion is restrained on purpose: new structural blocks get a short fade and a 4dp settle, text
+updating inside a block that is already on screen is never animated, and reduced motion removes the
+decoration without removing any formatting.
+
+
 Beta 1 shipped:
 
 - **Back in a conversation became Android's own gesture.** The requirement was an interaction that

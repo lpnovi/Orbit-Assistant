@@ -117,7 +117,17 @@ public class ChatActivity extends Activity {
     /** Owns what Back means on this screen. See {@link #installBackHandling()}. */
     private OrbitBackHandler backHandler;
     private OrbitPredictiveBack predictiveBack;
-    private TextView streamingBubble;
+    /**
+     * The answer currently being written, drawn progressively.
+     *
+     * <p>The same view class the finished answer is drawn with, so completion settles this bubble
+     * rather than replacing it with a different one. Before v0.7.8.1 Beta 2 this was a raw
+     * {@code TextView} full of unrendered Markdown that was thrown away at completion, which is
+     * what produced the visible raw-to-rich jump at the end of every response.
+     */
+    private ProgressiveResponseView streamingBubble;
+    /** Which request the streaming bubble belongs to. Presentation identity, never ownership. */
+    private String streamingRequestId = "";
     private String currentMode;
 
     private static final int REQ_CAMERA = 5601;
@@ -582,11 +592,16 @@ public class ChatActivity extends Activity {
         boolean animateNewest = animateNewestOnRender;
         animateNewestOnRender = false;
         // removeAllViews detaches any running indicator, which stops its frames.
+        // Detaching the streaming bubble releases its render callbacks through
+        // onDetachedFromWindow; clearing the id as well means a late delta cannot adopt a bubble
+        // that is no longer on screen.
+        if (streamingBubble != null) streamingBubble.cancelPendingRenders();
         messages.removeAllViews();
         thinkingRow = null;
         thinkingView = null;
         thinkingStatus = null;
         streamingBubble = null;
+        streamingRequestId = "";
         if (history.isEmpty()) {
             TextView welcome = UiKit.text(this, "What can I help with?",
                     Prefs.chatTextSp(this, 17), UiKit.TEXT, false);
@@ -994,28 +1009,44 @@ public class ChatActivity extends Activity {
                 });
             }
 
+            /**
+             * The answer, drawn as an Orbit answer while it is still being written.
+             *
+             * <p>Guarded on the request id like every other callback here: a delta from a request
+             * this screen has stopped listening to - a stopped turn, a superseded regeneration,
+             * another conversation - cannot reach the bubble.
+             */
             @Override public void onDelta(String requestId, String delta) {
                 runOnUiThread(() -> {
+                    if (!listeners.containsKey(requestId)) return;
+                    if (!requestId.equals(streamingRequestId)) {
+                        // A different request owns the answer now. Whatever the last one had drawn
+                        // belongs to it and is released rather than written over.
+                        discardStreamingBubble();
+                        streamingRequestId = requestId;
+                    }
                     removeThinkingRow();
                     if (streamingBubble == null) {
                         int fill = UiKit.assistantBubbleFill(ChatActivity.this, UiKit.SURFACE);
-                        streamingBubble = UiKit.text(ChatActivity.this, "",
-                                Prefs.chatTextSp(ChatActivity.this, 15),
-                                UiKit.onBubble(fill), false);
-                        UiKit.applyBubbleTextMetrics(streamingBubble);
-                        streamingBubble.setPadding(UiKit.dp(ChatActivity.this, 15), UiKit.dp(ChatActivity.this, 12), UiKit.dp(ChatActivity.this, 15), UiKit.dp(ChatActivity.this, 12));
-                        streamingBubble.setBackground(UiKit.rounded(fill, 18, ChatActivity.this));
-                        messages.addView(streamingBubble, bubbleLp(Gravity.START, UiKit.dp(ChatActivity.this, 310)));
+                        streamingBubble = new ProgressiveResponseView(ChatActivity.this, fill, false);
+                        messages.addView(streamingBubble,
+                                bubbleLp(Gravity.START, UiKit.dp(ChatActivity.this, 310)));
                         // First content of the answer arrives as the orbital state resolves.
                         UiKit.enterContent(streamingBubble);
                     }
-                    streamingBubble.setText(delta == null ? "" : delta.replace("—", "-"));
+                    streamingBubble.onDelta(delta == null ? "" : delta.replace("—", "-"));
+                    applyStreamingWidth();
                     scrollBottomIfFollowing();
                 });
             }
             @Override public void onSuccess(String requestId, AssistantReply reply) {
                 runOnUiThread(() -> {
                     listeners.remove(requestId);
+                    // The streamed bubble settles onto the canonical reply first, so the words on
+                    // screen are already the final ones before the conversation is rebuilt from
+                    // storage underneath them. Without this the redraw is the moment the answer
+                    // visibly changes, which is the jump this release exists to remove.
+                    settleStreamingBubble(requestId, reply == null ? "" : reply.text);
                     // The answer settles in as the thinking state resolves, rather than popping.
                     animateNewestOnRender = true;
                     reloadConversation();
@@ -1029,12 +1060,24 @@ public class ChatActivity extends Activity {
             }
             @Override public void onError(String requestId, String message) {
                 DiagnosticStore.recordError(ChatActivity.this, message);
-                runOnUiThread(() -> { listeners.remove(requestId); reloadConversation(); });
+                runOnUiThread(() -> {
+                    listeners.remove(requestId);
+                    // Orbit's existing error semantics are untouched: a failed request does not
+                    // become a partial answer that looks finished. The streamed bubble is released
+                    // and the reload shows exactly what it showed before this release.
+                    discardStreamingBubble();
+                    reloadConversation();
+                });
             }
             @Override public void onCancelled(String requestId, String partialText) {
                 runOnUiThread(() -> {
                     listeners.remove(requestId);
                     removeThinkingRow();
+                    // Whatever arrived stays, and settles into the same clean presentation rather
+                    // than reverting to raw text. Stopping inside an open code fence therefore
+                    // keeps the code block it was already showing instead of dumping backticks
+                    // back into the conversation.
+                    settleStreamingBubble(requestId, partialText);
                     // The manager has already persisted whatever had streamed, so reloading shows
                     // the partial answer with its ordinary Copy and Regenerate controls, and shows
                     // nothing at all when the reply had not started. Stopping is not a failure, so
@@ -1048,6 +1091,50 @@ public class ChatActivity extends Activity {
                 });
             }
         };
+    }
+
+    /**
+     * Settles the streaming bubble onto the canonical reply, if it belongs to this request.
+     *
+     * <p>The canonical text wins: a provider may normalise its own output, and the stored
+     * conversation has to match what the user is looking at. Because the progressive view only
+     * rebuilds blocks whose source actually changed, reconciling usually redraws the last block and
+     * nothing else, so the settle is invisible rather than a flash.
+     */
+    private void settleStreamingBubble(String requestId, String canonicalText) {
+        if (streamingBubble == null) return;
+        if (requestId != null && !requestId.equals(streamingRequestId)) return;
+        String visible = canonicalText == null ? "" : canonicalText.replace("—", "-");
+        streamingBubble.settle(SourceLinkUtil.displayText(visible));
+        applyStreamingWidth();
+    }
+
+    /**
+     * Gives the streaming bubble the width its content has earned.
+     *
+     * <p>Read from the view rather than recomputed here, because the view latches wide once and
+     * never goes back. A bubble that re-decided its width on every update would narrow and widen
+     * as a code fence or a table arrived, which is far more distracting than simply being wide.
+     */
+    private void applyStreamingWidth() {
+        if (streamingBubble == null) return;
+        ViewGroup.LayoutParams lp = streamingBubble.getLayoutParams();
+        if (!(lp instanceof LinearLayout.LayoutParams)) return;
+        int wanted = streamingBubble.prefersWide()
+                ? ViewGroup.LayoutParams.MATCH_PARENT
+                : ViewGroup.LayoutParams.WRAP_CONTENT;
+        if (lp.width == wanted) return;
+        lp.width = wanted;
+        streamingBubble.setLayoutParams(lp);
+    }
+
+    /** Takes the streaming bubble off screen and releases its stream state. */
+    private void discardStreamingBubble() {
+        if (streamingBubble == null) return;
+        streamingBubble.cancelPendingRenders();
+        if (streamingBubble.getParent() == messages) messages.removeView(streamingBubble);
+        streamingBubble = null;
+        streamingRequestId = "";
     }
 
     private void registerRequest(String id) {
@@ -1926,6 +2013,21 @@ public class ChatActivity extends Activity {
 
     /** Appends one attachment the way a finished picker batch does. For tests. */
     void addComposerAttachmentForTest(ComposerAttachment a) { addComposerAttachment(a); }
+
+    /** The conversation container, so a test can inspect what is actually drawn. */
+    ViewGroup messagesForTest() { return messages; }
+
+    /** Attaches this screen to a running request the way an enqueue does. For tests. */
+    void registerRequestForTest(String id) { registerRequest(id); }
+
+    /** Redraws the conversation from storage, the way completion does. For tests. */
+    void renderForTest() { reloadConversation(); }
+
+    /** Whether the conversation is currently following the newest content. For tests. */
+    boolean followBottomForTest() { return followBottom; }
+
+    /** Puts the conversation into the state a user who scrolled up leaves it in. For tests. */
+    void setFollowBottomForTest(boolean follow) { followBottom = follow; }
 
     /** What the composer's editor currently holds. For tests. */
     String composerText() { return input == null ? "" : input.getText().toString(); }

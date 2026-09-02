@@ -100,7 +100,14 @@ public class OrbitSession extends VoiceInteractionSession {
     private TextView modeChip;
     private TextView contextText;
     private ImageView screenshotPreview;
-    private TextView streamingBubble;
+    /**
+     * The answer currently being written, drawn progressively.
+     *
+     * <p>The same shared view the full chat uses, so the overlay and the conversation cannot drift
+     * into two ideas of what a streaming answer looks like. Completion settles this bubble rather
+     * than discarding it and building a different one in its place.
+     */
+    private ProgressiveResponseView streamingBubble;
     private Button screenButton;
     private Button selectScreenButton;
     private LinearLayout thinkingIndicator;
@@ -2107,24 +2114,66 @@ public class OrbitSession extends VoiceInteractionSession {
 
     private void updateStreamingBubble(String text) {
         if (messages == null || text == null) return;
+        Context c = getContext();
         if (streamingBubble == null) {
-            streamingBubble = makeBubbleText("", false, false);
-            messages.addView(streamingBubble, bubbleLp(Gravity.START, UiKit.dp(getContext(), 330)));
+            streamingBubble = new ProgressiveResponseView(
+                    c, UiKit.assistantBubbleFill(c, UiKit.SURFACE), true);
+            messages.addView(streamingBubble, bubbleLp(Gravity.START, UiKit.dp(c, 330)));
             // First content of the answer arrives as the orbital state resolves.
             UiKit.enterContent(streamingBubble);
         }
-        streamingBubble.setText(text + " ▍");
+        streamingBubble.onDelta(text);
+        applyStreamingWidth();
         scrollBottom();
     }
 
+    /**
+     * Settles the streamed answer onto the canonical reply, in place.
+     *
+     * <p>The bubble the user has been reading becomes the finished answer rather than being torn
+     * down and rebuilt, so there is no flash, no width jump and no scroll lurch at completion.
+     * Message actions attach to the settled bubble exactly as they did to the replacement one.
+     */
     private void finishStreamingBubble(String rawText) {
-        discardStreamingBubble();
-        addRichAssistantBubble(SourceLinkUtil.displayText(rawText), rawText, true);
+        if (messages == null) { discardStreamingBubble(); return; }
+        String displayText = SourceLinkUtil.displayText(rawText);
+        if (streamingBubble == null) {
+            addRichAssistantBubble(displayText, rawText, true);
+            return;
+        }
+        ProgressiveResponseView bubble = streamingBubble;
+        streamingBubble = null;
+        bubble.settle(displayText);
+        applyBubbleWidth(bubble, bubble.prefersWide());
+        if (displayText != null && !displayText.trim().isEmpty()
+                && !displayText.startsWith("Orbit could not finish")) {
+            MessageActions.bindAssistant(bubble, rawText, true, this::regenerateLastResponse,
+                    () -> {
+                        stateTextSafe("Copied");
+                        main.postDelayed(() -> stateTextSafe(readyState()), 800);
+                    });
+        }
+        scrollBottom();
     }
 
-    /** Takes the live streaming bubble off screen, cursor and all, leaving nothing behind. */
+    /** Gives the streaming bubble the width its content has earned, one way only. */
+    private void applyStreamingWidth() {
+        if (streamingBubble != null) applyBubbleWidth(streamingBubble, streamingBubble.prefersWide());
+    }
+
+    private void applyBubbleWidth(View bubble, boolean wide) {
+        ViewGroup.LayoutParams lp = bubble.getLayoutParams();
+        if (lp == null) return;
+        int wanted = wide ? ViewGroup.LayoutParams.MATCH_PARENT : ViewGroup.LayoutParams.WRAP_CONTENT;
+        if (lp.width == wanted) return;
+        lp.width = wanted;
+        bubble.setLayoutParams(lp);
+    }
+
+    /** Takes the live streaming bubble off screen, releasing its render state. */
     private void discardStreamingBubble() {
         if (streamingBubble == null) return;
+        streamingBubble.cancelPendingRenders();
         if (messages != null && streamingBubble.getParent() == messages) messages.removeView(streamingBubble);
         streamingBubble = null;
     }
@@ -3618,12 +3667,10 @@ public class OrbitSession extends VoiceInteractionSession {
                     main.postDelayed(() -> stateTextSafe(readyState()), 800);
                 });
         messages.addView(bubble, bubbleLp(user ? Gravity.END : Gravity.START, UiKit.dp(getContext(), 330)));
-        bubble.setAlpha(0f);
-        bubble.setTranslationY(UiKit.dp(getContext(), 8));
-        bubble.setScaleX(0.985f);
-        bubble.setScaleY(0.985f);
-        bubble.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
-                .setDuration(190).setInterpolator(new DecelerateInterpolator()).start();
+        // One shared arrival for every message in either surface. The scale component is dropped
+        // deliberately: it was the only place in Orbit where a message grew into place, and a
+        // 1.5% scale on text is a shimmer rather than a motion anyone reads as intentional.
+        UiKit.enterContent(bubble);
         scrollBottom();
     }
 
@@ -3648,10 +3695,10 @@ public class OrbitSession extends VoiceInteractionSession {
                     });
         }
         messages.addView(bubble, lp);
-        bubble.setAlpha(0f);
-        bubble.setTranslationY(UiKit.dp(c, 8));
-        bubble.animate().alpha(1f).translationY(0f)
-                .setDuration(190).setInterpolator(new DecelerateInterpolator()).start();
+        // Orbit's shared arrival, rather than a hand-written duration and interpolator. The
+        // hand-written one also ignored the system animation scale, so a device set to reduced
+        // motion still got a fade here while every other Orbit surface correctly skipped it.
+        UiKit.enterContent(bubble);
         scrollBottom();
     }
 
