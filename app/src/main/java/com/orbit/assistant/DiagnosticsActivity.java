@@ -580,6 +580,26 @@ public final class DiagnosticsActivity extends Activity {
                     .append("\n  Last share result: ").append(orNone(d.getString("share_outcome", "")))
                     .append("\n  Last share items staged: ").append(d.getInt("share_accepted", 0));
         }
+        if (d.getLong("external_text_updated", 0L) == 0L) {
+            out.append("\n  Ask Orbit from selected text: none yet");
+        } else {
+            out.append("\n  Last external text source: ")
+                    .append(orNone(d.getString("external_text_source", "")))
+                    .append("\n  Last external text result: ")
+                    .append(orNone(d.getString("external_text_outcome", "")))
+                    .append("\n  Last external text length: ")
+                    .append(d.getInt("external_text_length", 0)).append(" characters")
+                    .append("\n  External text write-back: never (Orbit only reads a selection)");
+        }
+        if (d.getLong("viewer_updated", 0L) == 0L) {
+            out.append("\n  Attachment viewer: not opened yet");
+        } else {
+            out.append("\n  Last viewer source: ").append(orNone(d.getString("viewer_source", "")))
+                    .append("\n  Last viewer images: ").append(d.getInt("viewer_count", 0))
+                    .append("\n  Last viewer opened at: ").append(d.getInt("viewer_index", 0) + 1)
+                    .append("\n  Viewer met a missing image: ")
+                    .append(d.getBoolean("viewer_missing", false) ? "yes" : "no");
+        }
         return out.toString();
     }
 

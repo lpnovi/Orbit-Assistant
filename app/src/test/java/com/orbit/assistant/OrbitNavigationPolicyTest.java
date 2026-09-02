@@ -64,7 +64,14 @@ public final class OrbitNavigationPolicyTest {
             "OrbitLaunchSequenceActivity",
             // The external Share doorway. It arrives from another app, draws nothing, and finishes
             // once it has opened a conversation, so there is no Orbit page beneath it to reveal.
-            "ShareToOrbitActivity"
+            "ShareToOrbitActivity",
+            // The external selected-text doorway, which is the same shape as the share bridge.
+            "ProcessTextToOrbitActivity",
+            // The full-screen attachment viewer. A detail surface rather than a page, and the one
+            // screen where the classification is load-bearing beyond appearance: it owns live pan
+            // and zoom across the whole window, so an app-wide gesture reading horizontal progress
+            // would be competing for the same finger as panning a zoomed photo.
+            "AttachmentViewerActivity"
     };
 
     /** Orbit's root. Back is the task's business and Orbit invents nothing behind it. */

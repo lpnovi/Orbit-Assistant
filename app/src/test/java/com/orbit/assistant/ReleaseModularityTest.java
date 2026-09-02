@@ -185,17 +185,17 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * On-device actions, attachments, sharing and the dialing boundary passed four device Betas.
+     * A zoom gesture and an entry in Samsung's text-selection menu need real hardware, so this is
+     * a Beta.
      *
-     * <p>The action model, media control, the ringer and the device-status readings were all
-     * validated on a Galaxy S25 Ultra, as were the multi-attachment composer, Share to Orbit, and
-     * the protected-dial confirmation. So this release is Stable, and the guard's job is now to
-     * stop a versionName that quietly regains prerelease metadata from being published here.
+     * <p>Nothing in this release has been through a Galaxy S25 Ultra yet. Whether a pinch and a
+     * pan feel right, and whether Ask Orbit actually appears where the user selects text, are both
+     * questions that can only be answered on the phone.
      */
-    @Test public void thisReleaseIsStableAfterDeviceValidation() {
-        assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
-                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.installedIsBeta());
+    @Test public void thisReleaseIsABetaAwaitingDeviceValidation() {
+        assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
+                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
+        assertTrue(OrbitVersion.installedIsBeta());
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
     }
 

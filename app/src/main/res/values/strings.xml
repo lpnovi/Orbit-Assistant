@@ -1,5 +1,11 @@
 <resources>
     <string name="app_name">Orbit Assistant</string>
+    <!--
+      What Android shows in the text-selection menu beside Copy, Share and Select all. Two words,
+      because that menu is drawn inline over the user's own text and every extra character pushes
+      a genuine option behind the overflow.
+    -->
+    <string name="process_text_label">Ask Orbit</string>
     <string name="widget_ask_description">Open a ready-to-type Orbit chat</string>
     <string name="widget_routine_description">Run one selected saved Orbit Routine</string>
     <string name="widget_quick_description">Use selected Orbit quick actions</string>

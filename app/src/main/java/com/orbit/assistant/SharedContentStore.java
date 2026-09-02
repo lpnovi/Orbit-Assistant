@@ -35,8 +35,32 @@ public final class SharedContentStore {
     /** How long a staged share may wait to be picked up. */
     private static final long STALE_MS = 5L * 60L * 1000L;
 
-    /** One external share, already validated and deduplicated. */
+    /** An Android share sheet. */
+    public static final String SOURCE_SHARE = "share";
+    /** Android's text-selection menu, through {@code ACTION_PROCESS_TEXT}. */
+    public static final String SOURCE_PROCESS_TEXT = "process_text";
+
+    /**
+     * The most characters any external route may put into one composer.
+     *
+     * <p>One number for every door into Orbit from another app, so a selection cannot carry more
+     * than a share can. It is a bound on Orbit's own memory and composer rather than a judgement
+     * about the text: 36,000 characters is far more than anyone selects by hand and far less than
+     * a hostile app could otherwise push across in a single Intent.
+     */
+    public static final int MAX_TEXT_CHARS = 36000;
+
+    /** One piece of external content, already validated. */
     public static final class Staged {
+        /**
+         * Which door this came through: {@link #SOURCE_SHARE} or {@link #SOURCE_PROCESS_TEXT}.
+         *
+         * <p>Metadata about the route, never about the content, and it changes nothing about how
+         * the content is treated. Both are untrusted external input, both are validated by the
+         * same rules, and both end up as unsent material in a composer. Recording which is which
+         * only makes Diagnostics able to say where the last one came from.
+         */
+        public final String source;
         /** Shared text, or empty. Never interpreted, only placed in the composer. */
         public final String text;
         /** Shared streams, in the order the sending app listed them, deduplicated. */
@@ -46,7 +70,8 @@ public final class SharedContentStore {
         /** How many items the sender offered, before Orbit's per-message limit was applied. */
         public final int offered;
 
-        Staged(String text, List<Uri> uris, String shape, int offered) {
+        Staged(String source, String text, List<Uri> uris, String shape, int offered) {
+            this.source = source == null || source.isEmpty() ? SOURCE_SHARE : source;
             this.text = text == null ? "" : text;
             this.uris = Collections.unmodifiableList(new ArrayList<>(uris));
             this.shape = shape == null ? "" : shape;
@@ -54,6 +79,22 @@ public final class SharedContentStore {
         }
 
         public boolean isEmpty() { return text.isEmpty() && uris.isEmpty(); }
+    }
+
+    /**
+     * Trims external text and bounds it, saying so when it had to.
+     *
+     * <p>Truncating in silence is the one thing this must not do. A user who selects six pages and
+     * gets four of them without being told has been given a wrong answer about their own text, so
+     * the notice is part of what lands in the composer and travels with it.
+     */
+    public static String bound(String value) {
+        if (value == null) return "";
+        String text = value.trim();
+        if (text.length() <= MAX_TEXT_CHARS) return text;
+        return text.substring(0, MAX_TEXT_CHARS)
+                + "\n\n[Orbit truncated the shared text after "
+                + String.format(java.util.Locale.US, "%,d", MAX_TEXT_CHARS) + " characters.]";
     }
 
     private static final class Entry {
@@ -68,9 +109,25 @@ public final class SharedContentStore {
 
     /** Stages one share and returns the private token that stands for it. */
     public static synchronized String stage(String text, List<Uri> uris, String shape, int offered) {
+        return stage(SOURCE_SHARE, text, uris, shape, offered);
+    }
+
+    /**
+     * Stages external content from a named door.
+     *
+     * <p>Deliberately one store rather than one per entry point. Share to Orbit and Ask Orbit
+     * differ in what Android hands over, and in nothing else that matters here: both are content
+     * from an app Orbit does not control, both are bounded before they reach this, both are
+     * carried by a one-shot private token, and both end as unsent material in a new conversation.
+     * A second store would be a second set of rules to keep in step, and the rules are the part
+     * worth having exactly once.
+     */
+    public static synchronized String stage(String source, String text, List<Uri> uris,
+                                            String shape, int offered) {
         prune();
-        String token = "share-" + UUID.randomUUID();
-        STAGED.put(token, new Entry(new Staged(text, uris == null ? new ArrayList<>() : uris,
+        String kind = source == null || source.isEmpty() ? SOURCE_SHARE : source;
+        String token = kind + "-" + UUID.randomUUID();
+        STAGED.put(token, new Entry(new Staged(kind, text, uris == null ? new ArrayList<>() : uris,
                 shape, offered)));
         return token;
     }

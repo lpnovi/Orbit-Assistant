@@ -373,6 +373,51 @@ public final class DiagnosticStore {
     }
 
     /**
+     * That the full-screen attachment viewer was opened, and over what.
+     *
+     * <p>Counts and one source word. Not the image, not a thumbnail, not a filename and not a
+     * stored path: "did tapping the third photo open the third photo" is answerable from a count
+     * and an index, and nothing here could describe what was in any of them.
+     *
+     * @param source "composer" for an unsent message, "history" for a turn already sent.
+     */
+    public static void recordAttachmentViewer(Context c, String source, int count, int index) {
+        prefs(c).edit()
+                .putString("viewer_source", safe(source))
+                .putInt("viewer_count", Math.max(0, count))
+                .putInt("viewer_index", Math.max(0, index))
+                .putBoolean("viewer_missing", false)
+                .putLong("viewer_updated", System.currentTimeMillis())
+                .apply();
+    }
+
+    /** That the viewer met a recorded image whose file is no longer there. A yes, and no more. */
+    public static void recordAttachmentViewerMissing(Context c) {
+        prefs(c).edit().putBoolean("viewer_missing", true).apply();
+    }
+
+    /**
+     * What the last external text entry carried, in a length and an outcome.
+     *
+     * <p>Never the text. A selection is by definition something the user was reading in another
+     * app - a message, a medical result, a password field they mis-selected - and none of it is
+     * Orbit's to keep in a report they might paste anywhere. How long it was and whether Orbit
+     * accepted it is what a Beta report actually needs.
+     *
+     * @param source  "process_text" for Android's selection menu.
+     * @param length  characters accepted, or 0 for a rejection.
+     * @param outcome "staged", "staged-readonly" or "rejected".
+     */
+    public static void recordExternalText(Context c, String source, int length, String outcome) {
+        prefs(c).edit()
+                .putString("external_text_source", safe(source))
+                .putString("external_text_outcome", safe(outcome))
+                .putInt("external_text_length", Math.max(0, length))
+                .putLong("external_text_updated", System.currentTimeMillis())
+                .apply();
+    }
+
+    /**
      * That a protected emergency or crisis number was intercepted, and what the user chose.
      *
      * <p>Deliberately no number. That Orbit stopped a dial and that the user then confirmed or

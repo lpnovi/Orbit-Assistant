@@ -147,34 +147,34 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * The 0.7.8.0 line ran as four Betas and is now promoted to Stable.
+     * This build opens the 0.7.8.1 line, and it is a Beta.
      *
-     * <p>Four rather than one because of what this line contained. An on-device action model, a
-     * multi-attachment composer fed by whichever Gallery the user actually has, an exported share
-     * target, and a confirmation standing between a model and a 911 dialer are all things a
-     * Robolectric run can describe but not settle: Beta 1 introduced them, Beta 2 corrected what a
-     * Galaxy S25 Ultra found wrong about phrasing and reply destinations, Beta 3 rebuilt
-     * attachments as a set and added the emergency boundary after the device produced an
-     * unprompted dialer, and Beta 4 fixed the four presentation faults only a phone could show.
+     * <p>Both of its features are the kind a Robolectric run can describe but not settle. A pinch,
+     * a double tap and a drag that has to be read as either panning a photo or turning to the next
+     * one are gestures, and gestures are the one thing off-device tests say least about: they can
+     * prove the transform is bounded and that the arbitration rule is applied, not that the image
+     * moves under the finger. Ask Orbit is the other half of the same problem - whether Orbit
+     * actually appears in Samsung's own text-selection menu, and under what label, is a question
+     * only a Galaxy S25 Ultra can answer.
      *
-     * <p>The guard now runs the other way. The finished release must not quietly regain prerelease
-     * metadata and be published to the Beta channel by accident, so this fails before publication
-     * rather than on a phone.
+     * <p>So the version says Beta and the release workflow publishes it as a prerelease. It must
+     * outrank the whole 0.7.8.0 line while still ranking below the Stable it is working towards.
      */
-    @Test public void thisBuildIsTheOrbitLocalActionsAndAttachmentsStable() {
+    @Test public void thisBuildIsTheAttachmentViewerAndAskOrbitBeta() {
         String version = BuildConfig.VERSION_NAME;
-        assertFalse(OrbitVersion.installedIsBeta());
-        assertFalse(OrbitVersion.isBeta(version));
-        assertTrue(OrbitVersion.isStable(version));
-        assertEquals("0.7.8.0", OrbitVersion.baseVersion(version));
+        assertTrue(OrbitVersion.installedIsBeta());
+        assertTrue(OrbitVersion.isBeta(version));
+        assertFalse(OrbitVersion.isStable(version));
+        assertEquals("0.7.8.1", OrbitVersion.baseVersion(version));
 
-        assertEquals("a Stable build carries no beta counter", 0, OrbitVersion.betaNumber(version));
-        assertEquals("Orbit Assistant v0.7.8.0", OrbitVersion.releaseTitle(version));
-        assertEquals("v0.7.8.0", OrbitVersion.tagFor(version));
-        assertFalse("the release workflow must publish it as Stable",
+        assertEquals(1, OrbitVersion.betaNumber(version));
+        assertEquals("Orbit Assistant v0.7.8.1 Beta 1", OrbitVersion.releaseTitle(version));
+        assertEquals("v0.7.8.1-beta.1", OrbitVersion.tagFor(version));
+        assertTrue("the release workflow must publish it as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
-        assertTrue("and it must outrank 0.7.7.9 and every Beta it was built from",
-                OrbitVersion.compareVersions(version, "0.7.7.9") > 0
-                        && OrbitVersion.compareVersions(version, "0.7.8.0-beta.4") > 0);
+        assertTrue("it must outrank the Stable line it was built from",
+                OrbitVersion.compareVersions(version, "0.7.8.0") > 0);
+        assertTrue("and must still rank below the Stable it is working towards",
+                OrbitVersion.compareVersions(version, "0.7.8.1") < 0);
     }
 }

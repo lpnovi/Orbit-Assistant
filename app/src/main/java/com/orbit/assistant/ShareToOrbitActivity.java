@@ -128,15 +128,9 @@ public final class ShareToOrbitActivity extends Activity {
             return "";
         }
         if (value == null) return "";
-        String text = value.toString().trim();
-        if (text.isEmpty()) return "";
-        // The same ceiling clipboard text obeys, so one path cannot be used to push more into a
-        // composer than the other allows.
-        if (text.length() > 36000) {
-            text = text.substring(0, 36000)
-                    + "\n\n[Orbit truncated the shared text after 36,000 characters.]";
-        }
-        return text;
+        // One ceiling for every external door, so no route can be used to push more into a
+        // composer than another allows.
+        return SharedContentStore.bound(value.toString());
     }
 
     /** Orbit's own shape word for Diagnostics. Never the content, never the sender. */

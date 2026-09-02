@@ -601,3 +601,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Pick several photos from your gallery at once, and hold up to ten attachments in one scrollable row.
   - Share text, links, photos or a PDF to Orbit from any app; it opens a conversation and waits for you.
   - Orbit asks before opening the dialer for 911 or 988, and never says it has opened it before you confirm.
+
+- **v0.7.8.1-beta.1**: Tap an attached image to see it full screen, and ask Orbit about text you select in any app.
+  - Tap any image attached to a message, sent or unsent, to open it full screen on a black background.
+  - Pinch or double-tap to zoom, drag to move around, and swipe between several images on one message.
+  - Remove an image you have not sent yet from the viewer, without losing what you had typed.
+  - Select text in almost any app and choose **Ask Orbit** to open it in a new conversation, ready for your question.
+  - Nothing is sent automatically, and Orbit never changes the text in the app you selected it from.

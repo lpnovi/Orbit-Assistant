@@ -282,18 +282,30 @@ public final class OrbitDialogContractTest {
                 calendarBridge.contains("new AlertDialog.Builder"));
         assertFalse(calendarBridge.contains("styleOrbitDialog"));
 
-        // Picker, calendar permission, widget action, and now the external Share doorway. All four
-        // are invisible bridges rather than pages, and all four keep the dedicated non-page theme.
-        assertTrue("invisible picker, calendar, widget and share bridges keep their non-page theme",
-                count(manifest, "android:theme=\"@style/Theme.Orbit.Bridge\"") == 4);
+        // Picker, calendar permission, widget action, the external Share doorway, and now the
+        // selected-text doorway. All five are invisible bridges rather than pages, and all five
+        // keep the dedicated non-page theme.
+        assertTrue("invisible picker, calendar, widget, share and selected-text bridges keep their"
+                        + " non-page theme",
+                count(manifest, "android:theme=\"@style/Theme.Orbit.Bridge\"") == 5);
 
-        // The exported Share doorway draws nothing of its own. It validates, stages, and starts a
-        // real conversation; a dialog here would be Orbit painting a window over another app's
-        // share sheet.
-        String shareBridge = ComponentUninstallTest.readRepositoryFile(
-                "app/src/main/java/com/orbit/assistant/ShareToOrbitActivity.java");
-        assertFalse(shareBridge.contains("new AlertDialog.Builder"));
-        assertFalse(shareBridge.contains("styleOrbitDialog"));
+        // Both exported doorways draw nothing of their own. They validate, stage, and start a real
+        // conversation; a dialog here would be Orbit painting a window over another app's share
+        // sheet or over the text the user is in the middle of selecting.
+        for (String bridge : new String[]{"ShareToOrbitActivity", "ProcessTextToOrbitActivity"}) {
+            String source = ComponentUninstallTest.readRepositoryFile(
+                    "app/src/main/java/com/orbit/assistant/" + bridge + ".java");
+            assertFalse(bridge + " must not draw a dialog", source.contains("new AlertDialog.Builder"));
+            assertFalse(bridge + " must not style one", source.contains("styleOrbitDialog"));
+        }
+
+        // The full-screen attachment viewer is a real screen rather than a bridge, so it keeps the
+        // ordinary Orbit theme and paints its own black background. It is emphatically not a
+        // dialog: a photo shown in a floating window would be a smaller photo.
+        String viewer = ComponentUninstallTest.readRepositoryFile(
+                "app/src/main/java/com/orbit/assistant/AttachmentViewerActivity.java");
+        assertFalse("the viewer is a screen, never a dialog",
+                viewer.contains("new AlertDialog.Builder"));
     }
 
     // ---- resource and popup motion --------------------------------------------------------------

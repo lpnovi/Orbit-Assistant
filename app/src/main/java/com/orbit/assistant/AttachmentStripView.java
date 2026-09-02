@@ -39,6 +39,19 @@ public final class AttachmentStripView extends HorizontalScrollView {
     }
 
     /**
+     * Told which attachment the user asked to look at.
+     *
+     * <p>Optional, and unset means the cards are not tappable at all. That is deliberate rather
+     * than an oversight: the Side-button overlay draws this same strip while lying over another
+     * app, and opening a full-screen Activity from underneath a voice-interaction session would
+     * fight the session's own dismissal rather than show a photo. Full chat wires it; the overlay
+     * keeps the strip it already had.
+     */
+    public interface OnOpen {
+        void onOpen(String attachmentId);
+    }
+
+    /**
      * Where a redraw should leave the strip looking.
      *
      * <p>Kept as a plain decision, separate from the drawing, because "the strip jumped somewhere
@@ -66,6 +79,7 @@ public final class AttachmentStripView extends HorizontalScrollView {
     private final LinearLayout row;
     private final boolean compact;
     private OnRemove onRemove;
+    private OnOpen onOpen;
 
     /**
      * The ids drawn by the previous {@link #bind}, in order.
@@ -99,6 +113,8 @@ public final class AttachmentStripView extends HorizontalScrollView {
     }
 
     public void setOnRemove(OnRemove listener) { this.onRemove = listener; }
+
+    public void setOnOpen(OnOpen listener) { this.onOpen = listener; }
 
     /**
      * What a redraw from {@code previous} to {@code next} should do with the viewport.
@@ -296,8 +312,21 @@ public final class AttachmentStripView extends HorizontalScrollView {
         // remove control, so the order is "what this is" then "how to remove it". The shortened
         // caption never reaches this: a screen reader is told the kind and the position, and a
         // document is still told its name.
-        card.setContentDescription(
-                AttachmentLabels.cardDescription(attachment, position, total));
+        String description = AttachmentLabels.cardDescription(attachment, position, total);
+        // A card opens the full-screen viewer only when there is something full screen to see. A
+        // PDF card carries a rendered first page, which is a preview and not the document, so it
+        // is deliberately left un-tappable rather than dropped into an image viewer that could
+        // never reach page two.
+        boolean openable = onOpen != null && AttachmentViewerModel.isViewable(attachment);
+        if (openable) {
+            card.setContentDescription(description + ", opens full screen");
+            card.setOnClickListener(v -> onOpen.onOpen(attachment.id));
+            // pressScale carries Orbit's press feedback and its own haptic tick, so the card is
+            // not made to fire a second one on the same touch.
+            UiKit.pressScale(card);
+        } else {
+            card.setContentDescription(description);
+        }
         card.setFocusable(true);
         return card;
     }

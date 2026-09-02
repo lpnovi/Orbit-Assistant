@@ -1083,6 +1083,33 @@ initial ten actions, letting the semantic path resolve short follow-ups the way 
 one already does, and multi-action requests, which are still rejected outright rather than partly
 obeyed. Nothing below item 1 was started here, and no future item is complete.
 
+### 0.7.8.1-beta.1 — Attachment Viewer + Ask Orbit
+`0.7.8.1-beta.1` is a focused two-feature Beta on top of a `0.7.8.0` Stable that held up on the
+device. It is deliberately not the next step of the numbered list below: Orbit Local device actions
+remain unstarted and unchanged at item 1, and nothing in this Beta touches the action model, the
+allowlist, the deterministic router, the everyday utilities, or the protected-dial boundary.
+
+What it adds:
+
+- **A full-screen viewer for image attachments.** `0.7.8.0` made a message able to carry ten photos
+  and drew them back as a 40dp strip, which is enough to tell two photos apart and nowhere near
+  enough to read one. Tapping an image now opens it full screen on black, with pinch and double-tap
+  zoom, panning while zoomed, and a swipe between the images of one message. It applies to both an
+  unsent composer and a turn already sent, and it is a viewer rather than an editor: no crop, no
+  markup, no rotation, no export, because Screen Selection already owns that workflow. Documents are
+  deliberately excluded — a PDF card carries a rendered first page, and offering page one full
+  screen with no way to reach page two would be worse than the card it already had
+- **Ask Orbit from Android selected text.** A second narrow exported doorway beside
+  `ShareToOrbitActivity`, reached through `ACTION_PROCESS_TEXT`, reusing the same staging pipeline
+  rather than a second one. Selecting text in another app and choosing Ask Orbit opens a new unsent
+  conversation holding exactly that text — no invented prompt, nothing sent. Orbit reads a selection
+  and never writes one back: it returns no result, so the text in the source app is untouched
+  whether or not the selection claimed to be editable
+
+Both features are gesture- and platform-shaped, which is exactly what a Beta exists to settle:
+whether a pinch and a pan feel right on the panel, and whether Ask Orbit actually appears in
+Samsung's own selection menu, are not questions a Robolectric run can answer.
+
 Beta 1 shipped:
 
 - **Back in a conversation became Android's own gesture.** The requirement was an interaction that

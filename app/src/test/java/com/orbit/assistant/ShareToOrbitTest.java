@@ -337,8 +337,9 @@ public final class ShareToOrbitTest {
      *
      * <p>Exported means any installed app can reach it, so the set is asserted rather than
      * reviewed: MainActivity (the launcher and assistant entry), the widget configuration screen
-     * the launcher calls, this share doorway, and the four services Android itself binds behind
-     * system permissions. A future component that quietly becomes exported fails here.
+     * the launcher calls, this share doorway, the selected-text doorway v0.7.8.1 Beta 1 added
+     * beside it, and the four services Android itself binds behind system permissions. A future
+     * component that quietly becomes exported fails here.
      */
     @Test public void theShareTargetIsTheOnlyNewExportedComponent() {
         String manifest = ComponentUninstallTest.readRepositoryFile(
@@ -360,6 +361,7 @@ public final class ShareToOrbitTest {
                 "OrbitSessionService",
                 "OrbitVoiceInteractionService",
                 "OrbitWidgetConfigureActivity",
+                "ProcessTextToOrbitActivity",
                 "ShareToOrbitActivity"), exported);
     }
 

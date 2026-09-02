@@ -117,6 +117,16 @@ public final class OrbitNavigation {
         // there is no Orbit screen underneath it for a page gesture to reveal. The conversation it
         // opens has a real Chats stack behind it and keeps the ordinary predictive Back.
         put(ShareToOrbitActivity.class, Policy.LOCAL, "Share to Orbit");
+        // The external selected-text doorway. Exactly the same shape as the share bridge above:
+        // it arrives from another app, draws nothing, and finishes once it has opened a
+        // conversation, so there is no Orbit page beneath it for a gesture to reveal.
+        put(ProcessTextToOrbitActivity.class, Policy.LOCAL, "Ask Orbit from text");
+        // The full-screen attachment viewer. Not a page in the hierarchy but a detail surface laid
+        // over one, and — the reason this matters more than the classification usually does — it
+        // owns live pan and zoom gestures for the whole width of the screen. An app-wide back
+        // gesture that moved the page as a function of horizontal progress would be competing for
+        // the same finger as panning a zoomed photo. Back here closes the viewer, plainly.
+        put(AttachmentViewerActivity.class, Policy.LOCAL, "Attachment viewer");
         put(CalendarPermissionActivity.class, Policy.LOCAL, "Calendar permission");
         put(OrbitWidgetActionActivity.class, Policy.LOCAL, "Widget action");
         // Widget configuration answers the launcher with a result; leaving it is not navigation.

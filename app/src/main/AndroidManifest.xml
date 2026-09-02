@@ -177,6 +177,49 @@
                 <data android:mimeType="text/*" />
             </intent-filter>
         </activity>
+        <!--
+          Ask Orbit, from Android's text-selection menu.
+
+          Exported because ACTION_PROCESS_TEXT is invoked by the app the user is selecting text in,
+          and the platform will not offer an unexported handler at all. It is the second and last
+          exported surface that reads content from another app, and it is deliberately narrower
+          than the share doorway: one action, one MIME type, no streams, no URI grants.
+
+          text/plain only. PROCESS_TEXT is defined for plain text, and claiming anything wider
+          would put Orbit in menus it has nothing to offer.
+
+          Orbit never returns a result from this Activity, so the source app replaces nothing. This
+          is Ask Orbit, not Replace with Orbit.
+
+          excludeFromRecents and noHistory because this is a doorway, not a screen: it must never
+          become a card in Recents, and returning to it later would mean returning to an already
+          consumed selection.
+        -->
+        <activity
+            android:name=".ProcessTextToOrbitActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:label="@string/process_text_label"
+            android:theme="@style/Theme.Orbit.Bridge">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+        <!--
+          The full-screen attachment viewer.
+
+          Not exported: it is opened from inside Orbit with a private token naming a session held
+          in this process, and nothing outside Orbit could name one.
+
+          Deliberately without enableOnBackInvokedCallback. It is classified LOCAL in
+          OrbitNavigation, so Back closes it plainly rather than through the app-wide predictive
+          page gesture — which would otherwise be tracking the same horizontal finger movement as
+          panning a zoomed photo.
+        -->
+        <activity android:name=".AttachmentViewerActivity" android:exported="false" />
         <activity android:name=".ScreenSelectionActivity" android:exported="false"
             android:excludeFromRecents="true" />
         <activity android:name=".AttachmentPickerActivity" android:exported="false"

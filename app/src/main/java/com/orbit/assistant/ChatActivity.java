@@ -211,6 +211,10 @@ public class ChatActivity extends Activity {
         attachToPending();
         applyLauncherComposerIntent();
         applySharedContent();
+        // Coming back from the full-screen viewer, which may have removed an image from this
+        // composer. The collection is the truth either way; this just redraws from it, and
+        // AttachmentStripView.planScroll treats an unchanged list as a reason to move nothing.
+        refreshAttachmentStrip(false);
     }
 
     /**
@@ -248,8 +252,16 @@ public class ChatActivity extends Activity {
             Toast.makeText(this, staged.uris.size() + " of " + staged.offered + " shared items added · "
                     + attachmentLimitMessage(), Toast.LENGTH_LONG).show();
         }
-        DiagnosticStore.recordShareToOrbit(this, staged.shape, "staged-in-composer",
-                staged.uris.size());
+        // Which external door this came through is reported separately, because "the share sheet
+        // reached the composer" and "a text selection reached the composer" are different things
+        // to be able to confirm from a Beta report.
+        if (SharedContentStore.SOURCE_PROCESS_TEXT.equals(staged.source)) {
+            DiagnosticStore.recordExternalText(this, staged.source, staged.text.length(),
+                    "staged-in-composer");
+        } else {
+            DiagnosticStore.recordShareToOrbit(this, staged.shape, "staged-in-composer",
+                    staged.uris.size());
+        }
     }
 
     private void applyLauncherComposerIntent() {
@@ -438,6 +450,7 @@ public class ChatActivity extends Activity {
         // leaves the composer text and any screen context alone.
         attachmentStrip = new AttachmentStripView(this);
         attachmentStrip.setOnRemove(this::removeComposerAttachment);
+        attachmentStrip.setOnOpen(this::openComposerAttachment);
         LinearLayout.LayoutParams trayLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         trayLp.setMargins(UiKit.dp(this, 2), 0, UiKit.dp(this, 2), UiKit.dp(this, 8));
@@ -813,14 +826,32 @@ public class ChatActivity extends Activity {
                 new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         // Up to three thumbnails on the sent turn, so a message that carried several photos looks
         // like it did rather than like one photo. The label already carries the true count.
+        boolean viewable = AttachmentViewerModel.isViewableImage(h.attachmentKind);
         int drawn = 0;
-        for (String path : h.attachmentPaths) {
+        for (int position = 0; position < h.attachmentPaths.size(); position++) {
             if (drawn >= 3) break;
+            String path = h.attachmentPaths.get(position);
             Bitmap bmp = AttachmentStore.load(path);
             if (bmp == null) continue;
             ImageView image = new ImageView(this);
             image.setImageBitmap(bmp);
             image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            if (viewable) {
+                // The opening index is the thumbnail's place among the turn's stored images, not
+                // its place in this row: the row draws at most three and skips any that no longer
+                // decode, so the two lists are not the same list.
+                final int openAt = position;
+                final List<String> paths = h.attachmentPaths;
+                final String kind = h.attachmentKind;
+                final String attachmentLabel = label;
+                image.setContentDescription("Image " + (position + 1) + " of " + paths.size()
+                        + ", opens full screen");
+                image.setOnClickListener(v -> AttachmentViewerActivity.openHistory(
+                        this, paths, kind, attachmentLabel, openAt));
+                UiKit.pressScale(image);
+            } else {
+                image.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            }
             LinearLayout.LayoutParams imageLp = new LinearLayout.LayoutParams(
                     UiKit.dp(this, h.attachmentPaths.size() > 1 ? 44 : 72), UiKit.dp(this, 44));
             if (drawn > 0) imageLp.setMarginStart(UiKit.dp(this, 4));
@@ -1932,6 +1963,18 @@ public class ChatActivity extends Activity {
     private void removeComposerAttachment(String id) {
         // Only this item. The composer text, the other attachments and their order are untouched.
         if (composerAttachments.remove(id)) refreshAttachmentStrip(false);
+    }
+
+    /**
+     * Opens the full-screen viewer on a staged image.
+     *
+     * <p>Looking at an attachment is not composing with it: no request is built, no model is
+     * called, and the conversation is not touched. The viewer works on this composer's own
+     * collection, so a Remove made in there is the same removal the strip performs, and the strip
+     * is rebuilt from that collection on the way back.
+     */
+    private void openComposerAttachment(String id) {
+        AttachmentViewerActivity.openComposer(this, composerAttachments, id);
     }
 
     private void clearComposerAttachments() {
