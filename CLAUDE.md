@@ -54,6 +54,24 @@ Direct Gradle (for tests or targeted tasks) needs the environment set manually �
 Useful tasks: `assembleDebug`, `testDebugUnitTest`. `assembleRelease` deliberately fails unless all
 four `ORBIT_RELEASE_*` values are present.
 
+## Windows / Gradle process cleanup
+
+Orbit development runs on Windows and Gradle uses OpenJDK processes. To reduce stale Java/Gradle
+processes interfering with Claude Desktop or Windows app-package updates:
+
+- Reuse Gradle normally while actively implementing and testing. Do not disable the Gradle daemon
+  globally.
+- Do not run unnecessary concurrent Gradle builds.
+- After a task is completely finished — including the final full test suite, APK builds, release
+  verification, commit/tag/push, and any other Gradle-dependent work — run `gradlew --stop`.
+- Run that only after no further Gradle work is required for the task.
+- Do not kill arbitrary `java.exe`, `javaw.exe`, Android Studio, or Windows/system processes as
+  routine cleanup.
+- If Claude or the computer crashes during a Gradle build, a stale OpenJDK/Gradle process may remain.
+  On the next session, diagnose that process before building again.
+- A Windows filesystem/app-package lock is an environment problem, not a reason to reset Git, delete
+  source/build files, or modify Orbit code.
+
 ## Versioning
 
 - `versionName` is a four-part human version (`0.MAJOR.MINOR.PATCH`). Read the current one from
