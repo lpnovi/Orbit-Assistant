@@ -105,6 +105,22 @@ public final class Prefs {
      * consulted; deleting the model is the separate, storage-reclaiming action.
      */
     public static final String LOCAL_DEVICE_ACTIONS = "local_device_actions";
+    /**
+     * Whether the Chats header carries the Orbit Deck shortcut.
+     *
+     * <p>On by default, because a command centre nobody can find is not one. Turning it off removes
+     * the control rather than disabling it — no ghost, no reserved width — and Deck stays reachable
+     * from Settings, so the shortcut can never be the only way in.
+     */
+    public static final String DECK_SHORTCUT = "deck_shortcut";
+    /**
+     * Whether Deck may show its small Suggested section.
+     *
+     * <p>Suggestions are computed locally from state Orbit already has and never ask a provider
+     * anything. Off means the section does not exist and none of that state is read at all; My Deck
+     * is unaffected either way.
+     */
+    public static final String DECK_SUGGESTIONS = "deck_suggestions";
     // Onboarding keys intentionally remain outside Backup & Restore. A backup cannot
     // restore account credentials, Android permissions, or default-assistant state.
 
@@ -235,6 +251,8 @@ public final class Prefs {
     public static boolean swipeToGoBack(Context c) { return get(c).getBoolean(ENHANCED_CHAT_BACK, true); }
     public static boolean chatSwipeActions(Context c) { return get(c).getBoolean(CHAT_SWIPE_ACTIONS, true); }
     public static boolean localDeviceActions(Context c) { return get(c).getBoolean(LOCAL_DEVICE_ACTIONS, true); }
+    public static boolean deckShortcut(Context c) { return get(c).getBoolean(DECK_SHORTCUT, true); }
+    public static boolean deckSuggestions(Context c) { return get(c).getBoolean(DECK_SUGGESTIONS, true); }
     public static boolean speak(Context c) { return get(c).getBoolean(SPEAK, true); }
     public static boolean haptics(Context c) { return get(c).getBoolean(HAPTICS, true); }
     public static boolean autoListen(Context c) { return get(c).getBoolean(AUTO_LISTEN, false); }

@@ -11,6 +11,7 @@ import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.TextView;
 
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -20,6 +21,7 @@ import org.robolectric.RuntimeEnvironment;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.annotation.Config;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -51,6 +53,13 @@ public final class LeloEasterEggTest {
         OrbitRequestManager.resetForTest();
         OrbitRequestManager.setWorkCanceller(name -> {});
         TestWorkManager.ensureInitialized(context);
+        OverlayLaunchTrace.detach();
+    }
+
+    /** Building the overlay opens a launch trace; leaving it attached would leak into other tests. */
+    @After public void tearDown() {
+        OverlayLaunchTrace.detach();
+        new File(context.getFilesDir(), "orbit-overlay-launch.log").delete();
     }
 
     private void leloMode(boolean enabled) {
@@ -339,6 +348,86 @@ public final class LeloEasterEggTest {
                 strings.contains("<string name=\"app_name\">Orbit Assistant</string>"));
         assertFalse("and nothing in resources knows about Lelo",
                 strings.contains("Lelo"));
+    }
+
+    // ---- the Side-button overlay ------------------------------------------------------------------
+
+    /**
+     * The overlay's real view tree, built the way Android builds it.
+     *
+     * <p>{@code onCreateContentView} is the production entry point, so this exercises the same
+     * header construction the Side button does rather than asserting against a copy of it.
+     */
+    private List<TextView> overlayTextViews() {
+        OrbitSessionService service =
+                Robolectric.buildService(OrbitSessionService.class).create().get();
+        OrbitSession session = (OrbitSession) service.onNewSession(null);
+        List<TextView> found = new ArrayList<>();
+        collect(session.onCreateContentView(), found);
+        return found;
+    }
+
+    private static boolean anyTextIs(List<TextView> views, String exact) {
+        for (TextView t : views) {
+            if (t.getText() != null && exact.contentEquals(t.getText())) return true;
+        }
+        return false;
+    }
+
+    @Test public void withLeloModeOffTheOverlayTitleIsOrbit() {
+        List<TextView> overlay = overlayTextViews();
+
+        assertTrue("the overlay header must read Orbit with the mode off",
+                anyTextIs(overlay, "Orbit"));
+        for (TextView t : overlay) {
+            String value = t.getText() == null ? "" : t.getText().toString();
+            assertFalse("Lelo's Cutie must not reach the overlay with the mode off",
+                    value.contains(UiKit.LELO_TITLE));
+        }
+    }
+
+    @Test public void withLeloModeOnTheOverlayTitleIsExactlyLelosCutie() {
+        leloMode(true);
+        List<TextView> overlay = overlayTextViews();
+
+        assertTrue("the Side-button overlay must be renamed too",
+                anyTextIs(overlay, "Lelo's Cutie"));
+        assertFalse("and the Orbit title must not still be sitting beside it",
+                anyTextIs(overlay, "Orbit"));
+    }
+
+    /**
+     * The note is hers to find in her own app, not something the overlay says over other apps.
+     *
+     * <p>This is the half of the parity change that is deliberately <i>not</i> shared: the title
+     * follows Lelo mode onto the overlay, the personal line does not.
+     */
+    @Test public void theOverlayNeverCarriesThePersonalNote() {
+        leloMode(true);
+        for (TextView t : overlayTextViews()) {
+            String value = t.getText() == null ? "" : t.getText().toString();
+            assertFalse("the personal note stays in the full app",
+                    value.contains("wanted and needed"));
+            assertFalse(value.contains(UiKit.LELO_NOTE));
+        }
+    }
+
+    /** One title source, consumed twice, rather than a second Lelo implementation in the overlay. */
+    @Test public void bothSurfacesDeriveTheTitleFromTheSharedHelper() {
+        String overlay = ComponentUninstallTest.readRepositoryFile(
+                "app/src/main/java/com/orbit/assistant/OrbitSession.java");
+        String chats = ComponentUninstallTest.readRepositoryFile(
+                "app/src/main/java/com/orbit/assistant/MainActivity.java");
+
+        assertTrue("the overlay must ask UiKit for the title",
+                overlay.contains("UiKit.appTitle(c)"));
+        assertTrue("and so must the full app", chats.contains("UiKit.appTitle(this)"));
+
+        assertFalse("the overlay must not hardcode a title of its own",
+                overlay.contains("UiKit.text(c, \"Orbit\""));
+        assertFalse("nor read the preference itself", overlay.contains("Prefs.leloMode"));
+        assertFalse("nor name the Lelo title", overlay.contains("LELO_TITLE"));
+        assertFalse("nor carry the personal note", overlay.contains("LELO_NOTE"));
     }
 
     private static int occurrences(String haystack, String needle) {

@@ -507,7 +507,9 @@ public class OrbitSession extends VoiceInteractionSession {
 
         LinearLayout titleRow = new LinearLayout(c);
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = UiKit.text(c, "Orbit", 18, UiKit.TEXT, true);
+        // Same shared title source the full app uses, so Lelo mode renames both surfaces
+        // together. The personal Lelo note deliberately stays out of the overlay.
+        TextView title = UiKit.text(c, UiKit.appTitle(c), 18, UiKit.TEXT, true);
         titleRow.addView(title, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 

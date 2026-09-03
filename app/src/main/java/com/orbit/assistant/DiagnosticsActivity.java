@@ -255,6 +255,7 @@ public final class DiagnosticsActivity extends Activity {
         sections.add(new Section("Orbit Local", orbitLocal(d)));
         sections.add(new Section("Actions & utilities", actionsAndUtilities(d)));
         sections.add(new Section("Routines", routines(d)));
+        sections.add(new Section("Orbit Deck", deck(d)));
         sections.add(new Section("Gestures", gestures(d)));
         sections.add(new Section("Advanced", advanced()));
         return sections;
@@ -800,6 +801,40 @@ public final class DiagnosticsActivity extends Activity {
      * was open, which chat it was, and anything typed into a form are all deliberately absent, and
      * that is a property of what {@link DiagnosticStore} is given rather than of the wording here.
      */
+    /**
+     * Deck's shape, and nothing about its contents.
+     *
+     * <p>Counts, preference states, a schema number, and the <em>type</em> of the last tile that
+     * was run. What a Prompt tile says, which Routine a Routine tile runs, and which app an App tile
+     * opens are all configuration, and none of it is reported here: this can say "3 prompt tiles",
+     * never what any of them asks.
+     */
+    private String deck(SharedPreferences d) {
+        java.util.List<DeckTile> tiles = DeckLayoutStore.layout(this);
+        int unavailable = 0;
+        for (DeckTile tile : tiles) {
+            if (DeckTileResolver.resolve(this, tile).availability != DeckTile.Availability.AVAILABLE) {
+                unavailable++;
+            }
+        }
+        StringBuilder types = new StringBuilder();
+        for (java.util.Map.Entry<String, Integer> entry : DeckLayoutStore.typeCounts(this).entrySet()) {
+            if (types.length() > 0) types.append(", ");
+            types.append(entry.getKey()).append(" ").append(entry.getValue());
+        }
+        long updated = d.getLong("deck_updated", 0L);
+        String last = DiagnosticStore.lastDeckAction(this);
+        return "\n  Chats shortcut: " + (Prefs.deckShortcut(this) ? "shown" : "hidden") +
+                "\n  Smart suggestions: " + (Prefs.deckSuggestions(this) ? "enabled" : "disabled") +
+                "\n  Layout: " + (DeckLayoutStore.configured(this) ? "customized" : "defaults") +
+                "\n  Schema version: " + DeckLayoutStore.SCHEMA_VERSION +
+                "\n  Tiles: " + tiles.size() +
+                "\n  Unavailable tiles: " + unavailable +
+                "\n  Tile types: " + (types.length() == 0 ? "none" : types) +
+                "\n  Last tile run: " + (last.isEmpty() || updated == 0L
+                        ? "none recorded" : last + " · " + stamp(updated));
+    }
+
     private String gestures(SharedPreferences d) {
         long updated = d.getLong("gesture_updated", 0L);
         long backUpdated = d.getLong("back_updated", 0L);

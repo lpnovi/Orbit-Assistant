@@ -253,6 +253,8 @@
             android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".CapabilitiesActivity"
             android:enableOnBackInvokedCallback="true" android:exported="false" />
+        <activity android:name=".DeckActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".RoutinesActivity"
             android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".ExtensionsActivity"

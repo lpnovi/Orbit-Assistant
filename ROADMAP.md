@@ -931,6 +931,34 @@ Stable. The line is recorded in full under **Near-term order** below; in short:
   title and a line of muted text behind the existing preference, and with the mode off Chats is
   built exactly as before
 
+### 0.7.8.2-beta.1 — Orbit Deck
+In device validation on a Galaxy S25 Ultra. Adds one new first-party surface and carries forward a
+small Lelo-mode correction. Chats remains Orbit's home: Deck is one tap from it, is not a tab, and
+does not open at launch.
+
+- **An optional Deck reached from the Chats header.** One restrained control, on by default and
+  removable from Settings without a placeholder left behind. Deck also stays reachable from its own
+  Settings section, so the shortcut can never be the only way in
+- **A modular tile system rather than a fixed screen.** A registry of tile definitions, a separate
+  store of the user's placed instances, a versioned layout schema, one execution boundary, and one
+  resolver that decides whether a configured tile can still do its job. A future capability becomes
+  a Deck tile by registering a definition, not by editing the screen
+- **Tiles for what Orbit already does.** Orbit destinations, a saved Routine run through the existing
+  Routine runner, an installed app launched through the launcher's own intent, direct Flashlight and
+  Play/Pause actions, and prompt shortcuts that open a new chat with the user's text ready to edit
+  and deliberately unsent
+- **Standard and wide sizes, drag reordering, and live persistence.** Every edit is one atomic
+  commit, so Deck holds no unsaved work and Back stays ordinary predictive navigation. Reordering is
+  also available from a menu, so the drag gesture is never the only route
+- **A small Suggested section, computed on the phone.** At most two shortcuts on a phone, drawn from
+  a live media session, recent non-Orbit context, or a recently run Routine, capped and suppressed
+  when the equivalent tile is already placed. It asks no provider anything, and it never rearranges
+  My Deck
+- **Responsive across phone and tablet** from one grid, and unchanged in behaviour under AMOLED,
+  every accent, large text, and reduced motion
+- **Lelo overlay title parity.** The Side-button overlay now takes its title from the same shared
+  helper the full app uses, so the mode renames both surfaces together
+
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever

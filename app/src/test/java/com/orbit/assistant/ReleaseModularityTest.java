@@ -185,19 +185,19 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * The attachment viewer, Ask Orbit and progressive responses passed three device Betas.
+     * Orbit Deck goes out as a Beta, because only a phone can judge it.
      *
-     * <p>Everything this line changed was a thing that had to be looked at: a full-screen image on
-     * a black background, text selected in somebody else's app, an answer formatting itself as it
-     * arrives, a table row on a purple bubble, a tick at the user's own text size. A Galaxy S25
-     * Ultra found the faults and confirmed the corrections, so this release is Stable, and the
-     * guard's job is now to stop a versionName that quietly regains prerelease metadata from being
-     * published here.
+     * <p>Everything this release adds is something that has to be looked at and held: tile spacing,
+     * how a drag feels under a thumb, whether a grid of shortcuts reads as a finished Orbit surface
+     * or as a settings screen. A test suite can prove the layout survives large text and that no
+     * provider is contacted; it cannot prove the thing is worth opening. So this is published as a
+     * prerelease, and the guard's job is to stop a versionName that has quietly lost its prerelease
+     * metadata from being published to the Beta channel as though it were finished.
      */
-    @Test public void thisReleaseIsStableAfterDeviceValidation() {
-        assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
-                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.installedIsBeta());
+    @Test public void thisReleaseIsABetaAwaitingDeviceValidation() {
+        assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
+                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
+        assertTrue(OrbitVersion.installedIsBeta());
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
     }
 

@@ -147,39 +147,38 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * The 0.7.8.1 line ran as three Betas and is now promoted to Stable.
+     * The 0.7.8.2 line opens as a Beta carrying Orbit Deck.
      *
-     * <p>Beta 1 shipped the attachment viewer and Ask Orbit. Beta 2 rebuilt how an answer is
-     * presented while it is being written, and a Galaxy S25 Ultra confirmed the architecture works
-     * — and showed four presentation defects it could not have shown off-device: combined emphasis
-     * leaving stray asterisks, table rows breaking into cells of different heights, task syntax
-     * arriving as literal brackets, and a fully opaque jump-to-latest covering the text behind it.
-     * Beta 3 corrected exactly those four, and the phone confirmed the result.
+     * <p>Deck is a new first-party surface rather than a refinement of an existing one: a grid the
+     * user arranges themselves, tiles that run Routines, launch apps and prepare prompts, and a
+     * small locally computed Suggested section. None of that can be proved by a test suite —
+     * whether it looks and feels like a finished Orbit feature is a question only the Galaxy S25
+     * Ultra answers — so it is published as a prerelease and not as Stable.
      *
-     * <p>Stable therefore carries Beta 3's behaviour plus one deliberate addition, which is a
-     * header title and a line of muted text behind a preference that has been hidden since v0.4.6.
-     *
-     * <p>The guard now runs the other way round. A finished release must not quietly regain
-     * prerelease metadata and be published to the Beta channel by accident, so this fails before
-     * publication rather than on a phone.
+     * <p>The guard therefore runs in the Beta direction. A build that is going to the Beta channel
+     * must actually carry prerelease metadata, so that a version which quietly lost its suffix
+     * cannot be published as a finished release, and it must still outrank the Stable line it was
+     * built from.
      */
-    @Test public void thisBuildIsTheAttachmentViewerAndProgressiveResponsesStable() {
+    @Test public void thisBuildIsTheOrbitDeckBeta() {
         String version = BuildConfig.VERSION_NAME;
-        assertFalse(OrbitVersion.installedIsBeta());
-        assertFalse(OrbitVersion.isBeta(version));
-        assertTrue(OrbitVersion.isStable(version));
-        assertEquals("0.7.8.1", OrbitVersion.baseVersion(version));
+        assertTrue(OrbitVersion.installedIsBeta());
+        assertTrue(OrbitVersion.isBeta(version));
+        assertFalse(OrbitVersion.isStable(version));
+        assertEquals("0.7.8.2", OrbitVersion.baseVersion(version));
 
-        assertEquals("a Stable build carries no beta counter", 0, OrbitVersion.betaNumber(version));
-        assertEquals("Orbit Assistant v0.7.8.1", OrbitVersion.releaseTitle(version));
-        assertEquals("v0.7.8.1", OrbitVersion.tagFor(version));
-        assertFalse("the release workflow must publish it as Stable",
+        assertEquals("this is the line's first Beta", 1, OrbitVersion.betaNumber(version));
+        assertEquals("Orbit Assistant v0.7.8.2 Beta 1", OrbitVersion.releaseTitle(version));
+        assertEquals("v0.7.8.2-beta.1", OrbitVersion.tagFor(version));
+        assertTrue("the release workflow must publish it as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
+        assertFalse("and never as Stable",
+                OrbitVersion.isStableTag(OrbitVersion.tagFor(version)));
         assertTrue("it must outrank the Stable line it was built from",
-                OrbitVersion.compareVersions(version, "0.7.8.0") > 0);
-        assertTrue("and every Beta of its own line",
-                OrbitVersion.compareVersions(version, "0.7.8.1-beta.3") > 0
-                        && OrbitVersion.compareVersions(version, "0.7.8.1-beta.2") > 0
-                        && OrbitVersion.compareVersions(version, "0.7.8.1-beta.1") > 0);
+                OrbitVersion.compareVersions(version, "0.7.8.1") > 0);
+        assertTrue("and every Beta of that line",
+                OrbitVersion.compareVersions(version, "0.7.8.1-beta.3") > 0);
+        assertTrue("while its own Stable, when it comes, will outrank it",
+                OrbitVersion.compareVersions("0.7.8.2", version) > 0);
     }
 }

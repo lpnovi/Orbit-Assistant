@@ -267,7 +267,10 @@ public class MainActivity extends Activity {
         return Prefs.get(this).getString(Prefs.ACCENT, "dynamic") +
                 "|amoled=" + Prefs.amoledMode(this) +
                 "|font=" + Prefs.appFont(this) +
-                "|lelo=" + Prefs.leloMode(this);
+                "|lelo=" + Prefs.leloMode(this) +
+                // The Deck shortcut is built into the header, so toggling it in Settings has to
+                // rebuild Chats on return the same way an accent change does.
+                "|deck=" + Prefs.deckShortcut(this);
     }
 
     /**
@@ -347,6 +350,21 @@ public class MainActivity extends Activity {
             titles.addView(UiKit.text(this, UiKit.LELO_NOTE, 12, UiKit.MUTED, false));
         }
         top.addView(titles, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        // Orbit Deck, when the user wants it here. Added rather than added-and-disabled: with the
+        // preference off there is no control, no placeholder and no reserved width, and the header
+        // is exactly the row it was before Deck existed. Deck itself stays reachable from Settings,
+        // so turning this off can never strand the feature.
+        if (Prefs.deckShortcut(this)) {
+            ImageButton deck = iconButton(com.orbit.assistant.R.drawable.ic_deck, "Open Orbit Deck");
+            deck.setOnClickListener(v -> {
+                startActivity(new Intent(this, DeckActivity.class));
+                UiKit.applyPageTransition(this);
+            });
+            LinearLayout.LayoutParams deckLp = new LinearLayout.LayoutParams(
+                    UiKit.dp(this, 48), UiKit.dp(this, 48));
+            deckLp.rightMargin = UiKit.dp(this, 2);
+            top.addView(deck, deckLp);
+        }
         ImageButton settings = iconButton(com.orbit.assistant.R.drawable.ic_settings, "Settings");
         settings.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
         top.addView(settings, new LinearLayout.LayoutParams(UiKit.dp(this, 48), UiKit.dp(this, 48)));

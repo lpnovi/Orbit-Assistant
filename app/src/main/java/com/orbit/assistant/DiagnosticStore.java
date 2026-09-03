@@ -64,6 +64,36 @@ public final class DiagnosticStore {
     }
 
     /**
+     * The kind of Deck tile the user last ran, and whether it worked.
+     *
+     * <p>The tile <i>type</i> only, which is one of Orbit's own registered identifiers. What a
+     * Prompt tile says, which Routine a Routine tile runs and which app an App tile opens are all
+     * configuration, and none of them reach this store: "prompt" is recordable, the prompt is not.
+     */
+    public static void recordDeckAction(Context c, String tileType) {
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+                .putString("deck_last_action", safe(tileType))
+                .putLong("deck_updated", System.currentTimeMillis())
+                .apply();
+    }
+
+    /** The kind of tile last run from Deck, or empty when none has been. */
+    public static String lastDeckAction(Context c) {
+        return c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString("deck_last_action", "");
+    }
+
+    /**
+     * When the foreground record was written, or 0.
+     *
+     * <p>The package name itself already has a reader above. This is the half Deck needs in
+     * addition to it: a suggestion built from "which app the user was in" is only honest while that
+     * record is recent, so the timestamp is what lets stale context be refused rather than used.
+     */
+    static long lastScreenUpdatedAt(Context c) {
+        return c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getLong("screen_updated", 0L);
+    }
+
+    /**
      * Which back callback a conversation last installed, as Orbit actually installed it.
      *
      * <p>Recorded rather than derived, because v0.7.7.9 Beta 1 derived it and was wrong: it read

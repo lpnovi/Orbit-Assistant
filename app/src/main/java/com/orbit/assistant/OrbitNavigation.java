@@ -71,6 +71,9 @@ public final class OrbitNavigation {
         // instance on top of the hub, so the hub really is the screen underneath a detail.
         put(SettingsActivity.class, Policy.PREDICTIVE, "Settings");
         put(ChatActivity.class, Policy.PREDICTIVE, "Chat");
+        // Deck writes every edit the moment it is made, so it never holds unsaved work and Back is
+        // unconditional. Its sheets and edit mode are closed by its own handler before this applies.
+        put(DeckActivity.class, Policy.PREDICTIVE, "Deck");
         put(DiagnosticsActivity.class, Policy.PREDICTIVE, "Diagnostics");
         put(AiProvidersActivity.class, Policy.PREDICTIVE, "AI providers");
         put(LocalAiActivity.class, Policy.PREDICTIVE, "Orbit Local");

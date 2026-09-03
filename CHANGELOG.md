@@ -632,3 +632,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Combined bold and italic renders properly, table rows line up as one row, and checklists show real tick boxes.
   - Jump to latest is slightly see-through, so it covers less of the message behind it.
   - A tiny hidden Lelo-mode easter egg got a little more personal. 💜
+
+- **v0.7.8.2-beta.1**: Orbit Deck, a personal command centre for the Orbit you actually use.
+  - Open Deck from the Chats header for one-tap access to your own arrangement of Orbit shortcuts.
+  - Start with a useful default Deck, then add, rename, resize, reorder and remove tiles however you like.
+  - Add tiles that run a saved Routine, launch an installed app, or open a new chat with your own prompt ready to edit.
+  - Flashlight and Play/Pause tiles show live state, and Deck never sends anything to your AI provider on its own.
+  - Suggested shows at most a couple of relevant shortcuts worked out on this phone, and can be turned off.
+  - In Lelo mode the Side-button overlay is now titled to match the rest of the app.

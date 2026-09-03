@@ -42,6 +42,9 @@ public final class OrbitNavigationPolicyTest {
 
     /** Screens whose Back returns to the Orbit screen underneath, unconditionally. */
     private static final String[] PREDICTIVE = {
+            // Deck persists every edit as it is made, so it is never dirty and Back is
+            // unconditional. Its sheets and edit mode are closed by its own handler first.
+            "DeckActivity",
             "SettingsActivity", "ChatActivity", "DiagnosticsActivity", "AiProvidersActivity",
             "LocalAiActivity", "CapabilitiesActivity", "MemoryActivity", "AppsActivity",
             "NotificationsActivity", "SavedPlacesActivity", "RemindersActivity",

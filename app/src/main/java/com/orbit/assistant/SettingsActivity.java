@@ -48,6 +48,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     static final String SECTION_AI = "ai";
     private static final String SECTION_VOICE = "voice";
     static final String SECTION_DATA = "data";
+    private static final String SECTION_DECK = "deck";
     private static final String SECTION_CONVERSATIONS = "conversations";
     static final String SECTION_ROUTINES = "routines";
     private static final String SECTION_EXTENSIONS = "extensions";
@@ -204,6 +205,8 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
                 "Create, edit and run saved Action Engine chains"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_EXTENSIONS, "Extensions",
                 "Add integrations and new actions to Orbit"), categoryLp());
+        page.addView(settingsCategoryCard(SECTION_DECK, "Orbit Deck",
+                "Customize your personal Orbit shortcuts"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_CONVERSATIONS, "Conversations",
                 "History, chat behavior and background notifications"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_APPEARANCE, "Look & Feel",
@@ -289,7 +292,8 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     private String normalizeSection(String section) {
         if (SECTION_ASSISTANT.equals(section) || SECTION_AI.equals(section) ||
                 SECTION_VOICE.equals(section) || SECTION_DATA.equals(section) || SECTION_CONVERSATIONS.equals(section) ||
-                SECTION_APPEARANCE.equals(section) || SECTION_ADVANCED.equals(section)) return section;
+                SECTION_APPEARANCE.equals(section) || SECTION_ADVANCED.equals(section) ||
+                SECTION_DECK.equals(section)) return section;
         return "";
     }
 
@@ -298,6 +302,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         if (SECTION_AI.equals(section)) return "AI & account";
         if (SECTION_VOICE.equals(section)) return "Voice, context & permissions";
         if (SECTION_DATA.equals(section)) return "Personalization & data";
+        if (SECTION_DECK.equals(section)) return "Orbit Deck";
         if (SECTION_CONVERSATIONS.equals(section)) return "Conversations";
         if (SECTION_APPEARANCE.equals(section)) return "Look & Feel";
         if (SECTION_ADVANCED.equals(section)) return "Advanced";
@@ -309,6 +314,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         if (SECTION_AI.equals(section)) return "Choose and configure Orbit's active AI provider, manage your ChatGPT connection, and set default intelligence.";
         if (SECTION_VOICE.equals(section)) return "Control Voice Beta, screen awareness and device permissions.";
         if (SECTION_DATA.equals(section)) return "Manage weather preferences and the local information Orbit uses to personalize and organize your assistant experience.";
+        if (SECTION_DECK.equals(section)) return "Choose how Orbit Deck is reached and whether it may suggest shortcuts.";
         if (SECTION_CONVERSATIONS.equals(section)) return "Choose local chat storage and background completion behavior.";
         if (SECTION_APPEARANCE.equals(section)) return "Tune Orbit's colors, typography, AMOLED presentation and tactile feedback.";
         if (SECTION_ADVANCED.equals(section)) return "Inspect local diagnostics and developer troubleshooting information.";
@@ -320,6 +326,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         if (SECTION_AI.equals(section)) return "Models & access";
         if (SECTION_VOICE.equals(section)) return "Input & awareness";
         if (SECTION_DATA.equals(section)) return "Local context";
+        if (SECTION_DECK.equals(section)) return "Shortcuts";
         if (SECTION_CONVERSATIONS.equals(section)) return "Chat behavior";
         if (SECTION_APPEARANCE.equals(section)) return "Style & feedback";
         if (SECTION_ADVANCED.equals(section)) return "Developer tools";
@@ -741,6 +748,29 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48)));
         diagnostics.setOnClickListener(v -> startActivity(new Intent(this, DiagnosticsActivity.class)));
         page.addView(diagnosticsCard);
+
+        page.addView(sectionTitle("ORBIT DECK", "deck"));
+        LinearLayout deckCard = card();
+        tagSectionCard(deckCard, "deck");
+        deckCard.addView(toggle("Show Deck shortcut on Chats",
+                "Puts the Deck control in the Chats header. Deck stays reachable from here either way.",
+                Prefs.DECK_SHORTCUT, true));
+        deckCard.addView(toggle("Smart suggestions",
+                "Show relevant shortcuts from recent Orbit context.",
+                Prefs.DECK_SUGGESTIONS, true));
+        TextView deckNote = UiKit.text(this,
+                "Deck arranges shortcuts to things Orbit already does. Suggestions are worked out on "
+                        + "this phone from context Orbit already has, and opening Deck never sends "
+                        + "anything to your AI provider. Which tiles you keep, and how they are "
+                        + "arranged, is edited in Deck itself.",
+                12, UiKit.MUTED, false);
+        deckNote.setPadding(0, UiKit.dp(this, 7), 0, UiKit.dp(this, 12));
+        deckCard.addView(deckNote);
+        Button openDeck = secondaryButton("Open Orbit Deck");
+        deckCard.addView(openDeck, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48)));
+        openDeck.setOnClickListener(v -> startActivity(new Intent(this, DeckActivity.class)));
+        page.addView(deckCard);
 
         page.addView(sectionTitle("CONVERSATIONS", "conversations"));
         LinearLayout conversationCard = card();
@@ -1340,6 +1370,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         if (SECTION_AI.equals(section)) return "account".equals(key) || "intelligence".equals(key);
         if (SECTION_VOICE.equals(section)) return "voice".equals(key);
         if (SECTION_DATA.equals(section)) return "data".equals(key);
+        if (SECTION_DECK.equals(section)) return "deck".equals(key);
         if (SECTION_CONVERSATIONS.equals(section)) return "conversations".equals(key);
         if (SECTION_APPEARANCE.equals(section)) return "appearance".equals(key);
         if (SECTION_ADVANCED.equals(section)) return "diagnostics".equals(key);
