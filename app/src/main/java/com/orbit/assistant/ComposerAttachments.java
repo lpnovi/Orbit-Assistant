@@ -156,6 +156,12 @@ public final class ComposerAttachments {
         return false;
     }
 
+    public ComposerAttachment find(String id) {
+        if (id == null || id.isEmpty()) return null;
+        for (ComposerAttachment item : items) if (id.equals(item.id)) return item;
+        return null;
+    }
+
     public void clear() { items.clear(); }
 
     /** An immutable ordered copy, for freezing at Send. */
@@ -234,5 +240,15 @@ public final class ComposerAttachments {
         if (attachments == null || attachments.isEmpty()) return "";
         if (attachments.size() == 1) return attachments.get(0).label;
         return attachments.size() + " attachments";
+    }
+
+    /** Exact retained PDFs in attachment order, for durable history/viewer access. */
+    public static List<DocumentReference> documentsOf(List<ComposerAttachment> attachments) {
+        List<DocumentReference> documents = new ArrayList<>();
+        if (attachments == null) return documents;
+        for (ComposerAttachment attachment : attachments) {
+            if (attachment != null && attachment.isDocument()) documents.add(attachment.document);
+        }
+        return Collections.unmodifiableList(documents);
     }
 }

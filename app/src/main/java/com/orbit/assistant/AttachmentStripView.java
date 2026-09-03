@@ -314,12 +314,13 @@ public final class AttachmentStripView extends HorizontalScrollView {
         // document is still told its name.
         String description = AttachmentLabels.cardDescription(attachment, position, total);
         // A card opens the full-screen viewer only when there is something full screen to see. A
-        // PDF card carries a rendered first page, which is a preview and not the document, so it
-        // is deliberately left un-tappable rather than dropped into an image viewer that could
-        // never reach page two.
-        boolean openable = onOpen != null && AttachmentViewerModel.isViewable(attachment);
+        // PDFs now open their own native, page-aware viewer. They still never enter the image
+        // viewer: the rendered bitmap on this card is only a compact attachment preview.
+        boolean openable = onOpen != null && (AttachmentViewerModel.isViewable(attachment)
+                || attachment.isDocument());
         if (openable) {
-            card.setContentDescription(description + ", opens full screen");
+            card.setContentDescription(description + (attachment.isDocument()
+                    ? ", opens document viewer" : ", opens full screen"));
             card.setOnClickListener(v -> onOpen.onOpen(attachment.id));
             // pressScale carries Orbit's press feedback and its own haptic tick, so the card is
             // not made to fire a second one on the same touch.

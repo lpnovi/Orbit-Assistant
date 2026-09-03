@@ -130,6 +130,7 @@ public final class OrbitNavigation {
         // gesture that moved the page as a function of horizontal progress would be competing for
         // the same finger as panning a zoomed photo. Back here closes the viewer, plainly.
         put(AttachmentViewerActivity.class, Policy.LOCAL, "Attachment viewer");
+        put(DocumentViewerActivity.class, Policy.LOCAL, "Document viewer");
         put(CalendarPermissionActivity.class, Policy.LOCAL, "Calendar permission");
         put(OrbitWidgetActionActivity.class, Policy.LOCAL, "Widget action");
         // Widget configuration answers the launcher with a result; leaving it is not navigation.

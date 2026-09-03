@@ -45,6 +45,8 @@ public final class AssistantClient {
          * stored is rewritten.
          */
         public final List<String> attachmentPaths;
+        /** Exact retained PDFs carried by this turn, separate from rendered preview images. */
+        public final List<DocumentReference> documents;
         public final String attachmentKind;
         public final String attachmentLabel;
         /** Local request context needed for regeneration of text/PDF/screen attachments. */
@@ -120,6 +122,16 @@ public final class AssistantClient {
                        String attachmentKind, String attachmentLabel, String attachmentText,
                        String memoryUsage, String memorySuggestionText,
                        String memorySuggestionCategory, String stoppedRequestId) {
+            this(role, content, attached, attachmentPaths, attachmentKind, attachmentLabel,
+                    attachmentText, memoryUsage, memorySuggestionText, memorySuggestionCategory,
+                    stoppedRequestId, java.util.Collections.emptyList());
+        }
+
+        public History(String role, String content, boolean attached, List<String> attachmentPaths,
+                       String attachmentKind, String attachmentLabel, String attachmentText,
+                       String memoryUsage, String memorySuggestionText,
+                       String memorySuggestionCategory, String stoppedRequestId,
+                       List<DocumentReference> documents) {
             this.stoppedRequestId = stoppedRequestId == null ? "" : stoppedRequestId.trim();
             this.role = role;
             this.content = content;
@@ -132,6 +144,13 @@ public final class AssistantClient {
             }
             this.attachmentPaths = java.util.Collections.unmodifiableList(paths);
             this.attachmentPath = paths.isEmpty() ? "" : paths.get(0);
+            List<DocumentReference> docs = new java.util.ArrayList<>();
+            if (documents != null) {
+                for (DocumentReference document : documents) {
+                    if (document != null && document.isUsable()) docs.add(document);
+                }
+            }
+            this.documents = java.util.Collections.unmodifiableList(docs);
             this.attachmentKind = attachmentKind == null ? "" : attachmentKind;
             this.attachmentLabel = attachmentLabel == null ? "" : attachmentLabel;
             this.attachmentText = attachmentText == null ? "" : attachmentText;
@@ -147,7 +166,7 @@ public final class AssistantClient {
         public History withStoppedRequestId(String requestId) {
             return new History(role, content, screenAttached, attachmentPaths, attachmentKind,
                     attachmentLabel, attachmentText, memoryUsage, memorySuggestionText,
-                    memorySuggestionCategory, requestId);
+                    memorySuggestionCategory, requestId, documents);
         }
 
         /** How many stored images this turn carries. */

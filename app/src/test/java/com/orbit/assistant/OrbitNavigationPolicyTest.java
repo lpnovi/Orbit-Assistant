@@ -74,7 +74,7 @@ public final class OrbitNavigationPolicyTest {
             // screen where the classification is load-bearing beyond appearance: it owns live pan
             // and zoom across the whole window, so an app-wide gesture reading horizontal progress
             // would be competing for the same finger as panning a zoomed photo.
-            "AttachmentViewerActivity"
+            "AttachmentViewerActivity", "DocumentViewerActivity"
     };
 
     /** Orbit's root. Back is the task's business and Orbit invents nothing behind it. */

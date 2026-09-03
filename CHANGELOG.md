@@ -640,3 +640,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Flashlight and Play/Pause tiles show live state, and Deck never sends anything to your AI provider on its own.
   - Suggested shows at most a couple of relevant shortcuts worked out on this phone, and can be turned off.
   - In Lelo mode the Side-button overlay is now titled to match the rest of the app.
+
+- **v0.7.8.2-beta.2**: Documents arrive in Orbit, and Deck now reorders the way it looks like it should.
+  - Drag a Deck tile and the surrounding tiles now move aside live, with the finished order saved after you drop it.
+  - A cleaner sliders control replaces the drawing-style pencil for Deck customization.
+  - Tap a PDF in full chat to open a native viewer with page swiping, zoom, direct page selection, and local search.
+  - Search results keep their page identity and jump through matches without sending the document anywhere.
+  - Ask Orbit about the page you are reading; it stages that exact page in a new composer and never sends automatically.

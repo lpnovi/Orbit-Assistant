@@ -932,9 +932,8 @@ Stable. The line is recorded in full under **Near-term order** below; in short:
   built exactly as before
 
 ### 0.7.8.2-beta.1 — Orbit Deck
-In device validation on a Galaxy S25 Ultra. Adds one new first-party surface and carries forward a
-small Lelo-mode correction. Chats remains Orbit's home: Deck is one tap from it, is not a tab, and
-does not open at launch.
+Introduced one new first-party surface and carried forward a small Lelo-mode correction. Chats
+remains Orbit's home: Deck is one tap from it, is not a tab, and does not open at launch.
 
 - **An optional Deck reached from the Chats header.** One restrained control, on by default and
   removable from Settings without a placeholder left behind. Deck also stays reachable from its own
@@ -958,6 +957,56 @@ does not open at launch.
   every accent, large text, and reduced motion
 - **Lelo overlay title parity.** The Side-button overlay now takes its title from the same shared
   helper the full app uses, so the mode renames both surfaces together
+
+### 0.7.8.2-beta.2 — Documents + Deck Refinement
+Prepared as the focused device-validation Beta after real Galaxy S25 Ultra testing of Beta 1.
+
+- **Real Deck drag reordering.** The original long press flows directly into pickup, a drag keeps a
+  provisional in-memory order, and neighboring standard or wide tiles reflow before release. Drop
+  commits once; cancellation restores the last committed order
+- **Customize-header polish.** A restrained sliders/tune glyph replaces the pencil while preserving
+  the Back, title, Customize, and Add structure and accessible touch targets
+- **A dedicated native PDF viewer in full chat.** Android `PdfRenderer` keeps only the previous,
+  current, and next pages rendered, while the existing zoom/pan arithmetic provides pinch,
+  double-tap, panning, and edge-aware horizontal page swiping
+- **Page navigation and selection.** Page count, accessible previous/next controls, and a compact
+  page scrubber provide direct jumps without a permanently visible thumbnail rail
+- **Local document search.** PDFBox extracts a bounded page-aware text index off the UI thread;
+  case-insensitive results retain page identity and previous/next navigation jumps to the match
+- **Ask Orbit about the current page.** The exact page becomes a visible, removable structured
+  composer attachment. It remains local until Send, never auto-sends, and history preserves the
+  document label, page number, page count, and bounded page text needed for regeneration
+- **Reading-surface polish.** The viewer follows Orbit Accent, font, dark/AMOLED, reduced-motion,
+  accessibility, and responsive tablet conventions while leaving the rendered PDF page faithful
+  to the source
+
+# Planned Beta 3
+
+## Robust natural timer durations
+
+Introduce one shared robust duration parser for the existing `SET_TIMER` seconds contract. It must
+handle compound and fractional phrases including 4 minutes 30 seconds (270s), 4 and a half minutes
+(270s), 4.5 minutes (270s), a minute and a half (90s), 2 minutes 15 seconds (135s), 1 hour 5 minutes
+(3900s), 1 hour 5 minutes 30 seconds (3930s), and 90 seconds (90s). This remains Beta 3 work.
+
+## Notification channel consistency
+
+Proactively register legitimate Orbit notification channels, without sending a notification, so
+Background responses, Reminders, Routine triggers, and Orbit updates appear consistently in Samsung
+Notification Categories where applicable. This remains Beta 3 work.
+
+# Post-Beta-3 future features
+
+## Theme Studio
+
+A polished visual theme editor built on Look & Feel: live previews, saved Accent/bubble/surface
+presets, AMOLED variants, and import/exportable Orbit theme files where feasible.
+
+## Orbit Vault / Quick Capture
+
+A searchable local-first collection for quickly saving screenshots, selected text, clipboard
+content, photos, useful Orbit answers, and later document snippets, with a future **Ask Orbit about
+this** flow and an eventual Orbit Deck tile.
 
 ## Future direction
 

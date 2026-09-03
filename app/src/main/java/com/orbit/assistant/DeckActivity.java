@@ -20,6 +20,7 @@ import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.widget.Button;
@@ -82,6 +83,7 @@ public final class DeckActivity extends Activity {
     private FrameLayout sheetHost;
 
     private boolean editing;
+    private DeckTileView carriedTile;
     private String appliedAppearance = "";
     private DeckTileResolver.LiveState live = DeckTileResolver.LiveState.unknown();
 
@@ -123,6 +125,7 @@ public final class DeckActivity extends Activity {
 
     @Override protected void onPause() {
         // Live state is only ever read while the screen is in front of somebody.
+        cancelActiveDrag();
         stopWatchingTorch();
         UiPresence.leave(this);
         super.onPause();
@@ -317,7 +320,7 @@ public final class DeckActivity extends Activity {
             return;
         }
 
-        ImageButton customize = iconButton(R.drawable.ic_edit, "Customize Deck");
+        ImageButton customize = iconButton(R.drawable.ic_tune, "Customize Deck");
         customize.setOnClickListener(v -> setEditing(true));
         headerControls.addView(customize, lp);
 
@@ -391,7 +394,9 @@ public final class DeckActivity extends Activity {
         DeckTileView view = new DeckTileView(this, tile,
                 DeckTileResolver.resolve(this, tile, live), tileListener());
         view.setEditing(editing);
-        if (editing) installDrag(view);
+        // Installed in both modes so the original normal-mode long press can become a pickup
+        // without releasing and touching the rebuilt tile a second time.
+        installDrag(view);
         return view;
     }
 
@@ -562,8 +567,6 @@ public final class DeckActivity extends Activity {
             if (!(child instanceof DeckTileView)) continue;
             DeckTileView view = (DeckTileView) child;
             view.setEditing(editing);
-            if (editing) installDrag(view);
-            else view.setOnTouchListener(null);
         }
         renderSuggestions(DeckLayoutStore.layout(this));
         syncBackHandler();
@@ -678,53 +681,101 @@ public final class DeckActivity extends Activity {
     // ---- dragging ---------------------------------------------------------------------------------
 
     /**
-     * Drag to reorder, while editing only.
+     * Drag to reorder from either mode.
      *
-     * <p>A press-and-hold on a tile that is already in edit mode picks it up; the same gesture
-     * outside edit mode is what entered edit mode in the first place. The scroll view is asked to
-     * stand aside for the duration so a vertical drag moves the tile rather than the page.
+     * <p>In normal mode the long-press timeout enters Edit and picks up this same view while the
+     * finger is still down. In Edit, crossing touch slop picks it up immediately. Returning true
+     * from DOWN is essential: a listener that declines DOWN is not guaranteed the rest of the
+     * gesture, which is why attaching a new listener after Beta 1's long-click could never turn the
+     * already-running press into a drag.
      */
     private void installDrag(DeckTileView view) {
         final float[] down = new float[2];
+        final boolean[] pressed = {false};
         final boolean[] dragging = {false};
+        final boolean[] longPressed = {false};
+        final boolean[] movedBeforeLongPress = {false};
+        final int slop = ViewConfiguration.get(this).getScaledTouchSlop();
+        final Runnable[] pickup = new Runnable[1];
+        pickup[0] = () -> {
+            if (!pressed[0] || dragging[0] || carriedTile != null) return;
+            longPressed[0] = true;
+            if (!editing) setEditing(true);
+            beginTileDrag(view, dragging);
+        };
         view.setOnTouchListener((v, event) -> {
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
                     down[0] = event.getRawX();
                     down[1] = event.getRawY();
+                    pressed[0] = true;
                     dragging[0] = false;
-                    return false;
+                    longPressed[0] = false;
+                    movedBeforeLongPress[0] = false;
+                    view.removeCallbacks(pickup[0]);
+                    if (!editing) view.postDelayed(pickup[0],
+                            ViewConfiguration.getLongPressTimeout());
+                    return true;
                 case MotionEvent.ACTION_MOVE: {
-                    if (!editing) return false;
                     float dx = event.getRawX() - down[0];
                     float dy = event.getRawY() - down[1];
-                    if (!dragging[0]) {
-                        if (Math.hypot(dx, dy) < UiKit.dp(this, 10)) return false;
-                        dragging[0] = true;
-                        // One pickup tick, and nothing after it: no haptic per pixel crossed.
-                        UiKit.haptic(v, HapticFeedbackConstants.LONG_PRESS);
-                        view.setCarried(true);
-                        grid.beginDrag(view);
-                        scroll.requestDisallowInterceptTouchEvent(true);
+                    if (!editing && Math.hypot(dx, dy) > slop) {
+                        movedBeforeLongPress[0] = true;
+                        view.removeCallbacks(pickup[0]);
+                    } else if (editing && !dragging[0] && Math.hypot(dx, dy) > slop) {
+                        beginTileDrag(view, dragging);
                     }
-                    grid.updateDrag(dx, dy);
+                    if (dragging[0]) grid.updateDrag(dx, dy);
                     return true;
                 }
                 case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
+                    pressed[0] = false;
+                    view.removeCallbacks(pickup[0]);
                     if (dragging[0]) {
                         dragging[0] = false;
                         view.setCarried(false);
-                        grid.endDrag();
+                        carriedTile = null;
+                        boolean changed = grid.endDrag();
                         scroll.requestDisallowInterceptTouchEvent(false);
+                        if (changed) UiKit.haptic(v, HapticFeedbackConstants.CLOCK_TICK);
                         // Consumed, so the drop does not also register as a tap on the tile.
                         return true;
                     }
-                    return false;
+                    if (!longPressed[0] && !movedBeforeLongPress[0]) v.performClick();
+                    return true;
+                case MotionEvent.ACTION_CANCEL:
+                    pressed[0] = false;
+                    view.removeCallbacks(pickup[0]);
+                    if (dragging[0]) {
+                        dragging[0] = false;
+                        view.setCarried(false);
+                        carriedTile = null;
+                        grid.cancelDrag();
+                        scroll.requestDisallowInterceptTouchEvent(false);
+                    }
+                    return true;
                 default:
-                    return false;
+                    return true;
             }
         });
+    }
+
+    private void beginTileDrag(DeckTileView view, boolean[] dragging) {
+        if (view == null || dragging[0] || carriedTile != null) return;
+        dragging[0] = true;
+        carriedTile = view;
+        UiKit.haptic(view, HapticFeedbackConstants.LONG_PRESS);
+        view.setCarried(true);
+        grid.beginDrag(view);
+        scroll.requestDisallowInterceptTouchEvent(true);
+    }
+
+    private void cancelActiveDrag() {
+        if (carriedTile == null || grid == null) return;
+        carriedTile.setCarried(false);
+        carriedTile = null;
+        grid.cancelDrag();
+        if (scroll != null) scroll.requestDisallowInterceptTouchEvent(false);
     }
 
     // ---- live state -------------------------------------------------------------------------------

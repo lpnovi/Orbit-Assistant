@@ -1016,6 +1016,7 @@ public class OrbitSession extends VoiceInteractionSession {
         foregroundAppLabel = "";
         screenshot = null;
         selectedScreenshot = null;
+        discardComposerDocuments();
         composerAttachments.clear();
         screenAttached = false;
         screenAttachedByPolicy = false;
@@ -1664,12 +1665,27 @@ public class OrbitSession extends VoiceInteractionSession {
 
     private void removeComposerAttachment(String id) {
         // Exactly this item. Composer text, the other attachments, and screen state are untouched.
-        if (composerAttachments.remove(id)) refreshGenericAttachmentTray();
+        ComposerAttachment removed = composerAttachments.find(id);
+        if (composerAttachments.remove(id)) {
+            if (removed != null && removed.isDocument()) {
+                DocumentFileStore.delete(removed.document.path);
+            }
+            refreshGenericAttachmentTray();
+        }
     }
 
     private void clearGenericAttachment() {
+        discardComposerDocuments();
         composerAttachments.clear();
         refreshGenericAttachmentTray();
+    }
+
+    private void discardComposerDocuments() {
+        for (ComposerAttachment attachment : composerAttachments.items()) {
+            if (attachment != null && attachment.isDocument()) {
+                DocumentFileStore.delete(attachment.document.path);
+            }
+        }
     }
 
     private void refreshGenericAttachmentTray() {

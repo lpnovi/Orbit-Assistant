@@ -220,6 +220,9 @@
           panning a zoomed photo.
         -->
         <activity android:name=".AttachmentViewerActivity" android:exported="false" />
+        <!-- Native local PDF viewer. Kept non-exported and out of predictive horizontal Back
+             because its page pan/swipe owns the same gesture space as the image viewer. -->
+        <activity android:name=".DocumentViewerActivity" android:exported="false" />
         <activity android:name=".ScreenSelectionActivity" android:exported="false"
             android:excludeFromRecents="true" />
         <activity android:name=".AttachmentPickerActivity" android:exported="false"

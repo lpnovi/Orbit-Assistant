@@ -39,6 +39,8 @@ public final class SharedContentStore {
     public static final String SOURCE_SHARE = "share";
     /** Android's text-selection menu, through {@code ACTION_PROCESS_TEXT}. */
     public static final String SOURCE_PROCESS_TEXT = "process_text";
+    /** A page selected inside Orbit's own native document viewer. */
+    public static final String SOURCE_DOCUMENT_PAGE = "document_page";
 
     /**
      * The most characters any external route may put into one composer.
@@ -69,16 +71,27 @@ public final class SharedContentStore {
         public final String shape;
         /** How many items the sender offered, before Orbit's per-message limit was applied. */
         public final int offered;
+        /** Structured page context; never pasted visibly into the composer. */
+        public final DocumentPageContext documentPage;
 
         Staged(String source, String text, List<Uri> uris, String shape, int offered) {
+            this(source, text, uris, shape, offered, null);
+        }
+
+        Staged(String source, String text, List<Uri> uris, String shape, int offered,
+               DocumentPageContext documentPage) {
             this.source = source == null || source.isEmpty() ? SOURCE_SHARE : source;
             this.text = text == null ? "" : text;
             this.uris = Collections.unmodifiableList(new ArrayList<>(uris));
             this.shape = shape == null ? "" : shape;
             this.offered = offered;
+            this.documentPage = documentPage;
         }
 
-        public boolean isEmpty() { return text.isEmpty() && uris.isEmpty(); }
+        public boolean isEmpty() {
+            return text.isEmpty() && uris.isEmpty()
+                    && (documentPage == null || !documentPage.hasText());
+        }
     }
 
     /**
@@ -129,6 +142,16 @@ public final class SharedContentStore {
         String token = kind + "-" + UUID.randomUUID();
         STAGED.put(token, new Entry(new Staged(kind, text, uris == null ? new ArrayList<>() : uris,
                 shape, offered)));
+        return token;
+    }
+
+    /** Stages one exact page locally. The page text stays hidden until the user presses Send. */
+    public static synchronized String stageDocumentPage(DocumentPageContext page) {
+        if (page == null || !page.hasText()) return "";
+        prune();
+        String token = SOURCE_DOCUMENT_PAGE + "-" + UUID.randomUUID();
+        STAGED.put(token, new Entry(new Staged(SOURCE_DOCUMENT_PAGE, "",
+                new ArrayList<>(), "document_page", 0, page)));
         return token;
     }
 

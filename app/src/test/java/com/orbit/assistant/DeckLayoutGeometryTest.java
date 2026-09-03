@@ -305,4 +305,70 @@ public final class DeckLayoutGeometryTest {
         assertEquals("the visible tile takes the first slot", 0, visible.getLeft());
         assertEquals(0, visible.getTop());
     }
+
+    @Test public void draggingFourthBeforeSecondCreatesARealProvisionalOrder() {
+        grid.setColumns(2);
+        View a = addTile(1, 100);
+        View b = addTile(1, 100);
+        View c = addTile(1, 100);
+        View d = addTile(1, 100);
+        layout();
+
+        grid.beginDrag(d);
+        float targetX = b.getLeft() + 2f;
+        float targetY = b.getTop() + b.getHeight() / 2f;
+        float dX = targetX - (d.getLeft() + d.getWidth() / 2f);
+        float dY = targetY - (d.getTop() + d.getHeight() / 2f);
+        grid.updateDrag(dX, dY);
+        layout();
+
+        assertEquals(java.util.Arrays.asList(a, d, b, c), grid.orderedChildren());
+        assertTrue(grid.endDrag());
+        layout();
+        assertNoOverlaps();
+    }
+
+    @Test public void cancellationRestoresTheCommittedOrderAndDoesNotCommit() {
+        grid.setColumns(2);
+        View a = addTile(1, 100);
+        View b = addTile(1, 100);
+        View c = addTile(1, 100);
+        View d = addTile(1, 100);
+        layout();
+        final int[] commits = {0};
+        grid.setOnReorderListener(ordered -> commits[0]++);
+
+        grid.beginDrag(d);
+        grid.updateDrag(b.getLeft() + 2f - (d.getLeft() + d.getWidth() / 2f),
+                b.getTop() + b.getHeight() / 2f - (d.getTop() + d.getHeight() / 2f));
+        layout();
+        assertEquals(java.util.Arrays.asList(a, d, b, c), grid.orderedChildren());
+
+        grid.cancelDrag();
+        layout();
+        assertEquals(java.util.Arrays.asList(a, b, c, d), grid.orderedChildren());
+        assertEquals(0, commits[0]);
+        assertNoOverlaps();
+    }
+
+    @Test public void aStandardTileCanCrossAWideBoundaryWithoutOverlap() {
+        grid.setColumns(2);
+        View wide = addTile(2, 100);
+        View b = addTile(1, 100);
+        View c = addTile(1, 100);
+        View d = addTile(1, 100);
+        View e = addTile(1, 100);
+        layout();
+
+        grid.beginDrag(b);
+        grid.updateDrag(wide.getLeft() + 2f - (b.getLeft() + b.getWidth() / 2f),
+                wide.getTop() + wide.getHeight() / 2f - (b.getTop() + b.getHeight() / 2f));
+        layout();
+
+        assertEquals(java.util.Arrays.asList(b, wide, c, d, e), grid.orderedChildren());
+        grid.endDrag();
+        layout();
+        assertNoOverlaps();
+        assertTrue("the wide card remains a full-row span", wide.getWidth() > b.getWidth() * 1.8f);
+    }
 }

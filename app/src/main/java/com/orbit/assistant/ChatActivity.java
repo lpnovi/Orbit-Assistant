@@ -263,6 +263,11 @@ public class ChatActivity extends Activity {
         SharedContentStore.Staged staged = SharedContentStore.consume(token);
         if (staged == null || staged.isEmpty()) return;
 
+        if (staged.documentPage != null && staged.documentPage.hasText()) {
+            ComposerAttachment page = ComposerAttachment.documentPage(staged.documentPage);
+            if (page != null) addComposerAttachment(page);
+        }
+
         if (!staged.text.isEmpty()) {
             String existing = input.getText().toString();
             input.setText(existing.trim().isEmpty() ? staged.text : existing + "\n\n" + staged.text);
@@ -280,10 +285,12 @@ public class ChatActivity extends Activity {
         if (SharedContentStore.SOURCE_PROCESS_TEXT.equals(staged.source)) {
             DiagnosticStore.recordExternalText(this, staged.source, staged.text.length(),
                     "staged-in-composer");
-        } else {
+        } else if (!SharedContentStore.SOURCE_DOCUMENT_PAGE.equals(staged.source)) {
             DiagnosticStore.recordShareToOrbit(this, staged.shape, "staged-in-composer",
                     staged.uris.size());
         }
+        // A document-page handoff is internal. Its visible composer chip is the confirmation, and
+        // Diagnostics deliberately records neither extracted text nor the document's filename.
     }
 
     private void applyLauncherComposerIntent() {
@@ -885,6 +892,16 @@ public class ChatActivity extends Activity {
             row.addView(image, imageLp);
             drawn++;
         }
+        for (DocumentReference document : h.documents) {
+            ImageButton open = iconButton(R.drawable.ic_document, "Open " + document.label
+                    + " in document viewer");
+            open.setOnClickListener(v -> DocumentViewerActivity.open(this, document, 0));
+            UiKit.pressScale(open);
+            LinearLayout.LayoutParams openLp = new LinearLayout.LayoutParams(
+                    UiKit.dp(this, 44), UiKit.dp(this, 44));
+            openLp.setMarginStart(UiKit.dp(this, 4));
+            row.addView(open, openLp);
+        }
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.setMargins(UiKit.dp(this, 46), UiKit.dp(this, -3), 0, UiKit.dp(this, 8));
         messages.addView(row, lp);
@@ -947,7 +964,8 @@ public class ChatActivity extends Activity {
                 "user", q, hasAttachment, historyPaths,
                 ComposerAttachments.kindOf(attached),
                 ComposerAttachments.labelOf(attached),
-                requestContext, "", "", "", "");
+                requestContext, "", "", "", "",
+                ComposerAttachments.documentsOf(attached));
         history.add(user);
         ConversationStore.save(this, conversationId, history);
         ConversationStore.setMode(this, conversationId, currentMode);
@@ -1998,6 +2016,12 @@ public class ChatActivity extends Activity {
             return;
         }
         ComposerAttachments.AddResult added = composerAttachments.addAll(batch.attachments);
+        for (int i = added.accepted; i < batch.attachments.size(); i++) {
+            ComposerAttachment rejected = batch.attachments.get(i);
+            if (rejected != null && rejected.isDocument()) {
+                DocumentFileStore.delete(rejected.document.path);
+            }
+        }
         refreshAttachmentStrip(true);
         String message = batch.summary();
         if (added.hitLimit() || batch.rejected > batch.accepted() - added.accepted) {
@@ -2076,7 +2100,13 @@ public class ChatActivity extends Activity {
 
     private void removeComposerAttachment(String id) {
         // Only this item. The composer text, the other attachments and their order are untouched.
-        if (composerAttachments.remove(id)) refreshAttachmentStrip(false);
+        ComposerAttachment removed = composerAttachments.find(id);
+        if (composerAttachments.remove(id)) {
+            if (removed != null && removed.isDocument()) {
+                DocumentFileStore.delete(removed.document.path);
+            }
+            refreshAttachmentStrip(false);
+        }
     }
 
     /**
@@ -2088,7 +2118,12 @@ public class ChatActivity extends Activity {
      * is rebuilt from that collection on the way back.
      */
     private void openComposerAttachment(String id) {
-        AttachmentViewerActivity.openComposer(this, composerAttachments, id);
+        ComposerAttachment attachment = composerAttachments.find(id);
+        if (attachment != null && attachment.isDocument()) {
+            DocumentViewerActivity.open(this, attachment.document, 0);
+        } else {
+            AttachmentViewerActivity.openComposer(this, composerAttachments, id);
+        }
     }
 
     private void clearComposerAttachments() {
@@ -2807,6 +2842,13 @@ public class ChatActivity extends Activity {
         attachmentExecutor.shutdownNow();
         if (voiceController != null) voiceController.destroy();
         if (listeningHalo != null) listeningHalo.stop();
+        if (isFinishing()) {
+            for (ComposerAttachment attachment : composerAttachments.items()) {
+                if (attachment != null && attachment.isDocument()) {
+                    DocumentFileStore.delete(attachment.document.path);
+                }
+            }
+        }
         super.onDestroy();
     }
 

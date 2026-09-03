@@ -75,7 +75,8 @@ public final class AttachmentBatchLoader {
                 continue;
             }
             loaded.add(new ComposerAttachment(kindFor(sourceLabel, result.kind),
-                    labelFor(sourceLabel, result.label), result.contextText, result.image));
+                    labelFor(sourceLabel, result.label), result.contextText, result.image,
+                    result.document));
         }
 
         // Everything past the capacity is still something the user selected, so it is counted as

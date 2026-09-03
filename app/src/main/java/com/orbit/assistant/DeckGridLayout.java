@@ -51,6 +51,13 @@ public final class DeckGridLayout extends ViewGroup {
     private final List<View> order = new ArrayList<>();
 
     private View dragging;
+    /** Desired centre of the carried view in this grid's coordinates. */
+    private float dragCenterX;
+    private float dragCenterY;
+    private float dragStartCenterX;
+    private float dragStartCenterY;
+    /** The last committed order, captured once at pickup so cancellation can restore it exactly. */
+    private final List<View> orderBeforeDrag = new ArrayList<>();
     private OnReorderListener reorderListener;
     private boolean animateNextLayout;
 
@@ -218,7 +225,12 @@ public final class DeckGridLayout extends ViewGroup {
         child.layout(x, y, x + width, y + height);
         lastPositions.put(child, new Point(x, y));
 
-        if (child == dragging || !animate || previous == null) return;
+        if (child == dragging) {
+            child.setTranslationX(dragCenterX - (x + width / 2f));
+            child.setTranslationY(dragCenterY - (y + height / 2f));
+            return;
+        }
+        if (!animate || previous == null) return;
         if (previous.x == x && previous.y == y) return;
 
         child.setTranslationX(previous.x - x);
@@ -245,10 +257,14 @@ public final class DeckGridLayout extends ViewGroup {
 
     // ---- dragging ---------------------------------------------------------------------------------
 
-    /** Picks a tile up. It stops being laid out into a slot until the drag ends. */
+    /** Picks a tile up and snapshots the last committed arrangement. */
     public void beginDrag(View child) {
-        if (child == null || child.getParent() != this) return;
+        if (child == null || child.getParent() != this || dragging != null) return;
+        orderBeforeDrag.clear();
+        orderBeforeDrag.addAll(order);
         dragging = child;
+        dragStartCenterX = dragCenterX = child.getLeft() + child.getWidth() / 2f;
+        dragStartCenterY = dragCenterY = child.getTop() + child.getHeight() / 2f;
         child.bringToFront();
     }
 
@@ -263,25 +279,34 @@ public final class DeckGridLayout extends ViewGroup {
      */
     public void updateDrag(float dx, float dy) {
         if (dragging == null) return;
-        dragging.setTranslationX(dx);
-        dragging.setTranslationY(dy);
+        dragCenterX = dragStartCenterX + dx;
+        dragCenterY = dragStartCenterY + dy;
+        dragging.setTranslationX(dragCenterX
+                - (dragging.getLeft() + dragging.getWidth() / 2f));
+        dragging.setTranslationY(dragCenterY
+                - (dragging.getTop() + dragging.getHeight() / 2f));
 
-        int target = indexAt(dragging.getLeft() + dx + dragging.getWidth() / 2f,
-                dragging.getTop() + dy + dragging.getHeight() / 2f);
+        int target = insertionIndexAt(dragCenterX, dragCenterY);
         int current = order.indexOf(dragging);
-        if (target < 0 || current < 0 || target == current) return;
+        if (target < 0 || current < 0) return;
 
         order.remove(current);
+        if (current < target) target--;
+        if (target == current) {
+            order.add(current, dragging);
+            return;
+        }
         order.add(Math.min(target, order.size()), dragging);
         animateNextLayout = true;
         requestLayout();
     }
 
     /** Puts the carried tile down and reports the resulting order. */
-    public void endDrag() {
+    public boolean endDrag() {
         View child = dragging;
         dragging = null;
-        if (child == null) return;
+        if (child == null) return false;
+        boolean changed = !order.equals(orderBeforeDrag);
         // Settle from wherever the finger left it back into its slot.
         if (UiKit.animationsEnabled()) {
             child.animate().translationX(0f).translationY(0f)
@@ -290,24 +315,66 @@ public final class DeckGridLayout extends ViewGroup {
             child.setTranslationX(0f);
             child.setTranslationY(0f);
         }
-        if (reorderListener != null) reorderListener.onReorder(orderedChildren());
+        if (changed && reorderListener != null) reorderListener.onReorder(orderedChildren());
+        orderBeforeDrag.clear();
+        return changed;
     }
 
-    /** Which slot a point falls in, by nearest tile centre. */
-    private int indexAt(float x, float y) {
-        List<View> visible = visibleChildren();
-        int best = -1;
+    /**
+     * Which insertion slot a point falls in, excluding the carried tile itself.
+     *
+     * <p>Beta 1 made the carried tile's centre equal to the pointer before asking which tile was
+     * nearest. It therefore won with distance zero on every frame and the target never changed.
+     * The stationary cards define the slots here; repacking the ordered list through the existing
+     * span-aware row layout makes wide cards real row boundaries rather than overlap targets.
+     */
+    private int insertionIndexAt(float x, float y) {
+        View closest = null;
         double bestDistance = Double.MAX_VALUE;
-        for (int i = 0; i < visible.size(); i++) {
-            View child = visible.get(i);
+        for (View child : visibleChildren()) {
+            if (child == dragging) continue;
             float cx = child.getLeft() + child.getWidth() / 2f;
             float cy = child.getTop() + child.getHeight() / 2f;
-            if (child == dragging) { cx = x; cy = y; }
-            double distance = Math.pow(cx - x, 2) + Math.pow(cy - y, 2);
-            if (distance < bestDistance) { bestDistance = distance; best = i; }
+            // Distance to the card, not merely its centre. A full-row wide card can be hundreds of
+            // pixels from its own centre while the finger is visibly inside its left edge; centre
+            // distance would incorrectly choose a standard card in the next row.
+            float nearestX = Math.max(child.getLeft(), Math.min(x, child.getRight()));
+            float nearestY = Math.max(child.getTop(), Math.min(y, child.getBottom()));
+            double distance = Math.pow(nearestX - x, 2) + Math.pow(nearestY - y, 2);
+            if (distance == bestDistance && closest != null) {
+                double centreDistance = Math.pow(cx - x, 2) + Math.pow(cy - y, 2);
+                float oldCx = closest.getLeft() + closest.getWidth() / 2f;
+                float oldCy = closest.getTop() + closest.getHeight() / 2f;
+                double oldCentreDistance = Math.pow(oldCx - x, 2) + Math.pow(oldCy - y, 2);
+                if (centreDistance < oldCentreDistance) closest = child;
+                continue;
+            }
+            if (distance < bestDistance) { bestDistance = distance; closest = child; }
         }
-        if (best < 0) return -1;
-        return order.indexOf(visible.get(best));
+        if (closest == null) return 0;
+        int index = order.indexOf(closest);
+        if (index < 0) return -1;
+        float centreY = closest.getTop() + closest.getHeight() / 2f;
+        float centreX = closest.getLeft() + closest.getWidth() / 2f;
+        float rowTolerance = Math.max(spacing, closest.getHeight() * 0.22f);
+        boolean after = y > centreY + rowTolerance
+                || (Math.abs(y - centreY) <= rowTolerance && x > centreX);
+        return index + (after ? 1 : 0);
+    }
+
+    /** Restores the pickup snapshot without notifying storage. */
+    public void cancelDrag() {
+        View child = dragging;
+        dragging = null;
+        if (child == null) return;
+        order.clear();
+        order.addAll(orderBeforeDrag);
+        orderBeforeDrag.clear();
+        child.animate().cancel();
+        child.setTranslationX(0f);
+        child.setTranslationY(0f);
+        animateNextLayout = UiKit.animationsEnabled();
+        requestLayout();
     }
 
     /** Re-lays the grid with the tiles that moved sliding into place. */

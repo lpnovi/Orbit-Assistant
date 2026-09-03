@@ -147,29 +147,27 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * The 0.7.8.2 line opens as a Beta carrying Orbit Deck.
+     * The 0.7.8.2 line's second Beta adds Documents and finishes Deck's device pass.
      *
-     * <p>Deck is a new first-party surface rather than a refinement of an existing one: a grid the
-     * user arranges themselves, tiles that run Routines, launch apps and prepare prompts, and a
-     * small locally computed Suggested section. None of that can be proved by a test suite —
-     * whether it looks and feels like a finished Orbit feature is a question only the Galaxy S25
-     * Ultra answers — so it is published as a prerelease and not as Stable.
+     * <p>Native PDF navigation, zoom, search and page-aware Ask Orbit plus touch-driven Deck
+     * reflow still need real-device validation on the Galaxy S25 Ultra and Tab S9 Plus, so this is
+     * published as a prerelease and not as Stable.
      *
      * <p>The guard therefore runs in the Beta direction. A build that is going to the Beta channel
      * must actually carry prerelease metadata, so that a version which quietly lost its suffix
      * cannot be published as a finished release, and it must still outrank the Stable line it was
      * built from.
      */
-    @Test public void thisBuildIsTheOrbitDeckBeta() {
+    @Test public void thisBuildIsTheDocumentsAndDeckRefinementBeta() {
         String version = BuildConfig.VERSION_NAME;
         assertTrue(OrbitVersion.installedIsBeta());
         assertTrue(OrbitVersion.isBeta(version));
         assertFalse(OrbitVersion.isStable(version));
         assertEquals("0.7.8.2", OrbitVersion.baseVersion(version));
 
-        assertEquals("this is the line's first Beta", 1, OrbitVersion.betaNumber(version));
-        assertEquals("Orbit Assistant v0.7.8.2 Beta 1", OrbitVersion.releaseTitle(version));
-        assertEquals("v0.7.8.2-beta.1", OrbitVersion.tagFor(version));
+        assertEquals("this is the line's second Beta", 2, OrbitVersion.betaNumber(version));
+        assertEquals("Orbit Assistant v0.7.8.2 Beta 2", OrbitVersion.releaseTitle(version));
+        assertEquals("v0.7.8.2-beta.2", OrbitVersion.tagFor(version));
         assertTrue("the release workflow must publish it as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
         assertFalse("and never as Stable",

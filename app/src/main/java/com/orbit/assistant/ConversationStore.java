@@ -95,7 +95,8 @@ public final class ConversationStore {
                     // Memory fields keep their existing save behaviour; only the stopped-turn
                     // anchor is added here, because losing it would move a mark off its turn.
                     "", "", "",
-                    h.stoppedRequestId));
+                    h.stoppedRequestId,
+                    h.documents));
         }
         // A background response may be appended to disk after the assistant sheet
         // is hidden, while that old sheet still holds a shorter in-memory copy.
@@ -357,8 +358,16 @@ public final class ConversationStore {
     }
 
     public static synchronized void clear(Context c) {
+        List<String> owned = new ArrayList<>();
+        for (Conversation conversation : readAll(c)) {
+            owned.addAll(ownedAttachmentPaths(conversation));
+        }
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().remove(KEY).apply();
         c.getSharedPreferences("orbit_action_results", Context.MODE_PRIVATE).edit().clear().apply();
+        // Clearing history is the final ownership boundary for its private images and PDFs.
+        // De-duplicate because one retained file can legitimately be referenced by more than one
+        // stored turn while the conversation is being regenerated or migrated.
+        for (String path : new HashSet<>(owned)) AttachmentStore.delete(path);
     }
 
     /** The raw stored form, for a test that checks what old data does and does not contain. */
@@ -504,7 +513,8 @@ public final class ConversationStore {
                                 m.optString("memoryUsage", ""),
                                 m.optString("memorySuggestionText", ""),
                                 m.optString("memorySuggestionCategory", ""),
-                                m.optString("stoppedRequestId", "")));
+                                m.optString("stoppedRequestId", ""),
+                                readDocuments(m)));
                     }
                 }
                 // A chat stored before pinning existed simply has no "pinned" key, and false is
@@ -539,6 +549,16 @@ public final class ConversationStore {
                         JSONArray paths = new JSONArray();
                         for (String path : h.attachmentPaths) paths.put(path);
                         message.put("attachmentPaths", paths);
+                    }
+                    if (!h.documents.isEmpty()) {
+                        JSONArray documents = new JSONArray();
+                        for (DocumentReference document : h.documents) {
+                            documents.put(new JSONObject()
+                                    .put("path", safe(document.path))
+                                    .put("label", safe(document.label))
+                                    .put("pageCount", document.pageCount));
+                        }
+                        message.put("documents", documents);
                     }
                     msgs.put(message
                             .put("role", h.role)
@@ -583,6 +603,20 @@ public final class ConversationStore {
         return paths;
     }
 
+    private static List<DocumentReference> readDocuments(JSONObject message) {
+        List<DocumentReference> documents = new ArrayList<>();
+        JSONArray stored = message.optJSONArray("documents");
+        if (stored == null) return documents;
+        for (int i = 0; i < stored.length(); i++) {
+            JSONObject item = stored.optJSONObject(i);
+            if (item == null) continue;
+            DocumentReference document = new DocumentReference(item.optString("path", ""),
+                    item.optString("label", "PDF"), item.optInt("pageCount", 0));
+            if (document.isUsable()) documents.add(document);
+        }
+        return documents;
+    }
+
     /**
      * Every private image file one conversation owns.
      *
@@ -594,7 +628,10 @@ public final class ConversationStore {
         List<String> paths = new ArrayList<>();
         if (conversation == null) return paths;
         for (AssistantClient.History h : conversation.messages) {
-            if (h != null) paths.addAll(h.attachmentPaths);
+            if (h != null) {
+                paths.addAll(h.attachmentPaths);
+                for (DocumentReference document : h.documents) paths.add(document.path);
+            }
         }
         return paths;
     }

@@ -9,6 +9,8 @@ import static org.robolectric.Shadows.shadowOf;
 
 import android.content.Context;
 import android.content.Intent;
+import android.os.SystemClock;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
@@ -137,6 +139,24 @@ public final class DeckSurfaceTest {
     private void setAnimations(boolean enabled) {
         android.provider.Settings.Global.putFloat(context.getContentResolver(),
                 android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, enabled ? 1f : 0f);
+    }
+
+    @Test public void normalModeLongPressPicksUpInTheSameGesture() {
+        DeckActivity activity = deck();
+        DeckTileView tile = tilesIn(activity).get(0);
+        long downAt = SystemClock.uptimeMillis();
+        tile.dispatchTouchEvent(MotionEvent.obtain(downAt, downAt,
+                MotionEvent.ACTION_DOWN, 20f, 20f, 0));
+        shadowOf(android.os.Looper.getMainLooper())
+                .idleFor(java.time.Duration.ofMillis(600));
+
+        assertTrue("the first hold enters Edit", activity.editingForTest());
+        assertTrue("and that same still-down gesture owns the tile",
+                activity.gridForTest().isDragging());
+
+        tile.dispatchTouchEvent(MotionEvent.obtain(downAt, downAt + 650,
+                MotionEvent.ACTION_CANCEL, 20f, 20f, 0));
+        assertFalse(activity.gridForTest().isDragging());
     }
 
     /**

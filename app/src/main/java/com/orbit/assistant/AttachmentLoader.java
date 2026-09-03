@@ -30,13 +30,20 @@ public final class AttachmentLoader {
     public static final class Result {
         public final String kind, label, contextText, error;
         public final Bitmap image;
+        public final DocumentReference document;
 
         Result(String kind, String label, String contextText, Bitmap image, String error) {
+            this(kind, label, contextText, image, error, null);
+        }
+
+        Result(String kind, String label, String contextText, Bitmap image, String error,
+               DocumentReference document) {
             this.kind = safe(kind);
             this.label = safe(label);
             this.contextText = contextText == null ? "" : contextText;
             this.image = image;
             this.error = error == null ? "" : error;
+            this.document = document;
         }
 
         public boolean ok() { return error.isEmpty() && (!contextText.isEmpty() || image != null); }
@@ -96,6 +103,8 @@ public final class AttachmentLoader {
 
     private static Result loadPdf(Context c, Uri uri, String name) throws Exception {
         String label = name.isEmpty() ? "PDF" : name;
+        String documentPath = DocumentFileStore.importPdf(c, uri);
+        if (documentPath.isEmpty()) return error("Orbit could not retain that PDF for viewing.");
 
         // PdfBox-Android requires its Android resource loader to be initialized
         // before PDFBox APIs are used.
@@ -107,12 +116,13 @@ public final class AttachmentLoader {
         boolean textExtractionFailed = false;
         String extractionFailure = "";
 
-        try (InputStream in = c.getContentResolver().openInputStream(uri)) {
-            if (in == null) return error("Orbit could not open that PDF.");
-
-            try (PDDocument document = PDDocument.load(in)) {
+        try {
+            try (PDDocument document = PDDocument.load(new java.io.File(documentPath))) {
                 totalPages = document.getNumberOfPages();
-                if (totalPages <= 0) return error("That PDF does not contain readable pages.");
+                if (totalPages <= 0) {
+                    DocumentFileStore.delete(documentPath);
+                    return error("That PDF does not contain readable pages.");
+                }
 
                 StringBuilder pages = new StringBuilder();
                 PDFTextStripper stripper = new PDFTextStripper();
@@ -164,7 +174,8 @@ public final class AttachmentLoader {
         // scanned pages, and layout that text extraction cannot represent.
         Bitmap preview = null;
         int previewPages = 0;
-        try (ParcelFileDescriptor fd = c.getContentResolver().openFileDescriptor(uri, "r")) {
+        try (ParcelFileDescriptor fd = ParcelFileDescriptor.open(new java.io.File(documentPath),
+                ParcelFileDescriptor.MODE_READ_ONLY)) {
             if (fd != null) {
                 try (PdfRenderer renderer = new PdfRenderer(fd)) {
                     if (totalPages <= 0) totalPages = renderer.getPageCount();
@@ -206,6 +217,11 @@ public final class AttachmentLoader {
                     }
                 }
             }
+        } catch (Exception renderError) {
+            // A text PDF remains attachable even if Android cannot render its preview. If neither
+            // route produced anything useful, the common failure below removes the retained file.
+            preview = null;
+            previewPages = 0;
         }
 
         boolean meaningfulText = extracted.replaceAll(
@@ -266,10 +282,12 @@ public final class AttachmentLoader {
         }
 
         if (preview == null && !meaningfulText) {
+            DocumentFileStore.delete(documentPath);
             return error("Orbit could not extract text or render a preview from that PDF.");
         }
 
-        return new Result("pdf", trayLabel, context.toString(), preview, "");
+        return new Result("pdf", trayLabel, context.toString(), preview, "",
+                new DocumentReference(documentPath, label, totalPages));
     }
 
     private static String readText(Context c, Uri uri) throws Exception {
