@@ -153,12 +153,8 @@ GitHub Issues are public. Remove screenshots, notifications, account details, sc
 
 A public contribution policy has not been published yet. If you want to propose a code or documentation change, open an Issue first so scope and expectations can be discussed before a pull request.
 
-## License & attribution
+## License
 
 Orbit Assistant is licensed under the [Mozilla Public License 2.0](LICENSE).
-
-Copyright © 2026 Louis Probst
-
-Orbit Assistant was originally created by Louis Probst.
 
 Product and service names belong to their respective owners. Orbit Assistant is not an official ChatGPT, OpenAI, Samsung, Google, or Android application.
