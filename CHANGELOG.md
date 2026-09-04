@@ -655,3 +655,9 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Orbit can now see the page you ask about, so charts, diagrams and scanned pages work as well as plain text.
   - Timers understand mixed and fractional durations, so "4 minutes and 30 seconds" and "4 and a half minutes" both set 4:30.
   - Notification categories appear consistently in Android settings, and a PDF Orbit fully read is no longer called a preview.
+- **v0.7.8.2-beta.4**: Dragging a full-width Deck tile now looks right the whole way, not just at the end.
+  - Moving the wide New chat tile reserves a complete row at every step, so it never sits half in a column.
+  - The pair of tiles it moves into steps aside together, instead of one card shifting and its partner lagging behind.
+  - No card is left stranded under the tile you are carrying, and the grid never briefly shows an empty gap.
+  - The row the tile will land in is visible before you lift your finger.
+  - Dragging standard tiles is unchanged, on phones and on tablets alike.

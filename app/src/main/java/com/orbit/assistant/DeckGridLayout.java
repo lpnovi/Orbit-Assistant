@@ -52,6 +52,19 @@ import java.util.Map;
  * <p>Hit testing asks which provisional slot contains the finger, inset slightly, rather than which
  * card centre is nearest. Containment is self-stabilising: once a tile has moved, the finger is
  * inside its new slot, so jitter at a boundary cannot swap two neighbours back and forth.
+ *
+ * <h2>Why a wide tile is asked a different question</h2>
+ *
+ * <p>All of the above holds for tiles one column wide, and Beta 3 made those feel right. It does
+ * not hold for a tile two columns wide, because it quietly assumes any order of tiles packs into a
+ * full grid — true only when every tile is the same width. Choosing a neighbour for a wide tile
+ * could produce an order the packer then laid out somewhere else entirely, leaving a hole where the
+ * finger was and splitting a standard pair across two rows for the length of the gesture.
+ *
+ * <p>So a carried tile wider than one column is asked where it <em>fits</em> instead of who it is
+ * beside: {@link #spanInsertionIndexAt} packs each insertion point the span can legally occupy and
+ * chooses by where the tile would actually land. The provisional order is picked from arrangements
+ * the layout has already produced, so what animates is always a real arrangement.
  */
 public final class DeckGridLayout extends ViewGroup {
 
@@ -384,14 +397,114 @@ public final class DeckGridLayout extends ViewGroup {
      *
      * <p>The inset is the hysteresis. A finger resting on the seam between two tiles is inside
      * neither, so nothing moves until it commits to one.
+     *
+     * <p>A tile wider than one column is asked differently — see {@link #spanInsertionIndexAt}.
+     * Picking a neighbour and inserting beside it is only sound when every tile is the same width;
+     * a carried span has to be asked where it <em>fits</em>, not who it is next to.
      */
     private int insertionIndexAt(float x, float y) {
         if (getWidth() <= 0) return -1;
+        if (dragging != null && spanOf(dragging) > 1) {
+            return spanInsertionIndexAt(x, y, cellWidth(getWidth()));
+        }
         for (Slot slot : slotsFor(order, cellWidth(getWidth()))) {
             if (slot.child == dragging) continue;
             if (slot.contains(x, y, SLOT_INSET)) return order.indexOf(slot.child);
         }
         return -1;
+    }
+
+    /**
+     * Where a carried tile that is wider than one column should go.
+     *
+     * <p>Beta 3 asked one question for every tile: which neighbour is the finger over, and what is
+     * that neighbour's index? For a standard tile that is enough, because any order of equal-width
+     * tiles packs into a full grid. For a wide tile it is not, and that mismatch is the whole
+     * defect. Landing {@code New chat} beside {@code Routines} produced the order
+     * {@code Routines, New chat, Reminders, …}, and the packer — which never squeezes a span into
+     * what is left of a row — then pushed the wide tile onto a row of its own and left the cell
+     * next to Routines empty. Reminders was stranded a row below its partner, the grid held a hole
+     * the carried card was sitting over, and the arrangement the tiles animated towards was one the
+     * finger had never asked for. The order was repaired on drop, which is why the result looked
+     * right and the journey did not.
+     *
+     * <p>So the question asked here is the one the geometry can actually answer. Rather than
+     * choosing a neighbour and hoping the packing agrees, this enumerates the insertion points
+     * where the carried span genuinely fits, packs each one, and picks by where the carried tile
+     * would <em>actually land</em>. The provisional order is therefore never a guess that the layout
+     * has to reconcile: it is chosen from arrangements the layout already produced.
+     *
+     * <p>Because the packing is decided left to right, an insertion point is sound exactly when the
+     * row cursor at that point still has room for the span, or when it is the end of the
+     * arrangement. Everything before such a point packs unchanged, the carried tile takes its full
+     * declared span starting where it stands, and the remainder reflows from there — so a standard
+     * pair is never split by a wide tile dropping between its two halves, and no cell is ever
+     * vacated mid-grid.
+     *
+     * <p>On a two-column phone that reduces to exactly the row boundaries, which is what makes
+     * {@code New chat} feel like it moves between rows. It is not written as "every second index"
+     * though, because Wide means a declared span of two and a tablet has three or four columns; on
+     * those the same rule offers the genuine column offsets a two-wide tile can occupy and nothing
+     * assumes a wide tile owns the row.
+     *
+     * <p>Hysteresis is the same inset containment the standard path uses, so both feel alike. The
+     * carried tile's current position is itself one of the candidates, which means a finger resting
+     * inside the row it has already claimed re-selects that row and nothing moves; a finger in the
+     * gutter between two rows is inside neither candidate and, again, nothing moves. Only once the
+     * finger is properly inside a different destination does the grid commit to it.
+     */
+    private int spanInsertionIndexAt(float x, float y, int cell) {
+        int current = order.indexOf(dragging);
+        if (current < 0) return -1;
+        int span = spanOf(dragging);
+        List<View> rest = new ArrayList<>(order);
+        rest.remove(dragging);
+
+        int best = current;
+        float bestDistance = Float.MAX_VALUE;
+        for (int index : fittingInsertionIndices(rest, span)) {
+            List<View> candidate = new ArrayList<>(rest);
+            candidate.add(index, dragging);
+            Slot placed = null;
+            for (Slot slot : slotsFor(candidate, cell)) {
+                if (slot.child == dragging) { placed = slot; break; }
+            }
+            if (placed == null || !placed.contains(x, y, SLOT_INSET)) continue;
+            // Two candidates can only both contain the finger when a span narrower than the grid
+            // has more than one column offset available in one row, which a tablet does. The nearer
+            // destination wins, so the tile settles into the offset the finger is actually over.
+            float dx = x - (placed.x + placed.width / 2f);
+            float dy = y - (placed.y + placed.height / 2f);
+            float distance = dx * dx + dy * dy;
+            if (distance < bestDistance) { bestDistance = distance; best = index; }
+        }
+        return best;
+    }
+
+    /**
+     * The indices of {@code arrangement} where a tile of this span can be inserted without the
+     * packer having to wrap it, plus the end.
+     *
+     * <p>Walks the same row cursor {@link #slotsFor} does — a row breaks when the next span will
+     * not fit, and starts fresh once it is full — and offers an index whenever the span still fits
+     * in what is left of the current row. Appending is always offered: a tile added after
+     * everything else can start a row of its own without disturbing anything, which is what lets a
+     * wide tile reach the bottom of a grid holding an odd number of standard tiles.
+     */
+    private List<Integer> fittingInsertionIndices(List<View> arrangement, int span) {
+        List<Integer> out = new ArrayList<>();
+        int column = 0;
+        for (int i = 0; i <= arrangement.size(); i++) {
+            if (column + span <= columns || i == arrangement.size()) out.add(i);
+            if (i == arrangement.size()) break;
+            View child = arrangement.get(i);
+            if (child.getParent() != this || child.getVisibility() == GONE) continue;
+            int childSpan = spanOf(child);
+            if (column > 0 && column + childSpan > columns) column = 0;
+            column += childSpan;
+            if (column >= columns) column = 0;
+        }
+        return out;
     }
 
     /**
@@ -478,6 +591,51 @@ public final class DeckGridLayout extends ViewGroup {
         for (View child : visibleChildren()) {
             if (child == dragging) continue;
             if (child.getTranslationX() != 0f || child.getTranslationY() != 0f) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Each visible tile's logical placement as {@code {row, startColumn, span}}, in display order.
+     *
+     * <p>Rectangles alone cannot express the thing a wide tile's drag kept getting wrong. A grid
+     * with a hole beside a half-placed span has no overlapping rectangles at all, so a pixel-level
+     * occupancy check calls it valid; what is wrong with it is which cells are claimed. This
+     * reports the claim, so a test can say a wide tile owns a whole span starting on a real column
+     * boundary and that nothing shares those cells.
+     */
+    List<int[]> placementForTest() {
+        List<int[]> out = new ArrayList<>();
+        int cell = cellWidth(getWidth());
+        int row = -1;
+        int lastY = Integer.MIN_VALUE;
+        for (Slot slot : slotsFor(order, cell)) {
+            if (slot.y != lastY) { row++; lastY = slot.y; }
+            int column = cell + spacing > 0
+                    ? Math.round((slot.x - getPaddingLeft()) / (float) (cell + spacing)) : 0;
+            out.add(new int[]{row, column, spanOf(slot.child)});
+        }
+        return out;
+    }
+
+    /**
+     * True when every tile claims whole cells inside the grid and no two claim the same cell.
+     *
+     * <p>The invariant a full-span drag has to hold at every provisional step: a tile's span starts
+     * on a column boundary, finishes inside the grid, and no other tile is in any of those cells.
+     */
+    boolean spanPlacementIsValidForTest() {
+        List<int[]> placements = placementForTest();
+        if (placements.size() != visibleChildren().size()) return false;
+        Map<String, Boolean> claimed = new HashMap<>();
+        for (int[] placement : placements) {
+            int row = placement[0];
+            int column = placement[1];
+            int span = placement[2];
+            if (row < 0 || column < 0 || span < 1 || column + span > columns) return false;
+            for (int c = column; c < column + span; c++) {
+                if (claimed.put(row + ":" + c, Boolean.TRUE) != null) return false;
+            }
         }
         return true;
     }

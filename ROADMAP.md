@@ -1014,11 +1014,31 @@ Beta 2. No new surface was added; four working foundations were finished.
 - **Bounded large-document UI.** Page views as well as bitmaps are now windowed, so a
   multi-thousand-page PDF no longer measures thousands of children on every layout pass
 
+### 0.7.8.2-beta.4 — Deck Wide-Tile Drag Polish
+A single interaction fix from Galaxy S25 Ultra testing of Beta 3, which validated standard-tile
+dragging and isolated the remaining defect to full-span tiles. No feature change.
+
+- **Span-aware provisional insertion.** Choosing a neighbour and inserting beside it only packs into
+  a valid grid when every tile is one column wide. A carried tile wider than one column is now asked
+  where its span actually fits: `DeckGridLayout` enumerates the insertion points the packer can take
+  without wrapping the span, packs each one, and picks by where the tile would really land. The
+  provisional order is therefore always an arrangement the layout already produced
+- **Complete rows at every step.** A full-span tile reserves its whole declared span at every visible
+  provisional state rather than only after the drop, so it can never occupy half a row, share a row
+  it owns, or leave a vacated cell above itself
+- **Standard pairs move as a unit.** Both halves of a pair receive new slots in the same provisional
+  calculation, so neither is stranded beneath the carried card while the other moves
+- **Declared span, not phone geometry.** The rule reduces to row boundaries on a two-column phone and
+  respects a two-column span on three- and four-column tablet grids, where Wide legitimately shares
+  a row
+- **Standard dragging untouched.** The one-column path is unchanged line for line; the span path is
+  purely additive, and a regression test pins the neighbour model's exact ordering behaviour
+
 # Next
 
 ## 0.7.8.2 Stable
 
-Promote the 0.7.8.2 line to Stable after successful physical-device validation of Beta 3. No new
+Promote the 0.7.8.2 line to Stable after successful physical-device validation of Beta 4. No new
 major feature belongs to that release.
 
 # Post-Stable future features
