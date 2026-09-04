@@ -29,7 +29,7 @@ Stable is recommended for most people. Beta offers newer features with a greater
 
 <table>
   <tr>
-    <td align="center" width="50%"><img src="docs/assets/screenshots/documents.jpg" width="185" alt="Orbit Documents viewing a PDF with Ask Orbit"><br><sub><strong>Work with documents</strong><br>Read PDFs natively and ask Orbit about the current page.</sub></td>
+    <td align="center" width="50%"><img src="docs/assets/screenshots/documents.png" width="185" alt="Orbit Documents viewing a fictional test PDF with Ask Orbit"><br><sub><strong>Work with documents</strong><br>Read PDFs natively and ask Orbit about the current page.</sub></td>
     <td align="center" width="50%"><img src="docs/assets/screenshots/theme-studio.jpg" width="185" alt="Orbit Theme Studio showing a customized live preview and color controls"><br><sub><strong>Make Orbit yours</strong><br>Customize Orbit's colors and presentation with a live preview. Beta feature.</sub></td>
   </tr>
 </table>

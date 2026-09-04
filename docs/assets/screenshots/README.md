@@ -11,7 +11,7 @@ Keep the current images in this order:
 | 1 | `overlay.jpg` | Orbit invoked over a neutral background through the assistant/Side-button flow | Orbit over any app |
 | 2 | `chat.jpg` | A complete conversation with a representative response and composer | Full conversations |
 | 3 | `deck.jpg` | A deliberate mix of Orbit Deck shortcuts and controls | Your command center |
-| 4 | `documents.jpg` | A real PDF page in Orbit's viewer with the Ask Orbit entry point | Work with documents |
+| 4 | `documents.png` | A fictional Orbit test PDF page in the viewer with the Ask Orbit entry point | Work with documents |
 | 5 | `theme-studio.jpg` | The Theme Studio live preview and color controls | Make Orbit yours |
 
 The README labels Theme Studio as a Beta feature. Replace its image later if the interface changes materially, but do not fabricate a newer state.
