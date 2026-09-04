@@ -1378,6 +1378,16 @@ public final class UiKit {
      */
     public static void showOrbitColorMenu(Context c, View anchor, String[] labels, int[] colors,
                                           int selectedIndex, OrbitMenuChoice choice) {
+        showOrbitColorMenu(c, anchor, null, labels, colors, selectedIndex, choice);
+    }
+
+    /**
+     * Color-menu variant for a fixed-footer screen. The footer is not part of the popup's usable
+     * window, and the menu's trailing edge follows the trailing edge of the row that opened it.
+     */
+    public static void showOrbitColorMenu(Context c, View anchor, View bottomObstacle,
+                                          String[] labels, int[] colors, int selectedIndex,
+                                          OrbitMenuChoice choice) {
         if (c == null || anchor == null || labels == null || labels.length == 0) return;
         if (colors == null || colors.length != labels.length) {
             showOrbitMenu(c, anchor, labels, selectedIndex, choice);
@@ -1442,37 +1452,62 @@ public final class UiKit {
             box.addView(row, rowLp);
         }
 
-        showAnchoredOrbitPopup(c, anchor, popup, width, labels.length, 42);
+        showAnchoredOrbitPopup(c, anchor, popup, width, labels.length, 42,
+                bottomObstacle, true, true);
     }
 
     private static void showAnchoredOrbitPopup(Context c, View anchor, PopupWindow popup,
                                                 int width, int rowCount, int rowHeightDp) {
+        showAnchoredOrbitPopup(c, anchor, popup, width, rowCount, rowHeightDp,
+                null, false, false);
+    }
+
+    private static void showAnchoredOrbitPopup(Context c, View anchor, PopupWindow popup,
+                                                int width, int rowCount, int rowHeightDp,
+                                                View bottomObstacle, boolean alignEnd,
+                                                boolean flipAboveWhenBelowDoesNotFit) {
         try {
             View windowRoot = anchor.getRootView();
             if (windowRoot == null) throw new IllegalStateException("No popup root");
 
             Rect visibleFrame = new Rect();
             anchor.getWindowVisibleDisplayFrame(visibleFrame);
-            if (visibleFrame.width() <= 0 || visibleFrame.height() <= 0) {
-                int sw = c.getResources().getDisplayMetrics().widthPixels;
-                int sh = c.getResources().getDisplayMetrics().heightPixels;
-                visibleFrame.set(0, 0, sw, sh);
-            }
 
             int[] anchorScreen = new int[2];
             int[] rootScreen = new int[2];
             anchor.getLocationOnScreen(anchorScreen);
             windowRoot.getLocationOnScreen(rootScreen);
 
+            if (visibleFrame.width() <= 0 || visibleFrame.height() <= 0) {
+                int sw = windowRoot.getWidth() > 0
+                        ? windowRoot.getWidth() : c.getResources().getDisplayMetrics().widthPixels;
+                int sh = windowRoot.getHeight() > 0
+                        ? windowRoot.getHeight() : c.getResources().getDisplayMetrics().heightPixels;
+                visibleFrame.set(rootScreen[0], rootScreen[1], rootScreen[0] + sw,
+                        rootScreen[1] + sh);
+            }
+
+            // getWindowVisibleDisplayFrame handles classic fitted windows and a visible IME. On
+            // edge-to-edge Android windows, explicitly intersect it with system bars/cutouts so a
+            // manually positioned PopupWindow never relies on WindowManager to move it afterward.
+            if (Build.VERSION.SDK_INT >= 30) {
+                WindowInsets rootInsets = windowRoot.getRootWindowInsets();
+                if (rootInsets != null && windowRoot.getWidth() > 0 && windowRoot.getHeight() > 0) {
+                    Insets system = rootInsets.getInsets(
+                            WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                    Rect insetFrame = new Rect(
+                            rootScreen[0] + system.left,
+                            rootScreen[1] + system.top,
+                            rootScreen[0] + windowRoot.getWidth() - system.right,
+                            rootScreen[1] + windowRoot.getHeight() - system.bottom);
+                    if (!visibleFrame.intersect(insetFrame)) visibleFrame.set(insetFrame);
+                }
+            }
+
             int margin = dp(c, 12);
             int gap = dp(c, 6);
             int popupHeight = dp(c, 12) + (rowCount * dp(c, rowHeightDp)) +
                     (Math.max(0, rowCount - 1) * dp(c, 2));
-
-            int safeLeft = visibleFrame.left + margin;
-            int safeRight = visibleFrame.right - margin;
-            int safeTop = visibleFrame.top + margin;
-            int safeBottom = visibleFrame.bottom - margin;
 
             Rect anchorVisible = new Rect(
                     anchorScreen[0],
@@ -1492,31 +1527,69 @@ public final class UiKit {
                         anchorScreen[1] + Math.max(1, anchor.getHeight()));
             }
 
-            int xScreen = anchorVisible.centerX() - (width / 2);
-            xScreen = Math.max(safeLeft, Math.min(safeRight - width, xScreen));
-
-            int belowY = anchorVisible.bottom + gap;
-            int aboveY = anchorVisible.top - popupHeight - gap;
-            int roomBelow = safeBottom - belowY;
-            int roomAbove = anchorVisible.top - gap - safeTop;
-
-            int yScreen;
-            if (roomBelow >= popupHeight || roomBelow >= roomAbove) {
-                yScreen = Math.min(belowY, safeBottom - popupHeight);
-            } else {
-                yScreen = Math.max(safeTop, aboveY);
+            int unavailableBottom = visibleFrame.bottom;
+            if (bottomObstacle != null && bottomObstacle.isShown()) {
+                int[] obstacleScreen = new int[2];
+                bottomObstacle.getLocationOnScreen(obstacleScreen);
+                if (obstacleScreen[1] > visibleFrame.top) {
+                    unavailableBottom = Math.min(unavailableBottom, obstacleScreen[1]);
+                }
             }
 
-            int xInRoot = xScreen - rootScreen[0];
-            int yInRoot = yScreen - rootScreen[1];
+            Rect bounds = anchoredOrbitPopupBounds(visibleFrame, anchorVisible, width, popupHeight,
+                    margin, gap, unavailableBottom, alignEnd, flipAboveWhenBelowDoesNotFit);
+            popup.setWidth(bounds.width());
+            popup.setHeight(bounds.height());
+
+            int xInRoot = bounds.left - rootScreen[0];
+            int yInRoot = bounds.top - rootScreen[1];
 
             popup.setClippingEnabled(false);
             popup.showAtLocation(windowRoot,
                     android.view.Gravity.TOP | android.view.Gravity.START, xInRoot, yInRoot);
         } catch (Exception ignored) {
-            popup.setClippingEnabled(false);
-            popup.showAsDropDown(anchor, 0, dp(c, 6));
+            popup.setClippingEnabled(true);
+            popup.showAsDropDown(anchor, alignEnd ? anchor.getWidth() - width : 0, dp(c, 6));
         }
+    }
+
+    /**
+     * Deterministic screen-space placement shared by every Orbit PopupWindow.
+     *
+     * <p>Strict callers flip above whenever the complete sheet does not fit below; existing menu
+     * callers retain their room-based preference. Width and height are capped before positioning,
+     * making the returned bounds entirely contained by the usable frame even on a narrow or
+     * unusually short window.
+     */
+    static Rect anchoredOrbitPopupBounds(Rect usableFrame, Rect anchor, int requestedWidth,
+                                         int requestedHeight, int margin, int gap,
+                                         int unavailableBottom, boolean alignEnd,
+                                         boolean flipAboveWhenBelowDoesNotFit) {
+        int safeLeft = usableFrame.left + Math.max(0, margin);
+        int safeRight = usableFrame.right - Math.max(0, margin);
+        int safeTop = usableFrame.top + Math.max(0, margin);
+        int safeBottom = usableFrame.bottom - Math.max(0, margin);
+        if (unavailableBottom > usableFrame.top) {
+            safeBottom = Math.min(safeBottom, unavailableBottom - Math.max(0, margin));
+        }
+        safeRight = Math.max(safeLeft + 1, safeRight);
+        safeBottom = Math.max(safeTop + 1, safeBottom);
+
+        int popupWidth = Math.min(Math.max(1, requestedWidth), safeRight - safeLeft);
+        int popupHeight = Math.min(Math.max(1, requestedHeight), safeBottom - safeTop);
+
+        int x = alignEnd ? anchor.right - popupWidth : anchor.centerX() - (popupWidth / 2);
+        x = Math.max(safeLeft, Math.min(safeRight - popupWidth, x));
+
+        int belowY = anchor.bottom + Math.max(0, gap);
+        int aboveY = anchor.top - popupHeight - Math.max(0, gap);
+        int roomBelow = safeBottom - belowY;
+        int roomAbove = anchor.top - Math.max(0, gap) - safeTop;
+        boolean placeBelow = roomBelow >= popupHeight
+                || (!flipAboveWhenBelowDoesNotFit && roomBelow >= roomAbove);
+        int y = placeBelow ? belowY : aboveY;
+        y = Math.max(safeTop, Math.min(safeBottom - popupHeight, y));
+        return new Rect(x, y, x + popupWidth, y + popupHeight);
     }
 
     public static TextView text(Context c, String value, float sizeSp, int color, boolean bold) {

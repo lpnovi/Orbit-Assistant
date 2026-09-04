@@ -83,6 +83,7 @@ public final class ThemeStudioActivity extends Activity {
     private LinearLayout colourRows;
     private LinearLayout presetGrid;
     private ScrollView contentScroll;
+    private View actionBar;
     private OrbitSwitch amoledSwitch;
     private Button applyButton;
     private Button revertButton;
@@ -333,7 +334,8 @@ public final class ThemeStudioActivity extends Activity {
 
         root.addView(twoPane() ? buildWideBody(inset) : buildNarrowBody(inset),
                 new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        root.addView(buildActionBar(inset), new LinearLayout.LayoutParams(
+        actionBar = buildActionBar(inset);
+        root.addView(actionBar, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         refreshDraftSurfaces();
@@ -522,19 +524,19 @@ public final class ThemeStudioActivity extends Activity {
 
         colourRows.addView(colourRow("Accent", "Icons, chips, controls and highlights",
                 tokens.accent, draft.accent, accentSummary(),
-                () -> chooseAccent(tokens)), matchWrap(0));
+                anchor -> chooseAccent(anchor, tokens)), matchWrap(0));
         colourRows.addView(colourRow("Your messages", "The bubble your own messages use",
                 tokens.userBubble, draft.userBubble, bubbleSummary(draft.userBubble),
-                () -> chooseBubble(true, tokens)), matchWrap(10));
+                anchor -> chooseBubble(anchor, true, tokens)), matchWrap(10));
         colourRows.addView(colourRow("Orbit's replies", "The bubble Orbit answers in",
                 tokens.assistantBubble, draft.assistantBubble, bubbleSummary(draft.assistantBubble),
-                () -> chooseBubble(false, tokens)), matchWrap(10));
+                anchor -> chooseBubble(anchor, false, tokens)), matchWrap(10));
         colourRows.addView(colourRow("Cards", "Panels, sheets and Deck tiles",
                 tokens.surface, draft.surface, surfaceSummary(draft.surface),
-                () -> chooseSurface(true, tokens)), matchWrap(10));
+                anchor -> chooseSurface(anchor, true, tokens)), matchWrap(10));
         colourRows.addView(colourRow("Background", "The page behind everything",
                 tokens.background, draft.background, backgroundSummary(),
-                () -> chooseSurface(false, tokens)), matchWrap(10));
+                anchor -> chooseSurface(anchor, false, tokens)), matchWrap(10));
     }
 
     /**
@@ -545,7 +547,7 @@ public final class ThemeStudioActivity extends Activity {
      * anyone who cannot separate two similar hues.
      */
     private View colourRow(String title, String description, int resolved, String token,
-                           String summary, Runnable onOpen) {
+                           String summary, View.OnClickListener onOpen) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -558,7 +560,7 @@ public final class ThemeStudioActivity extends Activity {
         UiKit.pressScale(row);
         row.setOnClickListener(v -> {
             UiKit.haptic(v, HapticFeedbackConstants.VIRTUAL_KEY);
-            onOpen.run();
+            onOpen.onClick(v);
         });
 
         View swatch = new View(this);
@@ -612,7 +614,7 @@ public final class ThemeStudioActivity extends Activity {
 
     // ---- colour choosers ---------------------------------------------------------------------------
 
-    private void chooseAccent(OrbitThemeTokens tokens) {
+    private void chooseAccent(View anchor, OrbitThemeTokens tokens) {
         String[] keys = UiKit.accentKeys();
         List<String> labels = new ArrayList<>();
         List<Integer> colours = new ArrayList<>();
@@ -624,7 +626,7 @@ public final class ThemeStudioActivity extends Activity {
         colours.add(tokens.accent);
 
         int selected = indexOfToken(keys, draft.accent);
-        showColourChoice("Accent", labels, colours, selected, index -> {
+        showColourChoice(anchor, "Accent", labels, colours, selected, index -> {
             if (index < keys.length) {
                 edit(draft.withAccent(keys[index]));
             } else {
@@ -634,7 +636,7 @@ public final class ThemeStudioActivity extends Activity {
         });
     }
 
-    private void chooseBubble(boolean user, OrbitThemeTokens tokens) {
+    private void chooseBubble(View anchor, boolean user, OrbitThemeTokens tokens) {
         String[] keys = UiKit.bubbleColorKeys();
         List<String> labels = new ArrayList<>();
         List<Integer> colours = new ArrayList<>();
@@ -652,7 +654,7 @@ public final class ThemeStudioActivity extends Activity {
 
         String token = user ? draft.userBubble : draft.assistantBubble;
         String role = user ? "Your messages" : "Orbit's replies";
-        showColourChoice(role, labels, colours, indexOfToken(keys, token), index -> {
+        showColourChoice(anchor, role, labels, colours, indexOfToken(keys, token), index -> {
             if (index < keys.length) {
                 edit(user ? draft.withUserBubble(keys[index]) : draft.withAssistantBubble(keys[index]));
             } else {
@@ -666,7 +668,7 @@ public final class ThemeStudioActivity extends Activity {
         });
     }
 
-    private void chooseSurface(boolean surface, OrbitThemeTokens tokens) {
+    private void chooseSurface(View anchor, boolean surface, OrbitThemeTokens tokens) {
         String role = surface ? "Cards" : "Background";
         List<String> labels = new ArrayList<>();
         List<Integer> colours = new ArrayList<>();
@@ -677,7 +679,7 @@ public final class ThemeStudioActivity extends Activity {
 
         String token = surface ? draft.surface : draft.background;
         int selected = OrbitTheme.isHexToken(token) ? 1 : 0;
-        showColourChoice(role, labels, colours, selected, index -> {
+        showColourChoice(anchor, role, labels, colours, selected, index -> {
             if (index == 0) {
                 edit(surface ? draft.withSurface(OrbitTheme.CLASSIC)
                         : draft.withBackground(OrbitTheme.CLASSIC));
@@ -694,13 +696,12 @@ public final class ThemeStudioActivity extends Activity {
 
     private interface IndexChoice { void onIndex(int index); }
 
-    private void showColourChoice(String role, List<String> labels, List<Integer> colours,
-                                  int selected, IndexChoice choice) {
-        View anchor = colourRows == null ? getWindow().getDecorView() : colourRows;
+    private void showColourChoice(View anchor, String role, List<String> labels, List<Integer> colours,
+                                   int selected, IndexChoice choice) {
         int[] colourArray = new int[colours.size()];
         for (int i = 0; i < colours.size(); i++) colourArray[i] = colours.get(i);
-        UiKit.showOrbitColorMenu(this, anchor, labels.toArray(new String[0]), colourArray,
-                selected, (index, label) -> choice.onIndex(index));
+        UiKit.showOrbitColorMenu(this, anchor, actionBar, labels.toArray(new String[0]),
+                colourArray, selected, (index, label) -> choice.onIndex(index));
     }
 
     private void pickCustom(String role, int initial, List<Integer> suggestions,
