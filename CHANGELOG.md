@@ -669,3 +669,12 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - **Ask Orbit about this page** attaches the page as a card with a thumbnail and page number that reopens it; where your provider supports images Orbit sees the page itself, otherwise its text.
   - **Timers** now read "4 minutes and 30 seconds", "4 and a half minutes" and "1 hour 5 minutes 30 seconds" correctly, set in your usual Clock app.
   - Orbit's notification categories appear consistently in Android settings without anything being posted, and presentation polish continues throughout. 💜
+
+- **v0.7.8.3-beta.1**: Theme Studio — design how Orbit looks, with a live preview.
+  - A new **Theme Studio**, opened from Settings → Look & Feel, with a preview of a real Orbit conversation that updates as you edit.
+  - Set the accent, your message bubbles, Orbit's reply bubbles, cards and the background, each on its own.
+  - Seven Orbit presets including AMOLED, plus your own saved themes: save, rename, duplicate and delete.
+  - A built-in colour picker with hex entry, so any colour is available without leaving Orbit.
+  - Nothing changes until you press Apply, and Orbit asks before discarding unapplied edits.
+  - Orbit warns when a combination would be hard to read, and keeps AMOLED backgrounds truly black.
+  - Your existing accent, AMOLED and bubble colours carry over exactly.

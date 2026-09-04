@@ -104,6 +104,10 @@ public final class OrbitNavigation {
         // These three do not ask, because nothing is written until Save. They still hold typing the
         // user would lose, so they follow the same rule: the page moves only when leaving costs
         // nothing. That is stricter than their behaviour before Beta 3 and never looser.
+        // Theme Studio edits a draft and writes nothing until Apply, so leaving it with unapplied
+        // colours would silently discard them. Same contract as the three above: the page moves
+        // while the draft matches what is applied, and stands aside once it does not.
+        put(ThemeStudioActivity.class, Policy.GUARDED, "Theme Studio");
         put(RoutineBuilderActivity.class, Policy.GUARDED, "Routine builder");
         put(CustomCommandEditorActivity.class, Policy.GUARDED, "Custom command editor");
         put(AppProfileActivity.class, Policy.GUARDED, "App behaviour");

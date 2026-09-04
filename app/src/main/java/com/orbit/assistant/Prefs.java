@@ -66,6 +66,19 @@ public final class Prefs {
     public static final String NOTIFICATION_RETENTION_DAYS = "notification_retention_days";
     public static final String AMOLED_MODE = "amoled_mode";
     public static final String APP_FONT = "app_font";
+    /**
+     * Theme Studio's two additional appearance tokens, and the identity of the theme they belong
+     * to. The other four — accent, AMOLED, and the two bubble colours — are the keys above, which
+     * is deliberate: a theme is the appearance preferences Orbit already had, named as one thing,
+     * not a parallel copy of them that could drift. See {@link OrbitThemeStore}.
+     */
+    public static final String THEME_SURFACE = "theme_surface";
+    public static final String THEME_BACKGROUND = "theme_background";
+    public static final String THEME_ID = "theme_id";
+    public static final String THEME_NAME = "theme_name";
+    public static final String THEME_SCHEMA = "theme_schema";
+    /** The id an appearance that matches no shipped preset is recorded under. */
+    public static final String THEME_ID_CUSTOM = "custom";
     public static final String QUICK_SETTINGS_ROUTINE_ID = "quick_settings_routine_id";
     public static final String UPDATE_NOTIFICATIONS = "update_notifications";
     /**
@@ -154,7 +167,8 @@ public final class Prefs {
     private static final Set<String> BACKUP_STRING_KEYS = new HashSet<>(Arrays.asList(
             MODEL, REASONING, INTELLIGENCE_MODE, ACCENT, USER_BUBBLE_COLOR,
             ASSISTANT_BUBBLE_COLOR, CHAT_TEXT_SIZE, WEATHER_LOCATION, WEATHER_UNITS, APP_FONT,
-            QUICK_SETTINGS_ROUTINE_ID, PAGE_TRANSITION));
+            QUICK_SETTINGS_ROUTINE_ID, PAGE_TRANSITION,
+            THEME_SURFACE, THEME_BACKGROUND, THEME_ID, THEME_NAME));
     private static final Set<String> BACKUP_BOOLEAN_KEYS = new HashSet<>(Arrays.asList(
             SCREEN_CONTEXT, SCREENSHOT, CONTEXT_CHIPS, ATTACH_SCREEN_BY_DEFAULT,
             SPEAK, HAPTICS, AUTO_LISTEN, AUTO_LISTEN_ON_OPEN, SMART_FOLLOW_UPS,
@@ -166,7 +180,7 @@ public final class Prefs {
             NOTIFICATION_AI_ENABLED, AMOLED_MODE, UPDATE_NOTIFICATIONS,
             ENHANCED_CHAT_BACK, CHAT_SWIPE_ACTIONS, LOCAL_DEVICE_ACTIONS));
     private static final Set<String> BACKUP_INTEGER_KEYS = new HashSet<>(
-            Arrays.asList(NOTIFICATION_RETENTION_DAYS));
+            Arrays.asList(NOTIFICATION_RETENTION_DAYS, THEME_SCHEMA));
 
     public static SharedPreferences get(Context context) {
         return context.getSharedPreferences(FILE, Context.MODE_PRIVATE);

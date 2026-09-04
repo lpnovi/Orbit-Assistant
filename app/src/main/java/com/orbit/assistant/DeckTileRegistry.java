@@ -30,6 +30,7 @@ public final class DeckTileRegistry {
     public static final String TYPE_CAPABILITIES = "orbit.capabilities";
     public static final String TYPE_EXTENSIONS = "orbit.extensions";
     public static final String TYPE_SETTINGS = "orbit.settings";
+    public static final String TYPE_THEME_STUDIO = "orbit.theme_studio";
     public static final String TYPE_FLASHLIGHT = "action.flashlight";
     public static final String TYPE_MEDIA = "action.media";
     public static final String TYPE_ROUTINE = "routine";
@@ -120,6 +121,8 @@ public final class DeckTileRegistry {
                 R.drawable.ic_deck_capabilities, BOTH, true, false, Category.ORBIT, "Orbit shortcut"));
         put(new Definition(TYPE_EXTENSIONS, "Extensions", "Manage your Orbit extensions",
                 R.drawable.ic_deck_extension, BOTH, true, false, Category.ORBIT, "Orbit shortcut"));
+        put(new Definition(TYPE_THEME_STUDIO, "Theme Studio", "Design how Orbit looks",
+                R.drawable.ic_deck_theme, BOTH, true, false, Category.ORBIT, "Orbit shortcut"));
         put(new Definition(TYPE_SETTINGS, "Settings", "Open Orbit settings",
                 R.drawable.ic_settings, BOTH, true, false, Category.ORBIT, "Orbit shortcut"));
 

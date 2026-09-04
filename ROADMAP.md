@@ -1056,25 +1056,55 @@ Stable. Each Beta is recorded in full above; in short:
   timer durations and notification consistency, and found no new regression — so promotion changed
   version metadata and release documentation only, with no functional source change
 
+### 0.7.8.3-beta.1 — Theme Studio
+`0.7.8.3-beta.1` opens the Theme Studio line on a `0.7.8.2` Stable that held up on the device. It is
+one feature, and the design decision that shaped it is not a visual one.
+
+Orbit already had an appearance system: an accent key, an AMOLED flag and two bubble-colour keys,
+each read directly out of `Prefs` by whatever needed them. The obvious way to build a theme editor
+is to put a new theme model beside that and have both write colours; the result is two sources of
+truth that agree until the day they do not. So Theme Studio does not introduce one. A theme *is*
+those preferences, named as a single object, plus the two tokens this Beta adds. Migration is
+therefore a schema stamp rather than a conversion — an upgrading install keeps the exact values it
+had — and every one of the ~400 existing `UiKit.accent()` call sites keeps working untouched.
+
+- **A dedicated Theme Studio**, reached from Settings → Look & Feel and from an optional Deck tile,
+  with a live preview built from the same resolved tokens the real conversation is built from, so
+  it cannot drift into showing colours the app would not actually draw
+- **Six user-facing decisions**: accent, user bubble, assistant bubble, cards, background and
+  AMOLED. Everything else Orbit draws — the card ramp, secondary text, inline code, links, system
+  bar icons — is derived centrally from those rather than stored
+- **A draft model.** Editing changes a draft and nothing else; Apply commits it; Back with unapplied
+  edits reaches a discard confirmation through Orbit's existing guarded-editor contract
+- **Seven Orbit presets** (Default, AMOLED, Nebula, Tide, Ember, Moss, Blurple), immutable, and a
+  local library of the user's own with save, rename, duplicate and delete
+- **An Orbit-native colour picker** — hue, saturation/value, hex entry, current-versus-new — built
+  from `Canvas` rather than a new dependency, with alpha deliberately not offered
+- **One owner for readability.** `OrbitContrast` holds every luminance and contrast threshold Orbit
+  applies, including the two role cutoffs that already shipped, which are preserved rather than
+  unified so no existing user's accent or bubble silently changes its foreground
+- **Contrast warnings, not prohibitions.** Orbit names the pairing that would be hard to read and
+  still lets the theme be applied
+- **AMOLED stays AMOLED**: true black for the page, and the card ramp untouched, so cards remain
+  visible rather than the whole app collapsing to one flat black
+- **Responsive**: one column with the preview on top on a phone, preview beside the controls on a
+  tablet, with the content width capped so a large tablet centres rather than stretches
+
 # Next
 
-## 0.7.8.3 — Theme Studio
+## 0.7.8.3-beta.2 — Theme Studio sharing & refinement
 
-The next major development priority, and a real visual design editor for Orbit rather than more
-colour preferences in Settings. Built on Look & Feel, it should become its own surface:
+After device validation of Beta 1 on the Galaxy S25 Ultra and the Tab S9 Plus. The storage format
+was written for this: a versioned, self-describing `orbit.theme` document that already carries a
+format identifier and schema, so the file a later Beta exports and the one Beta 1 already stores are
+the same shape.
 
-- a polished Theme Studio screen with live visual previews of a real conversation
-- saved custom theme presets, alongside cohesive Orbit-designed ones
-- Accent customization
-- user-bubble and assistant-bubble customization, controlled separately
-- surface and card customization, and background treatment
-- AMOLED variants of each theme
-- contrast and readability safeguards, so no preset can produce unreadable text
-- import- and exportable Orbit theme files where feasible
-- responsive phone and tablet presentation
-- an eventual Orbit Deck tile
-
-Development begins as `0.7.8.3-beta.1 — Theme Studio`.
+- import and export of Orbit theme files, with a parser that rejects anything not ours
+- preview polish, and any theme token device testing shows is not yet covered
+- additional curated presets, if real use shows a gap rather than a wish for more
+- tablet layout refinement
+- optional restrained shape and corner-radius customization, only if it fits the token model cleanly
+- a Theme Studio Deck destination, if Beta 1's is not carried forward
 
 # Later
 

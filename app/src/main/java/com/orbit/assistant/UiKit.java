@@ -56,13 +56,36 @@ public final class UiKit {
     private static final long ORBIT_POPUP_EXIT_MS = 85L;
     static final long ORBIT_DIALOG_ENTER_MS = 115L;
     static final float ORBIT_DIALOG_ENTER_SCALE = 0.985f;
+    /**
+     * Orbit's own canvas, unthemed. Every one of these is what the app has always drawn, and the
+     * classic path through {@link #applyTheme} returns them untouched, so a default install renders
+     * after Theme Studio exactly as it did before it.
+     */
     private static final int NORMAL_BG = Color.rgb(10, 12, 17);
+    private static final int CLASSIC_SURFACE = Color.rgb(22, 25, 33);
+    private static final int CLASSIC_SURFACE_2 = Color.rgb(30, 34, 44);
+    private static final int CLASSIC_SURFACE_3 = Color.rgb(37, 41, 53);
+    private static final int CLASSIC_TEXT = Color.rgb(244, 244, 248);
+    private static final int CLASSIC_MUTED = Color.rgb(166, 171, 185);
+    /** Orbit's ink for content on a light ground, matching what {@link #onBubble} has returned. */
+    private static final int CLASSIC_DARK_TEXT = Color.rgb(24, 27, 34);
+
+    /**
+     * The live Orbit canvas.
+     *
+     * <p>These are process-wide and mutable, resolved from the active theme by {@link #syncTheme}
+     * before any screen builds itself. {@code BG} already worked this way for AMOLED; Theme Studio
+     * extends the same mechanism to the card ramp and to the inks, rather than adding a second
+     * colour system beside it. Views bake these in when they are built, which is why an appearance
+     * change that moves any of them has to rebuild the screen — see
+     * {@link #structuralAppearanceSignature}.
+     */
     public static int BG = NORMAL_BG;
-    public static final int SURFACE = Color.rgb(22, 25, 33);
-    public static final int SURFACE_2 = Color.rgb(30, 34, 44);
-    public static final int SURFACE_3 = Color.rgb(37, 41, 53);
-    public static final int TEXT = Color.rgb(244, 244, 248);
-    public static final int MUTED = Color.rgb(166, 171, 185);
+    public static int SURFACE = CLASSIC_SURFACE;
+    public static int SURFACE_2 = CLASSIC_SURFACE_2;
+    public static int SURFACE_3 = CLASSIC_SURFACE_3;
+    public static int TEXT = CLASSIC_TEXT;
+    public static int MUTED = CLASSIC_MUTED;
     public static final int DEFAULT_ACCENT = Color.rgb(139, 124, 255);
     public static final int BLURPLE = Color.rgb(88, 101, 242); // Discord-style blurple
     public static final int PASTEL_PINK = Color.rgb(255, 209, 220); // #FFD1DC
@@ -96,13 +119,43 @@ public final class UiKit {
     private UiKit() {}
 
     /**
-     * Sync the process-wide Orbit canvas to the saved appearance preference.
-     * AMOLED mode uses true black for large background areas while keeping
-     * raised surfaces intact for readable card separation.
+     * Sync the process-wide Orbit canvas to the active theme.
+     *
+     * <p>AMOLED mode uses true black for large background areas while keeping raised surfaces
+     * intact for readable card separation. That behaviour predates Theme Studio and is unchanged:
+     * AMOLED is applied to the page, never to the card ramp, so cards stay distinguishable.
      */
     public static void syncTheme(Context c) {
-        BG = c != null && Prefs.amoledMode(c) ? Color.BLACK : NORMAL_BG;
+        if (c == null) return;
+        applyTheme(OrbitThemeTokens.resolve(c, OrbitThemeStore.active(c)));
     }
+
+    /**
+     * Installs an already-resolved theme as the canvas the whole app draws from.
+     *
+     * <p>The arithmetic lives in {@link OrbitThemeTokens} rather than here, because the Theme
+     * Studio preview has to resolve a draft <em>without</em> changing what the rest of the app is
+     * currently drawing. One resolver with two consumers is what stops the preview and the real
+     * app from slowly disagreeing.
+     */
+    static void applyTheme(OrbitThemeTokens tokens) {
+        if (tokens == null) return;
+        BG = tokens.background;
+        SURFACE = tokens.surface;
+        SURFACE_2 = tokens.surface2;
+        SURFACE_3 = tokens.surface3;
+        TEXT = tokens.text;
+        MUTED = tokens.muted;
+    }
+
+    /** Orbit's unthemed canvas, for the resolver and for the Classic swatches. */
+    static int classicBackground() { return NORMAL_BG; }
+    static int classicSurface() { return CLASSIC_SURFACE; }
+    static int classicSurface2() { return CLASSIC_SURFACE_2; }
+    static int classicSurface3() { return CLASSIC_SURFACE_3; }
+    static int classicText() { return CLASSIC_TEXT; }
+    static int classicMuted() { return CLASSIC_MUTED; }
+    static int classicDarkText() { return CLASSIC_DARK_TEXT; }
 
     /** Shared signal used by active Orbit Settings surfaces after an appearance preference changes. */
     public interface AppearanceListener {
@@ -116,7 +169,9 @@ public final class UiKit {
                 "|amoled=" + Prefs.amoledMode(c) +
                 "|font=" + Prefs.appFont(c) +
                 "|userBubble=" + Prefs.userBubbleColor(c) +
-                "|assistantBubble=" + Prefs.assistantBubbleColor(c);
+                "|assistantBubble=" + Prefs.assistantBubbleColor(c) +
+                "|surface=" + Prefs.get(c).getString(Prefs.THEME_SURFACE, OrbitTheme.CLASSIC) +
+                "|background=" + Prefs.get(c).getString(Prefs.THEME_BACKGROUND, OrbitTheme.CLASSIC);
     }
 
     /**
@@ -127,10 +182,16 @@ public final class UiKit {
      * bubble colours are deliberately excluded: the font can be re-applied to the views already on
      * screen, and bubble colours do not appear in Settings at all. Keeping them out of this
      * signature is what stops routine appearance changes from replacing the whole screen.
+     *
+     * <p>Theme Studio's surface and background belong here for the same reason accent does: they
+     * move {@code SURFACE}, {@code TEXT} and {@code MUTED}, which every card, label and divider
+     * already on screen has baked in.
      */
     public static String structuralAppearanceSignature(Context c) {
         if (c == null) return "";
-        return "resolved=" + Integer.toHexString(accent(c)) + "|amoled=" + Prefs.amoledMode(c);
+        return "resolved=" + Integer.toHexString(accent(c)) + "|amoled=" + Prefs.amoledMode(c) +
+                "|surface=" + Prefs.get(c).getString(Prefs.THEME_SURFACE, OrbitTheme.CLASSIC) +
+                "|background=" + Prefs.get(c).getString(Prefs.THEME_BACKGROUND, OrbitTheme.CLASSIC);
     }
 
     /** Shared appearance/provider presentation catalogs used by Settings and onboarding. */
@@ -582,23 +643,15 @@ public final class UiKit {
         }
     }
 
-    /** WCAG-style contrast ratio between two opaque colors, 1.0 when identical. */
+    /**
+     * WCAG-style contrast ratio between two opaque colors, 1.0 when identical.
+     *
+     * <p>The arithmetic itself lives in {@link OrbitContrast}, which is where every readability
+     * threshold Orbit applies is now written down. This stays as the name the rest of the app
+     * already calls.
+     */
     public static double contrastRatio(int foreground, int background) {
-        double lighter = Math.max(relativeLuminance(foreground), relativeLuminance(background));
-        double darker = Math.min(relativeLuminance(foreground), relativeLuminance(background));
-        return (lighter + 0.05d) / (darker + 0.05d);
-    }
-
-    private static double relativeLuminance(int color) {
-        double r = linearChannel(Color.red(color) / 255d);
-        double g = linearChannel(Color.green(color) / 255d);
-        double b = linearChannel(Color.blue(color) / 255d);
-        return 0.2126d * r + 0.7152d * g + 0.0722d * b;
-    }
-
-    private static double linearChannel(double channel) {
-        return channel <= 0.04045d ? channel / 12.92d :
-                Math.pow((channel + 0.055d) / 1.055d, 2.4d);
+        return OrbitContrast.contrastRatio(foreground, background);
     }
 
     /** Orbit-styled determinate progress for measurable foreground work. */
@@ -705,6 +758,28 @@ public final class UiKit {
      * padding tracks the larger of the navigation bar and IME so composers stay
      * above Samsung Keyboard on edge-to-edge Android 15/16 windows.
      */
+    /**
+     * Light or dark status- and navigation-bar icons, decided by the page they sit on.
+     *
+     * <p>Orbit could hardcode light icons for as long as every Orbit page was dark. A theme can now
+     * name a light background, so the choice is measured instead — against the page, never against
+     * the accent, because a bright accent on a dark page is still a dark page. Applied centrally so
+     * every screen gets it rather than each one deciding for itself.
+     */
+    public static void applySystemBarIcons(Window window) {
+        if (window == null) return;
+        try {
+            View decor = window.getDecorView();
+            int flags = decor.getSystemUiVisibility();
+            int light = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            int lightNav = Build.VERSION.SDK_INT >= 26
+                    ? View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR : 0;
+            flags = OrbitContrast.prefersDarkInk(BG)
+                    ? (flags | light | lightNav) : (flags & ~light & ~lightNav);
+            decor.setSystemUiVisibility(flags);
+        } catch (Exception ignored) {}
+    }
+
     public static void applyActivityInsets(Activity activity, View root, boolean imeAware) {
         if (activity == null || root == null) return;
         syncTheme(activity);
@@ -713,6 +788,11 @@ public final class UiKit {
         Window window = activity.getWindow();
         window.setStatusBarColor(BG);
         window.setNavigationBarColor(BG);
+        // The window's own background comes from Theme.Orbit, which names a fixed colour and so
+        // cannot follow a themed page. Setting it here means the frame before a page has drawn —
+        // launching, navigating, rebuilding — is the page's colour rather than the old default.
+        window.setBackgroundDrawable(new ColorDrawable(BG));
+        applySystemBarIcons(window);
         window.clearFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         if (Build.VERSION.SDK_INT >= 30) window.setDecorFitsSystemWindows(false);
@@ -851,6 +931,9 @@ public final class UiKit {
     }
 
     public static int accentForName(Context c, String chosen) {
+        // A theme may name an accent Orbit's catalogue never had. Every existing caller keeps
+        // working because a catalogue key is still a catalogue key; only the hex form is new.
+        if (OrbitTheme.isHexToken(chosen)) return OrbitTheme.hexTokenColor(chosen);
         if ("blurple".equals(chosen)) return BLURPLE;
         if ("violet".equals(chosen)) return Color.rgb(139, 124, 255);
         if ("blue".equals(chosen)) return Color.rgb(80, 151, 255);
@@ -871,10 +954,16 @@ public final class UiKit {
     /**
      * Foreground color for controls filled with the current accent. Light pastel
      * accents need dark content to preserve contrast; darker accents use white.
+     *
+     * <p>The cutoff is deliberately the one Orbit shipped rather than
+     * {@link OrbitContrast#prefersDarkInk}, which is the better rule and is what every new Theme
+     * Studio surface uses. Applying it here would flip the foreground on Blue, Rose, Violet and
+     * Mint for everyone already using them, which is a redesign of the existing app dressed up as
+     * a correctness fix.
      */
     public static int onAccent(int accent) {
-        double luminance = (0.2126 * Color.red(accent) + 0.7152 * Color.green(accent) + 0.0722 * Color.blue(accent)) / 255.0;
-        return luminance > 0.68 ? Color.rgb(22, 25, 33) : Color.WHITE;
+        return OrbitContrast.simpleLuminance(accent) > OrbitContrast.ON_ACCENT_CUTOFF
+                ? Color.rgb(22, 25, 33) : Color.WHITE;
     }
 
     public static int onAccent(Context c) {
@@ -885,6 +974,7 @@ public final class UiKit {
     public static int bubbleFill(Context c, String choice, int classicFill) {
         if (choice == null || "classic".equals(choice)) return classicFill;
         if ("accent".equals(choice)) return accent(c);
+        if (OrbitTheme.isHexToken(choice)) return OrbitTheme.hexTokenColor(choice);
         return accentForName(c, choice);
     }
 
@@ -896,10 +986,16 @@ public final class UiKit {
         return bubbleFill(c, Prefs.assistantBubbleColor(c), classicFill);
     }
 
-    /** Text color chosen for readable contrast on a custom bubble fill. */
+    /**
+     * Text color chosen for readable contrast on a custom bubble fill.
+     *
+     * <p>Same reasoning as {@link #onAccent}: the shipped cutoff is preserved so that a bubble
+     * colour somebody chose in an earlier release keeps the foreground it has always had. Where a
+     * pairing is genuinely poor, Theme Studio says so rather than silently changing it.
+     */
     public static int onBubble(int fill) {
-        double luminance = (0.2126 * Color.red(fill) + 0.7152 * Color.green(fill) + 0.0722 * Color.blue(fill)) / 255.0;
-        return luminance > 0.62 ? Color.rgb(24, 27, 34) : TEXT;
+        return OrbitContrast.simpleLuminance(fill) > OrbitContrast.ON_BUBBLE_CUTOFF
+                ? CLASSIC_DARK_TEXT : CLASSIC_TEXT;
     }
 
 
@@ -907,7 +1003,7 @@ public final class UiKit {
      * Minimum contrast a link must reach against the surface it sits on. Matches the threshold
      * {@link #syncTheme} already uses when correcting inherited OEM colours.
      */
-    private static final double LINK_MIN_CONTRAST = 3.0d;
+    private static final double LINK_MIN_CONTRAST = OrbitContrast.LARGE_TEXT_MIN;
 
     /**
      * A readable link colour for text drawn on {@code background}.
@@ -967,18 +1063,11 @@ public final class UiKit {
      * such as the rose accent with the weaker of the two.
      */
     private static int bestInkOn(int background) {
-        int darkInk = Color.rgb(18, 20, 26);
-        int lightInk = Color.rgb(240, 243, 250);
-        return contrastRatio(darkInk, background) >= contrastRatio(lightInk, background)
-                ? darkInk : lightInk;
+        return OrbitContrast.inkOn(background);
     }
 
     public static int blend(int a, int b, float amountA) {
-        float t = Math.max(0, Math.min(1, amountA));
-        int r = Math.round(Color.red(a) * t + Color.red(b) * (1 - t));
-        int g = Math.round(Color.green(a) * t + Color.green(b) * (1 - t));
-        int bl = Math.round(Color.blue(a) * t + Color.blue(b) * (1 - t));
-        return Color.rgb(r, g, bl);
+        return OrbitContrast.blend(a, b, amountA);
     }
 
     public static int withAlpha(int color, int alpha) {

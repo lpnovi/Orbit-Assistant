@@ -247,6 +247,10 @@
             android:excludeFromRecents="true" android:theme="@style/Theme.Orbit.Bridge" />
         <activity android:name=".SettingsActivity"
             android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".ThemeStudioActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
+            android:windowSoftInputMode="adjustResize" />
         <activity android:name=".AiProvidersActivity"
             android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".LocalAiActivity"

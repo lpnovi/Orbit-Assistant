@@ -56,7 +56,10 @@ public final class OrbitNavigationPolicyTest {
     /** Editors: the gesture is offered while clean and stands aside once there is work to lose. */
     private static final String[] GUARDED = {
             "RoutineEditorActivity", "TimeTriggerEditorActivity", "LocationTriggerEditorActivity",
-            "RoutineBuilderActivity", "CustomCommandEditorActivity", "AppProfileActivity"
+            "RoutineBuilderActivity", "CustomCommandEditorActivity", "AppProfileActivity",
+            // Theme Studio edits a draft and writes nothing until Apply, so leaving with unapplied
+            // colours would discard them silently.
+            "ThemeStudioActivity"
     };
 
     /** Back cancels, denies, or steps within the screen. Deliberately unchanged by Beta 3. */

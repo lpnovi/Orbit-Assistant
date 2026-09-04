@@ -147,43 +147,35 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * The 0.7.8.2 line ran as four Betas and is now promoted to Stable.
+     * The 0.7.8.3 line opens as a Beta, and this is its first.
      *
-     * <p>Beta 1 added Orbit Deck. Beta 2 brought Documents and refined the Deck. Beta 3 finished
-     * PDF search highlighting, page context and timer durations, and a Galaxy S25 Ultra confirmed
-     * all of it while isolating one remaining defect it alone could show: dragging a full-span
-     * tile looked wrong for the length of the gesture even though it landed correctly. Beta 4
-     * corrected exactly that, and the phone confirmed the result.
+     * <p>Theme Studio is the kind of work that has to be looked at rather than measured. The unit
+     * tests can prove the theme model, the contrast arithmetic and the migration; whether a
+     * preview reads as trustworthy on a real panel, and whether a custom surface still looks like
+     * Orbit, is a question only the Galaxy S25 Ultra answers. So this ships as a prerelease.
      *
-     * <p>Stable therefore carries Beta 4's behaviour unchanged. Everything this line added had to
-     * be looked at rather than only measured — how a tile feels under a thumb, whether a highlight
-     * stays welded to a word through a pinch, whether a page thumbnail reads as a real attachment —
-     * and the device answered all of it.
-     *
-     * <p>The guard now runs the other way round. A finished release must not quietly regain
-     * prerelease metadata and be published to the Beta channel by accident, so this fails before
-     * publication rather than on a phone.
+     * <p>The guard runs both ways: a Beta must not be published to the Stable channel, and this
+     * fails before publication rather than on a phone.
      */
-    @Test public void thisBuildIsTheOrbitDeckAndDocumentsStable() {
+    @Test public void thisBuildIsTheFirstThemeStudioBeta() {
         String version = BuildConfig.VERSION_NAME;
-        assertFalse(OrbitVersion.installedIsBeta());
-        assertFalse(OrbitVersion.isBeta(version));
-        assertTrue(OrbitVersion.isStable(version));
-        assertEquals("0.7.8.2", OrbitVersion.baseVersion(version));
+        assertTrue(OrbitVersion.installedIsBeta());
+        assertTrue(OrbitVersion.isBeta(version));
+        assertFalse(OrbitVersion.isStable(version));
+        assertEquals("0.7.8.3", OrbitVersion.baseVersion(version));
+        assertEquals(1, OrbitVersion.betaNumber(version));
 
-        assertEquals("a Stable build carries no beta counter", 0, OrbitVersion.betaNumber(version));
-        assertEquals("Orbit Assistant v0.7.8.2", OrbitVersion.releaseTitle(version));
-        assertEquals("v0.7.8.2", OrbitVersion.tagFor(version));
-        assertFalse("the release workflow must publish it as Stable",
+        assertEquals("Orbit Assistant v0.7.8.3 Beta 1", OrbitVersion.releaseTitle(version));
+        assertEquals("v0.7.8.3-beta.1", OrbitVersion.tagFor(version));
+        assertTrue("the release workflow must publish it as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
-        assertTrue("and never as a prerelease",
+        assertFalse("and never as Stable",
                 OrbitVersion.isStableTag(OrbitVersion.tagFor(version)));
         assertTrue("it must outrank the Stable line it was built from",
-                OrbitVersion.compareVersions(version, "0.7.8.1") > 0);
-        assertTrue("and every Beta of its own line",
-                OrbitVersion.compareVersions(version, "0.7.8.2-beta.4") > 0
-                        && OrbitVersion.compareVersions(version, "0.7.8.2-beta.3") > 0
-                        && OrbitVersion.compareVersions(version, "0.7.8.2-beta.2") > 0
-                        && OrbitVersion.compareVersions(version, "0.7.8.2-beta.1") > 0);
+                OrbitVersion.compareVersions(version, "0.7.8.2") > 0);
+        assertTrue("and every Beta of that line",
+                OrbitVersion.compareVersions(version, "0.7.8.2-beta.4") > 0);
+        assertTrue("while the Stable it is working towards still outranks it",
+                OrbitVersion.compareVersions("0.7.8.3", version) > 0);
     }
 }

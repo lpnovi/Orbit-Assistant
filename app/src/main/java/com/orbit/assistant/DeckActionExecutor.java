@@ -108,6 +108,9 @@ public final class DeckActionExecutor {
         if (DeckTileRegistry.TYPE_EXTENSIONS.equals(type)) {
             open(activity, new Intent(activity, ExtensionsActivity.class), callback); return;
         }
+        if (DeckTileRegistry.TYPE_THEME_STUDIO.equals(type)) {
+            open(activity, new Intent(activity, ThemeStudioActivity.class), callback); return;
+        }
         if (DeckTileRegistry.TYPE_SETTINGS.equals(type)) {
             open(activity, new Intent(activity, SettingsActivity.class), callback); return;
         }

@@ -805,6 +805,11 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         page.addView(conversationCard);
 
         page.addView(sectionTitle("LOOK & FEEL", "appearance"));
+        LinearLayout studioCard = card();
+        tagSectionCard(studioCard, "appearance");
+        studioCard.addView(themeStudioRow());
+        page.addView(studioCard);
+
         LinearLayout styleCard = card();
         tagSectionCard(styleCard, "appearance");
         styleCard.addView(label("Accent"));
@@ -1460,6 +1465,68 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
             Prefs.get(this).edit().putBoolean(Prefs.WEATHER_USE_DEVICE_LOCATION, checked).apply();
         });
         return UiKit.switchRow(this, "Use approximate device location for local weather", null, control);
+    }
+
+    /**
+     * The way into Theme Studio.
+     *
+     * <p>It sits above the individual appearance controls rather than replacing them. The controls
+     * below are still the quickest way to change one thing — pick an accent, turn AMOLED on — and
+     * they write the same preferences Theme Studio does, so neither can contradict the other. The
+     * Studio is where a whole appearance is designed; this row says so and gets out of the way.
+     */
+    private View themeStudioRow() {
+        OrbitTheme active = OrbitThemeStore.active(this);
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(UiKit.dp(this, 14), UiKit.dp(this, 12),
+                UiKit.dp(this, 12), UiKit.dp(this, 12));
+        row.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2,
+                UiKit.withAlpha(UiKit.accent(this), 38), UiKit.accent(this), 16, this));
+        row.setClickable(true);
+        row.setFocusable(true);
+        UiKit.pressScale(row);
+
+        View swatch = new View(this);
+        swatch.setBackground(UiKit.outlined(UiKit.accent(this),
+                UiKit.withAlpha(UiKit.TEXT, 60), 12, this));
+        swatch.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams swatchLp =
+                new LinearLayout.LayoutParams(UiKit.dp(this, 38), UiKit.dp(this, 38));
+        swatchLp.rightMargin = UiKit.dp(this, 13);
+        row.addView(swatch, swatchLp);
+
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        text.addView(UiKit.text(this, "Theme Studio", 15, UiKit.TEXT, true));
+        TextView status = UiKit.text(this,
+                "Current theme: " + active.name + (active.amoled ? " · AMOLED" : ""),
+                12, UiKit.MUTED, false);
+        status.setPadding(0, UiKit.dp(this, 3), 0, 0);
+        text.addView(status);
+        row.addView(text, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
+        TextView arrow = UiKit.text(this, "›", 24, UiKit.accent(this), false);
+        arrow.setPadding(UiKit.dp(this, 10), 0, UiKit.dp(this, 4), 0);
+        row.addView(arrow);
+
+        row.setContentDescription("Theme Studio. Current theme " + active.name
+                + ". Design, preview and save Orbit themes.");
+        row.setOnClickListener(v -> startActivity(new Intent(this, ThemeStudioActivity.class)));
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        LinearLayout holder = new LinearLayout(this);
+        holder.setOrientation(LinearLayout.VERTICAL);
+        holder.addView(row, lp);
+        TextView note = UiKit.text(this,
+                "Design a complete Orbit theme with a live preview: accent, message bubbles, cards "
+                        + "and background, with Orbit presets and your own saved themes.",
+                12, UiKit.MUTED, false);
+        note.setPadding(0, UiKit.dp(this, 10), 0, 0);
+        holder.addView(note);
+        return holder;
     }
 
     private View amoledToggle() {

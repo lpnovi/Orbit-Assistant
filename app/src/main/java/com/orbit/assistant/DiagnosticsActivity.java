@@ -868,8 +868,25 @@ public final class DiagnosticsActivity extends Activity {
                         : orNone(d.getString("gesture_last_action", "")) + " · " + stamp(updated));
     }
 
+    /**
+     * What Diagnostics may say about the theme: its shape, never its content.
+     *
+     * <p>Whether a theme is one of Orbit's or one the user made, what schema it is, and how many
+     * they have saved are all facts about the installation and are what an investigation actually
+     * needs. The names people give their themes, and the colours in them, are not — they are
+     * personal in the small way a home screen is, and putting them in a report that gets copied
+     * and pasted would be a leak with no diagnostic value in return.
+     */
+    private String themeSummary() {
+        OrbitTheme active = OrbitThemeStore.active(this);
+        return (active.builtIn ? "built-in" : "custom")
+                + " · schema " + active.schema
+                + " · " + OrbitThemeStore.customPresetCount(this) + " saved";
+    }
+
     private String advanced() {
-        return "\n  AMOLED background: " + Prefs.amoledMode(this) +
+        return "\n  Theme: " + themeSummary() +
+                "\n  AMOLED background: " + Prefs.amoledMode(this) +
                 "\n  Background completion notifications: " + Prefs.backgroundNotifications(this) +
                 "\n  Voice pause-friendly mode: " + Prefs.voicePauseFriendly(this) +
                 "\n  Spoken voice replies: " + Prefs.speak(this) +
