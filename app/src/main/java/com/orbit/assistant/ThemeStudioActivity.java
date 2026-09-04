@@ -700,8 +700,9 @@ public final class ThemeStudioActivity extends Activity {
                                    int selected, IndexChoice choice) {
         int[] colourArray = new int[colours.size()];
         for (int i = 0; i < colours.size(); i++) colourArray[i] = colours.get(i);
-        UiKit.showOrbitColorMenu(this, anchor, actionBar, labels.toArray(new String[0]),
-                colourArray, selected, (index, label) -> choice.onIndex(index));
+        UiKit.showOrbitColorMenu(this, anchor, contentScroll, actionBar,
+                labels.toArray(new String[0]), colourArray, selected,
+                (index, label) -> choice.onIndex(index));
     }
 
     private void pickCustom(String role, int initial, List<Integer> suggestions,

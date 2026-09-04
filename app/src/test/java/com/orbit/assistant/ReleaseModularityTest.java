@@ -191,9 +191,10 @@ public final class ReleaseModularityTest {
      * round-trips through a file unchanged, a file that is not an Orbit theme is refused with one
      * sentence rather than a parser error, an oversized file is never read, and no external file
      * can claim built-in identity or land on top of a theme the user already saved. Beta 4 fixed
-     * the preview mark, and Beta 5 fixes Color-menu positioning. What these Betas cannot settle here
-     * is the final visual feel on Samsung hardware. That remains for the S25 Ultra and the Tab S9
-     * Plus, so this is published as a prerelease and the guard stops it going out as Stable first.
+     * the preview mark, Beta 5 fixed where Color menus open vertically, and Beta 6 centres them
+     * horizontally. What these Betas cannot settle here is the final visual feel on Samsung
+     * hardware. That remains for the S25 Ultra and the Tab S9 Plus, so this is published as a
+     * prerelease and the guard stops it going out as Stable first.
      */
     @Test public void thisReleaseIsAThemeStudioBeta() {
         assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",

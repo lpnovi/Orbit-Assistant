@@ -1378,16 +1378,21 @@ public final class UiKit {
      */
     public static void showOrbitColorMenu(Context c, View anchor, String[] labels, int[] colors,
                                           int selectedIndex, OrbitMenuChoice choice) {
-        showOrbitColorMenu(c, anchor, null, labels, colors, selectedIndex, choice);
+        showOrbitColorMenu(c, anchor, null, null, labels, colors, selectedIndex, choice);
     }
 
     /**
-     * Color-menu variant for a fixed-footer screen. The footer is not part of the popup's usable
-     * window, and the menu's trailing edge follows the trailing edge of the row that opened it.
+     * Color-menu variant for a screen with its own content column and a fixed footer.
+     *
+     * <p>{@code contentBounds} is the view whose on-screen width is the area the menu should look
+     * centered in - the scrolling content pane, not the physical display. A row that spans that
+     * pane is a poor horizontal reference: following its edges pushes the much narrower menu off to
+     * one side, which reads as a misplaced popup rather than a deliberate one. {@code bottomObstacle}
+     * is a pinned footer, which is on screen but is not usable popup space.
      */
-    public static void showOrbitColorMenu(Context c, View anchor, View bottomObstacle,
-                                          String[] labels, int[] colors, int selectedIndex,
-                                          OrbitMenuChoice choice) {
+    public static void showOrbitColorMenu(Context c, View anchor, View contentBounds,
+                                          View bottomObstacle, String[] labels, int[] colors,
+                                          int selectedIndex, OrbitMenuChoice choice) {
         if (c == null || anchor == null || labels == null || labels.length == 0) return;
         if (colors == null || colors.length != labels.length) {
             showOrbitMenu(c, anchor, labels, selectedIndex, choice);
@@ -1453,18 +1458,18 @@ public final class UiKit {
         }
 
         showAnchoredOrbitPopup(c, anchor, popup, width, labels.length, 42,
-                bottomObstacle, true, true);
+                contentBounds, bottomObstacle, true);
     }
 
     private static void showAnchoredOrbitPopup(Context c, View anchor, PopupWindow popup,
                                                 int width, int rowCount, int rowHeightDp) {
         showAnchoredOrbitPopup(c, anchor, popup, width, rowCount, rowHeightDp,
-                null, false, false);
+                null, null, false);
     }
 
     private static void showAnchoredOrbitPopup(Context c, View anchor, PopupWindow popup,
                                                 int width, int rowCount, int rowHeightDp,
-                                                View bottomObstacle, boolean alignEnd,
+                                                View contentBounds, View bottomObstacle,
                                                 boolean flipAboveWhenBelowDoesNotFit) {
         try {
             View windowRoot = anchor.getRootView();
@@ -1536,8 +1541,18 @@ public final class UiKit {
                 }
             }
 
-            Rect bounds = anchoredOrbitPopupBounds(visibleFrame, anchorVisible, width, popupHeight,
-                    margin, gap, unavailableBottom, alignEnd, flipAboveWhenBelowDoesNotFit);
+            Rect contentFrame = null;
+            if (contentBounds != null && contentBounds.isShown() && contentBounds.getWidth() > 0) {
+                int[] contentScreen = new int[2];
+                contentBounds.getLocationOnScreen(contentScreen);
+                contentFrame = new Rect(contentScreen[0], contentScreen[1],
+                        contentScreen[0] + contentBounds.getWidth(),
+                        contentScreen[1] + Math.max(1, contentBounds.getHeight()));
+            }
+
+            Rect bounds = anchoredOrbitPopupBounds(visibleFrame, anchorVisible, contentFrame,
+                    width, popupHeight, margin, gap, unavailableBottom,
+                    flipAboveWhenBelowDoesNotFit);
             popup.setWidth(bounds.width());
             popup.setHeight(bounds.height());
 
@@ -1549,21 +1564,23 @@ public final class UiKit {
                     android.view.Gravity.TOP | android.view.Gravity.START, xInRoot, yInRoot);
         } catch (Exception ignored) {
             popup.setClippingEnabled(true);
-            popup.showAsDropDown(anchor, alignEnd ? anchor.getWidth() - width : 0, dp(c, 6));
+            popup.showAsDropDown(anchor, (anchor.getWidth() - width) / 2, dp(c, 6));
         }
     }
 
     /**
      * Deterministic screen-space placement shared by every Orbit PopupWindow.
      *
-     * <p>Strict callers flip above whenever the complete sheet does not fit below; existing menu
-     * callers retain their room-based preference. Width and height are capped before positioning,
-     * making the returned bounds entirely contained by the usable frame even on a narrow or
-     * unusually short window.
+     * <p>Horizontally the popup is centered on {@code contentFrame} when a caller supplies the
+     * content pane it belongs to, and on the anchor otherwise; either way it is then clamped inside
+     * the usable frame's margins, so it can never touch or cross a screen edge. Strict callers flip
+     * above whenever the complete sheet does not fit below; existing menu callers retain their
+     * room-based preference. Width and height are capped before positioning, making the returned
+     * bounds entirely contained by the usable frame even on a narrow or unusually short window.
      */
-    static Rect anchoredOrbitPopupBounds(Rect usableFrame, Rect anchor, int requestedWidth,
-                                         int requestedHeight, int margin, int gap,
-                                         int unavailableBottom, boolean alignEnd,
+    static Rect anchoredOrbitPopupBounds(Rect usableFrame, Rect anchor, Rect contentFrame,
+                                         int requestedWidth, int requestedHeight, int margin,
+                                         int gap, int unavailableBottom,
                                          boolean flipAboveWhenBelowDoesNotFit) {
         int safeLeft = usableFrame.left + Math.max(0, margin);
         int safeRight = usableFrame.right - Math.max(0, margin);
@@ -1578,7 +1595,15 @@ public final class UiKit {
         int popupWidth = Math.min(Math.max(1, requestedWidth), safeRight - safeLeft);
         int popupHeight = Math.min(Math.max(1, requestedHeight), safeBottom - safeTop);
 
-        int x = alignEnd ? anchor.right - popupWidth : anchor.centerX() - (popupWidth / 2);
+        // Center on the content pane the row lives in, clipped to what is actually usable, so a
+        // wide two-pane layout centers the menu in its own pane instead of across the whole window.
+        int centerX = anchor.centerX();
+        if (contentFrame != null) {
+            int contentLeft = Math.max(usableFrame.left, contentFrame.left);
+            int contentRight = Math.min(usableFrame.right, contentFrame.right);
+            if (contentRight > contentLeft) centerX = (contentLeft + contentRight) / 2;
+        }
+        int x = centerX - (popupWidth / 2);
         x = Math.max(safeLeft, Math.min(safeRight - popupWidth, x));
 
         int belowY = anchor.bottom + Math.max(0, gap);

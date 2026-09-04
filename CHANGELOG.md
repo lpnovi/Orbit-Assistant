@@ -670,6 +670,12 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - **Timers** now read "4 minutes and 30 seconds", "4 and a half minutes" and "1 hour 5 minutes 30 seconds" correctly, set in your usual Clock app.
   - Orbit's notification categories appear consistently in Android settings without anything being posted, and presentation polish continues throughout. 💜
 
+- **v0.7.8.3-beta.6**: A small Theme Studio polish update.
+  - Theme Studio Color menus are now centred on screen, so their left and right margins look balanced.
+  - Menus still open above or below the Color control you tapped, depending on the room available.
+  - Popups continue to stay clear of the fixed Revert and Apply bar and inside the usable screen area.
+  - On tablets a menu is centred within the controls pane, so it stays beside the row that opened it.
+
 - **v0.7.8.3-beta.5**: A small Theme Studio polish update.
   - Fixed Theme Studio Color menus so they stay anchored to the control that opened them.
   - Long menus now flip above the source row when there is not enough room below.
