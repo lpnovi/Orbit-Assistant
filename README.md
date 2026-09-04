@@ -149,10 +149,16 @@ Want to inspect a local debug build? Start with [Building from source](docs/BUIL
 
 GitHub Issues are public. Remove screenshots, notifications, account details, screen content, tokens, and other personal data before posting.
 
-## Contributing and license
+## Contributing
 
 A public contribution policy has not been published yet. If you want to propose a code or documentation change, open an Issue first so scope and expectations can be discussed before a pull request.
 
-**Orbit Assistant does not currently have a repository-level software license.** Public source visibility is not the same as an open-source license and should not be treated as permission to copy, redistribute, or create derivative works. Selecting a license is an owner decision required before describing Orbit as open source.
+## License & attribution
+
+Orbit Assistant is licensed under the [Mozilla Public License 2.0](LICENSE).
+
+Copyright © 2026 Louis Probst
+
+Orbit Assistant was originally created by Louis Probst.
 
 Product and service names belong to their respective owners. Orbit Assistant is not an official ChatGPT, OpenAI, Samsung, Google, or Android application.

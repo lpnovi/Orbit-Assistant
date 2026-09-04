@@ -56,4 +56,4 @@ Release builds deliberately fail unless all required signing values are provided
 - `docs/`: public technical documentation
 - `examples/`: example declarative Orbit Extensions
 
-The source currently has no repository-level software license. Being able to inspect or build the code does not by itself grant permission to redistribute it or create derivative works.
+Orbit Assistant is open source under the [Mozilla Public License 2.0](../LICENSE).
