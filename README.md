@@ -133,7 +133,7 @@ Never post signing keys, account tokens, diagnostic data containing private cont
 | --- | --- |
 | **Shipping in Stable** | Side-button/default-assistant access, full chat, attachments, screen context, Voice Beta, Android actions, Calendar writing, Routines, Extensions, widgets, Orbit Local, Orbit Deck, and Documents. |
 | **Available in Beta** | Theme Studio is currently being tested as part of the `0.7.8.3` Beta line. |
-| **Planned or under consideration** | Theme sharing/refinement, Orbit Vault / Quick Capture, Hybrid Auto routing, deeper local capabilities, and other work listed in the roadmap. OpenRouter chat remains deferred until it can be properly validated. |
+| **Planned or under consideration** | Orbit Vault / Quick Capture, Hybrid Auto routing, deeper local capabilities, and other work listed in the roadmap. OpenRouter chat remains deferred until it can be properly validated. |
 
 See [ROADMAP.md](ROADMAP.md) for the detailed development record and future direction, or [CHANGELOG.md](CHANGELOG.md) for shipped release history. Roadmap items are direction, not promised dates.
 

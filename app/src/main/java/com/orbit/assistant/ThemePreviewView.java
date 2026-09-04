@@ -1,10 +1,12 @@
 package com.orbit.assistant;
 
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -167,12 +169,20 @@ public final class ThemePreviewView extends LinearLayout {
                 UiKit.withAlpha(tokens.accent, 52), UiKit.RADIUS_CARD, c));
         tile.setContentDescription("Deck tile, " + OrbitColorName.of(tokens.surface2));
 
-        View dot = new View(c);
-        dot.setBackground(UiKit.rounded(tokens.accent, 99, c));
-        LinearLayout.LayoutParams dotLp =
-                new LinearLayout.LayoutParams(UiKit.dp(c, 15), UiKit.dp(c, 15));
-        dotLp.bottomMargin = UiKit.dp(c, 5);
-        tile.addView(dot, dotLp);
+        // Orbit's own Deck mark, tinted by the draft's accent. It was a plain accent circle until
+        // Beta 3, which said nothing: a coloured dot above the word "Deck" is not a Deck tile, and
+        // the one thing this sample is here to show is how an icon carries the accent on a card.
+        // The resource is the same grid MainActivity opens Deck with, so the miniature and the real
+        // thing cannot end up drawing different marks.
+        ImageView mark = new ImageView(c);
+        mark.setImageResource(R.drawable.ic_deck);
+        mark.setImageTintList(ColorStateList.valueOf(tokens.accent));
+        mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        mark.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams markLp =
+                new LinearLayout.LayoutParams(UiKit.dp(c, 16), UiKit.dp(c, 16));
+        markLp.bottomMargin = UiKit.dp(c, 5);
+        tile.addView(mark, markLp);
         tile.addView(UiKit.text(c, "Deck", 10.5f, tokens.text, false));
 
         LinearLayout.LayoutParams tileLp = new LinearLayout.LayoutParams(0,

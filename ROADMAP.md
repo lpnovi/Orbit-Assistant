@@ -1129,18 +1129,41 @@ together to read as one surface with two minds.
   whole minute, and the stray `2` was discarded. Written and Unicode fractions are now first-class,
   with mixed-number semantics kept distinct from the spoken kind
 
+### 0.7.8.3-beta.3 - Portable Themes
+The storage format was written for this. `OrbitTheme` has carried a format identifier and a schema
+since Beta 1, and Beta 3 is the release where something finally reads them.
+
+- **`OrbitThemeFileCodec`**, one boundary between a theme file and Orbit. Import validation lives
+  there rather than in the screen, because a document from Android's picker is untrusted input and
+  the checks that make it safe are easier to trust when they can be read and tested as a unit
+- **Import through the system picker**, with no storage permission. A document is refused unless it
+  is JSON, declares the exact `orbit.theme` format, uses a schema this build understands, carries a
+  whole appearance rather than a fragment, and is small enough to be a theme. A schema from a newer
+  Orbit says so; everything else gets one short sentence, and no parser message reaches the user
+- **An imported file cannot claim identity.** `builtIn` and `id` are read past, never trusted. Every
+  import becomes a custom theme with a fresh local id, so no file can impersonate a shipped preset
+  or overwrite a theme the user already saved. Duplicate display names stay legal
+- **Import is previewed, not applied.** The theme is drawn in the same preview the editor uses, then
+  added to the user's own presets and loaded into the draft. Apply is still the only thing that
+  changes what Orbit looks like, and an edit in progress is never discarded without being asked
+- **Export writes the canonical document**, not a second serialization, through Android's document
+  creator to a sanitized filename such as `Nova-AMOLED.orbit-theme.json`. Built-in presets, saved
+  themes and the current draft all export by the same path, and exporting never saves or applies
+- **A theme file carries appearance and nothing else** - no intents, URLs, permissions, credentials,
+  Routines, Memory or Deck state - and is separate from Backup & Restore rather than a replacement
+  for it
+- **Preview and layout polish.** The Deck sample draws Orbit's own Deck mark tinted by the draft
+  accent instead of a plain dot, the tablet action bar no longer stretches across the full content
+  width, and the import preview is bounded so it reads the same on a phone and a Tab S9 Plus
+
 # Next
 
-## 0.7.8.3-beta.3 - Theme Studio sharing
+## 0.7.8.3 - Theme Studio Stable
 
-After device validation of Beta 2 on the Galaxy S25 Ultra and the Tab S9 Plus. The storage format
-was written for this: a versioned, self-describing `orbit.theme` document that already carries a
-format identifier and schema, so the file a later Beta exports and the one Beta 1 already stores are
-the same shape. Nothing in Orbit reads that identifier yet.
+After device validation of Beta 3 on the Galaxy S25 Ultra and the Tab S9 Plus.
 
-- import and export of Orbit theme files, with a parser that rejects anything not ours
-- any further physical-device polish Beta 2 testing turns up
-- tablet layout refinement on the Tab S9 Plus, if the two-pane editor needs it
+- physical validation of import and export against Android's own picker on both devices
+- any remaining phone and tablet polish that device testing turns up
 - additional curated presets, only if real use shows a gap rather than a wish for more
 - optional restrained shape and corner-radius customization, only if it fits the token model cleanly
 

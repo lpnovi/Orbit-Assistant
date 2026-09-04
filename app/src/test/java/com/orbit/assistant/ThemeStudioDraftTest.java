@@ -2,6 +2,7 @@ package com.orbit.assistant;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -11,6 +12,7 @@ import android.content.Context;
 import android.graphics.Color;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import org.junit.Before;
@@ -392,6 +394,144 @@ public final class ThemeStudioDraftTest {
         assertTrue(OrbitColorName.describe("Accent", Color.WHITE).startsWith("Accent, White, #"));
     }
 
+    // ---- theme files -------------------------------------------------------------------------------
+
+    /**
+     * The rule import must not break: adding a theme is not applying one.
+     *
+     * <p>This is the same rule as every other control on the screen, and it is the one an import
+     * flow is most likely to get wrong, because a file the user deliberately chose feels like an
+     * instruction. It is not. The theme is added and previewed; the app keeps drawing what it was
+     * drawing until Apply.
+     */
+    @Test public void importingAThemeDoesNotChangeWhatOrbitLooksLike() throws Exception {
+        ActivityController<ThemeStudioActivity> controller = open();
+        ThemeStudioActivity activity = controller.get();
+        OrbitTheme before = OrbitThemeStore.active(context);
+
+        OrbitTheme file = OrbitThemeFileCodec.decode(OrbitThemeFileCodec.encode(
+                OrbitTheme.custom("Shared", "#FF3366", "#402030", "#221820",
+                        "#1A1418", "#080608", true)));
+        activity.importTheme(file, true);
+
+        assertTrue("the applied appearance must be untouched",
+                OrbitThemeStore.active(context).sameColours(before));
+        assertEquals("and it must still be the theme it was", before.id,
+                OrbitThemeStore.active(context).id);
+        assertTrue("while the preview now shows the imported theme",
+                draft(activity).sameColours(file));
+        assertTrue("so there is something to apply", activity.isDirty());
+        controller.pause().stop().destroy();
+    }
+
+    @Test public void anImportedThemeBecomesAnEditableCustomPreset() throws Exception {
+        ActivityController<ThemeStudioActivity> controller = open();
+        ThemeStudioActivity activity = controller.get();
+
+        OrbitTheme file = OrbitThemeFileCodec.decode(OrbitThemeFileCodec.encode(
+                OrbitTheme.builtIn(OrbitTheme.ID_NOVA_AMOLED)));
+        activity.importTheme(file, true);
+
+        List<OrbitTheme> saved = OrbitThemeStore.customPresets(context);
+        assertEquals(1, saved.size());
+        assertFalse("an imported theme is never one of Orbit's own", saved.get(0).builtIn);
+        assertFalse(OrbitTheme.isBuiltInId(saved.get(0).id));
+        assertEquals("Nova AMOLED", saved.get(0).name);
+        assertTrue("and it is the same appearance that was exported",
+                OrbitTheme.builtIn(OrbitTheme.ID_NOVA_AMOLED).sameColours(saved.get(0)));
+        assertNotNull("Orbit's own preset is still Orbit's own",
+                OrbitTheme.builtIn(OrbitTheme.ID_NOVA_AMOLED));
+        assertTrue(texts(activity).contains("Nova AMOLED"));
+        controller.pause().stop().destroy();
+    }
+
+    /** An unapplied edit is the user's work. Importing beside it must not throw it away. */
+    @Test public void importingWithUnappliedEditsCanKeepTheDraft() throws Exception {
+        ActivityController<ThemeStudioActivity> controller = open();
+        ThemeStudioActivity activity = controller.get();
+
+        edit(activity, draft(activity).withAccent("#FF8A5B"));
+        OrbitTheme inProgress = draft(activity);
+        assertTrue(activity.isDirty());
+
+        OrbitTheme file = OrbitThemeFileCodec.decode(OrbitThemeFileCodec.encode(
+                OrbitTheme.builtIn(OrbitTheme.ID_TIDE)));
+        activity.importTheme(file, false);
+
+        assertTrue("the edit in progress must survive the import",
+                draft(activity).sameColours(inProgress));
+        assertEquals("while the theme is still added", 1,
+                OrbitThemeStore.customPresetCount(context));
+        controller.pause().stop().destroy();
+    }
+
+    /** Importing the same file twice adds two themes rather than replacing one. */
+    @Test public void importingTheSameFileTwiceAddsTwoThemes() throws Exception {
+        ActivityController<ThemeStudioActivity> controller = open();
+        ThemeStudioActivity activity = controller.get();
+
+        String document = OrbitThemeFileCodec.encode(
+                OrbitTheme.custom("Night", "blue", "classic", "classic", "classic",
+                        "classic", true));
+        activity.importTheme(OrbitThemeFileCodec.decode(document), false);
+        activity.importTheme(OrbitThemeFileCodec.decode(document), false);
+
+        List<OrbitTheme> saved = OrbitThemeStore.customPresets(context);
+        assertEquals(2, saved.size());
+        assertNotEquals(saved.get(0).id, saved.get(1).id);
+        controller.pause().stop().destroy();
+    }
+
+    /** The header offers the file actions without a card of its own taking space from the editor. */
+    @Test public void theHeaderOffersImportAndExport() {
+        ActivityController<ThemeStudioActivity> controller = open();
+        assertTrue(descriptions(controller.get().getWindow().getDecorView())
+                .contains("Theme options"));
+        controller.pause().stop().destroy();
+    }
+
+    /** An exported file names itself after the theme, not after the draft it came from. */
+    @Test public void exportNamesTheFileAfterTheThemeInThePreview() {
+        ActivityController<ThemeStudioActivity> controller = open();
+        ThemeStudioActivity activity = controller.get();
+        select(activity, OrbitTheme.builtIn(OrbitTheme.ID_NOVA_AMOLED));
+        assertEquals("Nova-AMOLED.orbit-theme.json",
+                OrbitThemeFileCodec.fileNameFor(draft(activity)));
+        controller.pause().stop().destroy();
+    }
+
+    // ---- preview -----------------------------------------------------------------------------------
+
+    /**
+     * The Deck sample shows Orbit's Deck mark, tinted by the draft.
+     *
+     * <p>It was a plain accent circle, which told nobody anything about how their theme would treat
+     * an icon on a card. The assertion that matters is the second one: the tint follows the draft
+     * rather than the applied accent, which is the difference between a preview and a screenshot.
+     */
+    @Test public void theDeckSampleUsesOrbitsDeckMarkAndFollowsTheAccent() {
+        ActivityController<ThemeStudioActivity> controller = open();
+        ThemeStudioActivity activity = controller.get();
+
+        select(activity, OrbitTheme.builtIn(OrbitTheme.ID_MOSS));
+        ImageView mark = findImage(findPreview(activity.getWindow().getDecorView()));
+        assertNotNull("the Deck sample must draw an icon", mark);
+        android.graphics.drawable.Drawable icon = mark.getDrawable();
+        assertNotNull("the icon must actually load", icon);
+        assertEquals("and it must be Orbit's own Deck mark", R.drawable.ic_deck,
+                ((org.robolectric.shadows.ShadowDrawable)
+                        org.robolectric.shadow.api.Shadow.extract(icon)).getCreatedFromResId());
+        assertEquals(OrbitThemeTokens.resolve(context, draft(activity)).accent,
+                mark.getImageTintList().getDefaultColor());
+
+        edit(activity, draft(activity).withAccent("#FF3366"));
+        ImageView after = findImage(findPreview(activity.getWindow().getDecorView()));
+        assertEquals("the mark must follow a live accent change",
+                OrbitThemeTokens.resolve(context, draft(activity)).accent,
+                after.getImageTintList().getDefaultColor());
+        controller.pause().stop().destroy();
+    }
+
     // ---- helpers -----------------------------------------------------------------------------------
 
     private OrbitTheme draft(ThemeStudioActivity activity) {
@@ -433,6 +573,18 @@ public final class ThemeStudioDraftTest {
         } catch (Exception e) {
             throw new AssertionError("could not read " + name, e);
         }
+    }
+
+    private static ImageView findImage(View view) {
+        if (view instanceof ImageView) return (ImageView) view;
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                ImageView found = findImage(group.getChildAt(i));
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     private static ThemePreviewView findPreview(View view) {

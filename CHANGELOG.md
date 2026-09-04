@@ -670,6 +670,14 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - **Timers** now read "4 minutes and 30 seconds", "4 and a half minutes" and "1 hour 5 minutes 30 seconds" correctly, set in your usual Clock app.
   - Orbit's notification categories appear consistently in Android settings without anything being posted, and presentation polish continues throughout. 💜
 
+- **v0.7.8.3-beta.3**: Theme Studio themes can now travel with you.
+  - Import Orbit theme files through Android's system picker, with no storage permission.
+  - Export any theme in the preview as a portable Orbit theme file.
+  - Imported themes are shown to you first, then added as editable custom presets. Your appearance changes only when you apply one.
+  - Theme files are versioned and checked, so unrelated, malformed or unsupported files are refused cleanly.
+  - The Deck sample in the live preview now uses Orbit's own Deck mark instead of a plain dot.
+  - Tablet polish for the Theme Studio action bar and the import preview.
+
 - **v0.7.8.3-beta.2**: Theme Studio refinement, and a timer fix.
   - Theme Studio is now the one place Orbit colors are set. Look & Feel no longer repeats the accent, AMOLED and bubble controls underneath it.
   - Orbit colors and Theme Studio presets share one palette, so Nova and Violet mean the same thing everywhere.

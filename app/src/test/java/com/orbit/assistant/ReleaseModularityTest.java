@@ -187,14 +187,14 @@ public final class ReleaseModularityTest {
     /**
      * The 0.7.8.3 line is Theme Studio, and it is still a Beta.
      *
-     * <p>What this release changes is almost entirely a matter of looking at it. The suite can
-     * prove that a theme round-trips, that the contrast arithmetic is right, that a link follows
-     * the accent, and that an upgrading install keeps the exact appearance values it had. It cannot
-     * say whether Nova AMOLED looks the way it is supposed to on a real OLED panel, whether the
-     * spacing between the Theme Studio card and the one under it now reads as deliberate, or
-     * whether the low-contrast warning fires where a person would agree with it. Only the Galaxy
-     * S25 Ultra answers those, so this is published as a prerelease and the guard's job is to stop
-     * it being published as Stable before that has happened.
+     * <p>Beta 3 makes a theme portable. What the suite can prove is the part that has to be right
+     * rather than merely nice: a theme round-trips through a file unchanged, a file that is not an
+     * Orbit theme is refused with one sentence rather than a parser error, an oversized file is
+     * never read, and no external file can claim built-in identity or land on top of a preset the
+     * user already has. What it cannot prove is how the system picker behaves on a Samsung device,
+     * whether the import preview shows enough to recognise a theme by, or whether the tablet
+     * layout now reads as deliberate. Those are for the S25 Ultra and the Tab S9 Plus, so this is
+     * published as a prerelease and the guard stops it going out as Stable first.
      */
     @Test public void thisReleaseIsAThemeStudioBeta() {
         assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",

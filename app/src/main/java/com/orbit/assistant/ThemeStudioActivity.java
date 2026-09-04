@@ -3,8 +3,10 @@ package com.orbit.assistant;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputFilter;
 import android.text.InputType;
@@ -22,6 +24,9 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -422,16 +427,49 @@ public final class ThemeStudioActivity extends Activity {
         titles.addView(UiKit.text(this, "Make Orbit yours.", 13, UiKit.MUTED, false));
         header.addView(titles, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        // File work lives here rather than in a card of its own. Import and Export are two things
+        // a person does rarely and deliberately, and a card for them would sit above the presets
+        // taking the same weight as the colours, which is not the weight they have.
+        ImageButton options = iconButton(R.drawable.ic_more, "Theme options");
+        options.setOnClickListener(v -> {
+            UiKit.haptic(v, HapticFeedbackConstants.VIRTUAL_KEY);
+            showThemeOptions(v);
+        });
+        header.addView(options,
+                new LinearLayout.LayoutParams(UiKit.dp(this, 48), UiKit.dp(this, 48)));
         return header;
     }
+
+    private void showThemeOptions(View anchor) {
+        String[] labels = {"Import theme", "Export theme"};
+        UiKit.showOrbitMenu(this, anchor, labels, -1, (index, label) -> {
+            if (index == 0) chooseThemeFile(); else chooseExportDestination();
+        });
+    }
+
+    /**
+     * The widest the Revert and Apply pair is allowed to be.
+     *
+     * <p>Only reached on a tablet, where the bar spans the full content width and two buttons
+     * stretched across nine hundred points read as a footer rather than as the two things this
+     * screen does. Capped and aligned to the end, they sit under the pane whose edits they act on.
+     * A phone is never this wide and keeps the full-width bar it already had.
+     */
+    private static final int ACTION_BAR_MAX_WIDTH_DP = 460;
 
     private View buildActionBar(int inset) {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setGravity(twoPane() ? (Gravity.END | Gravity.CENTER_VERTICAL)
+                : Gravity.CENTER_VERTICAL);
         bar.setBackgroundColor(UiKit.BG);
         bar.setPadding(UiKit.dp(this, 20) + inset, UiKit.dp(this, 12),
                 UiKit.dp(this, 20) + inset, UiKit.dp(this, 14));
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
 
         revertButton = secondaryButton("Revert");
         revertButton.setContentDescription("Discard unapplied theme changes");
@@ -439,7 +477,7 @@ public final class ThemeStudioActivity extends Activity {
             UiKit.haptic(v, HapticFeedbackConstants.VIRTUAL_KEY);
             revertDraft();
         });
-        bar.addView(revertButton, new LinearLayout.LayoutParams(0, UiKit.dp(this, 50), 1f));
+        actions.addView(revertButton, new LinearLayout.LayoutParams(0, UiKit.dp(this, 50), 1f));
 
         applyButton = primaryButton("Apply theme");
         applyButton.setOnClickListener(v -> {
@@ -449,7 +487,12 @@ public final class ThemeStudioActivity extends Activity {
         LinearLayout.LayoutParams applyLp =
                 new LinearLayout.LayoutParams(0, UiKit.dp(this, 50), 1.5f);
         applyLp.leftMargin = UiKit.dp(this, 12);
-        bar.addView(applyButton, applyLp);
+        actions.addView(applyButton, applyLp);
+
+        bar.addView(actions, new LinearLayout.LayoutParams(
+                twoPane() ? UiKit.dp(this, ACTION_BAR_MAX_WIDTH_DP)
+                        : ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
         return bar;
     }
 
@@ -1003,6 +1046,225 @@ public final class ThemeStudioActivity extends Activity {
                     choice.onName(name);
                 }));
         dialog.show();
+    }
+
+    // ---- theme files ------------------------------------------------------------------------------
+
+    private static final int REQ_IMPORT_THEME = 8811;
+    private static final int REQ_EXPORT_THEME = 8812;
+
+    /**
+     * The theme the user asked to export, captured when they asked.
+     *
+     * <p>Android's document creator is another app's window and the user may spend a while in it.
+     * Reading the draft again when it returns would write whatever the preview happens to hold by
+     * then, which after a rotation and a colour change is not the theme they chose to export.
+     */
+    private OrbitTheme pendingExport;
+
+    /**
+     * Import: Android's own picker, and no storage permission.
+     *
+     * <p>{@code ACTION_OPEN_DOCUMENT} hands back one document the user pointed at, for as long as
+     * it takes to read it. Orbit never asks to see the rest of their files, and never keeps the
+     * grant.
+     */
+    private void chooseThemeFile() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType(OrbitThemeFileCodec.MIME_TYPE);
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, OrbitThemeFileCodec.IMPORT_MIME_TYPES);
+        try {
+            startActivityForResult(intent, REQ_IMPORT_THEME);
+        } catch (Exception e) {
+            Toast.makeText(this, "No file picker is available on this device.",
+                    Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * Export: the theme currently in the preview, written where the user says.
+     *
+     * <p>That is the draft, which may be a built-in preset, a saved theme, or an edit of either
+     * that has not been applied. All three are the same thing to this: a complete set of appearance
+     * decisions the person is looking at. Exporting one does not save it, apply it, or alter it, so
+     * the file is a copy of what is on screen and nothing about Orbit changes.
+     */
+    private void chooseExportDestination() {
+        pendingExport = draft;
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType(OrbitThemeFileCodec.MIME_TYPE);
+        intent.putExtra(Intent.EXTRA_TITLE, OrbitThemeFileCodec.fileNameFor(pendingExport));
+        try {
+            startActivityForResult(intent, REQ_EXPORT_THEME);
+        } catch (Exception e) {
+            Toast.makeText(this, "No file picker is available on this device.",
+                    Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        Uri uri = data.getData();
+        if (requestCode == REQ_IMPORT_THEME) readThemeFile(uri);
+        else if (requestCode == REQ_EXPORT_THEME) writeThemeFile(uri, pendingExport);
+    }
+
+    /** Reads and validates off the main thread; every outcome comes back to it. */
+    private void readThemeFile(Uri uri) {
+        new Thread(() -> {
+            OrbitTheme imported = null;
+            String failure = null;
+            try (InputStream input = getContentResolver().openInputStream(uri)) {
+                imported = OrbitThemeFileCodec.read(input);
+            } catch (OrbitThemeFileCodec.ThemeFileException e) {
+                failure = e.getMessage();
+            } catch (Exception e) {
+                // Anything the content provider itself did — a revoked grant, a file that vanished,
+                // a provider that threw. The user gets the same sentence as a bad file, because
+                // from where they are standing it is the same outcome.
+                failure = "Orbit could not open that file.";
+            }
+            final OrbitTheme result = imported;
+            final String message = failure;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                if (result == null) showThemeFileError("Theme not imported", message);
+                else showImportReview(result);
+            });
+        }, "orbit-theme-import").start();
+    }
+
+    private void writeThemeFile(Uri uri, OrbitTheme theme) {
+        pendingExport = null;
+        final OrbitTheme subject = theme == null ? draft : theme;
+        final String document = OrbitThemeFileCodec.encode(subject);
+        if (document.isEmpty()) {
+            showThemeFileError("Theme not exported", "Orbit could not export that theme.");
+            return;
+        }
+        new Thread(() -> {
+            boolean ok = false;
+            try (OutputStream output = getContentResolver().openOutputStream(uri, "wt")) {
+                if (output != null) {
+                    output.write(document.getBytes(StandardCharsets.UTF_8));
+                    output.flush();
+                    ok = true;
+                }
+            } catch (Exception ignored) {
+            }
+            final boolean saved = ok;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                if (saved) {
+                    Toast.makeText(this, subject.name + " exported", Toast.LENGTH_SHORT).show();
+                } else {
+                    showThemeFileError("Theme not exported", "Orbit could not write that file.");
+                }
+            });
+        }, "orbit-theme-export").start();
+    }
+
+    private void showThemeFileError(String title, String message) {
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setMessage(message == null ? "This isn't a supported Orbit theme." : message)
+                .setPositiveButton("OK", null)
+                .create();
+        UiKit.styleOrbitDialog(dialog, this, false);
+        dialog.show();
+    }
+
+    /**
+     * What an imported theme looks like, before it is anything.
+     *
+     * <p>Nothing has been written at this point: the file has been read and turned into a value,
+     * and that value is drawn by the same {@link ThemePreviewView} the editor uses. A theme is a
+     * visual object and the only honest way to ask "is this the one you meant" is to show it.
+     *
+     * <p>What the buttons do depends on whether there is an unapplied edit in progress. With a
+     * clean draft, importing adds the theme and loads it into the preview, which is what somebody
+     * who just picked a theme file wants next. With edits pending, loading it would throw those
+     * away, so the theme is added to the gallery and the draft is left alone unless the user says
+     * otherwise. Neither path applies anything: Apply is still the only thing that changes Orbit.
+     */
+    private void showImportReview(OrbitTheme imported) {
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setPadding(UiKit.dp(this, 20), UiKit.dp(this, 4), UiKit.dp(this, 20), 0);
+
+        ThemePreviewView sample = new ThemePreviewView(this);
+        sample.render(OrbitThemeTokens.resolve(this, imported));
+        body.addView(sample, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        TextView name = UiKit.text(this, imported.name, 15, UiKit.TEXT, true);
+        name.setPadding(0, UiKit.dp(this, 13), 0, 0);
+        body.addView(name);
+        body.addView(UiKit.text(this, OrbitThemeFileCodec.describe(imported), 12, UiKit.MUTED, false));
+
+        boolean dirty = isDirty();
+        String note = dirty
+                ? "Orbit will add this to your themes. Your unapplied changes stay in the preview."
+                : "Orbit will add this to your themes and load it into the preview. Your current "
+                        + "appearance does not change until you apply it.";
+        TextView explanation = UiKit.text(this, note, 12, UiKit.MUTED, false);
+        explanation.setPadding(0, UiKit.dp(this, 10), 0, 0);
+        body.addView(explanation);
+
+        ScrollView wrapper = new ScrollView(this);
+        wrapper.addView(body);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle("Import theme")
+                .setView(wrapper)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Import", (d, which) -> importTheme(imported, !dirty));
+        if (dirty) {
+            builder.setNeutralButton("Import and preview",
+                    (d, which) -> importTheme(imported, true));
+        }
+        AlertDialog dialog = builder.create();
+        UiKit.styleOrbitDialog(dialog, this, false, () -> constrainDialogWidth(dialog));
+        dialog.show();
+    }
+
+    /**
+     * Adds an imported theme to the user's own presets.
+     *
+     * <p>{@code imported} already arrived from the codec as a custom theme with a fresh id, so this
+     * cannot land on a built-in or replace a saved one however the file was written. Duplicate
+     * names are allowed through untouched: importing the same theme twice gives two entries, which
+     * is what a file the user chose twice should do.
+     */
+    void importTheme(OrbitTheme imported, boolean loadIntoPreview) {
+        OrbitTheme saved = OrbitThemeStore.savePreset(this, imported);
+        if (saved == null) {
+            showThemeFileError("Theme not imported",
+                    "Orbit could not save that theme. You may have reached the limit of "
+                            + OrbitThemeStore.MAX_CUSTOM_PRESETS + " saved themes.");
+            return;
+        }
+        if (loadIntoPreview) selectPreset(saved); else refreshDraftSurfaces();
+        Toast.makeText(this, "Imported " + saved.name, Toast.LENGTH_SHORT).show();
+    }
+
+    /**
+     * Keeps a dialog that contains a preview from spreading across a tablet.
+     *
+     * <p>An {@code AlertDialog} takes most of the width it is given, and on a Tab S9 Plus that is a
+     * miniature conversation stretched to nine hundred points with its bubbles turned into strips.
+     * The cap is the width the same preview has in the editor's own pane.
+     */
+    private void constrainDialogWidth(AlertDialog dialog) {
+        Window window = dialog.getWindow();
+        if (window == null) return;
+        int screen = getResources().getConfiguration().screenWidthDp;
+        int target = Math.min(screen - 48, 400);
+        if (target <= 0 || target >= screen) return;
+        window.setLayout(UiKit.dp(this, target), ViewGroup.LayoutParams.WRAP_CONTENT);
     }
 
     // ---- system bars ------------------------------------------------------------------------------
