@@ -532,6 +532,45 @@ public final class ThemeStudioDraftTest {
         controller.pause().stop().destroy();
     }
 
+    /**
+     * The preview header shows Orbit's own mark, not a coloured circle.
+     *
+     * <p>The dot beside the title was the one thing in the preview that was not a piece of Orbit:
+     * every other element is drawn from the same code the real screen uses, and this one was a
+     * filled circle standing in for the app icon. It is now the mark {@code UiKit} draws in the
+     * Chats header and the overlay, so the sample and the real thing cannot diverge.
+     *
+     * <p>The tint itself is painted in {@code onDraw} and is not readable here, so what this pins
+     * is that the mark is the canonical one, that it is the first thing in the header, and that the
+     * background-filled dot is gone.
+     */
+    @Test public void thePreviewHeaderUsesOrbitsOwnMark() {
+        ActivityController<ThemeStudioActivity> controller = open();
+        ThemeStudioActivity activity = controller.get();
+        View preview = findPreview(activity.getWindow().getDecorView());
+
+        View mark = findByTag(preview, "orbit_mark");
+        assertNotNull("the preview header must draw Orbit's mark", mark);
+        assertNull("the generic accent dot drew itself as a background; the mark does not",
+                mark.getBackground());
+        assertTrue("the mark belongs at the start of the header row",
+                mark.getParent() instanceof ViewGroup
+                        && ((ViewGroup) mark.getParent()).getChildAt(0) == mark);
+
+        // Rebuilt with the draft's accent on every render, which is how it follows a change the
+        // app has not been given yet.
+        select(activity, OrbitTheme.builtIn(OrbitTheme.ID_MOSS));
+        View after = findByTag(findPreview(activity.getWindow().getDecorView()), "orbit_mark");
+        assertNotNull(after);
+        controller.pause().stop().destroy();
+    }
+
+    /** One owner for the satellite tint, so a previewed mark and a live one lift it the same way. */
+    @Test public void theMarksSatelliteTintHasOneDerivation() {
+        assertEquals(UiKit.orbitSatelliteColor(context),
+                UiKit.orbitSatelliteColor(UiKit.accent(context)));
+    }
+
     // ---- helpers -----------------------------------------------------------------------------------
 
     private OrbitTheme draft(ThemeStudioActivity activity) {
@@ -573,6 +612,18 @@ public final class ThemeStudioDraftTest {
         } catch (Exception e) {
             throw new AssertionError("could not read " + name, e);
         }
+    }
+
+    private static View findByTag(View view, Object tag) {
+        if (tag.equals(view.getTag())) return view;
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View found = findByTag(group.getChildAt(i), tag);
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     private static ImageView findImage(View view) {

@@ -697,7 +697,18 @@ public final class UiKit {
     }
 
     public static int orbitSatelliteColor(Context c) {
-        return blend(accent(c), Color.WHITE, 0.16f);
+        return orbitSatelliteColor(accent(c));
+    }
+
+    /**
+     * The satellite tint for one accent, rather than for the applied one.
+     *
+     * <p>The derivation lives here in one place so a mark drawn in a theme that is not in force —
+     * the Theme Studio preview — cannot end up lifting its satellite differently from the mark in
+     * the header above it.
+     */
+    public static int orbitSatelliteColor(int accent) {
+        return blend(accent, Color.WHITE, 0.16f);
     }
 
     /**
@@ -708,8 +719,22 @@ public final class UiKit {
      */
     public static View orbitMark(Context c, float sizeDp) {
         syncTheme(c);
+        return orbitMark(c, sizeDp, LIVE_ACCENT);
+    }
+
+    /**
+     * The same mark, drawn in an accent that is not the one Orbit is using.
+     *
+     * <p>For the Theme Studio preview, which shows a draft. {@link #orbitMark(Context, float)}
+     * deliberately resolves the accent inside {@code onDraw} so a mark already on screen turns the
+     * moment the applied accent does; a preview needs the opposite, because the whole point of it
+     * is to show a theme that has not been applied. Same geometry either way: there is one Orbit
+     * mark, and the difference between these two is which accent it is asked to wear.
+     */
+    public static View orbitMark(Context c, float sizeDp, int accent) {
         final int markSize = dp(c, sizeDp);
         final int shellColor = orbitShellColor();
+        final boolean live = accent == LIVE_ACCENT;
 
         View mark = new View(c) {
             private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -730,7 +755,8 @@ public final class UiKit {
 
                 // Resolve theme colors at draw time so an already-visible Orbit mark
                 // reacts immediately when Settings changes the accent.
-                paint.setColor(accent(c));
+                int ring = live ? accent(c) : accent;
+                paint.setColor(ring);
                 canvas.drawCircle(left + 54f * viewportScale, top + 54f * viewportScale,
                         32f * viewportScale, paint);
 
@@ -739,7 +765,7 @@ public final class UiKit {
                 canvas.drawCircle(left + 54f * viewportScale, top + 54f * viewportScale,
                         20f * viewportScale, paint);
 
-                paint.setColor(orbitSatelliteColor(c));
+                paint.setColor(orbitSatelliteColor(ring));
                 canvas.drawCircle(left + 78f * viewportScale, top + 34f * viewportScale,
                         7f * viewportScale, paint);
             }
@@ -747,6 +773,14 @@ public final class UiKit {
         mark.setTag("orbit_mark");
         return mark;
     }
+
+    /**
+     * The accent value that means "whatever Orbit is using right now, asked for at draw time".
+     *
+     * <p>Fully transparent, so it can never collide with a real accent: every colour Orbit resolves
+     * an accent to is opaque.
+     */
+    private static final int LIVE_ACCENT = 0;
 
 
     /**

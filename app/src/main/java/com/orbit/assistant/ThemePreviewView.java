@@ -26,6 +26,15 @@ import android.widget.TextView;
  */
 public final class ThemePreviewView extends LinearLayout {
 
+    /**
+     * How large the Orbit mark is drawn in the preview header.
+     *
+     * <p>Two points wider than the dot it replaced, which is the smallest size at which the mark's
+     * innermost ring and its satellite are still separable. The row's height comes from the chip
+     * beside it, so nothing moves.
+     */
+    private static final float MARK_SIZE_DP = 18f;
+
     private OrbitThemeTokens tokens;
 
     public ThemePreviewView(Context c) {
@@ -73,10 +82,15 @@ public final class ThemePreviewView extends LinearLayout {
         row.setOrientation(HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
 
-        View mark = new View(c);
-        mark.setBackground(UiKit.rounded(tokens.accent, 99, c));
+        // Orbit's own brand mark, wearing the draft's accent. It was a plain accent circle, which
+        // is not what sits beside the title anywhere else in Orbit and told nobody how their accent
+        // would actually look on the app's own mark. Drawn by UiKit from ic_orbit.xml's geometry,
+        // the same call the Chats header and the overlay make, so the miniature cannot drift from
+        // the real one. The accent is passed in rather than resolved at draw time, because this is
+        // a preview of a theme that has not been applied.
+        View mark = UiKit.orbitMark(c, MARK_SIZE_DP, tokens.accent);
         LinearLayout.LayoutParams markLp =
-                new LinearLayout.LayoutParams(UiKit.dp(c, 16), UiKit.dp(c, 16));
+                new LinearLayout.LayoutParams(UiKit.dp(c, MARK_SIZE_DP), UiKit.dp(c, MARK_SIZE_DP));
         markLp.rightMargin = UiKit.dp(c, 9);
         row.addView(mark, markLp);
 
