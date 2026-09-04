@@ -980,22 +980,48 @@ Prepared as the focused device-validation Beta after real Galaxy S25 Ultra testi
   accessibility, and responsive tablet conventions while leaving the rendered PDF page faithful
   to the source
 
-# Planned Beta 3
+### 0.7.8.2-beta.3 — Robustness & Document Polish
+A refinement Beta rather than a feature Beta, built entirely from Galaxy S25 Ultra testing of
+Beta 2. No new surface was added; four working foundations were finished.
 
-## Robust natural timer durations
+- **Final Deck drag stability.** The provisional tile order is now the single source of truth for a
+  drag: logical slots are derived from it, every non-dragged tile animates from where it visibly is
+  rather than from where it was last laid out, and hit testing asks which provisional slot contains
+  the finger. Neighbours no longer appear to overlap, cross through one another, or snap, and the
+  carried tile keeps exactly one reserved slot so nothing can look duplicated
+- **Visible PDF search highlighting.** `PdfTextPageReader` captures per-character geometry through
+  the same extraction the search index uses, normalized to fractions of the displayed page by
+  `DocumentPageMapping`. Highlights are drawn over the page through the same transform as the image,
+  so they stay welded to the word through fit, zoom, pan, double-tap and resize, and the cached
+  render is never modified. Previous/Next moves between individual occurrences, including several on
+  one page
+- **Richer Ask Orbit page context.** The staged page is a structured object — document reference,
+  page index, page count, bounded text, and one bounded rendering — presented as a real attachment
+  card with a page thumbnail, the document's title and `Page N of M`. Tapping it reopens the
+  document at that exact page; a sent turn keeps the same reference and reopens there too
+- **Exact page visual context.** The same bounded rendering is both the card's thumbnail and the
+  image a vision-capable provider receives, so a chart, diagram or scanned page can be asked about.
+  A provider without image support simply carries the page text, and the context never claims an
+  image was seen
+- **Truthful PDF attachment wording.** How much text was actually extracted is recorded at load and
+  drives both the card's caption and the default prompt, so a fully read PDF is no longer described
+  as a preview
+- **Robust natural timer durations.** One shared `DurationParser` sums every component of a duration
+  instead of reading the first count and unit, and understands fractions and decimals. The chained
+  command splitter no longer breaks a duration at the word "and"
+- **Proactive notification channels.** `OrbitNotificationChannels.ensureAll` registers all four
+  channels at start-up, under their existing IDs, posting nothing
+- **Bounded large-document UI.** Page views as well as bitmaps are now windowed, so a
+  multi-thousand-page PDF no longer measures thousands of children on every layout pass
 
-Introduce one shared robust duration parser for the existing `SET_TIMER` seconds contract. It must
-handle compound and fractional phrases including 4 minutes 30 seconds (270s), 4 and a half minutes
-(270s), 4.5 minutes (270s), a minute and a half (90s), 2 minutes 15 seconds (135s), 1 hour 5 minutes
-(3900s), 1 hour 5 minutes 30 seconds (3930s), and 90 seconds (90s). This remains Beta 3 work.
+# Next
 
-## Notification channel consistency
+## 0.7.8.2 Stable
 
-Proactively register legitimate Orbit notification channels, without sending a notification, so
-Background responses, Reminders, Routine triggers, and Orbit updates appear consistently in Samsung
-Notification Categories where applicable. This remains Beta 3 work.
+Promote the 0.7.8.2 line to Stable after successful physical-device validation of Beta 3. No new
+major feature belongs to that release.
 
-# Post-Beta-3 future features
+# Post-Stable future features
 
 ## Theme Studio
 

@@ -9,10 +9,27 @@ import java.util.Locale;
 public final class DocumentTextIndex {
     /** A hostile one-character query must not turn bounded text into millions of Match objects. */
     static final int MAX_MATCHES = 20_000;
+    /**
+     * One occurrence — not one page that happens to contain the query.
+     *
+     * <p>The distinction is what lets Previous and Next walk the five separate places "test"
+     * appears on page 31 instead of treating the page as a single result, and it is what a
+     * highlight needs in order to know which of them to draw. {@link #onPage} is that occurrence's
+     * index among the matches on its own page, which is how a highlight is found again in geometry
+     * extracted separately from the index.
+     */
     public static final class Match {
         public final int page;
         public final int offset;
-        Match(int page, int offset) { this.page = page; this.offset = offset; }
+        public final int length;
+        public final int onPage;
+
+        Match(int page, int offset, int length, int onPage) {
+            this.page = page;
+            this.offset = offset;
+            this.length = Math.max(0, length);
+            this.onPage = Math.max(0, onPage);
+        }
     }
 
     private final List<String> pages;
@@ -41,10 +58,11 @@ public final class DocumentTextIndex {
         for (int page = 0; page < pages.size(); page++) {
             String haystack = pages.get(page).toLowerCase(Locale.ROOT);
             int from = 0;
+            int onPage = 0;
             while (from <= haystack.length() - needle.length()) {
                 int found = haystack.indexOf(needle, from);
                 if (found < 0) break;
-                out.add(new Match(page, found));
+                out.add(new Match(page, found, needle.length(), onPage++));
                 if (out.size() >= MAX_MATCHES) return Collections.unmodifiableList(out);
                 from = found + Math.max(1, needle.length());
             }

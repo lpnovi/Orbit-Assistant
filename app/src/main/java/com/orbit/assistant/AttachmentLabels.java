@@ -67,6 +67,12 @@ public final class AttachmentLabels {
         if (attachment == null) return "";
         String place = total <= 1 ? "" : " " + position + " of " + total;
         if (isPhoto(attachment)) return "Photo attachment" + place;
+        // A page attachment is announced as the two things it is: which document, and where in it.
+        // The card's second line is not read separately, so it is spoken here instead.
+        if (attachment.isDocumentPage()) {
+            return "PDF page attachment" + place + ", " + attachment.label
+                    + (attachment.hasDetail() ? ", " + attachment.detail : "");
+        }
         if (isDocument(attachment)) {
             return leadingTypeWord(attachment) + " attachment" + place + ", " + attachment.label;
         }
@@ -80,6 +86,10 @@ public final class AttachmentLabels {
         if (attachment == null) return "Remove attachment";
         String place = total <= 1 ? "" : " " + position;
         if (isPhoto(attachment)) return "Remove photo attachment" + place;
+        if (attachment.isDocumentPage()) {
+            return "Remove PDF page attachment" + place + ", " + attachment.label
+                    + (attachment.hasDetail() ? ", " + attachment.detail : "");
+        }
         if (isDocument(attachment)) {
             return "Remove " + typeWord(attachment) + " attachment" + place
                     + ", " + attachment.label;

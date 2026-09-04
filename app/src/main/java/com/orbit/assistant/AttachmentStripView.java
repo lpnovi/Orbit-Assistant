@@ -278,14 +278,37 @@ public final class AttachmentStripView extends HorizontalScrollView {
         // a name than the strip used to allow, because one long filename taking a third of the
         // strip is the same problem in a smaller form.
         boolean photo = AttachmentLabels.isPhoto(attachment);
+        int maxLabelWidth = UiKit.dp(c, photo ? 96 : (compact ? 104 : 124));
         TextView label = UiKit.text(c, AttachmentLabels.displayLabel(attachment, position),
                 compact ? 11.5f : 12, UiKit.TEXT, true);
         label.setSingleLine(true);
         label.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
-        label.setMaxWidth(UiKit.dp(c, photo ? 96 : (compact ? 104 : 124)));
+        label.setMaxWidth(maxLabelWidth);
         label.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
-        card.addView(label, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        if (attachment.hasDetail()) {
+            // Two facts, two lines. A page attachment has a document to name and a place inside it
+            // to state, and joining those with a separator ellipsizes away whichever half the user
+            // needed — which is what made "Health behavior theory … · Page 5" read as an abstract
+            // label rather than as a page that is genuinely attached.
+            LinearLayout stack = new LinearLayout(c);
+            stack.setOrientation(LinearLayout.VERTICAL);
+            stack.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+            stack.addView(label, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            TextView detail = UiKit.text(c, attachment.detail, compact ? 10.5f : 11,
+                    UiKit.MUTED, false);
+            detail.setSingleLine(true);
+            detail.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            detail.setMaxWidth(maxLabelWidth);
+            detail.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+            stack.addView(detail, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            card.addView(stack, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        } else {
+            card.addView(label, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
 
         ImageButton remove = new ImageButton(c);
         remove.setImageResource(com.orbit.assistant.R.drawable.ic_close);

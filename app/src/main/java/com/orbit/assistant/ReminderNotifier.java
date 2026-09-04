@@ -12,7 +12,7 @@ import android.provider.Settings;
 
 /** Notification delivery for Orbit reminders. */
 public final class ReminderNotifier {
-    private static final String CHANNEL = "orbit_reminders";
+    private static final String CHANNEL = OrbitNotificationChannels.REMINDERS;
 
     private ReminderNotifier() {}
 
@@ -80,13 +80,8 @@ public final class ReminderNotifier {
         catch (Exception ignored) {}
     }
 
+    /** Declared at start-up; still asserted here so the importance check reads a real channel. */
     private static void ensureChannel(Context c) {
-        if (c == null || Build.VERSION.SDK_INT < 26) return;
-        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
-        if (nm == null) return;
-        NotificationChannel channel = new NotificationChannel(
-                CHANNEL, "Reminders", NotificationManager.IMPORTANCE_HIGH);
-        channel.setDescription("Reminders you create through Orbit.");
-        nm.createNotificationChannel(channel);
+        OrbitNotificationChannels.ensure(c, CHANNEL);
     }
 }

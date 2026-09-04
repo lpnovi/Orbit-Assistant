@@ -74,9 +74,11 @@ public final class AttachmentBatchLoader {
                 }
                 continue;
             }
+            // contentState travels with the attachment so the composer can ask a question that
+            // matches how much of the document Orbit actually loaded.
             loaded.add(new ComposerAttachment(kindFor(sourceLabel, result.kind),
                     labelFor(sourceLabel, result.label), result.contextText, result.image,
-                    result.document));
+                    result.document, "", result.contentState));
         }
 
         // Everything past the capacity is still something the user selected, so it is counted as

@@ -4,12 +4,18 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.graphics.RectF;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * One page of the attachment viewer: an image that can be pinched, double-tapped and panned.
@@ -51,10 +57,33 @@ public final class ZoomableImageView extends View {
     private float lastPanY;
     private boolean panning;
 
+    /**
+     * Search highlights, as fractions of the page rather than pixels.
+     *
+     * <p>Drawn through the same transform as the image on every frame, which is what welds a
+     * highlight to its word. The alternative — painting a box in screen coordinates once when a
+     * result is selected — leaves it behind the moment the page is pinched or panned, and painting
+     * it into the bitmap would destroy the clean cached render and have to be undone before the
+     * page could be reused.
+     */
+    private List<RectF> highlights = Collections.emptyList();
+    private RectF selectedHighlightArea;
+    private final Paint highlightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint selectedHighlightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private int selectedFrom;
+    private int selectedTo;
+    private float highlightRadius;
+
     public ZoomableImageView(Context context) {
         super(context);
         setClickable(true);
         setFocusable(true);
+        // Translucent Accent: enough to find at a glance, light enough that the word underneath is
+        // still readable. A highlight that hides what it found is not a highlight.
+        int accent = UiKit.accent(context);
+        highlightPaint.setColor(UiKit.withAlpha(accent, 56));
+        selectedHighlightPaint.setColor(UiKit.withAlpha(accent, 122));
+        highlightRadius = UiKit.dp(context, 2);
         taps = new GestureDetector(context, new GestureDetector.SimpleOnGestureListener() {
             @Override public boolean onDown(MotionEvent e) { return true; }
 
@@ -117,6 +146,79 @@ public final class ZoomableImageView extends View {
 
     /** For tests and for the pager: the live transform. */
     ZoomPanController controller() { return controller; }
+
+    // ---- search highlights ------------------------------------------------------------------------
+
+    /**
+     * Marks part of the page, in fractions of the page rather than pixels.
+     *
+     * <p>{@code selectedFrom}..{@code selectedTo} names the run of rectangles belonging to the
+     * result the user is currently on; those are drawn more strongly than the rest, which are the
+     * other matches on the same page and are only there to say "and there, and there".
+     */
+    public void setHighlights(List<RectF> normalized, int selectedFrom, int selectedTo) {
+        List<RectF> copy = new ArrayList<>();
+        if (normalized != null) {
+            for (RectF rect : normalized) if (rect != null) copy.add(new RectF(rect));
+        }
+        highlights = Collections.unmodifiableList(copy);
+        this.selectedFrom = Math.max(0, selectedFrom);
+        this.selectedTo = Math.min(copy.size(), Math.max(this.selectedFrom, selectedTo));
+        selectedHighlightArea = null;
+        for (int i = this.selectedFrom; i < this.selectedTo; i++) {
+            if (selectedHighlightArea == null) selectedHighlightArea = new RectF(copy.get(i));
+            else selectedHighlightArea.union(copy.get(i));
+        }
+        invalidate();
+    }
+
+    /** Removes every highlight. The page itself was never modified, so there is nothing to undo. */
+    public void clearHighlights() {
+        if (highlights.isEmpty() && selectedHighlightArea == null) return;
+        highlights = Collections.emptyList();
+        selectedHighlightArea = null;
+        selectedFrom = 0;
+        selectedTo = 0;
+        invalidate();
+    }
+
+    public boolean hasHighlights() { return !highlights.isEmpty(); }
+
+    /**
+     * Where the selected highlight currently sits on screen, or null.
+     *
+     * <p>Asked by the viewer so it can decide whether a result is already visible. Computed from
+     * the live transform, so the answer is about what the user can see now, not about where the
+     * result was when it was selected.
+     */
+    public RectF selectedHighlightOnScreen() {
+        if (selectedHighlightArea == null || !hasImage() || !controller.hasContent()) return null;
+        float applied = controller.appliedScale();
+        float drawnWidth = bitmap.getWidth() * applied;
+        float drawnHeight = bitmap.getHeight() * applied;
+        return DocumentPageMapping.toView(selectedHighlightArea,
+                (getWidth() - drawnWidth) / 2f + controller.translationX(),
+                (getHeight() - drawnHeight) / 2f + controller.translationY(),
+                drawnWidth, drawnHeight);
+    }
+
+    /**
+     * Nudges the page so the selected highlight is on screen, moving as little as possible.
+     *
+     * <p>Only ever a pan, never a zoom: a reader who has chosen a magnification did so on purpose,
+     * and re-zooming on every Next would make walking through matches unusable. A fitted page needs
+     * nothing at all, because all of it is already visible.
+     */
+    public boolean revealSelectedHighlight(float margin) {
+        if (!controller.isZoomed()) return false;
+        RectF onScreen = selectedHighlightOnScreen();
+        if (onScreen == null) return false;
+        float[] delta = DocumentPageMapping.panToReveal(onScreen, getWidth(), getHeight(), margin);
+        if (delta[0] == 0f && delta[1] == 0f) return false;
+        boolean moved = controller.panBy(delta[0], delta[1]);
+        if (moved) applyTransform();
+        return moved;
+    }
 
     @Override protected void onSizeChanged(int w, int h, int oldW, int oldH) {
         super.onSizeChanged(w, h, oldW, oldH);
@@ -207,10 +309,29 @@ public final class ZoomableImageView extends View {
         float applied = controller.appliedScale();
         float drawnWidth = bitmap.getWidth() * applied;
         float drawnHeight = bitmap.getHeight() * applied;
+        float drawnLeft = (getWidth() - drawnWidth) / 2f + controller.translationX();
+        float drawnTop = (getHeight() - drawnHeight) / 2f + controller.translationY();
         matrix.reset();
         matrix.postScale(applied, applied);
-        matrix.postTranslate((getWidth() - drawnWidth) / 2f + controller.translationX(),
-                (getHeight() - drawnHeight) / 2f + controller.translationY());
+        matrix.postTranslate(drawnLeft, drawnTop);
         canvas.drawBitmap(bitmap, matrix, paint);
+        drawHighlights(canvas, drawnLeft, drawnTop, drawnWidth, drawnHeight);
+    }
+
+    /**
+     * Paints the highlights over the page, using the same origin and size the page was drawn with.
+     *
+     * <p>Recomputed every frame from the live transform rather than cached, which is the whole
+     * reason a highlight survives a pinch: there is no stored screen position that could go stale.
+     */
+    private void drawHighlights(Canvas canvas, float left, float top, float width, float height) {
+        if (highlights.isEmpty()) return;
+        for (int i = 0; i < highlights.size(); i++) {
+            RectF target = DocumentPageMapping.toView(highlights.get(i), left, top, width, height);
+            if (target == null || target.isEmpty()) continue;
+            boolean selected = i >= selectedFrom && i < selectedTo;
+            canvas.drawRoundRect(target, highlightRadius, highlightRadius,
+                    selected ? selectedHighlightPaint : highlightPaint);
+        }
     }
 }

@@ -647,3 +647,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Tap a PDF in full chat to open a native viewer with page swiping, zoom, direct page selection, and local search.
   - Search results keep their page identity and jump through matches without sending the document anywhere.
   - Ask Orbit about the page you are reading; it stages that exact page in a new composer and never sends automatically.
+
+- **v0.7.8.2-beta.3**: Deck, PDF search and timers now behave the way they look like they should.
+  - Dragging a Deck tile flows smoothly: neighbouring tiles slide aside instead of jumping, and never overlap.
+  - PDF search now highlights the word it found, and Next moves visibly between matches on the same page.
+  - Ask Orbit attaches the page as a real card with a thumbnail, title and page number; tapping it reopens that page.
+  - Orbit can now see the page you ask about, so charts, diagrams and scanned pages work as well as plain text.
+  - Timers understand mixed and fractional durations, so "4 minutes and 30 seconds" and "4 and a half minutes" both set 4:30.
+  - Notification categories appear consistently in Android settings, and a PDF Orbit fully read is no longer called a preview.

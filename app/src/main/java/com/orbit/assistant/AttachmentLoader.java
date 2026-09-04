@@ -31,19 +31,36 @@ public final class AttachmentLoader {
         public final String kind, label, contextText, error;
         public final Bitmap image;
         public final DocumentReference document;
+        /**
+         * How much of the file's content actually reached {@link #contextText}.
+         *
+         * <p>Recorded here because this is the only place that knows. Everything downstream — the
+         * card's caption, and the question Orbit asks when the user types nothing — has to agree
+         * with what was really loaded, and re-deriving it later by reading a label would be
+         * guessing at a fact that was known for certain a moment earlier.
+         */
+        public final String contentState;
 
         Result(String kind, String label, String contextText, Bitmap image, String error) {
-            this(kind, label, contextText, image, error, null);
+            this(kind, label, contextText, image, error, null, ComposerAttachment.CONTENT_UNKNOWN);
         }
 
         Result(String kind, String label, String contextText, Bitmap image, String error,
                DocumentReference document) {
+            this(kind, label, contextText, image, error, document,
+                    ComposerAttachment.CONTENT_UNKNOWN);
+        }
+
+        Result(String kind, String label, String contextText, Bitmap image, String error,
+               DocumentReference document, String contentState) {
             this.kind = safe(kind);
             this.label = safe(label);
             this.contextText = contextText == null ? "" : contextText;
             this.image = image;
             this.error = error == null ? "" : error;
             this.document = document;
+            this.contentState = contentState == null
+                    ? ComposerAttachment.CONTENT_UNKNOWN : contentState;
         }
 
         public boolean ok() { return error.isEmpty() && (!contextText.isEmpty() || image != null); }
@@ -271,15 +288,19 @@ public final class AttachmentLoader {
                     .append("has only that many pages.");
         }
 
-        String trayLabel;
-        if (meaningfulText) {
-            trayLabel = label + " · " + Math.max(0, totalPages) +
-                    (totalPages == 1 ? " page" : " pages") +
-                    (textTruncated ? " · text partially loaded" : " · text loaded");
-        } else {
-            trayLabel = label + " · " + Math.max(0, totalPages) +
-                    (totalPages == 1 ? " page" : " pages") + " · visual preview";
-        }
+        // The one fact three different pieces of wording depend on: the card's caption, the
+        // context's truncation warning, and the question Orbit asks when the user types nothing.
+        // Derived once here so they cannot disagree about the same document.
+        String contentState = !meaningfulText ? ComposerAttachment.CONTENT_VISUAL_ONLY
+                : (textTruncated ? ComposerAttachment.CONTENT_PARTIAL_TEXT
+                        : ComposerAttachment.CONTENT_FULL_TEXT);
+
+        String pages = Math.max(0, totalPages) + (totalPages == 1 ? " page" : " pages");
+        String loaded = ComposerAttachment.CONTENT_VISUAL_ONLY.equals(contentState)
+                ? "visual preview"
+                : (ComposerAttachment.CONTENT_PARTIAL_TEXT.equals(contentState)
+                        ? "text partially loaded" : "text loaded");
+        String trayLabel = label + " · " + pages + " · " + loaded;
 
         if (preview == null && !meaningfulText) {
             DocumentFileStore.delete(documentPath);
@@ -287,7 +308,7 @@ public final class AttachmentLoader {
         }
 
         return new Result("pdf", trayLabel, context.toString(), preview, "",
-                new DocumentReference(documentPath, label, totalPages));
+                new DocumentReference(documentPath, label, totalPages), contentState);
     }
 
     private static String readText(Context c, Uri uri) throws Exception {

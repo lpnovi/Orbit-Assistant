@@ -87,7 +87,15 @@
         </intent>
     </queries>
 
+    <!--
+      OrbitApplication exists so Android learns every Orbit notification category at start-up
+      rather than the first time each one happens to fire. Without it the Notification categories
+      list under Settings differs between devices depending on which features have run there.
+      It registers channel metadata and nothing else: no notification is posted, no permission is
+      requested, and no network work happens.
+    -->
     <application
+        android:name=".OrbitApplication"
         android:allowBackup="false"
         android:icon="@drawable/ic_orbit"
         android:label="@string/app_name"

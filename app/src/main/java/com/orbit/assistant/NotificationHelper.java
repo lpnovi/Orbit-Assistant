@@ -11,17 +11,17 @@ import android.os.Build;
 
 /** Optional, quiet notifications for background Orbit completions. */
 public final class NotificationHelper {
-    private static final String CHANNEL = "orbit_background_responses";
+    private static final String CHANNEL = OrbitNotificationChannels.BACKGROUND_RESPONSES;
     private NotificationHelper() {}
 
+    /**
+     * Still called before posting, but the definition now lives in one place.
+     *
+     * <p>Start-up already registered this channel; keeping the call is what makes the notification
+     * path safe on its own if it is ever reached in a process that skipped {@code Application}.
+     */
     public static void ensureChannel(Context c) {
-        if (Build.VERSION.SDK_INT < 26) return;
-        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
-        if (nm == null) return;
-        NotificationChannel channel = new NotificationChannel(
-                CHANNEL, "Background responses", NotificationManager.IMPORTANCE_DEFAULT);
-        channel.setDescription("Notifies you when an Orbit response finishes after you leave the chat.");
-        nm.createNotificationChannel(channel);
+        OrbitNotificationChannels.ensure(c, CHANNEL);
     }
 
     public static void notifyResponseComplete(Context c, String conversationId, String prompt, String response) {

@@ -250,10 +250,19 @@ public final class RoutinePlanResponse {
                     return out;
                 }
                 case RoutineActionCatalog.SET_TIMER: {
+                    // An explicit number is taken as stated. Only when neither field holds one is
+                    // the text read as a duration, so "4 minutes 30 seconds" in a planned routine
+                    // reaches the same arithmetic every other Orbit timer goes through.
                     int seconds = asInt(first(in, "seconds", "duration", "durationSeconds"), -1);
                     if (seconds < 0) {
                         int minutes = asInt(first(in, "minutes", "durationMinutes"), -1);
                         if (minutes > 0) seconds = minutes * 60;
+                    }
+                    if (seconds < 0) {
+                        long parsed = DurationParser.parseSeconds(
+                                asString(first(in, "seconds", "duration", "durationSeconds",
+                                        "minutes", "durationMinutes")));
+                        if (parsed > 0L) seconds = (int) parsed;
                     }
                     if (seconds >= 0) out.put("seconds", seconds);
                     copyString(in, out, "label", "name", "title");

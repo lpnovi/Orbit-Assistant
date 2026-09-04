@@ -12,7 +12,7 @@ import android.provider.Settings;
 
 /** Attention-only notifications for automatic routines that cannot finish silently. */
 public final class RoutineTriggerNotifier {
-    private static final String CHANNEL = "orbit_routine_triggers";
+    private static final String CHANNEL = OrbitNotificationChannels.ROUTINE_TRIGGERS;
     private RoutineTriggerNotifier() {}
 
     public static void notifyNeedsContinuation(Context c, RoutineStore.Routine routine,
@@ -122,12 +122,8 @@ public final class RoutineTriggerNotifier {
         }
     }
 
+    /** Declared at start-up; still asserted here so the importance check reads a real channel. */
     private static void ensureChannel(Context c) {
-        if (Build.VERSION.SDK_INT < 26) return;
-        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
-        if (nm == null) return;
-        NotificationChannel ch = new NotificationChannel(CHANNEL, "Routine triggers", NotificationManager.IMPORTANCE_DEFAULT);
-        ch.setDescription("Only alerts you when an automatic Orbit routine needs attention or a foreground step.");
-        nm.createNotificationChannel(ch);
+        OrbitNotificationChannels.ensure(c, CHANNEL);
     }
 }

@@ -28,6 +28,7 @@ import android.widget.Toast;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -41,24 +42,54 @@ public final class DocumentViewerActivity extends Activity {
     /** A corrupt PDF claiming millions of pages must not create millions of Views. */
     static final int MAX_PAGES = 3000;
 
+    /**
+     * One page's place in the pager, and the views that fill it while it is near enough to matter.
+     *
+     * <p>The container is permanent because the pager positions pages by child index, so every page
+     * needs a slot whether or not anything is in it. What is inside is not permanent, and that is
+     * the point: {@code AttachmentPagerView} measures and lays out every child on every traversal,
+     * so a page kept furnished with an image view and a status label costs a measure pass each time
+     * the document is rotated, the search panel opens, or the window insets change.
+     *
+     * <p>At the few hundred pages a textbook has, that was acceptable. At the three thousand this
+     * viewer is willing to open it is not: three thousand text labels re-measuring on every layout
+     * is a visible stall, on top of the megabytes those views cost simply to exist. An empty
+     * container measures in nothing at all, so only the pages inside the render window — the
+     * current page and the one either side of it, the furthest a single swipe can reach — are
+     * furnished.
+     */
     private static final class Page {
         final FrameLayout container;
-        final ZoomableImageView image;
-        final TextView state;
+        ZoomableImageView image;
+        TextView state;
         Bitmap bitmap;
         boolean requested;
 
-        Page(FrameLayout container, ZoomableImageView image, TextView state) {
+        Page(FrameLayout container) {
             this.container = container;
-            this.image = image;
-            this.state = state;
         }
 
+        boolean furnished() { return image != null; }
+
         void release() {
-            image.setBitmap(null);
+            if (image != null) image.setBitmap(null);
             if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
             bitmap = null;
             requested = false;
+        }
+
+        /** Releases the page's bitmap and takes its views back out of the hierarchy. */
+        void unfurnish() {
+            release();
+            container.removeAllViews();
+            image = null;
+            state = null;
+        }
+
+        void showState(String message) {
+            if (state == null) return;
+            state.setText(message);
+            state.setVisibility(View.VISIBLE);
         }
     }
 
@@ -74,6 +105,25 @@ public final class DocumentViewerActivity extends Activity {
     private int selectedMatch = -1;
     private int restoredPage;
     private boolean destroyed;
+
+    /**
+     * Character geometry for the last couple of pages a search landed on.
+     *
+     * <p>Extracted per page rather than with the index, because geometry costs four floats per
+     * character: keeping it for a 388-page book would cost tens of megabytes to answer a question
+     * about one page. Two pages is enough for Next and Previous to move between neighbours without
+     * re-reading, and small enough to be free.
+     */
+    private static final int GEOMETRY_CACHE_PAGES = 2;
+    /** A page dense with matches must not turn one search into thousands of drawn rectangles. */
+    private static final int MAX_HIGHLIGHTS_PER_PAGE = 240;
+    private final LinkedHashMap<Integer, DocumentTextGeometry> geometry = new LinkedHashMap<>();
+    private final ExecutorService geometryExecutor = Executors.newSingleThreadExecutor();
+    /** Which page's highlights are currently drawn, so they can be taken down again. */
+    private int highlightedPage = -1;
+    /** Bumped whenever the query or selection changes, so a slow extraction cannot arrive late. */
+    private long highlightGeneration;
+    private String currentQuery = "";
 
     private LinearLayout root;
     private AttachmentPagerView pager;
@@ -148,13 +198,21 @@ public final class DocumentViewerActivity extends Activity {
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         titleLp.setMarginStart(UiKit.dp(this, 8));
+        titleLp.setMarginEnd(UiKit.dp(this, 4));
         header.addView(title, titleLp);
+        // The title is what gives way when a long filename meets a large text size, because the
+        // two controls beside it are the only way out of this screen and into a chat about it.
+        // Without this the header lays itself out title-first and pushes them off the edge.
+        title.setMinWidth(0);
 
         searchButton = iconButton(R.drawable.ic_search, "Search document");
         searchButton.setOnClickListener(v -> toggleSearch());
-        header.addView(searchButton,
-                new LinearLayout.LayoutParams(UiKit.dp(this, 48), UiKit.dp(this, 48)));
+        LinearLayout.LayoutParams searchButtonLp = new LinearLayout.LayoutParams(
+                UiKit.dp(this, 48), UiKit.dp(this, 48));
+        header.addView(searchButton, searchButtonLp);
 
+        // The visible label stays two words. The whole action — "Ask Orbit about this page" — is
+        // what a screen reader is told, which is where the extra words are worth their room.
         askButton = actionButton("Ask Orbit", "Ask Orbit about this page");
         askButton.setEnabled(false);
         askButton.setAlpha(0.5f);
@@ -221,11 +279,21 @@ public final class DocumentViewerActivity extends Activity {
         searchInput.setTextSize(14);
         searchInput.setBackgroundColor(android.graphics.Color.TRANSPARENT);
         searchInput.setEnabled(false);
-        panel.addView(searchInput, new LinearLayout.LayoutParams(0, UiKit.dp(this, 44), 1f));
+        LinearLayout.LayoutParams inputLp = new LinearLayout.LayoutParams(
+                0, UiKit.dp(this, 44), 1f);
+        // The field yields space to the count rather than the other way round: "1284 of 1863 · p311"
+        // being clipped to "1284 of 18…" makes the one thing the panel exists to say unreadable,
+        // while a search box a few characters narrower costs nothing.
+        inputLp.setMarginEnd(UiKit.dp(this, 4));
+        panel.addView(searchInput, inputLp);
         searchResult = UiKit.text(this, "Indexing…", 11.5f, UiKit.MUTED, true);
         searchResult.setGravity(Gravity.CENTER);
+        searchResult.setMaxLines(2);
+        // Sized to its own content, with a floor so the panel does not shuffle sideways on every
+        // keystroke, and no ceiling so a long count and a large accessibility text size both fit.
+        searchResult.setMinWidth(UiKit.dp(this, 78));
         panel.addView(searchResult, new LinearLayout.LayoutParams(
-                UiKit.dp(this, 82), UiKit.dp(this, 44)));
+                ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 44)));
         searchPrevious = iconButton(R.drawable.ic_back, "Previous search result");
         searchPrevious.setOnClickListener(v -> moveSearch(-1));
         panel.addView(searchPrevious,
@@ -275,6 +343,25 @@ public final class DocumentViewerActivity extends Activity {
 
     private void addPage(int pageNumber) {
         FrameLayout container = new FrameLayout(this);
+        container.setFocusable(true);
+        container.setContentDescription("Page " + (pageNumber + 1) + " of " + model.pageCount());
+        Page page = new Page(container);
+        pages.add(page);
+        pager.addPage(container, new AttachmentPagerView.Page() {
+            // An unfurnished page has no transform to speak of, so it can absorb nothing and
+            // hands every sideways drag straight to the pager, which is the right answer.
+            @Override public boolean canPanHorizontally(int direction) {
+                return page.furnished() && page.image.canPanHorizontally(direction);
+            }
+            @Override public void resetTransform() {
+                if (page.furnished()) page.image.resetTransform();
+            }
+        });
+    }
+
+    /** Gives a page the views it needs to show something, if it does not already have them. */
+    private void furnish(Page page) {
+        if (page == null || page.furnished()) return;
         int screenDp = getResources().getConfiguration().screenWidthDp;
         int maxWidth = getResources().getConfiguration().smallestScreenWidthDp >= 600
                 ? UiKit.dp(this, Math.min(760, Math.max(320, screenDp - 32)))
@@ -285,24 +372,14 @@ public final class DocumentViewerActivity extends Activity {
             @Override public void onTapped() {}
             @Override public void onTransformChanged() {}
         });
-        FrameLayout.LayoutParams imageLp = new FrameLayout.LayoutParams(
-                maxWidth, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER);
-        container.addView(image, imageLp);
+        page.container.addView(image, new FrameLayout.LayoutParams(
+                maxWidth, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
         TextView state = UiKit.text(this, "Rendering page…", 13, UiKit.MUTED, false);
         state.setGravity(Gravity.CENTER);
-        container.addView(state, new FrameLayout.LayoutParams(
+        page.container.addView(state, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        container.setFocusable(true);
-        container.setContentDescription("Page " + (pageNumber + 1) + " of "
-                + model.pageCount());
-        Page page = new Page(container, image, state);
-        pages.add(page);
-        pager.addPage(container, new AttachmentPagerView.Page() {
-            @Override public boolean canPanHorizontally(int direction) {
-                return image.canPanHorizontally(direction);
-            }
-            @Override public void resetTransform() { image.resetTransform(); }
-        });
+        page.image = image;
+        page.state = state;
     }
 
     private void updateRenderWindow() {
@@ -313,15 +390,15 @@ public final class DocumentViewerActivity extends Activity {
         for (int i = 0; i < pages.size(); i++) {
             Page page = pages.get(i);
             if (!wanted.contains(i)) {
-                if (page.bitmap != null || page.requested) page.release();
-                page.state.setVisibility(View.VISIBLE);
-                page.state.setText("Rendering page…");
+                // Views as well as bitmaps: a page well outside the window contributes nothing to
+                // the screen and should contribute nothing to a layout pass either.
+                if (page.furnished()) page.unfurnish();
                 continue;
             }
+            furnish(page);
             if (page.bitmap != null) continue;
             page.requested = true;
-            page.state.setVisibility(View.VISIBLE);
-            page.state.setText("Rendering page…");
+            page.showState("Rendering page…");
             renderer.render(generation, i, Math.max(1200, pager.getWidth() * 2));
         }
     }
@@ -334,20 +411,23 @@ public final class DocumentViewerActivity extends Activity {
             return;
         }
         Page page = pages.get(pageNumber);
+        furnish(page);
         page.release();
         page.bitmap = bitmap;
         page.image.setBitmap(bitmap);
         page.state.setVisibility(View.GONE);
         page.container.setContentDescription("Page " + (pageNumber + 1) + " of "
                 + model.pageCount());
+        // A page re-rendered while a search result is on it gets its highlights back; the bitmap
+        // changed, the geometry did not.
+        if (pageNumber == highlightedPage) showSelectedHighlight();
     }
 
     private void showPageError(long generation, int pageNumber, String message) {
         if (!renderWindow.accepts(generation) || pageNumber < 0 || pageNumber >= pages.size()) return;
         Page page = pages.get(pageNumber);
         page.requested = false;
-        page.state.setText(message);
-        page.state.setVisibility(View.VISIBLE);
+        page.showState(message);
     }
 
     private void showOpenError(String message) {
@@ -428,7 +508,15 @@ public final class DocumentViewerActivity extends Activity {
                 InputMethodManager keyboard = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
                 if (keyboard != null) keyboard.showSoftInput(searchInput, InputMethodManager.SHOW_IMPLICIT);
             }
+            showSelectedHighlight();
+            return;
         }
+        // Closing search puts the document back the way it was to read. A highlight left behind
+        // would follow the reader through the rest of the book.
+        highlightGeneration++;
+        clearHighlights();
+        InputMethodManager keyboard = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (keyboard != null) keyboard.hideSoftInputFromWindow(searchInput.getWindowToken(), 0);
     }
 
     private void indexText() {
@@ -462,6 +550,7 @@ public final class DocumentViewerActivity extends Activity {
             setSearchNavigationEnabled(false);
             return;
         }
+        currentQuery = query == null ? "" : query.trim();
         matches = textIndex.search(query);
         selectedMatch = matches.isEmpty() ? -1 : firstMatchOnOrAfterCurrentPage();
         updateSearchResult(!matches.isEmpty());
@@ -485,6 +574,7 @@ public final class DocumentViewerActivity extends Activity {
             searchResult.setText(blank ? (textIndex != null && !textIndex.hasSearchableText()
                     ? "No searchable text found" : "Type to search") : "No results");
             setSearchNavigationEnabled(false);
+            clearHighlights();
             return;
         }
         DocumentTextIndex.Match match = matches.get(selectedMatch);
@@ -498,6 +588,127 @@ public final class DocumentViewerActivity extends Activity {
             goToPage(match.page, true);
             searchResult.announceForAccessibility(announcement);
         }
+        showSelectedHighlight();
+    }
+
+    // ---- search highlights ------------------------------------------------------------------------
+
+    /**
+     * Draws the selected result on the page it is on.
+     *
+     * <p>Knowing which page a result is on was never the hard part — the viewer already jumped to
+     * it. What was missing is the part the user actually needs: on a printed page of a textbook,
+     * "8 of 186 · p31" leaves them to find the word themselves. The selected occurrence is drawn
+     * strongly, and the other matches on the same page faintly, so Next visibly moves rather than
+     * appearing to do nothing when two results share a page.
+     */
+    private void showSelectedHighlight() {
+        if (destroyed || matches.isEmpty() || selectedMatch < 0 || selectedMatch >= matches.size()) {
+            clearHighlights();
+            return;
+        }
+        int page = matches.get(selectedMatch).page;
+        DocumentTextGeometry known = geometry.get(page);
+        if (known == null) {
+            // Nothing is drawn until the geometry arrives; a stale highlight from the previous
+            // result would be worse than none, so the page is cleared first either way.
+            clearHighlights();
+            requestGeometry(page);
+            return;
+        }
+        drawHighlights(page, known);
+    }
+
+    private void drawHighlights(int page, DocumentTextGeometry known) {
+        clearHighlights();
+        if (page < 0 || page >= pages.size() || !known.hasGeometry()
+                || currentQuery.isEmpty()) {
+            return;
+        }
+        boolean offsetsAlign = known.text.equals(textIndex == null ? "" : textIndex.pageText(page));
+        List<android.graphics.RectF> all = new ArrayList<>();
+        int selectedFrom = 0;
+        int selectedTo = 0;
+        for (int i = 0; i < matches.size() && all.size() < MAX_HIGHLIGHTS_PER_PAGE; i++) {
+            DocumentTextIndex.Match match = matches.get(i);
+            if (match.page != page) continue;
+            // The offset is trusted only when the two extractions produced the same string. When
+            // they did not, counting occurrences is stable where counting characters is not, and a
+            // highlight one word out would be worse than an honest miss.
+            int offset = offsetsAlign
+                    ? match.offset : known.offsetOfOccurrence(currentQuery, match.onPage);
+            if (offset < 0) continue;
+            List<android.graphics.RectF> rects = known.rectsFor(offset, match.length);
+            if (rects.isEmpty()) continue;
+            if (i == selectedMatch) {
+                selectedFrom = all.size();
+                selectedTo = all.size() + rects.size();
+            }
+            all.addAll(rects);
+        }
+        if (all.isEmpty()) return;
+        Page target = pages.get(page);
+        // Outside the render window a page has no image view to draw on. The page it is about to
+        // become the current one, so this resolves on the next window update.
+        if (!target.furnished()) return;
+        final ZoomableImageView image = target.image;
+        image.setHighlights(all, selectedFrom, selectedTo);
+        highlightedPage = page;
+        // A reader who has zoomed in keeps their magnification; the page is only nudged, and only
+        // when the result would otherwise be off screen.
+        image.post(() -> {
+            if (!destroyed && highlightedPage == page && target.image == image) {
+                image.revealSelectedHighlight(UiKit.dp(this, 28));
+            }
+        });
+    }
+
+    /**
+     * Reads one page's character geometry off the UI thread.
+     *
+     * <p>Generation-checked on the way back, so a slow extraction for a result the user has already
+     * moved past cannot paint the wrong page.
+     */
+    private void requestGeometry(int page) {
+        if (page < 0) return;
+        final long generation = ++highlightGeneration;
+        geometryExecutor.execute(() -> {
+            DocumentTextGeometry extracted;
+            try {
+                extracted = PdfPageTextExtractor.geometry(this, session.document.path, page);
+            } catch (Exception error) {
+                extracted = DocumentTextGeometry.EMPTY;
+            }
+            final DocumentTextGeometry result = extracted;
+            runOnUiThread(() -> {
+                if (destroyed || generation != highlightGeneration) return;
+                remember(page, result);
+                if (!matches.isEmpty() && selectedMatch >= 0 && selectedMatch < matches.size()
+                        && matches.get(selectedMatch).page == page) {
+                    drawHighlights(page, result);
+                }
+            });
+        });
+    }
+
+    private void remember(int page, DocumentTextGeometry extracted) {
+        geometry.remove(page);
+        geometry.put(page, extracted);
+        while (geometry.size() > GEOMETRY_CACHE_PAGES) {
+            geometry.remove(geometry.keySet().iterator().next());
+        }
+    }
+
+    /**
+     * Takes every highlight down.
+     *
+     * <p>Nothing to undo on the page itself: highlights are drawn over the rendered bitmap, never
+     * into it, so the cached render stays clean and can be reused for ordinary reading without any
+     * colour leaking into it.
+     */
+    private void clearHighlights() {
+        for (Page page : pages) if (page.furnished()) page.image.clearHighlights();
+        highlightedPage = -1;
     }
 
     private void setSearchNavigationEnabled(boolean enabled) {
@@ -507,24 +718,48 @@ public final class DocumentViewerActivity extends Activity {
         searchNext.setAlpha(enabled ? 1f : 0.35f);
     }
 
+    /**
+     * Ask Orbit is available for any page Orbit can actually show.
+     *
+     * <p>It used to require extractable text, which turned it off for exactly the pages a reader
+     * most wants to ask about: a scan, a full-page figure, a chart. Those pages can be sent as an
+     * image, and a provider with vision can read them. A provider without vision is told plainly
+     * that the page had no extractable text rather than being handed a page and left to guess.
+     */
     private void updateAskEnabled() {
-        boolean enabled = model != null && textIndex != null
-                && !textIndex.pageText(model.page()).trim().isEmpty();
+        boolean enabled = model != null && model.pageCount() > 0;
         askButton.setEnabled(enabled);
         askButton.setAlpha(enabled ? 1f : 0.5f);
-        askButton.setContentDescription(enabled ? "Ask Orbit about this page"
-                : "Ask Orbit about this page, no searchable page text available");
+        boolean hasText = model != null && textIndex != null
+                && !textIndex.pageText(model.page()).trim().isEmpty();
+        // The visible label stays "Ask Orbit"; the whole action is only ever spoken here.
+        askButton.setContentDescription(enabled && !hasText
+                ? "Ask Orbit about this page, no extractable text on this page"
+                : "Ask Orbit about this page");
     }
 
+    /**
+     * Stages this exact page for a new chat. Nothing is ever sent from here.
+     *
+     * <p>The page travels as one structured object holding its text, its bounded rendering and the
+     * reference needed to reopen the document at it — one thing the user attached, described
+     * completely, rather than a sentence that happens to mention a page number.
+     */
     private void askAboutPage() {
-        if (model == null || textIndex == null) return;
-        String text = textIndex.pageText(model.page());
-        if (text.trim().isEmpty()) {
-            Toast.makeText(this, "No searchable text found on this page", Toast.LENGTH_SHORT).show();
+        if (model == null || model.pageCount() <= 0) return;
+        int pageIndex = model.page();
+        String text = textIndex == null ? "" : textIndex.pageText(pageIndex);
+        // Rendered on the UI thread deliberately: it is one bounded page, the user has just tapped
+        // a button and is waiting for the next screen, and staging without it would silently drop
+        // the visual half of the context.
+        Bitmap rendered = PdfPageImage.render(session.document.path, pageIndex);
+        DocumentPageContext page = new DocumentPageContext(session.document.label, pageIndex,
+                model.pageCount(), text, session.document, rendered);
+        if (!page.isUsable()) {
+            Toast.makeText(this, "Orbit could not read or render this page",
+                    Toast.LENGTH_SHORT).show();
             return;
         }
-        DocumentPageContext page = new DocumentPageContext(session.document.label, model.page(),
-                model.pageCount(), text);
         String staged = SharedContentStore.stageDocumentPage(page);
         if (staged.isEmpty()) return;
         UiKit.haptic(askButton, HapticFeedbackConstants.CLOCK_TICK);
@@ -577,6 +812,8 @@ public final class DocumentViewerActivity extends Activity {
         destroyed = true;
         if (renderer != null) renderer.close();
         textExecutor.shutdownNow();
+        geometryExecutor.shutdownNow();
+        geometry.clear();
         for (Page page : pages) page.release();
         pages.clear();
         if (isFinishing()) DocumentViewerStore.close(token);

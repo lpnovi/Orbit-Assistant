@@ -1608,7 +1608,8 @@ public class OrbitSession extends VoiceInteractionSession {
                 main.post(() -> {
                     if (!result.ok()) stateTextSafe(result.error);
                     else setGenericAttachment(new ComposerAttachment(result.kind,
-                            "Clipboard · " + result.label, result.contextText, result.image));
+                            "Clipboard · " + result.label, result.contextText, result.image,
+                            result.document, "", result.contentState));
                     main.postDelayed(() -> stateTextSafe(readyState()), 1200);
                 });
             }, "orbit-clipboard-attachment").start();
@@ -1747,16 +1748,9 @@ public class OrbitSession extends VoiceInteractionSession {
         updateComposerAction();
     }
 
+    /** Shared with full chat, so the two surfaces cannot describe the same PDF differently. */
     private String defaultAttachmentPrompt(List<ComposerAttachment> attachments) {
-        if (attachments == null || attachments.isEmpty()) return "What can you help me with?";
-        if (attachments.size() > 1) {
-            return "What can you tell me about these " + attachments.size() + " attachments?";
-        }
-        ComposerAttachment attachment = attachments.get(0);
-        if ("file_text".equals(attachment.kind)) return "Summarize this file and tell me what matters.";
-        if ("pdf".equals(attachment.kind)) return "Analyze this PDF preview and tell me the important points.";
-        if ("clipboard".equals(attachment.kind)) return "Help me with this clipboard content.";
-        return "What can you tell me about this image?";
+        return AttachmentPrompts.defaultPrompt(attachments);
     }
 
     /** One image as a list, or an empty list. The screen is one capture, never a set. */
@@ -2994,10 +2988,14 @@ public class OrbitSession extends VoiceInteractionSession {
         }
     }
 
+    /**
+     * The duration on an action card, through Orbit's one duration formatter.
+     *
+     * <p>It used to show only the largest whole unit, so a 4-minute-30-second timer read "4m" —
+     * the card quietly contradicting the timer Android had actually been given.
+     */
     private static String friendlyDuration(int seconds) {
-        if (seconds % 3600 == 0) return (seconds / 3600) + "h";
-        if (seconds % 60 == 0) return (seconds / 60) + "m";
-        return seconds + "s";
+        return DurationParser.compactLabel(seconds);
     }
 
     /**

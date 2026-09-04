@@ -90,7 +90,7 @@ public final class SharedContentStore {
 
         public boolean isEmpty() {
             return text.isEmpty() && uris.isEmpty()
-                    && (documentPage == null || !documentPage.hasText());
+                    && (documentPage == null || !documentPage.isUsable());
         }
     }
 
@@ -145,9 +145,15 @@ public final class SharedContentStore {
         return token;
     }
 
-    /** Stages one exact page locally. The page text stays hidden until the user presses Send. */
+    /**
+     * Stages one exact page locally. Its contents stay hidden until the user presses Send.
+     *
+     * <p>A page with no extractable text is still stageable as long as it rendered: that is the
+     * scanned page or full-page figure a reader most wants to ask about, and refusing it was why
+     * Ask Orbit went dark on exactly those pages.
+     */
     public static synchronized String stageDocumentPage(DocumentPageContext page) {
-        if (page == null || !page.hasText()) return "";
+        if (page == null || !page.isUsable()) return "";
         prune();
         String token = SOURCE_DOCUMENT_PAGE + "-" + UUID.randomUUID();
         STAGED.put(token, new Entry(new Staged(SOURCE_DOCUMENT_PAGE, "",

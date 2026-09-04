@@ -553,10 +553,14 @@ public final class ConversationStore {
                     if (!h.documents.isEmpty()) {
                         JSONArray documents = new JSONArray();
                         for (DocumentReference document : h.documents) {
-                            documents.put(new JSONObject()
+                            // "page" is written only when the reference names one, so a record
+                            // saved before page context existed reads back exactly as it was.
+                            JSONObject entry = new JSONObject()
                                     .put("path", safe(document.path))
                                     .put("label", safe(document.label))
-                                    .put("pageCount", document.pageCount));
+                                    .put("pageCount", document.pageCount);
+                            if (document.namesPage()) entry.put("page", document.page);
+                            documents.put(entry);
                         }
                         message.put("documents", documents);
                     }
@@ -611,7 +615,8 @@ public final class ConversationStore {
             JSONObject item = stored.optJSONObject(i);
             if (item == null) continue;
             DocumentReference document = new DocumentReference(item.optString("path", ""),
-                    item.optString("label", "PDF"), item.optInt("pageCount", 0));
+                    item.optString("label", "PDF"), item.optInt("pageCount", 0),
+                    item.optInt("page", DocumentReference.WHOLE_DOCUMENT));
             if (document.isUsable()) documents.add(document);
         }
         return documents;

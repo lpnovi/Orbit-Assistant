@@ -313,22 +313,13 @@ public final class LocalCommandRouter {
                 action("SET_RINGER_MODE", new JSONObject().put("mode", mode)), spoken, label);
     }
 
-    /** Words that name a unit Orbit's timer action understands. */
-    private static final Pattern TIMER_AFTER = Pattern.compile(
-            "timer\\s*(?:for|of)?\\s*(\\d+|[a-z ]+?)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)\\b");
-    /** "10 minute timer", "30 second timer" — the count said before the word. */
-    private static final Pattern TIMER_BEFORE = Pattern.compile(
-            "\\b(\\d+|[a-z]+)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)\\s+timer\\b");
     /**
-     * A duration said somewhere after the word "timer", with the subject in between.
+     * Talking about an existing timer is not asking for a new one.
      *
-     * <p>"Timer for the potatoes, 20 minutes" and "set a timer for the bread for 30 minutes" both
-     * put the name where the two patterns above expect the count. Only ever searched in the text
-     * that follows "timer", so a duration mentioned before it cannot be picked up by accident.
+     * <p>The counterpart patterns that used to read the duration itself are gone: how long a timer
+     * runs for is now {@link DurationParser}'s single responsibility, and keeping a second unit
+     * grammar here is what let the two disagree.
      */
-    private static final Pattern TIMER_LOOSE = Pattern.compile(
-            "\\b(\\d+|[a-z]+)\\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)\\b");
-    /** Talking about an existing timer is not asking for a new one. */
     private static final Pattern TIMER_NOT_A_NEW_REQUEST = Pattern.compile(
             "\\b(cancel|cancelled|stop|stopped|pause|paused|resume|delete|remove|remaining|left|"
                     + "how long|check|list|show)\\b");
@@ -401,46 +392,46 @@ public final class LocalCommandRouter {
         return Character.toUpperCase(name.charAt(0)) + name.substring(1);
     }
 
+    /**
+     * Reads the duration a timer request states, wherever the user put it.
+     *
+     * <p>The three positions are unchanged from the pattern-matching version — after the word,
+     * before it, or further along with the subject in between — because those are the three ways
+     * people actually word it, and each carries a different risk of picking up a number that
+     * belongs to something else. What changed is what reads each position: {@link DurationParser}
+     * instead of one {@code (count)(unit)} regex.
+     *
+     * <p>That regex is why "set a timer for 4 minutes and 30 seconds" reached Samsung Clock as
+     * 4:00. It matched the first pair and stopped, so "and 30 seconds" was discarded in silence,
+     * and "4 and a half minutes" matched nothing at all. Both now sum every component in the single
+     * run of duration words belonging to this timer, and stop at the end of that run, so a chained
+     * "and remind me in 5 minutes" can never be added to it.
+     */
     private static ParsedCommand parseTimer(String q) throws org.json.JSONException {
-        Matcher m = TIMER_AFTER.matcher(q);
-        String count = null;
-        String unit = null;
-        if (m.find()) {
-            count = m.group(1);
-            unit = m.group(2);
-        } else {
-            m = TIMER_BEFORE.matcher(q);
-            if (m.find()) {
-                count = m.group(1);
-                unit = m.group(2);
-            }
+        int at = q.indexOf("timer");
+        if (at < 0) return null;
+        String after = q.substring(at + "timer".length());
+        String before = q.substring(0, at);
+
+        DurationParser.Parsed parsed = DurationParser.parseAdjacentAfter(after);
+        if (!parsed.isValid()) parsed = DurationParser.parseTrailingBefore(before);
+        // A duration said further along, with the subject in between: "timer for the bread, 30
+        // minutes". Searched only when the sentence is not about an existing timer, so "how long is
+        // left on my 20 minute timer" cannot start a new one from a number it merely mentioned.
+        if (!parsed.isValid() && !TIMER_NOT_A_NEW_REQUEST.matcher(q).find()) {
+            parsed = DurationParser.parseFirstRun(after);
         }
-        if (count == null && !TIMER_NOT_A_NEW_REQUEST.matcher(q).find()) {
-            int after = q.indexOf("timer");
-            if (after >= 0) {
-                Matcher loose = TIMER_LOOSE.matcher(q.substring(after + "timer".length()));
-                if (loose.find()) {
-                    count = loose.group(1);
-                    unit = loose.group(2);
-                }
-            }
-        }
-        if (count == null || unit == null) return null;
+        if (!parsed.isValid()) return null;
+        long seconds = parsed.seconds;
 
-        long n = readCount(count);
-        if (n <= 0) return null;
-
-        long seconds = unit.startsWith("hour") || unit.startsWith("hr") ? n * 3600
-                : unit.startsWith("min") ? n * 60 : n;
-        if (seconds <= 0) return null;
-
-        // The duration modifies "timer" here, so it is hyphenated and singular: "a 20-minute
-        // timer", never "a 20 minutes timer". Built from the count and unit the user actually
-        // said rather than from the computed seconds, so asking for 90 minutes is confirmed as 90
-        // minutes rather than restated as an hour and a half.
-        String singularUnit = unit.startsWith("hour") || unit.startsWith("hr") ? "hour"
-                : unit.startsWith("min") ? "minute" : "second";
-        String spokenDuration = RoutineActionCatalog.durationModifier(n, singularUnit);
+        // The duration modifies "timer" here, so a single unit is hyphenated and singular: "a
+        // 20-minute timer", never "a 20 minutes timer". Built from the count and unit the user
+        // actually said, so asking for 90 minutes is confirmed as 90 minutes rather than restated
+        // as an hour and a half. A duration genuinely spanning units has no such original form to
+        // preserve and is spoken in order instead: "a 4 minute 30 second timer".
+        String spokenDuration = parsed.singleUnit
+                ? RoutineActionCatalog.durationModifier(parsed.count, parsed.unit)
+                : DurationParser.spokenModifier(seconds);
         // The timer itself is unchanged: Android's own Clock still owns it through SET_TIMER. Only
         // the label improves, so a Clock notification can say what is actually cooking.
         String subject = timerSubject(q);
@@ -450,15 +441,6 @@ public final class LocalCommandRouter {
                 action("SET_TIMER", new JSONObject().put("seconds", seconds).put("label", label)),
                 "Setting a " + spokenDuration + " timer" + forSubject + ".",
                 "set a " + spokenDuration + " timer" + forSubject);
-    }
-
-    /** Digits, or one of the small written numbers the shared normalizer knows. */
-    private static long readCount(String value) {
-        String v = value == null ? "" : value.trim();
-        if (v.matches("\\d+")) {
-            try { return Long.parseLong(v); } catch (Exception ignored) { return -1; }
-        }
-        return LanguageNormalizer.wordNumber(v);
     }
 
     /** Day words Orbit's alarm action cannot represent, so it must not pretend otherwise. */
@@ -521,14 +503,26 @@ public final class LocalCommandRouter {
         normalized = normalized.replaceAll(
                 "(?i)(\\d{1,3}\\s*%?)\\s+(?=(?:turn|open|set|change|make|put|lower|raise|increase|decrease|dim)\\b)",
                 "$1 | ");
-        String[] pieces = normalized.split("(?i)\\s*(?:\\||,| then | and then |\\band\\b)\\s*");
-        for (String piece : pieces) {
-            String part = piece == null ? "" : piece.trim();
+        // Which separator stood before each piece is remembered, because putting a piece back has
+        // to put the word back too. Rejoining "set a timer for 4" and "a half minutes" without the
+        // "and" produces "4 a half minutes", which reads as two minutes.
+        List<String> pieces = new ArrayList<>();
+        List<String> joiners = new ArrayList<>();
+        Matcher separator = COMMAND_SEPARATOR.matcher(normalized);
+        int from = 0;
+        while (separator.find()) {
+            pieces.add(normalized.substring(from, separator.start()).trim());
+            joiners.add(separator.group(1).trim().toLowerCase(Locale.US));
+            from = separator.end();
+        }
+        pieces.add(normalized.substring(from).trim());
+
+        for (int i = 0; i < pieces.size(); i++) {
+            String part = pieces.get(i);
             if (part.isEmpty()) continue;
-            // A bare duration is never a command on its own, so a separator in front of one was
-            // not separating two commands: "Timer for the potatoes, 20 minutes" is one request.
-            if (!out.isEmpty() && BARE_DURATION.matcher(part).matches()) {
-                out.set(out.size() - 1, out.get(out.size() - 1) + " " + part);
+            String joiner = i == 0 ? "" : joiners.get(i - 1);
+            if (!out.isEmpty() && continuesDuration(out.get(out.size() - 1), joiner, part)) {
+                out.set(out.size() - 1, out.get(out.size() - 1) + glue(joiner) + part);
                 continue;
             }
             out.add(part);
@@ -536,9 +530,36 @@ public final class LocalCommandRouter {
         return out;
     }
 
-    /** "20 minutes", "30 seconds" — a length of time and nothing else. */
-    private static final Pattern BARE_DURATION = Pattern.compile(
-            "(?i)^(?:\\d+|[a-z]+)\\s*(?:seconds?|secs?|minutes?|mins?|hours?|hrs?)$");
+    /** The words and marks that separate two device commands, captured so they can be restored. */
+    private static final Pattern COMMAND_SEPARATOR = Pattern.compile(
+            "(?i)\\s*(\\||,| then | and then |\\band\\b)\\s*");
+
+    private static String glue(String joiner) {
+        return "and".equals(joiner) ? " and " : " ";
+    }
+
+    /**
+     * Whether a separator was inside a duration rather than between two commands.
+     *
+     * <p>"Set a timer for 4 minutes and 30 seconds" and "set a timer for 4 and a half minutes" are
+     * one request each, but "and" is also how two requests are chained, and splitting on it blindly
+     * is the other half of why both produced a four-minute timer: the first lost "30 seconds" to a
+     * second command part that parsed as nothing, and the second lost "a half minutes" the same
+     * way. Neither failure was visible, because a chain whose parts do not all parse is simply
+     * handed to the model.
+     *
+     * <p>Two conditions, and both are needed. The fragment must not be a command in its own right,
+     * which is what keeps "turn on the flashlight and set a timer for 5 minutes" as two actions.
+     * And putting it back must make the duration <em>longer</em> — a fragment that adds nothing was
+     * never part of the duration to begin with.
+     */
+    private static boolean continuesDuration(String previous, String joiner, String part) {
+        if (previous == null || part == null) return false;
+        if (parseSingleCommand(part) != null) return false;
+        long before = DurationParser.parseFirstRun(previous).seconds;
+        long after = DurationParser.parseFirstRun(previous + glue(joiner) + part).seconds;
+        return after > before;
+    }
 
     private static String chainIntro(List<String> spoken) {
         if (spoken == null || spoken.isEmpty()) return "Working on it.";

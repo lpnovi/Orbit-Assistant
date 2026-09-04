@@ -335,17 +335,36 @@ public final class RoutineActionCatalog {
         return radiusMeters + " m";
     }
 
+    /**
+     * A duration standing on its own: "20 minutes", "4 minutes 30 seconds".
+     *
+     * <p>A duration that does not sit naturally in one unit is written in the units it actually
+     * spans. Falling back to "270 seconds" was technically true and unreadable, and it is the same
+     * category of mistake as showing a 4-minute-30 timer as "4m". Which durations count as
+     * single-unit is decided once, by {@link DurationParser}, so this and the modifier form beneath
+     * it can never disagree about whether 90 seconds is a minute and a half.
+     */
     public static String durationLabel(int seconds) {
         int safe = Math.max(1, seconds);
-        if (safe % 3600 == 0) {
-            int hours = safe / 3600;
-            return hours + (hours == 1 ? " hour" : " hours");
+        int single = DurationParser.naturalSingleUnit(safe);
+        StringBuilder out = new StringBuilder();
+        if (single > 0) {
+            appendPart(out, safe / single,
+                    single == 3600 ? "hour" : single == 60 ? "minute" : "second");
+            return out.toString();
         }
-        if (safe % 60 == 0) {
-            int minutes = safe / 60;
-            return minutes + (minutes == 1 ? " minute" : " minutes");
-        }
-        return safe + (safe == 1 ? " second" : " seconds");
+        appendPart(out, safe / 3600, "hour");
+        appendPart(out, (safe % 3600) / 60, "minute");
+        appendPart(out, safe % 60, "second");
+        return out.toString();
+    }
+
+    /** One part of a spanning duration, pluralized, skipped entirely when it is zero. */
+    private static void appendPart(StringBuilder out, int count, String singularUnit) {
+        if (count <= 0) return;
+        if (out.length() > 0) out.append(' ');
+        out.append(count).append(' ').append(singularUnit);
+        if (count != 1) out.append('s');
     }
 
     /**
@@ -353,12 +372,12 @@ public final class RoutineActionCatalog {
      * timer". English hyphenates a counted unit in that position and keeps it singular, which is
      * the opposite of {@link #durationLabel(int)}: a duration standing on its own is still "20
      * minutes". Composing the standalone form with a noun is what produced "20 minutes timer".
+     *
+     * <p>A duration spanning units is delegated to {@link DurationParser#spokenModifier(long)},
+     * which owns the one rule for saying a mixed duration out loud.
      */
     public static String durationModifierLabel(int seconds) {
-        int safe = Math.max(1, seconds);
-        if (safe % 3600 == 0) return durationModifier(safe / 3600, "hour");
-        if (safe % 60 == 0) return durationModifier(safe / 60, "minute");
-        return durationModifier(safe, "second");
+        return DurationParser.spokenModifier(Math.max(1, seconds));
     }
 
     /**

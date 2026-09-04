@@ -2,6 +2,7 @@ package com.orbit.assistant;
 
 import android.content.Context;
 import android.graphics.Point;
+import android.graphics.Rect;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -23,6 +24,34 @@ import java.util.Map;
  * <p>Row height is measured, never hardcoded. Each child is measured against its own span at an
  * unspecified height and the row takes the tallest, with a minimum so a short tile still reads as a
  * card. That is what makes the grid survive accessibility text sizes.
+ *
+ * <h2>How a drag stays coherent</h2>
+ *
+ * <p>Beta 2 could reorder correctly and still look wrong doing it: neighbours appeared to overlap,
+ * a card could seem to be in two places, and the grid snapped rather than flowed. None of that was
+ * a reordering bug. It was several pieces of state disagreeing about where a tile was.
+ *
+ * <p>So there is now exactly one provisional truth: {@link #order}. Everything visible is derived
+ * from it, and nothing else decides where a tile belongs.
+ *
+ * <ol>
+ *   <li>{@link #order} is the provisional arrangement, mutated at most once per pointer crossing.
+ *   <li>{@link #slotsFor} packs that order into logical slots — the same span-aware packing the
+ *       layout uses, so the grid a drag is tested against is the grid the user is looking at.
+ *   <li>Every non-dragged tile animates towards exactly its slot, starting from where it actually
+ *       is on screen rather than from where it was last laid out. That distinction is the whole
+ *       fix for the snapping: a tile 60% of the way through one slide used to be teleported back
+ *       to where that slide began before the next one started, which is what read as cards
+ *       crossing through one another.
+ *   <li>The dragged tile keeps its slot in the provisional order — the hole it will drop into is
+ *       always reserved, and there is always exactly one — and is translated out of it to follow
+ *       the finger. One strategy, not two: there is no overlay copy, so there is nothing that can
+ *       look duplicated.
+ * </ol>
+ *
+ * <p>Hit testing asks which provisional slot contains the finger, inset slightly, rather than which
+ * card centre is nearest. Containment is self-stabilising: once a tile has moved, the finger is
+ * inside its new slot, so jitter at a boundary cannot swap two neighbours back and forth.
  */
 public final class DeckGridLayout extends ViewGroup {
 
@@ -40,6 +69,10 @@ public final class DeckGridLayout extends ViewGroup {
             this.span = Math.max(1, span);
         }
     }
+
+    /** How far inside a slot the finger must be before that slot claims the dragged tile. */
+    private static final float SLOT_INSET = 0.18f;
+    private static final long REFLOW_MS = 180L;
 
     private int columns = 2;
     private int spacing;
@@ -95,13 +128,17 @@ public final class DeckGridLayout extends ViewGroup {
     }
 
     @Override public void removeView(View view) {
+        if (view == dragging) dragging = null;
         order.remove(view);
+        orderBeforeDrag.remove(view);
         lastPositions.remove(view);
         super.removeView(view);
     }
 
     @Override public void removeAllViews() {
+        dragging = null;
         order.clear();
+        orderBeforeDrag.clear();
         lastPositions.clear();
         super.removeAllViews();
     }
@@ -121,59 +158,85 @@ public final class DeckGridLayout extends ViewGroup {
         return new LayoutParams(1);
     }
 
-    // ---- measurement ------------------------------------------------------------------------------
+    // ---- the provisional grid ---------------------------------------------------------------------
 
-    /**
-     * Packs the tiles into rows and reports the height that needs.
-     *
-     * <p>A wide tile that will not fit in what is left of a row starts the next one rather than
-     * being squeezed, so a wide tile is always genuinely two columns across.
-     */
-    /** One row of tiles and the height they all share. */
-    private static final class Row {
-        final List<View> children = new ArrayList<>();
-        int height;
+    /** One tile's logical place in the grid: which cell it occupies and how big that cell is. */
+    private static final class Slot {
+        final View child;
+        final int x;
+        final int y;
+        final int width;
+        final int height;
+
+        Slot(View child, int x, int y, int width, int height) {
+            this.child = child;
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+        }
+
+        boolean contains(float px, float py, float inset) {
+            float insetX = width * inset;
+            float insetY = height * inset;
+            return px >= x + insetX && px <= x + width - insetX
+                    && py >= y + insetY && py <= y + height - insetY;
+        }
     }
 
     /**
-     * Packs the visible tiles into rows and measures each one.
+     * Packs an arrangement into slots, without measuring anything.
+     *
+     * <p>Reads the heights the last measure pass produced, which is what makes it safe to call
+     * mid-gesture: a drag changes the order of tiles, never their sizes, so their measured heights
+     * are still correct and the grid a pointer is tested against costs nothing to derive.
      *
      * <p>A wide tile that will not fit in what is left of a row starts the next one rather than
-     * being squeezed, so a wide tile is always genuinely two columns across.
-     *
-     * <p>Every tile in a row is then given that row's height. Sizing each tile to its own content
-     * instead would leave a short tile floating beside a tall one, which is the difference between
-     * a grid and a pile of cards — and it is also what makes a long title grow its whole row rather
-     * than being clipped inside one tile.
+     * being squeezed, so a wide tile is always genuinely two columns across and nothing can be
+     * packed beside or beneath its span. Every tile in a row then takes that row's height, which is
+     * the difference between a grid and a pile of cards, and is also what lets a long title grow
+     * its whole row instead of being clipped inside one tile.
      */
-    private List<Row> rows(int cell) {
-        List<Row> out = new ArrayList<>();
-        Row current = new Row();
-        int column = 0;
-
-        for (View child : visibleChildren()) {
-            int span = spanOf(child);
-            if (column > 0 && column + span > columns) {
-                out.add(current);
-                current = new Row();
-                column = 0;
+    private List<Slot> slotsFor(List<View> arrangement, int cell) {
+        List<Slot> out = new ArrayList<>();
+        List<View> visible = visibleIn(arrangement);
+        int index = 0;
+        int y = getPaddingTop();
+        while (index < visible.size()) {
+            int start = index;
+            int column = 0;
+            int height = 0;
+            // Which tiles share this row, and how tall the row has to be for all of them.
+            while (index < visible.size()) {
+                View child = visible.get(index);
+                int span = spanOf(child);
+                if (column > 0 && column + span > columns) break;
+                height = Math.max(height, Math.max(minRowHeight, child.getMeasuredHeight()));
+                column += span;
+                index++;
+                if (column >= columns) break;
             }
-            int width = cell * span + spacing * (span - 1);
-            child.measure(MeasureSpec.makeMeasureSpec(Math.max(0, width), MeasureSpec.EXACTLY),
-                    MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
-            current.children.add(child);
-            current.height = Math.max(current.height,
-                    Math.max(minRowHeight, child.getMeasuredHeight()));
-            column += span;
-            if (column >= columns) {
-                out.add(current);
-                current = new Row();
-                column = 0;
+            int x = getPaddingLeft();
+            for (int i = start; i < index; i++) {
+                View child = visible.get(i);
+                int width = cell * spanOf(child) + spacing * (spanOf(child) - 1);
+                out.add(new Slot(child, x, y, width, height));
+                x += width + spacing;
             }
+            y += height + spacing;
         }
-        if (!current.children.isEmpty()) out.add(current);
         return out;
     }
+
+    private List<View> visibleIn(List<View> arrangement) {
+        List<View> out = new ArrayList<>();
+        for (View child : arrangement) {
+            if (child.getParent() == this && child.getVisibility() != GONE) out.add(child);
+        }
+        return out;
+    }
+
+    private List<View> visibleChildren() { return visibleIn(order); }
 
     private int cellWidth(int totalWidth) {
         int available = totalWidth - getPaddingLeft() - getPaddingRight();
@@ -181,78 +244,93 @@ public final class DeckGridLayout extends ViewGroup {
         return columns > 0 ? usable / columns : usable;
     }
 
+    private int spanOf(View child) {
+        ViewGroup.LayoutParams params = child.getLayoutParams();
+        int span = params instanceof LayoutParams ? ((LayoutParams) params).span : 1;
+        return Math.max(1, Math.min(columns, span));
+    }
+
+    // ---- measurement ------------------------------------------------------------------------------
+
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         int width = MeasureSpec.getSize(widthSpec);
-        List<Row> rows = rows(cellWidth(width));
-
-        int total = 0;
-        for (int i = 0; i < rows.size(); i++) {
-            total += (i == 0 ? 0 : spacing) + rows.get(i).height;
+        int cell = cellWidth(width);
+        for (View child : visibleChildren()) {
+            int childWidth = cell * spanOf(child) + spacing * (spanOf(child) - 1);
+            child.measure(MeasureSpec.makeMeasureSpec(Math.max(0, childWidth), MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
         }
-        setMeasuredDimension(width, total + getPaddingTop() + getPaddingBottom());
+        int bottom = getPaddingTop();
+        for (Slot slot : slotsFor(order, cell)) bottom = Math.max(bottom, slot.y + slot.height);
+        setMeasuredDimension(width, bottom + getPaddingBottom());
     }
 
     // ---- layout -----------------------------------------------------------------------------------
 
     @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
-        int cell = cellWidth(getWidth());
-        List<Row> rows = rows(cell);
-
         boolean animate = animateNextLayout && UiKit.animationsEnabled();
         animateNextLayout = false;
-
-        int y = getPaddingTop();
-        for (Row row : rows) {
-            int x = getPaddingLeft();
-            for (View child : row.children) {
-                int width = cell * spanOf(child) + spacing * (spanOf(child) - 1);
-                // The row's height, not the child's: every tile in a row is the same height.
-                place(child, x, y, width, row.height, animate);
-                x += width + spacing;
-            }
-            y += row.height + spacing;
-        }
+        for (Slot slot : slotsFor(order, cellWidth(getWidth()))) place(slot, animate);
     }
 
     /**
-     * Puts one tile where it belongs, sliding it there when it has moved.
+     * Puts one tile in its slot, sliding it there from wherever it currently appears to be.
      *
-     * <p>The dragged tile is exempt: it is already following the finger, and animating it towards a
+     * <p>The slide starts from the tile's <em>visual</em> position — its last layout position plus
+     * whatever translation an in-flight animation had reached — not from its last layout position
+     * alone. Using the latter is what made a rapid reorder look violent: an interrupted slide was
+     * snapped back to its origin before the next one began, so the tile appeared to jump backwards
+     * through its neighbour. Retargeting from the live position means an interrupted slide simply
+     * bends towards the new destination.
+     *
+     * <p>The dragged tile is exempt. It is already following the finger, and animating it towards a
      * slot it is being carried away from would fight the gesture.
      */
-    private void place(View child, int x, int y, int width, int height, boolean animate) {
+    private void place(Slot slot, boolean animate) {
+        View child = slot.child;
         Point previous = lastPositions.get(child);
-        child.layout(x, y, x + width, y + height);
-        lastPositions.put(child, new Point(x, y));
+        float visualX = previous == null ? slot.x : previous.x + child.getTranslationX();
+        float visualY = previous == null ? slot.y : previous.y + child.getTranslationY();
+
+        child.layout(slot.x, slot.y, slot.x + slot.width, slot.y + slot.height);
+        lastPositions.put(child, new Point(slot.x, slot.y));
 
         if (child == dragging) {
-            child.setTranslationX(dragCenterX - (x + width / 2f));
-            child.setTranslationY(dragCenterY - (y + height / 2f));
+            followFinger(child);
             return;
         }
-        if (!animate || previous == null) return;
-        if (previous.x == x && previous.y == y) return;
-
-        child.setTranslationX(previous.x - x);
-        child.setTranslationY(previous.y - y);
+        float offsetX = visualX - slot.x;
+        float offsetY = visualY - slot.y;
+        if (!animate || previous == null
+                || (Math.abs(offsetX) < 1f && Math.abs(offsetY) < 1f)) {
+            settleImmediately(child);
+            return;
+        }
+        // Cancelling first discards the previous animation's endpoint, which is now stale. Without
+        // it the old animator can finish after the new one and drop the tile back at the slot it
+        // was travelling to two reorders ago.
+        child.animate().cancel();
+        child.setTranslationX(offsetX);
+        child.setTranslationY(offsetY);
         child.animate().translationX(0f).translationY(0f)
-                .setDuration(180L)
+                .setDuration(REFLOW_MS)
                 .setInterpolator(UiKit.motionEasing())
+                // A completed slide must leave the tile exactly on its slot, with no residual
+                // sub-pixel translation for the next drag to inherit.
+                .withEndAction(() -> settleImmediately(child))
                 .start();
     }
 
-    private List<View> visibleChildren() {
-        List<View> out = new ArrayList<>();
-        for (View child : order) {
-            if (child.getParent() == this && child.getVisibility() != GONE) out.add(child);
-        }
-        return out;
+    private void settleImmediately(View child) {
+        child.animate().cancel();
+        child.setTranslationX(0f);
+        child.setTranslationY(0f);
     }
 
-    private int spanOf(View child) {
-        ViewGroup.LayoutParams params = child.getLayoutParams();
-        int span = params instanceof LayoutParams ? ((LayoutParams) params).span : 1;
-        return Math.max(1, Math.min(columns, span));
+    /** Keeps the carried tile under the finger, wherever it has just been laid out. */
+    private void followFinger(View child) {
+        child.setTranslationX(dragCenterX - (child.getLeft() + child.getWidth() / 2f));
+        child.setTranslationY(dragCenterY - (child.getTop() + child.getHeight() / 2f));
     }
 
     // ---- dragging ---------------------------------------------------------------------------------
@@ -262,6 +340,9 @@ public final class DeckGridLayout extends ViewGroup {
         if (child == null || child.getParent() != this || dragging != null) return;
         orderBeforeDrag.clear();
         orderBeforeDrag.addAll(order);
+        // A tile picked up while its own settle animation is still running would otherwise carry
+        // that animation's remaining translation into the drag and sit offset from the finger.
+        settleImmediately(child);
         dragging = child;
         dragStartCenterX = dragCenterX = child.getLeft() + child.getWidth() / 2f;
         dragStartCenterY = dragCenterY = child.getTop() + child.getHeight() / 2f;
@@ -274,106 +355,76 @@ public final class DeckGridLayout extends ViewGroup {
      * Moves the carried tile and, if it now covers a different slot, opens that slot for it.
      *
      * <p>The order changes at most once per crossing rather than continuously, so the tiles that
-     * shuffle out of the way animate once into their new positions instead of being re-laid every
-     * frame.
+     * shuffle out of the way animate once into their new positions instead of being re-laid on
+     * every pointer event.
      */
     public void updateDrag(float dx, float dy) {
         if (dragging == null) return;
         dragCenterX = dragStartCenterX + dx;
         dragCenterY = dragStartCenterY + dy;
-        dragging.setTranslationX(dragCenterX
-                - (dragging.getLeft() + dragging.getWidth() / 2f));
-        dragging.setTranslationY(dragCenterY
-                - (dragging.getTop() + dragging.getHeight() / 2f));
+        followFinger(dragging);
 
-        int target = insertionIndexAt(dragCenterX, dragCenterY);
         int current = order.indexOf(dragging);
-        if (target < 0 || current < 0) return;
+        int target = insertionIndexAt(dragCenterX, dragCenterY);
+        if (current < 0 || target < 0 || target == current) return;
 
         order.remove(current);
-        if (current < target) target--;
-        if (target == current) {
-            order.add(current, dragging);
-            return;
-        }
-        order.add(Math.min(target, order.size()), dragging);
+        order.add(Math.max(0, Math.min(target, order.size())), dragging);
         animateNextLayout = true;
         requestLayout();
     }
 
-    /** Puts the carried tile down and reports the resulting order. */
-    public boolean endDrag() {
-        View child = dragging;
-        dragging = null;
-        if (child == null) return false;
-        boolean changed = !order.equals(orderBeforeDrag);
-        // Settle from wherever the finger left it back into its slot.
-        if (UiKit.animationsEnabled()) {
-            child.animate().translationX(0f).translationY(0f)
-                    .setDuration(160L).setInterpolator(UiKit.motionEasing()).start();
-        } else {
-            child.setTranslationX(0f);
-            child.setTranslationY(0f);
+    /**
+     * Which tile's provisional slot the finger is inside, or -1.
+     *
+     * <p>Asked of the slots derived from the current provisional order, never of the children's
+     * live layout positions. Those two agree only between a reorder and the layout pass that
+     * follows it, and a pointer event can easily arrive inside that window; testing against the
+     * stale geometry is how the grid could briefly act on an arrangement that was not on screen.
+     *
+     * <p>The inset is the hysteresis. A finger resting on the seam between two tiles is inside
+     * neither, so nothing moves until it commits to one.
+     */
+    private int insertionIndexAt(float x, float y) {
+        if (getWidth() <= 0) return -1;
+        for (Slot slot : slotsFor(order, cellWidth(getWidth()))) {
+            if (slot.child == dragging) continue;
+            if (slot.contains(x, y, SLOT_INSET)) return order.indexOf(slot.child);
         }
-        if (changed && reorderListener != null) reorderListener.onReorder(orderedChildren());
-        orderBeforeDrag.clear();
-        return changed;
+        return -1;
     }
 
     /**
-     * Which insertion slot a point falls in, excluding the carried tile itself.
+     * Puts the carried tile down and reports the resulting order.
      *
-     * <p>Beta 1 made the carried tile's centre equal to the pointer before asking which tile was
-     * nearest. It therefore won with distance zero on every frame and the target never changed.
-     * The stationary cards define the slots here; repacking the ordered list through the existing
-     * span-aware row layout makes wide cards real row boundaries rather than overlap targets.
+     * <p>The settle is not a special animation. Releasing the tile makes it an ordinary child
+     * again, and the layout pass that follows slides it from where the finger left it into its slot
+     * through the same path every other tile uses. One mechanism means the dropped tile cannot land
+     * somewhere the grid disagrees with, and there is no rebuild to flash.
      */
-    private int insertionIndexAt(float x, float y) {
-        View closest = null;
-        double bestDistance = Double.MAX_VALUE;
-        for (View child : visibleChildren()) {
-            if (child == dragging) continue;
-            float cx = child.getLeft() + child.getWidth() / 2f;
-            float cy = child.getTop() + child.getHeight() / 2f;
-            // Distance to the card, not merely its centre. A full-row wide card can be hundreds of
-            // pixels from its own centre while the finger is visibly inside its left edge; centre
-            // distance would incorrectly choose a standard card in the next row.
-            float nearestX = Math.max(child.getLeft(), Math.min(x, child.getRight()));
-            float nearestY = Math.max(child.getTop(), Math.min(y, child.getBottom()));
-            double distance = Math.pow(nearestX - x, 2) + Math.pow(nearestY - y, 2);
-            if (distance == bestDistance && closest != null) {
-                double centreDistance = Math.pow(cx - x, 2) + Math.pow(cy - y, 2);
-                float oldCx = closest.getLeft() + closest.getWidth() / 2f;
-                float oldCy = closest.getTop() + closest.getHeight() / 2f;
-                double oldCentreDistance = Math.pow(oldCx - x, 2) + Math.pow(oldCy - y, 2);
-                if (centreDistance < oldCentreDistance) closest = child;
-                continue;
-            }
-            if (distance < bestDistance) { bestDistance = distance; closest = child; }
-        }
-        if (closest == null) return 0;
-        int index = order.indexOf(closest);
-        if (index < 0) return -1;
-        float centreY = closest.getTop() + closest.getHeight() / 2f;
-        float centreX = closest.getLeft() + closest.getWidth() / 2f;
-        float rowTolerance = Math.max(spacing, closest.getHeight() * 0.22f);
-        boolean after = y > centreY + rowTolerance
-                || (Math.abs(y - centreY) <= rowTolerance && x > centreX);
-        return index + (after ? 1 : 0);
+    public boolean endDrag() {
+        View child = dragging;
+        if (child == null) return false;
+        dragging = null;
+        boolean changed = !order.equals(orderBeforeDrag);
+        orderBeforeDrag.clear();
+        animateNextLayout = UiKit.animationsEnabled();
+        if (!animateNextLayout) settleImmediately(child);
+        requestLayout();
+        if (changed && reorderListener != null) reorderListener.onReorder(orderedChildren());
+        return changed;
     }
 
     /** Restores the pickup snapshot without notifying storage. */
     public void cancelDrag() {
         View child = dragging;
-        dragging = null;
         if (child == null) return;
+        dragging = null;
         order.clear();
         order.addAll(orderBeforeDrag);
         orderBeforeDrag.clear();
-        child.animate().cancel();
-        child.setTranslationX(0f);
-        child.setTranslationY(0f);
         animateNextLayout = UiKit.animationsEnabled();
+        if (!animateNextLayout) settleImmediately(child);
         requestLayout();
     }
 
@@ -394,5 +445,53 @@ public final class DeckGridLayout extends ViewGroup {
         if (widthDp >= 900) return 4;
         if (widthDp >= 600) return 3;
         return 2;
+    }
+
+    // ---- test seams -------------------------------------------------------------------------------
+    // Layout state rather than pixels: what the grid believes, so a test can check it is believable.
+
+    /** The provisional slot rectangles, in display order. */
+    List<Rect> occupancyForTest() {
+        List<Rect> out = new ArrayList<>();
+        for (Slot slot : slotsFor(order, cellWidth(getWidth()))) {
+            out.add(new Rect(slot.x, slot.y, slot.x + slot.width, slot.y + slot.height));
+        }
+        return out;
+    }
+
+    /** True when the provisional grid is one arrangement: no overlaps, no empty cells. */
+    boolean occupancyIsValidForTest() {
+        List<Rect> rects = occupancyForTest();
+        if (rects.size() != visibleChildren().size()) return false;
+        for (int i = 0; i < rects.size(); i++) {
+            Rect a = rects.get(i);
+            if (a.width() <= 0 || a.height() <= 0) return false;
+            for (int j = i + 1; j < rects.size(); j++) {
+                if (Rect.intersects(a, rects.get(j))) return false;
+            }
+        }
+        return true;
+    }
+
+    /** True when every tile that is not being carried sits exactly on its slot. */
+    boolean everyIdleTileIsSettledForTest() {
+        for (View child : visibleChildren()) {
+            if (child == dragging) continue;
+            if (child.getTranslationX() != 0f || child.getTranslationY() != 0f) return false;
+        }
+        return true;
+    }
+
+    /** Where the drag believes the carried tile would be inserted right now. */
+    int insertionIndexForTest(float x, float y) { return insertionIndexAt(x, y); }
+
+    /** The centre of one tile's provisional slot, for a test that needs somewhere to point. */
+    float[] slotCenterForTest(View child) {
+        for (Slot slot : slotsFor(order, cellWidth(getWidth()))) {
+            if (slot.child == child) {
+                return new float[]{slot.x + slot.width / 2f, slot.y + slot.height / 2f};
+            }
+        }
+        return null;
     }
 }

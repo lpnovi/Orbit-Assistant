@@ -1,8 +1,10 @@
 package com.orbit.assistant;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.ColorStateList;
-import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.view.Gravity;
 import android.view.View;
@@ -46,6 +48,8 @@ public final class DeckTileView extends FrameLayout {
     private final View removeBadge;
 
     private boolean editing;
+    /** The pick-up lift, kept apart from the grid's slide. See {@link #setCarried(boolean)}. */
+    private ValueAnimator liftAnimator;
 
     public DeckTileView(Context c, DeckTile tile, DeckTileResolver.Resolved resolved,
                         Listener listener) {
@@ -199,18 +203,46 @@ public final class DeckTileView extends FrameLayout {
 
     public DeckTile tile() { return tile; }
 
-    /** Visually picks the tile up for a drag. */
+    /**
+     * Visually picks the tile up for a drag.
+     *
+     * <p>The lift runs on an animator of its own rather than on {@code animate()}, because the grid
+     * uses this view's {@link android.view.ViewPropertyAnimator} to slide it between slots, and
+     * that animator has no per-property cancel — cancelling a stale slide would take the lift with
+     * it. Sharing the two left a picked-up tile stuck part-scaled, and a dropped one stuck at 1.04
+     * for the rest of the session.
+     */
     public void setCarried(boolean carried) {
         float scale = carried ? 1.04f : 1f;
-        float elevation = carried ? UiKit.dp(getContext(), 8) : 0f;
-        if (UiKit.animationsEnabled()) {
-            animate().scaleX(scale).scaleY(scale).setDuration(120L)
-                    .setInterpolator(UiKit.motionEasing()).start();
-        } else {
+        setElevation(carried ? UiKit.dp(getContext(), 8) : 0f);
+        if (liftAnimator != null) {
+            liftAnimator.cancel();
+            liftAnimator = null;
+        }
+        if (!UiKit.animationsEnabled()) {
             setScaleX(scale);
             setScaleY(scale);
+            return;
         }
-        setElevation(elevation);
+        ValueAnimator lift = ValueAnimator.ofFloat(getScaleX(), scale);
+        lift.setDuration(120L);
+        lift.setInterpolator(UiKit.motionEasing());
+        lift.addUpdateListener(animation -> {
+            float value = (float) animation.getAnimatedValue();
+            setScaleX(value);
+            setScaleY(value);
+        });
+        lift.addListener(new AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(Animator animation) {
+                // Settled exactly, so a cancelled or interrupted drag can never leave a tile a
+                // fraction larger than its neighbours.
+                setScaleX(scale);
+                setScaleY(scale);
+                if (liftAnimator == animation) liftAnimator = null;
+            }
+        });
+        liftAnimator = lift;
+        lift.start();
     }
 
     /** The title currently rendered. For tests. */
@@ -230,6 +262,4 @@ public final class DeckTileView extends FrameLayout {
     /** The image currently in the icon well, app icons included. */
     public Drawable iconDrawable() { return icon.getDrawable(); }
 
-    /** Painted transparent so a dragged tile leaves no ghost behind it. */
-    void clearBackgroundForDrag() { setBackgroundColor(Color.TRANSPARENT); }
 }

@@ -140,8 +140,13 @@ public final class ExistingFeatureInventoryTest {
 
     /** One timer grammar, one alarm grammar, one conversion table per dimension. */
     @Test public void thereIsOneOfEachParser() {
-        assertEquals("timer grammar lives in one place",
-                List.of("LocalCommandRouter.java"), filesContaining("TIMER_AFTER"));
+        assertEquals("the sentence shape of a timer request lives in one place",
+                List.of("LocalCommandRouter.java"), filesContaining("TIMER_SUBJECT_AFTER"));
+        // How long a timer runs for is a separate question from whether the sentence is asking for
+        // one, and it is now answered in exactly one file. A second unit table anywhere is the
+        // defect this pins: two parsers is how "4 minutes and 30 seconds" became four minutes.
+        assertEquals("duration grammar lives in one place",
+                List.of("DurationParser.java"), filesContaining("case \"mins\":"));
         assertEquals("and so does alarm grammar",
                 List.of("LocalCommandRouter.java"), filesContaining("ALARM_TIME"));
         assertEquals("only the executor starts an Android timer",

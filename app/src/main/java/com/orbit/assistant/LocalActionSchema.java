@@ -220,13 +220,21 @@ public final class LocalActionSchema {
                     return accept(type, new JSONObject().put("command", command.name()), "media");
                 }
                 case "SET_TIMER": {
+                    // An explicit whole number of seconds is taken as stated and never reparsed:
+                    // the model said what it meant, and second-guessing it would be its own bug.
                     Integer seconds = readInt(params, "seconds", "duration", "length");
                     if (seconds == null) {
                         Integer minutes = readInt(params, "minutes");
-                        if (minutes == null) return Validation.reject(REJECT_BAD_PARAMS);
-                        if (minutes > MAX_TIMER_SECONDS / 60) return Validation.reject(REJECT_OUT_OF_RANGE);
-                        seconds = minutes * 60;
+                        if (minutes != null && minutes > MAX_TIMER_SECONDS / 60) {
+                            return Validation.reject(REJECT_OUT_OF_RANGE);
+                        }
+                        if (minutes != null) seconds = minutes * 60;
                     }
+                    // Only once neither field holds a plain integer: a model that answered "4
+                    // minutes 30 seconds" or 4.5 minutes stated a real duration, and rejecting it
+                    // outright sent the user back to a provider that had already been right.
+                    if (seconds == null) seconds = parsedDuration(params);
+                    if (seconds == null) return Validation.reject(REJECT_BAD_PARAMS);
                     if (seconds <= 0 || seconds > MAX_TIMER_SECONDS) {
                         return Validation.reject(REJECT_OUT_OF_RANGE);
                     }
@@ -303,6 +311,33 @@ public final class LocalActionSchema {
                         || "disable".equals(text) || "disabled".equals(text)) return Boolean.FALSE;
             }
             return null;
+        }
+        return null;
+    }
+
+    /**
+     * A duration a provider wrote in words or as a fraction, in seconds, or null.
+     *
+     * <p>Read through {@link DurationParser}, so a provider phrase is subject to exactly the same
+     * arithmetic and the same ceiling as one the user typed. A bare number with no unit is not a
+     * duration here: "5" could be seconds, minutes or a page number, and guessing is how a five
+     * second timer becomes five hours.
+     */
+    private static Integer parsedDuration(JSONObject params) {
+        for (String name : new String[]{"seconds", "duration", "length", "minutes"}) {
+            Object value = params.opt(name);
+            if (!(value instanceof String)) continue;
+            long parsed = DurationParser.parseSeconds((String) value);
+            if (parsed > 0L && parsed <= MAX_TIMER_SECONDS) return (int) parsed;
+        }
+        // A fractional count of minutes is still a duration; it is only not an integer.
+        Object minutes = params.opt("minutes");
+        if (minutes instanceof Number) {
+            double value = ((Number) minutes).doubleValue();
+            if (!Double.isNaN(value) && !Double.isInfinite(value) && value > 0d
+                    && value * 60d <= MAX_TIMER_SECONDS) {
+                return (int) Math.max(1L, Math.round(value * 60d));
+            }
         }
         return null;
     }

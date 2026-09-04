@@ -113,7 +113,10 @@ public final class DocumentViewerModelTest {
         assertNotNull(staged);
         assertEquals(SharedContentStore.SOURCE_DOCUMENT_PAGE, staged.source);
         assertEquals("the page is not pasted into the composer text", "", staged.text);
-        assertEquals("syllabus.pdf · Page 4", staged.documentPage.displayLabel());
+        // The document's name and the place inside it are separate facts, so the card can put
+        // them on separate lines instead of ellipsizing away whichever one the reader needed.
+        assertEquals("syllabus.pdf", staged.documentPage.displayLabel());
+        assertEquals("Page 4 of 18", staged.documentPage.pageLabel());
         assertTrue(staged.documentPage.requestContext().contains("only that page"));
         assertTrue(staged.documentPage.requestContext().contains("Confidential page sentence."));
         assertEquals("staging alone creates no conversation and therefore no request",
@@ -139,7 +142,10 @@ public final class DocumentViewerModelTest {
             assertEquals(1, chat.pendingAttachments().size());
             ComposerAttachment attached = chat.pendingAttachments().get(0);
             assertEquals("pdf_page", attached.kind);
-            assertEquals("syllabus.pdf · Page 15", attached.label);
+            assertEquals("syllabus.pdf", attached.label);
+            assertEquals("Page 15 of 20", attached.detail);
+            assertTrue("the card knows it is one page, not a whole document",
+                    attached.isDocumentPage());
             assertTrue(PendingRequestStore.activeForConversation(context, conversationId).isEmpty());
             ComposerAttachments removable = new ComposerAttachments();
             removable.add(attached);

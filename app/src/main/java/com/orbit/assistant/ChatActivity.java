@@ -263,7 +263,7 @@ public class ChatActivity extends Activity {
         SharedContentStore.Staged staged = SharedContentStore.consume(token);
         if (staged == null || staged.isEmpty()) return;
 
-        if (staged.documentPage != null && staged.documentPage.hasText()) {
+        if (staged.documentPage != null && staged.documentPage.isUsable()) {
             ComposerAttachment page = ComposerAttachment.documentPage(staged.documentPage);
             if (page != null) addComposerAttachment(page);
         }
@@ -893,9 +893,24 @@ public class ChatActivity extends Activity {
             drawn++;
         }
         for (DocumentReference document : h.documents) {
-            ImageButton open = iconButton(R.drawable.ic_document, "Open " + document.label
-                    + " in document viewer");
-            open.setOnClickListener(v -> DocumentViewerActivity.open(this, document, 0));
+            // A page reference keeps saying which page it was, and reopens there. A sent turn is
+            // read-only — there is no Remove on history — but it must still be as legible and as
+            // useful as the card that was in the composer a moment earlier.
+            String description = document.namesPage()
+                    ? "Open " + document.label + ", " + document.pageLabel()
+                            + ", in document viewer"
+                    : "Open " + document.label + " in document viewer";
+            if (document.namesPage()) {
+                TextView page = UiKit.text(this, document.pageLabel(), 11, UiKit.MUTED, false);
+                page.setSingleLine(true);
+                page.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                LinearLayout.LayoutParams pageLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                pageLp.setMarginStart(UiKit.dp(this, 6));
+                row.addView(page, pageLp);
+            }
+            ImageButton open = iconButton(R.drawable.ic_document, description);
+            open.setOnClickListener(v -> openDocumentAt(document));
             UiKit.pressScale(open);
             LinearLayout.LayoutParams openLp = new LinearLayout.LayoutParams(
                     UiKit.dp(this, 44), UiKit.dp(this, 44));
@@ -999,18 +1014,9 @@ public class ChatActivity extends Activity {
         return paths;
     }
 
+    /** Shared with the overlay, so the two surfaces cannot describe the same PDF differently. */
     private String defaultAttachmentPrompt(List<ComposerAttachment> attached) {
-        if (attached == null || attached.isEmpty()) return "What can you help me with?";
-        if (attached.size() > 1) {
-            return "What can you tell me about these " + attached.size() + " attachments?";
-        }
-        ComposerAttachment a = attached.get(0);
-        if ("file_text".equals(a.kind)) return "Summarize this file and tell me what matters.";
-        if ("pdf".equals(a.kind)) return "Analyze this PDF preview and tell me the important points.";
-        if ("clipboard".equals(a.kind)) return "Help me with this clipboard content.";
-        if ("screen_selection".equals(a.kind)) return "What should I know about this selection?";
-        if ("screen".equals(a.kind)) return "What can you tell me about this screen?";
-        return "What can you tell me about this image?";
+        return AttachmentPrompts.defaultPrompt(attached);
     }
 
     private void attachToPending() {
@@ -1550,7 +1556,10 @@ public class ChatActivity extends Activity {
             case "SET_BRIGHTNESS": return "Brightness · " + p.optInt("percent", 50) + "%";
             case "SET_DND": return p.optBoolean("enabled", true) ? "Do Not Disturb on" : "Do Not Disturb off";
             case "OPEN_APP": return "Open · " + p.optString("app", "App");
-            case "SET_TIMER": return "Timer";
+            // Named with its duration, the way the overlay's card already was. "Timer" alone told
+            // the user nothing about the one thing they had just asked Orbit to get right.
+            case "SET_TIMER": return "Timer · "
+                    + DurationParser.compactLabel(p.optInt("seconds", 60));
             case "SET_REMINDER": return "Reminder · " + p.optString("message", "Reminder");
             case "SET_ALARM": return "Alarm";
             case "NAVIGATE": return "Navigate · " + p.optString("query", p.optString("destination", "Destination"));
@@ -2120,10 +2129,27 @@ public class ChatActivity extends Activity {
     private void openComposerAttachment(String id) {
         ComposerAttachment attachment = composerAttachments.find(id);
         if (attachment != null && attachment.isDocument()) {
-            DocumentViewerActivity.open(this, attachment.document, 0);
+            // A page attachment reopens at the page it was taken from, not at the beginning: it
+            // was staged from somewhere specific and the card says so.
+            openDocumentAt(attachment.document);
         } else {
             AttachmentViewerActivity.openComposer(this, composerAttachments, id);
         }
+    }
+
+    /**
+     * Reopens a retained PDF, at the page the reference names when it names one.
+     *
+     * <p>The retained file can be gone — a conversation deleted, storage reclaimed — and a tap on a
+     * card is not a reason to crash. Orbit says so instead.
+     */
+    private void openDocumentAt(DocumentReference document) {
+        if (document == null || !document.isUsable()
+                || !new java.io.File(document.path).exists()) {
+            Toast.makeText(this, "That document is no longer available", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        DocumentViewerActivity.open(this, document, document.openAt());
     }
 
     private void clearComposerAttachments() {

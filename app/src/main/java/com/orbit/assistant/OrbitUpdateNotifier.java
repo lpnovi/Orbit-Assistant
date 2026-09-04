@@ -11,7 +11,7 @@ import android.os.Build;
 
 /** One notification per available Orbit version. */
 public final class OrbitUpdateNotifier {
-    private static final String CHANNEL = "orbit_updates";
+    private static final String CHANNEL = OrbitNotificationChannels.UPDATES;
     private static final int NOTIFICATION_ID = 0x4f524255;
 
     private OrbitUpdateNotifier() {}
@@ -23,7 +23,9 @@ public final class OrbitUpdateNotifier {
         NotificationManager manager = (NotificationManager)
                 context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (manager == null) return false;
-        ensureChannel(manager);
+        // Start-up has normally already declared this. Kept so the channel is guaranteed to exist
+        // in whatever process reaches this, and so the importance check below reads a real channel.
+        OrbitNotificationChannels.ensure(context, CHANNEL);
         if (Build.VERSION.SDK_INT >= 24 && !manager.areNotificationsEnabled()) return false;
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationChannel channel = manager.getNotificationChannel(CHANNEL);
@@ -64,11 +66,4 @@ public final class OrbitUpdateNotifier {
         if (manager != null) manager.cancel(NOTIFICATION_ID);
     }
 
-    private static void ensureChannel(NotificationManager manager) {
-        if (Build.VERSION.SDK_INT < 26) return;
-        NotificationChannel channel = new NotificationChannel(
-                CHANNEL, "Orbit updates", NotificationManager.IMPORTANCE_DEFAULT);
-        channel.setDescription("Notifies you when a verified Orbit release is available.");
-        manager.createNotificationChannel(channel);
-    }
 }
