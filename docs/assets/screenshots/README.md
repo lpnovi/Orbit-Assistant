@@ -1,28 +1,27 @@
 # Public screenshot guide
 
-This folder holds the public README gallery. The checked-in SVG files are clearly labeled placeholders, not mockups of the application.
+This folder holds the real Orbit screenshots used in the public README gallery.
 
-## Final filenames and order
+## Current gallery files and order
 
-Replace the placeholders with real images in this order:
+Keep the current images in this order:
 
 | Order | Filename | Show | README caption |
 | --- | --- | --- | --- |
-| 1 | `overlay.png` | Orbit invoked over a recognizable, non-sensitive app through the assistant/Side-button flow | Orbit over any app |
-| 2 | `chat.png` | A complete conversation with a polished rich response and composer | Full conversations |
-| 3 | `deck.png` | A deliberate mix of Standard and Wide Deck tiles | Your command center |
-| 4 | `documents.png` | A PDF page plus the Ask Orbit entry point or attached page card | Work with documents |
-| 5 | `theme-studio.png` | The Theme Studio preview and controls; publish only when the feature reaches the intended channel | Make Orbit yours |
-| 6, optional | `routines.png` | A readable Routine with a few representative steps or a trigger | Reusable automation |
+| 1 | `overlay.jpg` | Orbit invoked over a neutral background through the assistant/Side-button flow | Orbit over any app |
+| 2 | `chat.jpg` | A complete conversation with a representative response and composer | Full conversations |
+| 3 | `deck.jpg` | A deliberate mix of Orbit Deck shortcuts and controls | Your command center |
+| 4 | `documents.jpg` | A real PDF page in Orbit's viewer with the Ask Orbit entry point | Work with documents |
+| 5 | `theme-studio.jpg` | The Theme Studio live preview and color controls | Make Orbit yours |
 
-The public README currently displays five `*-placeholder.svg` files. When final PNGs arrive, add them with the names above and change only the five corresponding `src` values in the README. The table and captions can remain unchanged. If Theme Studio is not Stable at launch, keep its Beta label or replace that slot with `routines.png`.
+The README labels Theme Studio as a Beta feature. Replace its image later if the interface changes materially, but do not fabricate a newer state.
 
 ## Capture specifications
 
 - Preferred orientation: portrait.
 - Preferred aspect ratio: approximately **1:2** (modern phone screen).
-- Recommended size: **1080 × 2160 px** or a nearby native device resolution; keep every primary image at one consistent size.
-- Format: optimized PNG. Aim for clear text without committing unnecessarily large files.
+- Recommended size: use a consistent native device resolution near the current portrait dimensions. Do not upscale a smaller capture merely to reach a target size.
+- Format: high-quality JPEG or optimized PNG. Aim for clear text without committing unnecessarily large files.
 - Capture the real application. Do not composite features into a screen that never existed.
 - Keep system bars when they help establish genuine Android integration; otherwise crop only empty outer device chrome. Do not crop away UI that changes the meaning of the interaction.
 - Use one clean Orbit theme and consistent font, accent, display scale, and navigation style across the set. A restrained dark or AMOLED presentation fits the repository treatment.
@@ -41,4 +40,6 @@ Before committing each screenshot:
 
 ## Gallery consistency
 
-Use the same capture device or viewport where possible. Keep the subject at a similar scale and avoid mixing framed device mockups with raw screenshots. The first three images—overlay, chat, and Deck—should remain the strongest product story if the gallery is reduced for launch.
+Use the same capture device or viewport where possible. Keep the subject at a similar scale and avoid mixing framed device mockups with raw screenshots. The first three images (overlay, chat, and Deck) should remain the strongest product story if the gallery is reduced.
+
+Keep the gallery current when a major interface change makes a screenshot misleading. Use real Orbit UI, preserve the native aspect ratio, avoid fabricated mockups or device frames, and update the README caption when the visible capability changes.

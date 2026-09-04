@@ -2,7 +2,7 @@
 
 # Orbit Assistant
 
-**Your Android assistant—one gesture away, aware of the screen you choose, and ready to act.**
+**Your Android assistant, one gesture away, aware of the screen you choose, and ready to act.**
 
 Orbit brings system assistant access, screen context, safe device actions, automation, and a full conversation app into one deeply customizable Android experience.
 
@@ -19,18 +19,18 @@ Stable is recommended for most people. Beta offers newer features with a greater
 
 ## See Orbit in action
 
-The final public screenshots are being prepared. These labeled preview cards reserve the finished gallery layout without presenting mockups as the real app.
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="docs/assets/screenshots/overlay.jpg" width="185" alt="Orbit Assistant Side-button overlay over a neutral sunset background"><br><sub><strong>Orbit over any app</strong><br>Side-button overlay for quick help without leaving what you're doing.</sub></td>
+    <td align="center" width="33%"><img src="docs/assets/screenshots/chat.jpg" width="185" alt="Orbit Assistant full chat showing a response about phone actions"><br><sub><strong>Full conversations</strong><br>Ask questions, work with content, and use Android actions in a persistent chat.</sub></td>
+    <td align="center" width="33%"><img src="docs/assets/screenshots/deck.jpg" width="185" alt="Orbit Deck with shortcuts for chat, Routines, reminders, Memory, flashlight, media, and capabilities"><br><sub><strong>Your command center</strong><br>Shortcuts, Routines, reminders, apps, prompts, media controls, and safe actions.</sub></td>
+  </tr>
+</table>
 
 <table>
   <tr>
-    <td align="center" width="33%"><img src="docs/assets/screenshots/overlay-placeholder.svg" width="210" alt="Placeholder for the Orbit Side-button overlay screenshot"><br><sub><strong>Orbit over any app</strong><br>Side-button overlay</sub></td>
-    <td align="center" width="33%"><img src="docs/assets/screenshots/chat-placeholder.svg" width="210" alt="Placeholder for the full Orbit conversation screenshot"><br><sub><strong>Full conversations</strong><br>Rich, persistent chat</sub></td>
-    <td align="center" width="33%"><img src="docs/assets/screenshots/deck-placeholder.svg" width="210" alt="Placeholder for the Orbit Deck screenshot"><br><sub><strong>Your command center</strong><br>Orbit Deck</sub></td>
-  </tr>
-  <tr>
-    <td align="center" width="33%"><img src="docs/assets/screenshots/documents-placeholder.svg" width="210" alt="Placeholder for the Orbit Documents screenshot"><br><sub><strong>Work with documents</strong><br>PDFs and Ask Orbit</sub></td>
-    <td align="center" width="33%"><img src="docs/assets/screenshots/theme-studio-placeholder.svg" width="210" alt="Placeholder for the Orbit Theme Studio screenshot"><br><sub><strong>Make Orbit yours</strong><br>Theme Studio · Beta</sub></td>
-    <td width="33%"></td>
+    <td align="center" width="50%"><img src="docs/assets/screenshots/documents.jpg" width="185" alt="Orbit Documents viewing a PDF with Ask Orbit"><br><sub><strong>Work with documents</strong><br>Read PDFs natively and ask Orbit about the current page.</sub></td>
+    <td align="center" width="50%"><img src="docs/assets/screenshots/theme-studio.jpg" width="185" alt="Orbit Theme Studio showing a customized live preview and color controls"><br><sub><strong>Make Orbit yours</strong><br>Customize Orbit's colors and presentation with a live preview. Beta feature.</sub></td>
   </tr>
 </table>
 
@@ -51,7 +51,7 @@ Orbit is not tied to one interaction style: type, speak, attach content, build r
 | **Act on Android** | Use supported actions for timers, alarms, media, brightness, flashlight, Do Not Disturb, navigation, sharing, and more. Calendar writing uses Android's Calendar Provider and asks for confirmation before changes. Capabilities remain subject to Android permissions and device support. |
 | **Make Orbit yours** | Arrange shortcuts, Routines, apps, prompts, and safe actions in Orbit Deck. Customize accents, conversation colors, fonts, AMOLED surfaces, haptics, app profiles, Memory, and other preferences. Theme Studio is currently a Beta feature. |
 | **Automate repeatable work** | Build Routines with reusable steps, conditions and branches; add time or location triggers; start from templates; use Custom Commands; and launch compatible actions from Quick Settings or home-screen widgets. Declarative Extensions can add reviewed Routine actions without loading executable plugin code. |
-| **Choose how Orbit thinks** | Use ChatGPT account mode for Orbit's fullest cloud feature set, install the optional Orbit Local component for private offline chat on supported hardware, or connect an advanced private HTTPS relay. OpenRouter configuration is a preview only—OpenRouter chat is not currently available. |
+| **Choose how Orbit thinks** | Use ChatGPT account mode for Orbit's fullest cloud feature set, install the optional Orbit Local component for private offline chat on supported hardware, or connect an advanced private HTTPS relay. OpenRouter configuration is a preview only. OpenRouter chat is not currently available. |
 
 Advanced details are available in the [Extensions guide](docs/EXTENSIONS.md), [Orbit Local model guide](docs/LOCAL_MODELS.md), [changelog](CHANGELOG.md), and [roadmap](ROADMAP.md).
 
@@ -107,7 +107,7 @@ If your phone does not offer a compatible assistant-button mapping, the full Orb
 
 ## Privacy and trust
 
-Orbit exposes powerful context and device capabilities, so control is part of the product—not an afterthought.
+Orbit exposes powerful context and device capabilities, so control is part of the product, not an afterthought.
 
 - Screen text, screenshots, and automatic attachment behavior are configurable globally and per app. Sensitive app profiles disable automatic context, and an app can be set to never provide screen access.
 - Android permissions and special access are requested for specific capabilities. You can leave capabilities disabled and manage access through Orbit or Android Settings.

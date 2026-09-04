@@ -50,10 +50,10 @@ Release builds deliberately fail unless all required signing values are provided
 
 ## Project layout
 
-- `app/` — the main Orbit application
-- `local/` — the optional Orbit Local component
-- `ipc/` — the shared AIDL contract between the two APKs
-- `docs/` — public technical documentation
-- `examples/` — example declarative Orbit Extensions
+- `app/`: the main Orbit application
+- `local/`: the optional Orbit Local component
+- `ipc/`: the shared AIDL contract between the two APKs
+- `docs/`: public technical documentation
+- `examples/`: example declarative Orbit Extensions
 
 The source currently has no repository-level software license. Being able to inspect or build the code does not by itself grant permission to redistribute it or create derivative works.
