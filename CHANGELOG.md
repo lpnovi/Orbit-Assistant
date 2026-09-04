@@ -670,6 +670,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - **Timers** now read "4 minutes and 30 seconds", "4 and a half minutes" and "1 hour 5 minutes 30 seconds" correctly, set in your usual Clock app.
   - Orbit's notification categories appear consistently in Android settings without anything being posted, and presentation polish continues throughout. 💜
 
+- **v0.7.8.3-beta.4**: A small Theme Studio preview fix on top of Beta 3.
+  - The Theme Studio live preview now shows Orbit's real app mark beside the title instead of a plain colored circle.
+  - The mark follows the accent you are previewing, so you can see how your accent looks on Orbit's own icon before applying it.
+  - Everything from Beta 3, including theme import and export, is unchanged.
+
 - **v0.7.8.3-beta.3**: Theme Studio themes can now travel with you.
   - Import Orbit theme files through Android's system picker, with no storage permission.
   - Export any theme in the preview as a portable Orbit theme file.

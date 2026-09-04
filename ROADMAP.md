@@ -1156,11 +1156,25 @@ since Beta 1, and Beta 3 is the release where something finally reads them.
   accent instead of a plain dot, the tablet action bar no longer stretches across the full content
   width, and the import preview is bounded so it reads the same on a phone and a Tab S9 Plus
 
+### 0.7.8.3-beta.4 - Preview Mark
+One fix, released so it reaches a device: a Beta only gets to a phone through the normal update
+path.
+
+- **The Theme Studio preview header draws Orbit's own mark.** It was a plain accent-filled circle,
+  the only element in the preview that was not a piece of Orbit, and it said nothing useful because
+  how an accent looks as a flat disc is not how it looks on the actual icon. It is now the same
+  `UiKit.orbitMark` the Chats header and the overlay draw, whose geometry is deliberately identical
+  to `ic_orbit.xml`, so the miniature and the real mark cannot diverge
+- **The mark wears the draft's accent, not the applied one.** `orbitMark` resolves the accent inside
+  `onDraw` so a mark already on screen turns when Settings changes it, which is right for a header
+  and wrong for a preview of a theme nobody has applied. It gains an overload that takes the accent
+  as a parameter; existing callers keep the draw-time behavior they had
+
 # Next
 
 ## 0.7.8.3 - Theme Studio Stable
 
-After device validation of Beta 3 on the Galaxy S25 Ultra and the Tab S9 Plus.
+After device validation of Beta 4 on the Galaxy S25 Ultra and the Tab S9 Plus.
 
 - physical validation of import and export against Android's own picker on both devices
 - any remaining phone and tablet polish that device testing turns up
