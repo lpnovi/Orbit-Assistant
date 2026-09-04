@@ -1034,25 +1034,55 @@ dragging and isolated the remaining defect to full-span tiles. No feature change
 - **Standard dragging untouched.** The one-column path is unchanged line for line; the span path is
   purely additive, and a regression test pins the neighbour model's exact ordering behaviour
 
+### 0.7.8.2 — Orbit Deck, Documents, and natural timer durations
+Validated on a Galaxy S25 Ultra across four Betas (`beta.1`–`beta.4`) and released as `0.7.8.2`
+Stable. Each Beta is recorded in full above; in short:
+
+- **Beta 1** introduced Orbit Deck: a first-party surface with a user-owned persistent layout,
+  Standard and Wide tiles, a responsive phone and tablet grid, and tiles for Orbit destinations,
+  Routines, safe device actions, apps and saved prompts. Chats stayed home, and Suggestions stayed
+  local, deterministic and optional
+- **Beta 2** added Documents — a native local PDF viewer with page navigation, a page scrubber,
+  pinch, double-tap, pan and local text search — and refined Deck's reordering
+- **Beta 3** finished four foundations from device testing: visible PDF search highlighting welded
+  to the word through every transform, a structured Ask Orbit page context with a thumbnail card and
+  exact-page reopening, one shared deterministic duration parser behind `SET_TIMER`, and proactive
+  registration of Orbit's four notification channels
+- **Beta 4** corrected the one defect Beta 3 left: dragging a full-span Deck tile produced valid
+  drops but invalid provisional layouts. Insertion for a carried span is now decided by where the
+  span actually fits rather than which neighbour the finger is over
+- **Stable** carries Beta 4's behaviour unchanged. The Galaxy S25 Ultra pass confirmed standard and
+  full-span Deck dragging, the PDF viewer, search highlighting, Ask Orbit page context, corrected
+  timer durations and notification consistency, and found no new regression — so promotion changed
+  version metadata and release documentation only, with no functional source change
+
 # Next
 
-## 0.7.8.2 Stable
+## 0.7.8.3 — Theme Studio
 
-Promote the 0.7.8.2 line to Stable after successful physical-device validation of Beta 4. No new
-major feature belongs to that release.
+The next major development priority, and a real visual design editor for Orbit rather than more
+colour preferences in Settings. Built on Look & Feel, it should become its own surface:
 
-# Post-Stable future features
+- a polished Theme Studio screen with live visual previews of a real conversation
+- saved custom theme presets, alongside cohesive Orbit-designed ones
+- Accent customization
+- user-bubble and assistant-bubble customization, controlled separately
+- surface and card customization, and background treatment
+- AMOLED variants of each theme
+- contrast and readability safeguards, so no preset can produce unreadable text
+- import- and exportable Orbit theme files where feasible
+- responsive phone and tablet presentation
+- an eventual Orbit Deck tile
 
-## Theme Studio
+Development begins as `0.7.8.3-beta.1 — Theme Studio`.
 
-A polished visual theme editor built on Look & Feel: live previews, saved Accent/bubble/surface
-presets, AMOLED variants, and import/exportable Orbit theme files where feasible.
+# Later
 
 ## Orbit Vault / Quick Capture
 
-A searchable local-first collection for quickly saving screenshots, selected text, clipboard
-content, photos, useful Orbit answers, and later document snippets, with a future **Ask Orbit about
-this** flow and an eventual Orbit Deck tile.
+After Theme Studio. A searchable local-first collection for quickly saving screenshots, selected
+text, clipboard content, photos, useful Orbit answers, and later document snippets, with quick
+capture and share flows, a future **Ask Orbit about this** flow, and an eventual Orbit Deck tile.
 
 ## Future direction
 

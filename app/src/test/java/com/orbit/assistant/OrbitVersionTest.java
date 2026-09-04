@@ -147,38 +147,43 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * The 0.7.8.2 line's fourth Beta corrects one interaction the third left rough.
+     * The 0.7.8.2 line ran as four Betas and is now promoted to Stable.
      *
-     * <p>Galaxy S25 Ultra testing of Beta 3 validated standard-tile dragging and isolated the
-     * remaining defect to full-span Deck tiles. That correction still needs real-device validation
-     * on the Galaxy S25 Ultra and Tab S9 Plus, so this is published as a prerelease and not as
-     * Stable.
+     * <p>Beta 1 added Orbit Deck. Beta 2 brought Documents and refined the Deck. Beta 3 finished
+     * PDF search highlighting, page context and timer durations, and a Galaxy S25 Ultra confirmed
+     * all of it while isolating one remaining defect it alone could show: dragging a full-span
+     * tile looked wrong for the length of the gesture even though it landed correctly. Beta 4
+     * corrected exactly that, and the phone confirmed the result.
      *
-     * <p>The guard therefore runs in the Beta direction. A build going to the Beta channel must
-     * actually carry prerelease metadata, so that a version which quietly lost its suffix cannot be
-     * published as a finished release, and it must still outrank the Stable line it was built from.
+     * <p>Stable therefore carries Beta 4's behaviour unchanged. Everything this line added had to
+     * be looked at rather than only measured — how a tile feels under a thumb, whether a highlight
+     * stays welded to a word through a pinch, whether a page thumbnail reads as a real attachment —
+     * and the device answered all of it.
+     *
+     * <p>The guard now runs the other way round. A finished release must not quietly regain
+     * prerelease metadata and be published to the Beta channel by accident, so this fails before
+     * publication rather than on a phone.
      */
-    @Test public void thisBuildIsTheDeckWideTileDragPolishBeta() {
+    @Test public void thisBuildIsTheOrbitDeckAndDocumentsStable() {
         String version = BuildConfig.VERSION_NAME;
-        assertTrue(OrbitVersion.installedIsBeta());
-        assertTrue(OrbitVersion.isBeta(version));
-        assertFalse(OrbitVersion.isStable(version));
+        assertFalse(OrbitVersion.installedIsBeta());
+        assertFalse(OrbitVersion.isBeta(version));
+        assertTrue(OrbitVersion.isStable(version));
         assertEquals("0.7.8.2", OrbitVersion.baseVersion(version));
 
-        assertEquals("this is the line's fourth Beta", 4, OrbitVersion.betaNumber(version));
-        assertEquals("Orbit Assistant v0.7.8.2 Beta 4", OrbitVersion.releaseTitle(version));
-        assertEquals("v0.7.8.2-beta.4", OrbitVersion.tagFor(version));
-        assertTrue("the release workflow must publish it as a prerelease",
+        assertEquals("a Stable build carries no beta counter", 0, OrbitVersion.betaNumber(version));
+        assertEquals("Orbit Assistant v0.7.8.2", OrbitVersion.releaseTitle(version));
+        assertEquals("v0.7.8.2", OrbitVersion.tagFor(version));
+        assertFalse("the release workflow must publish it as Stable",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
-        assertFalse("and never as Stable",
+        assertTrue("and never as a prerelease",
                 OrbitVersion.isStableTag(OrbitVersion.tagFor(version)));
         assertTrue("it must outrank the Stable line it was built from",
                 OrbitVersion.compareVersions(version, "0.7.8.1") > 0);
-        assertTrue("and every Beta of that line",
-                OrbitVersion.compareVersions(version, "0.7.8.1-beta.3") > 0);
-        assertTrue("and the Beta it corrects",
-                OrbitVersion.compareVersions(version, "0.7.8.2-beta.3") > 0);
-        assertTrue("while its own Stable, when it comes, will outrank it",
-                OrbitVersion.compareVersions("0.7.8.2", version) > 0);
+        assertTrue("and every Beta of its own line",
+                OrbitVersion.compareVersions(version, "0.7.8.2-beta.4") > 0
+                        && OrbitVersion.compareVersions(version, "0.7.8.2-beta.3") > 0
+                        && OrbitVersion.compareVersions(version, "0.7.8.2-beta.2") > 0
+                        && OrbitVersion.compareVersions(version, "0.7.8.2-beta.1") > 0);
     }
 }

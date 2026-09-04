@@ -185,19 +185,21 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * Orbit Deck goes out as a Beta, because only a phone can judge it.
+     * Orbit Deck and Documents passed four device Betas.
      *
-     * <p>Everything this release adds is something that has to be looked at and held: tile spacing,
+     * <p>Everything this line added was something that had to be looked at and held: tile spacing,
      * how a drag feels under a thumb, whether a grid of shortcuts reads as a finished Orbit surface
-     * or as a settings screen. A test suite can prove the layout survives large text and that no
-     * provider is contacted; it cannot prove the thing is worth opening. So this is published as a
-     * prerelease, and the guard's job is to stop a versionName that has quietly lost its prerelease
-     * metadata from being published to the Beta channel as though it were finished.
+     * or as a settings screen, whether a search highlight stays welded to its word through a pinch,
+     * whether a page thumbnail reads as a real attachment. A test suite can prove the layout
+     * survives large text and that no provider is contacted; it could not prove any of that. A
+     * Galaxy S25 Ultra found the faults and confirmed the corrections, so this release is Stable,
+     * and the guard's job is now to stop a versionName that quietly regains prerelease metadata
+     * from being published here.
      */
-    @Test public void thisReleaseIsABetaAwaitingDeviceValidation() {
-        assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
-                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
-        assertTrue(OrbitVersion.installedIsBeta());
+    @Test public void thisReleaseIsStableAfterDeviceValidation() {
+        assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
+                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.installedIsBeta());
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
     }
 

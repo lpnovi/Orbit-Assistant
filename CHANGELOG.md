@@ -661,3 +661,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - No card is left stranded under the tile you are carrying, and the grid never briefly shows an empty gap.
   - The row the tile will land in is visible before you lift your finger.
   - Dragging standard tiles is unchanged, on phones and on tablets alike.
+
+- **v0.7.8.2**: Orbit Deck and Documents arrive, and timers finally understand how people say durations.
+  - **Orbit Deck**, a surface of your own opened from the Chats header: add, resize, reorder, configure and reset tiles for Orbit destinations, Routines, safe device actions, apps and saved prompts.
+  - Standard and Wide tiles on a responsive phone and tablet grid, with dragging that reflows cleanly for both sizes. Suggestions are worked out on your device, are optional, and never rearrange your Deck.
+  - **Documents**: read PDFs natively with page navigation, a page scrubber, pinch, double-tap and pan, and search that highlights the match on the page.
+  - **Ask Orbit about this page** attaches the page as a card with a thumbnail and page number that reopens it; where your provider supports images Orbit sees the page itself, otherwise its text.
+  - **Timers** now read "4 minutes and 30 seconds", "4 and a half minutes" and "1 hour 5 minutes 30 seconds" correctly, set in your usual Clock app.
+  - Orbit's notification categories appear consistently in Android settings without anything being posted, and presentation polish continues throughout. 💜
