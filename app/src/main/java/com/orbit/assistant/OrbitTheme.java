@@ -45,8 +45,13 @@ public final class OrbitTheme {
     /**
      * The storage schema. Bumped only when the meaning of an existing field changes; adding a new
      * token with a safe default does not need it, because an older file simply lacks the key.
+     *
+     * <p>Schema 2 changes the meaning of a colour token in one narrow way: a {@code #RRGGBB} that
+     * is byte-identical to one of Orbit's named colours now stores as that name. The colour is the
+     * same either way, but the name is what lets Theme Studio say "Violet" instead of "custom
+     * #8B7CFF" and show the preset that uses it as selected.
      */
-    public static final int SCHEMA = 1;
+    public static final int SCHEMA = 2;
 
     /**
      * Format identifier written into every serialised theme.
@@ -281,9 +286,22 @@ public final class OrbitTheme {
         return trimmed.isEmpty() ? newId() : trimmed;
     }
 
+    /**
+     * The token a colour is stored as, with a named colour preferred over its own hex value.
+     *
+     * <p>Applied at construction, so there is no way to build a theme that holds {@code #4C00FF}
+     * rather than {@code nova}. That matters beyond tidiness: {@link #sameColours} compares tokens,
+     * so without this a theme built from a picker and the identical preset would compare as
+     * different and the gallery would show nothing selected.
+     */
+    private static String canonicalHex(String hex) {
+        String named = OrbitPalette.keyForHexToken(hex);
+        return named != null ? named : hex;
+    }
+
     private static String normalizeAccent(String value) {
         String hex = parseHexToken(value);
-        if (hex != null) return hex;
+        if (hex != null) return canonicalHex(hex);
         String trimmed = value == null ? "" : value.trim();
         for (String key : UiKit.accentKeys()) if (key.equals(trimmed)) return key;
         return DYNAMIC;
@@ -291,7 +309,7 @@ public final class OrbitTheme {
 
     private static String normalizeBubble(String value) {
         String hex = parseHexToken(value);
-        if (hex != null) return hex;
+        if (hex != null) return canonicalHex(hex);
         String trimmed = value == null ? "" : value.trim();
         for (String key : UiKit.bubbleColorKeys()) if (key.equals(trimmed)) return key;
         return CLASSIC;
@@ -312,6 +330,27 @@ public final class OrbitTheme {
     public static final String ID_EMBER = "orbit.ember";
     public static final String ID_MOSS = "orbit.moss";
     public static final String ID_BLURPLE = "orbit.blurple";
+    public static final String ID_NOVA_AMOLED = "orbit.nova.amoled";
+
+    /**
+     * A short second line on a built-in preset card, or "" for every other theme.
+     *
+     * <p>Derived from the id rather than stored on the theme, so it is not part of the saved
+     * schema, is never copied onto a duplicate, and can never be typed into a custom theme's name.
+     * There is exactly one of these, and it is a note rather than a badge: no emoji, no colour, no
+     * ornament.
+     */
+    public static String noteFor(String id) {
+        return ID_NOVA_AMOLED.equals(id) ? CREATOR_FAVORITE : "";
+    }
+
+    /** The one note Orbit ships. */
+    public static final String CREATOR_FAVORITE = "Creator's favorite";
+
+    /** This theme's note, or "" when it has none. */
+    public String note() {
+        return noteFor(id);
+    }
 
     private static final List<OrbitTheme> BUILT_IN = buildBuiltIns();
 
@@ -325,14 +364,25 @@ public final class OrbitTheme {
         // the large lit area, not about flattening every card into the background.
         out.add(new OrbitTheme(ID_AMOLED, "Orbit AMOLED", true,
                 DYNAMIC, CLASSIC, CLASSIC, CLASSIC, CLASSIC, true));
+        // The creator's own Orbit: Nova on a true-black page. Not a snapshot of the classic
+        // Nova-plus-AMOLED settings, because that combination has a real flaw — Nova at full
+        // strength is 2.3 to 1 against a card, which is below the threshold Orbit itself warns
+        // about, so the app would ship a preset that trips its own contrast check. The accent here
+        // is Nova's exact hue lifted until it reads, and the surfaces are given a violet cast so
+        // the black page has cards and bubbles that belong to the same colour rather than sitting
+        // on it as neutral grey.
+        out.add(new OrbitTheme(ID_NOVA_AMOLED, "Nova AMOLED", true,
+                "#7A41FF", "#3A17A8", "#1B1531", "#161226", "#000000", true));
+        // Named colours, not the hex values that happen to equal them. Nebula's accent has always
+        // *been* Violet; writing it as #8B7CFF made the editor call Orbit's own colour custom.
         out.add(new OrbitTheme(ID_NEBULA, "Nebula", true,
-                "#8B7CFF", "#3A2E63", "#1F1930", "#1A1626", "#0B0714", false));
+                "violet", "#3A2E63", "#1F1930", "#1A1626", "#0B0714", false));
         out.add(new OrbitTheme(ID_TIDE, "Tide", true,
-                "#5097FF", "#1E3A5C", "#16202E", "#141C28", "#070B12", false));
+                "blue", "#1E3A5C", "#16202E", "#141C28", "#070B12", false));
         out.add(new OrbitTheme(ID_EMBER, "Ember", true,
                 "#FF8A5B", "#4A2A1F", "#2A1D1A", "#241A18", "#120B0A", false));
         out.add(new OrbitTheme(ID_MOSS, "Moss", true,
-                "#45CCA6", "#1E4038", "#182722", "#16211D", "#08110E", false));
+                "mint", "#1E4038", "#182722", "#16211D", "#08110E", false));
         // Orbit's classic ramp with the blurple accent carried through the conversation.
         out.add(new OrbitTheme(ID_BLURPLE, "Blurple", true,
                 "blurple", "#2B3060", CLASSIC, CLASSIC, CLASSIC, false));

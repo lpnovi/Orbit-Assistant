@@ -304,11 +304,43 @@ public final class OrbitThemeModelTest {
 
     @Test public void savingTheSameIdTwiceUpdatesRatherThanDuplicates() {
         OrbitTheme saved = OrbitThemeStore.savePreset(context,
-                OrbitTheme.custom("Mine", "#8B7CFF", OrbitTheme.CLASSIC, OrbitTheme.CLASSIC,
+                OrbitTheme.custom("Mine", "#4A4A4A", OrbitTheme.CLASSIC, OrbitTheme.CLASSIC,
                         OrbitTheme.CLASSIC, OrbitTheme.CLASSIC, false));
-        OrbitThemeStore.savePreset(context, saved.withAccent("#5097FF"));
+        OrbitThemeStore.savePreset(context, saved.withAccent("#5A5A5A"));
         assertEquals(1, OrbitThemeStore.customPresetCount(context));
-        assertEquals("#5097FF", OrbitThemeStore.preset(context, saved.id).accent);
+        assertEquals("#5A5A5A", OrbitThemeStore.preset(context, saved.id).accent);
+    }
+
+    /**
+     * A hex value that is one of Orbit's named colours is stored under its name.
+     *
+     * <p>Not cosmetic. {@link OrbitTheme#sameColours} compares tokens, so before this a theme built
+     * by typing #8B7CFF and the Nebula preset that uses the identical colour compared as different
+     * themes, the gallery showed nothing selected, and the editor described Orbit's own Violet as a
+     * custom colour.
+     */
+    @Test public void aNamedColourIsStoredUnderItsName() {
+        OrbitTheme theme = OrbitTheme.custom("Mine", "#8B7CFF", "#5097FF", "#45CCA6",
+                OrbitTheme.CLASSIC, OrbitTheme.CLASSIC, false);
+        assertEquals("violet", theme.accent);
+        assertEquals("blue", theme.userBubble);
+        assertEquals("mint", theme.assistantBubble);
+        assertEquals("and it resolves to the colour that was asked for",
+                Color.rgb(0x8B, 0x7C, 0xFF), OrbitThemeTokens.resolve(context, theme).accent);
+    }
+
+    /** A colour one channel away from a named one is a colour somebody chose. */
+    @Test public void aNearMissKeepsItsHexValue() {
+        assertEquals("#8B7CFE", OrbitTheme.custom("Mine", "#8B7CFE", OrbitTheme.CLASSIC,
+                OrbitTheme.CLASSIC, OrbitTheme.CLASSIC, OrbitTheme.CLASSIC, false).accent);
+    }
+
+    /** Surfaces have no palette names, so a card colour is always stored as it was given. */
+    @Test public void surfacesAreNeverRenamedIntoPaletteKeys() {
+        OrbitTheme theme = OrbitTheme.custom("Mine", OrbitTheme.DYNAMIC, OrbitTheme.CLASSIC,
+                OrbitTheme.CLASSIC, "#8B7CFF", "#5097FF", false);
+        assertEquals("#8B7CFF", theme.surface);
+        assertEquals("#5097FF", theme.background);
     }
 
     @Test public void duplicatingCopiesTheColoursAndLeavesTheOriginal() {

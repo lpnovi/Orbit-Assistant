@@ -1090,21 +1090,59 @@ had — and every one of the ~400 existing `UiKit.accent()` call sites keeps wor
 - **Responsive**: one column with the preview on top on a phone, preview beside the controls on a
   tablet, with the content width capped so a large tablet centres rather than stretches
 
+### 0.7.8.3-beta.2 - Theme Studio Refinement
+Beta 1 proved Theme Studio works on the device. Beta 2 is about making it feel like it has always
+been part of Orbit, plus one unrelated bug the same device testing turned up.
+
+The consolidation is the point of the release. Beta 1 left Look & Feel with two apparently
+authoritative theming systems: Theme Studio at the top, and immediately underneath it the accent
+menu, the AMOLED switch and the two bubble menus that predate it. They wrote the same preferences,
+so nothing could go out of sync, and that was never the problem. The problem was that the screen
+asked a question it could not answer, and on the Galaxy S25 Ultra the two cards sat close enough
+together to read as one surface with two minds.
+
+- **One color destination.** Look & Feel is now Theme Studio plus a Typography & Feedback card. The
+  duplicate accent, AMOLED and bubble controls are gone rather than hidden, and the entry card
+  carries a live summary strip resolved from the same tokens the app draws from
+- **One palette.** `OrbitPalette` is the single definition of every named Orbit color. The four
+  parallel arrays and the lookup chain that used to hold them are derived from it, and the presets
+  that stored Violet, Blue and Mint as raw hex values now name them. A schema 2 migration writes the
+  name over an identical stored hex value, so a Beta 1 install stops being told Orbit's own color
+  is custom
+- **Migration became stepwise.** Bumping the schema means migration re-runs on every Beta 1 install,
+  and the step that names an appearance would have renamed a theme somebody created back to "Your
+  theme". Each step now runs only for installs that have not had it
+- **Nova AMOLED**, a built-in preset marked as the creator's favorite. Nova's exact hue on a true
+  black page. It is not raw Nova, deliberately: at `#4C00FF` the color cannot reach 3 to 1 against
+  any dark surface, so a preset using it verbatim would trip Orbit's own contrast warning
+- **Links became a derived theme token.** They follow the accent, and where the accent cannot read
+  on the surface behind it the correction now walks in HSV with the hue pinned instead of mixing
+  toward near-white ink, which used to desaturate the color and pull its hue toward grey at once.
+  The Theme Studio preview reads the same token the renderer does, so a draft's sample link finally
+  moves when the accent moves
+- **Copy and spacing.** American spelling, no em dashes, shorter explanations, one ratio format in
+  the contrast warning, and a section heading between the Theme Studio card and the one below it so
+  the separation comes from Orbit's own spacing rather than a one-off gap
+- **Fractional timers.** `set a timer for 4 and 1/2 minutes` produced a five-minute timer on the
+  device. The tokenizer stripped every character it did not recognise and the solidus was one of
+  them, so `1/2` arrived as the separate tokens `1` and `2`, the `and 1` was read as an addend of a
+  whole minute, and the stray `2` was discarded. Written and Unicode fractions are now first-class,
+  with mixed-number semantics kept distinct from the spoken kind
+
 # Next
 
-## 0.7.8.3-beta.2 — Theme Studio sharing & refinement
+## 0.7.8.3-beta.3 - Theme Studio sharing
 
-After device validation of Beta 1 on the Galaxy S25 Ultra and the Tab S9 Plus. The storage format
+After device validation of Beta 2 on the Galaxy S25 Ultra and the Tab S9 Plus. The storage format
 was written for this: a versioned, self-describing `orbit.theme` document that already carries a
 format identifier and schema, so the file a later Beta exports and the one Beta 1 already stores are
-the same shape.
+the same shape. Nothing in Orbit reads that identifier yet.
 
 - import and export of Orbit theme files, with a parser that rejects anything not ours
-- preview polish, and any theme token device testing shows is not yet covered
-- additional curated presets, if real use shows a gap rather than a wish for more
-- tablet layout refinement
+- any further physical-device polish Beta 2 testing turns up
+- tablet layout refinement on the Tab S9 Plus, if the two-pane editor needs it
+- additional curated presets, only if real use shows a gap rather than a wish for more
 - optional restrained shape and corner-radius customization, only if it fits the token model cleanly
-- a Theme Studio Deck destination, if Beta 1's is not carried forward
 
 # Later
 

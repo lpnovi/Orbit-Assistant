@@ -125,6 +125,79 @@ public final class OrbitContrast {
         return contrastRatio(foreground, background) < LARGE_TEXT_MIN;
     }
 
+    /**
+     * A link colour derived from {@code accent} that actually reads on {@code ground}.
+     *
+     * <p>This is the one derivation Theme Studio adds rather than preserves, and it exists because
+     * the old rule produced links that looked disconnected from the theme. It kept the accent when
+     * the accent read, and otherwise mixed it toward Orbit's near-white ink, which desaturates a
+     * colour and drags its hue toward grey at the same time. Nova is the case that showed it up:
+     * at 2.3 to 1 on a card it always failed, and what came back was a pale mauve nobody would call
+     * Nova.
+     *
+     * <p>So the walk happens in HSV with the hue pinned. A colour that is too dark for its ground is
+     * brightened, then desaturated only if brightening alone cannot get there; one that is too
+     * light is darkened and saturated, which is what keeps a pastel from turning into grey. The hue
+     * never moves, so the link is recognisably the theme's colour at whatever step it stops on.
+     *
+     * <p>Deterministic, cheap, and dependent on nothing but the two colours, so the Theme Studio
+     * preview and the real Markdown renderer reach the same answer from the same inputs.
+     */
+    public static int readableAccentOn(int accent, int ground) {
+        return readableAccentOn(accent, ground, LARGE_TEXT_MIN);
+    }
+
+    /** As {@link #readableAccentOn(int, int)}, to an explicit contrast floor. */
+    public static int readableAccentOn(int accent, int ground, double minRatio) {
+        if (contrastRatio(accent, ground) >= minRatio) return accent;
+
+        float[] hsv = new float[3];
+        Color.colorToHSV(accent, hsv);
+        float hue = hsv[0];
+        float saturation = hsv[1];
+        float value = hsv[2];
+        // Which way to move is decided by the ground, not by the accent: on a dark surface the
+        // only direction with any contrast left in it is up.
+        boolean lighten = !prefersDarkInk(ground);
+
+        for (int step = 1; step <= HSV_STEPS; step++) {
+            float share = step / (float) HSV_STEPS;
+            float v;
+            float s;
+            if (lighten) {
+                v = value + (1f - value) * share;
+                // Saturation is given up only after value has run out, so a colour is brightened
+                // before it is washed out, and never washed out further than it has to be.
+                s = saturation * (1f - Math.max(0f, share - VALUE_HEADROOM) / (1f - VALUE_HEADROOM)
+                        * (1f - MIN_SATURATION));
+            } else {
+                v = value * (1f - share * (1f - MIN_VALUE));
+                s = saturation + (1f - saturation) * share * DARKEN_SATURATION_GAIN;
+            }
+            int candidate = Color.HSVToColor(new float[]{
+                    hue, clamp(s), clamp(v)});
+            if (contrastRatio(candidate, ground) >= minRatio) return candidate;
+        }
+        // Nothing on this hue reaches the floor, which only happens on a mid-grey ground. Orbit's
+        // own readable ink is a worse link and a better sentence.
+        return inkOn(ground);
+    }
+
+    /** How finely the hue-preserving walk is sampled. Enough to stop close to the first pass. */
+    private static final int HSV_STEPS = 24;
+    /** The share of the walk spent brightening before saturation starts being given up. */
+    private static final float VALUE_HEADROOM = 0.5f;
+    /** A link never desaturates past this, or it stops carrying the theme at all. */
+    private static final float MIN_SATURATION = 0.35f;
+    /** Nor does it darken past this, or it stops being distinguishable from body text. */
+    private static final float MIN_VALUE = 0.12f;
+    /** How much a darkening colour is saturated on the way, so a pastel stays its own hue. */
+    private static final float DARKEN_SATURATION_GAIN = 0.9f;
+
+    private static float clamp(float value) {
+        return Math.max(0f, Math.min(1f, value));
+    }
+
     /** {@code amountA} of {@code a} mixed with the remainder of {@code b}, opaque. */
     public static int blend(int a, int b, float amountA) {
         float t = Math.max(0f, Math.min(1f, amountA));

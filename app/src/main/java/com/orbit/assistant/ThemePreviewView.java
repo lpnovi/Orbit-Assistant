@@ -129,8 +129,10 @@ public final class ThemePreviewView extends LinearLayout {
         code.setBackground(UiKit.rounded(codeTint, 7, c));
         inline.addView(code);
 
-        TextView link = UiKit.text(c, "a link", 12,
-                UiKit.linkColorOn(c, tokens.assistantBubble), false);
+        // The theme's own link token, not the accent Orbit happens to be using right now. The
+        // preview shows a draft, and reading the live accent here is what left this sample sitting
+        // still while every other colour on the screen moved.
+        TextView link = UiKit.text(c, "a link", 12, tokens.link, false);
         link.setPaintFlags(link.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
         LinearLayout.LayoutParams linkLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);

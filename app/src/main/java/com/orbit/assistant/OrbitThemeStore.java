@@ -99,27 +99,44 @@ public final class OrbitThemeStore {
     }
 
     /**
-     * Establishes the canonical theme model over whatever appearance this install already had.
+     * Brings this install's stored appearance up to the current theme schema.
      *
-     * <p>Deliberately additive. The accent, AMOLED state and bubble colours a user chose in an
-     * earlier release are already the theme, so upgrading must not touch them — the visual result
-     * after an update is not merely close to what was there before, it is the same values. All this
-     * records is which theme the existing appearance corresponds to, so that Theme Studio can show
-     * a preset as selected rather than showing nothing.
+     * <p>Stepwise and guarded per step, rather than one block that runs when the stamp is old. The
+     * difference is not academic. The step that establishes the model has to decide what to call
+     * the appearance it finds, and re-running that on an install which has since created a theme
+     * of its own would rename "Midnight" back to "Your theme" and unlink it from the preset the
+     * user saved. Each step therefore runs only for installs that have not had it, and an install
+     * already at the current schema does nothing at all.
      *
-     * <p>Idempotent twice over: it returns immediately once the schema has been stamped, and even
-     * without that guard every write it performs is a write of the value already present.
+     * <p>Every step is a rewrite of values already present into the same values in canonical form,
+     * so running the whole thing twice, or after a restored preference backup has removed the
+     * stamp, cannot produce a different appearance than running it once.
      */
     static void migrateLegacyAppearance(Context c) {
         SharedPreferences p = Prefs.get(c);
-        if (p.getInt(Prefs.THEME_SCHEMA, 0) >= OrbitTheme.SCHEMA) return;
+        int schema = p.getInt(Prefs.THEME_SCHEMA, 0);
+        if (schema >= OrbitTheme.SCHEMA) return;
+        if (schema < 1) establishThemeModel(p);
+        if (schema < 2) canonicalisePaletteTokens(p);
+        p.edit().putInt(Prefs.THEME_SCHEMA, OrbitTheme.SCHEMA).commit();
+    }
 
+    /**
+     * Schema 1: name the appearance this install already had.
+     *
+     * <p>Deliberately additive. The accent, AMOLED state and bubble colours a user chose in an
+     * earlier release are already the theme, so this must not touch them — the visual result after
+     * an update is not merely close to what was there before, it is the same values. All it records
+     * is which theme the existing appearance corresponds to, so that Theme Studio can show a preset
+     * as selected rather than showing nothing.
+     */
+    private static void establishThemeModel(SharedPreferences p) {
         String accent = p.getString(Prefs.ACCENT, OrbitTheme.DYNAMIC);
         String userBubble = p.getString(Prefs.USER_BUBBLE_COLOR, OrbitTheme.CLASSIC);
         String assistantBubble = p.getString(Prefs.ASSISTANT_BUBBLE_COLOR, OrbitTheme.CLASSIC);
         boolean amoled = p.getBoolean(Prefs.AMOLED_MODE, false);
 
-        // Surface and background did not exist before this release, so an upgrading install is by
+        // Surface and background did not exist before Theme Studio, so an upgrading install is by
         // definition using Orbit's own and these read as classic. They are still read rather than
         // assumed, because a restored preference backup can put a custom surface back in place
         // without the schema stamp that accompanied it, and assuming classic there would relabel
@@ -138,7 +155,6 @@ public final class OrbitThemeStore {
         }
 
         SharedPreferences.Editor e = p.edit()
-                .putInt(Prefs.THEME_SCHEMA, OrbitTheme.SCHEMA)
                 .putString(Prefs.THEME_ID, match != null ? match.id : Prefs.THEME_ID_CUSTOM)
                 .putString(Prefs.THEME_NAME, match != null ? match.name : "Your theme");
         // Written explicitly rather than left absent so that the six tokens of a theme are always
@@ -148,6 +164,32 @@ public final class OrbitThemeStore {
             e.putString(Prefs.THEME_BACKGROUND, OrbitTheme.CLASSIC);
         }
         e.commit();
+    }
+
+    /**
+     * Schema 2: give a stored hex value its palette name back.
+     *
+     * <p>Beta 1 shipped presets whose accents were written as raw hex, and three of them were
+     * Orbit's own Violet, Blue and Mint to the byte. Nothing knew that, so the editor described
+     * Orbit's own colour as custom and the preset that used it never showed as selected. The colour
+     * does not move here — only the way it is written — and only an exact match is rewritten, so a
+     * value one channel away from Violet stays the value somebody picked.
+     *
+     * <p>Dynamic is untouched by construction: it is not a colour and has no hex form, so nothing
+     * can be canonicalised into it.
+     */
+    private static void canonicalisePaletteTokens(SharedPreferences p) {
+        SharedPreferences.Editor e = p.edit();
+        boolean any = false;
+        for (String key : new String[]{
+                Prefs.ACCENT, Prefs.USER_BUBBLE_COLOR, Prefs.ASSISTANT_BUBBLE_COLOR}) {
+            String stored = p.getString(key, null);
+            String named = OrbitPalette.keyForHexToken(stored);
+            if (named == null || named.equals(stored)) continue;
+            e.putString(key, named);
+            any = true;
+        }
+        if (any) e.commit();
     }
 
     // ---- saved presets -------------------------------------------------------------------------

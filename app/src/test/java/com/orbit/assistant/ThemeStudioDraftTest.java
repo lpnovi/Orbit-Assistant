@@ -225,7 +225,7 @@ public final class ThemeStudioDraftTest {
         assertFalse(draft(activity).builtIn);
         assertFalse(OrbitTheme.isBuiltInId(draft(activity).id));
         assertTrue("Nebula itself must be unchanged",
-                OrbitTheme.builtIn(OrbitTheme.ID_NEBULA).accent.equals("#8B7CFF"));
+                OrbitTheme.builtIn(OrbitTheme.ID_NEBULA).accent.equals("violet"));
         controller.pause().stop().destroy();
     }
 

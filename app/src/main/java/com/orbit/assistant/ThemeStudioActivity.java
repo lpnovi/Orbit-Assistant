@@ -48,6 +48,26 @@ public final class ThemeStudioActivity extends Activity {
     /** The widest the content is allowed to draw, so a large tablet centres rather than stretches. */
     private static final int MAX_CONTENT_WIDTH_DP = 1040;
 
+    /**
+     * The gap between two stacked major cards.
+     *
+     * <p>One value, used everywhere two surfaces sit above one another, so the Colors card and the
+     * Presets card are separated by the same distance on a phone and a tablet and neither pair can
+     * be tightened by accident. Settings uses the same figure between its own cards.
+     */
+    static final int CARD_GAP_DP = 20;
+
+    /**
+     * How far the scrolling content clears the fixed action bar at the bottom.
+     *
+     * <p>Revert and Apply are pinned below the scroll rather than over it, so nothing is hidden;
+     * what this prevents is the last preset card finishing hard against the bar with no gap, which
+     * on the device read as the gallery having been cut off. The system gesture inset is added
+     * beneath the bar by {@code applyActivityInsets}, so this is purely the space Orbit owes its own
+     * content and does not need to know how the phone is navigated.
+     */
+    private static final int SCROLL_BOTTOM_CLEARANCE_DP = 28;
+
     /** The appearance in force when this screen opened, and the one Cancel returns to. */
     private OrbitTheme applied;
     /** What the preview shows and what Apply would commit. Never written to storage on its own. */
@@ -327,12 +347,12 @@ public final class ThemeStudioActivity extends Activity {
         contentScroll.setFillViewport(true);
         LinearLayout column = new LinearLayout(this);
         column.setOrientation(LinearLayout.VERTICAL);
-        column.setPadding(UiKit.dp(this, 20) + inset, UiKit.dp(this, 8),
-                UiKit.dp(this, 20) + inset, UiKit.dp(this, 20));
+        column.setPadding(UiKit.dp(this, 20) + inset, UiKit.dp(this, 10),
+                UiKit.dp(this, 20) + inset, UiKit.dp(this, SCROLL_BOTTOM_CLEARANCE_DP));
         column.addView(preview, matchWrap(0));
-        column.addView(warningStrip, matchWrap(10));
-        column.addView(coloursCard(), matchWrap(18));
-        column.addView(presetsCard(), matchWrap(14));
+        column.addView(warningStrip, matchWrap(12));
+        column.addView(coloursCard(), matchWrap(CARD_GAP_DP));
+        column.addView(presetsCard(), matchWrap(CARD_GAP_DP));
         contentScroll.addView(column, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return contentScroll;
@@ -347,8 +367,8 @@ public final class ThemeStudioActivity extends Activity {
     private View buildWideBody(int inset) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setPadding(UiKit.dp(this, 22) + inset, UiKit.dp(this, 8),
-                UiKit.dp(this, 22) + inset, UiKit.dp(this, 16));
+        row.setPadding(UiKit.dp(this, 22) + inset, UiKit.dp(this, 10),
+                UiKit.dp(this, 22) + inset, UiKit.dp(this, SCROLL_BOTTOM_CLEARANCE_DP));
 
         LinearLayout left = new LinearLayout(this);
         left.setOrientation(LinearLayout.VERTICAL);
@@ -362,7 +382,7 @@ public final class ThemeStudioActivity extends Activity {
         LinearLayout right = new LinearLayout(this);
         right.setOrientation(LinearLayout.VERTICAL);
         right.addView(coloursCard(), matchWrap(0));
-        right.addView(presetsCard(), matchWrap(14));
+        right.addView(presetsCard(), matchWrap(CARD_GAP_DP));
         contentScroll.addView(right, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -410,7 +430,7 @@ public final class ThemeStudioActivity extends Activity {
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
         bar.setBackgroundColor(UiKit.BG);
-        bar.setPadding(UiKit.dp(this, 20) + inset, UiKit.dp(this, 10),
+        bar.setPadding(UiKit.dp(this, 20) + inset, UiKit.dp(this, 12),
                 UiKit.dp(this, 20) + inset, UiKit.dp(this, 14));
 
         revertButton = secondaryButton("Revert");
@@ -437,18 +457,18 @@ public final class ThemeStudioActivity extends Activity {
 
     private View coloursCard() {
         LinearLayout card = card();
-        card.addView(cardTitle("Colours"));
-        card.addView(cardNote("Each of these is one decision. Everything else Orbit draws — card "
-                + "depth, secondary text, code and links — is worked out from them."));
-        card.addView(colourRows, matchWrap(6));
+        card.addView(cardTitle("Colors"));
+        card.addView(cardNote("Choose Orbit's main colors. Supporting colors, text, links and "
+                + "surfaces adapt automatically."));
+        card.addView(colourRows, matchWrap(10));
 
         amoledSwitch = new OrbitSwitch(this);
         amoledSwitch.setChecked(draft.amoled, false);
         amoledSwitch.setOnCheckedChangeListener((view, checked) -> edit(draft.withAmoled(checked)));
         LinearLayout amoledRow = UiKit.switchRow(this, "True black AMOLED background",
-                "Uses pure black for the page. Cards keep their own colour so they stay visible.",
+                "Uses pure black for the page. Cards keep their own color so they stay visible.",
                 amoledSwitch);
-        card.addView(amoledRow, matchWrap(6));
+        card.addView(amoledRow, matchWrap(14));
         return card;
     }
 
@@ -491,7 +511,7 @@ public final class ThemeStudioActivity extends Activity {
                 UiKit.withAlpha(UiKit.accent(this), 60), UiKit.accent(this), 16, this));
         row.setMinimumHeight(UiKit.dp(this, 62));
         row.setContentDescription(title + ". " + description + ". Currently "
-                + OrbitColorName.describe("", resolved) + ", " + summary + ". Opens a colour editor.");
+                + OrbitColorName.describe("", resolved) + ", " + summary + ". Opens a color editor.");
         UiKit.pressScale(row);
         row.setOnClickListener(v -> {
             UiKit.haptic(v, HapticFeedbackConstants.VIRTUAL_KEY);
@@ -522,20 +542,20 @@ public final class ThemeStudioActivity extends Activity {
         return row;
     }
 
+    /**
+     * What a token is called, in words.
+     *
+     * <p>One lookup for all five rows, because {@link OrbitPalette} is where a colour's name lives
+     * and the editor should not carry its own idea of what to call one. This is also why Nebula's
+     * accent now reads "Violet" instead of "custom #8B7CFF": the value never changed, only whether
+     * anything recognised it.
+     */
     private String accentSummary() {
-        if (OrbitTheme.isHexToken(draft.accent)) return "custom " + draft.accent;
-        String[] keys = UiKit.accentKeys();
-        String[] labels = UiKit.accentLabels();
-        for (int i = 0; i < keys.length; i++) if (keys[i].equals(draft.accent)) return labels[i];
-        return "Dynamic";
+        return OrbitPalette.labelFor(draft.accent);
     }
 
     private String bubbleSummary(String token) {
-        if (OrbitTheme.isHexToken(token)) return "custom " + token;
-        String[] keys = UiKit.bubbleColorKeys();
-        String[] labels = UiKit.bubbleColorLabels();
-        for (int i = 0; i < keys.length; i++) if (keys[i].equals(token)) return labels[i];
-        return "Classic";
+        return OrbitPalette.labelFor(token);
     }
 
     private String surfaceSummary(String token) {
@@ -557,7 +577,7 @@ public final class ThemeStudioActivity extends Activity {
             labels.add(UiKit.accentLabels()[i]);
             colours.add(UiKit.accentForName(this, keys[i]));
         }
-        labels.add("Custom colour…");
+        labels.add("Custom color…");
         colours.add(tokens.accent);
 
         int selected = indexOfToken(keys, draft.accent);
@@ -566,7 +586,7 @@ public final class ThemeStudioActivity extends Activity {
                 edit(draft.withAccent(keys[index]));
             } else {
                 pickCustom("Accent", tokens.accent, accentSuggestions(),
-                        colour -> edit(draft.withAccent(OrbitTheme.colorToken(colour))));
+                        colour -> edit(draft.withAccent(OrbitPalette.tokenFor(colour))));
             }
         });
     }
@@ -584,7 +604,7 @@ public final class ThemeStudioActivity extends Activity {
                     : OrbitTheme.ACCENT.equals(keys[i]) ? tokens.accent
                     : UiKit.accentForName(this, keys[i]));
         }
-        labels.add("Custom colour…");
+        labels.add("Custom color…");
         colours.add(user ? tokens.userBubble : tokens.assistantBubble);
 
         String token = user ? draft.userBubble : draft.assistantBubble;
@@ -609,7 +629,7 @@ public final class ThemeStudioActivity extends Activity {
         List<Integer> colours = new ArrayList<>();
         labels.add("Orbit default");
         colours.add(surface ? UiKit.classicSurface() : UiKit.classicBackground());
-        labels.add("Custom colour…");
+        labels.add("Custom color…");
         colours.add(surface ? tokens.surface : tokens.background);
 
         String token = surface ? draft.surface : draft.background;
@@ -711,8 +731,9 @@ public final class ThemeStudioActivity extends Activity {
         StringBuilder spoken = new StringBuilder("Low contrast. ");
         box.addView(UiKit.text(this, "Low contrast", 13, UiKit.DANGER, true));
         for (OrbitThemeTokens.Check check : failing) {
-            String line = check.label + " — "
-                    + String.format(Locale.US, "%.1f", check.ratio) + " to 1";
+            // One ratio format everywhere, and no em dash: "Orbit's replies: 3.0:1".
+            String line = check.label + ": "
+                    + String.format(Locale.US, "%.1f", check.ratio) + ":1";
             TextView row = UiKit.text(this, line, 12, UiKit.MUTED, false);
             row.setPadding(0, UiKit.dp(this, 3), 0, 0);
             box.addView(row);
@@ -766,7 +787,7 @@ public final class ThemeStudioActivity extends Activity {
             if (i % columns == 0) {
                 row = new LinearLayout(this);
                 row.setOrientation(LinearLayout.HORIZONTAL);
-                presetGrid.addView(row, matchWrap(i == 0 ? 0 : 10));
+                presetGrid.addView(row, matchWrap(i == 0 ? 0 : 12));
             }
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
                     ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
@@ -807,6 +828,7 @@ public final class ThemeStudioActivity extends Activity {
         // Selection is stated, not only drawn. A ring around a card of colours is exactly the kind
         // of state that disappears for anyone who cannot rely on colour to carry it.
         card.setContentDescription(preset.name + (preset.builtIn ? ", Orbit preset" : ", your theme")
+                + (preset.note().isEmpty() ? "" : ", " + preset.note())
                 + (selected ? ", selected" : "") + ". Background " + OrbitColorName.of(tokens.background)
                 + ", accent " + OrbitColorName.of(tokens.accent) + ".");
         UiKit.pressScale(card);
@@ -839,9 +861,13 @@ public final class ThemeStudioActivity extends Activity {
         LinearLayout.LayoutParams titleLp = matchWrap(8);
         card.addView(titleRow, titleLp);
 
-        TextView kind = UiKit.text(this,
-                preset.builtIn ? "Orbit preset" : "Your theme · hold to manage", 10.5f,
-                UiKit.MUTED, false);
+        // The one built-in note Orbit ships sits on this line rather than becoming a badge, so a
+        // card stays a swatch strip, a name and one quiet line whatever theme it describes.
+        String note = preset.note();
+        String kindText = preset.builtIn
+                ? (note.isEmpty() ? "Orbit preset" : "Orbit preset · " + note)
+                : "Your theme · hold to manage";
+        TextView kind = UiKit.text(this, kindText, 10.5f, UiKit.MUTED, false);
         kind.setSingleLine(true);
         kind.setEllipsize(android.text.TextUtils.TruncateAt.END);
         card.addView(kind);

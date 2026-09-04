@@ -153,13 +153,16 @@ public final class DurationParser {
 
     /** A run may only begin on something that carries a quantity. */
     private static boolean startsRun(String word) {
-        return numberValue(word) != null || fractionValue(word) != null;
+        return numberValue(word) != null
+                || fractionValue(word) != null
+                || writtenFractionValue(word) != null;
     }
 
     /** Words that may stand inside a run without ending it. */
     private static boolean inRun(String word) {
         return numberValue(word) != null
                 || fractionValue(word) != null
+                || writtenFractionValue(word) != null
                 || unitSeconds(word) > 0
                 || "and".equals(word)
                 || isFiller(word);
@@ -266,6 +269,24 @@ public final class DurationParser {
 
             if (isFiller(word)) continue;
 
+            Double written = writtenFractionValue(word);
+            if (written != null) {
+                // A written fraction after a whole number is a mixed number and *adds*: "4 1/2" is
+                // four and a half. A spoken fraction in the same position multiplies, because
+                // "three quarters" is three of them. Those two rules genuinely disagree, and this
+                // is the only place the difference matters: nobody writes "3 1/4" meaning three
+                // quarters, and nobody says "three quarters" meaning 3.25.
+                if (afterAnd) {
+                    addend = (addend == null ? 0d : addend) + written;
+                } else if (main == null) {
+                    main = written;
+                } else {
+                    main = main + written;
+                }
+                fromArticle = false;
+                continue;
+            }
+
             Double fraction = fractionValue(word);
             if (fraction != null) {
                 if (afterAnd) {
@@ -328,12 +349,20 @@ public final class DurationParser {
         List<String> out = new ArrayList<>();
         if (phrase == null) return out;
         String value = phrase.toLowerCase(Locale.US).replace('’', '\'');
+        // A vulgar fraction is the same number written as one glyph, so it becomes the ordinary
+        // form before anything else looks at it. The leading space is what turns "4½" into two
+        // tokens rather than one unparseable one.
+        value = expandVulgarFractions(value);
         // A hyphen joining a count to its unit ("20-minute") is a separator. One standing in front
         // of a number is a minus sign and is kept attached, so "-5 minutes" arrives as the token
         // "-5", which is not a number this parser accepts and therefore states no duration. Erasing
         // every hyphen indiscriminately turned a negative duration into a positive one.
         value = value.replaceAll("(?<=[a-z0-9])-(?=[a-z0-9])", " ");
-        value = value.replaceAll("[^a-z0-9.\\- ]", " ");
+        // The solidus survives. Stripping it is the whole of the reported bug: "4 and 1/2 minutes"
+        // became the tokens "4", "and", "1", "2", the "and 1" was read as an addend of one, the
+        // stray "2" was discarded, and Samsung Clock received a five-minute timer. A lone slash
+        // that is not between digits is not a number and simply ends the quantity being built.
+        value = value.replaceAll("[^a-z0-9./\\- ]", " ");
         // A full stop that is not between digits is sentence punctuation, not a decimal point.
         value = value.replaceAll("(?<![0-9])\\.|\\.(?![0-9])", " ");
         for (String word : value.split("\\s+")) if (!word.isEmpty()) out.add(word);
@@ -350,13 +379,84 @@ public final class DurationParser {
         }
     }
 
-    /** The everyday fractions, and only those. */
+    /** The everyday fractions people say out loud, and only those. */
     private static Double fractionValue(String word) {
         switch (word) {
             case "half": case "halves": return 0.5d;
             case "quarter": case "quarters": return 0.25d;
             default: return null;
         }
+    }
+
+    /**
+     * Rewrites every Unicode vulgar fraction as its {@code n/d} form.
+     *
+     * <p>A leading space is always inserted, because these arrive stuck to the count they modify:
+     * "4½ minutes" is one token to any tokenizer that does not know the glyph, and dropping the
+     * glyph instead turns the phrase into a four-minute timer without telling anyone.
+     */
+    private static String expandVulgarFractions(String value) {
+        if (value == null || value.isEmpty()) return value;
+        StringBuilder out = new StringBuilder(value.length() + 8);
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            String expansion = vulgarFraction(ch);
+            if (expansion == null) {
+                out.append(ch);
+            } else {
+                out.append(' ').append(expansion).append(' ');
+            }
+        }
+        return out.toString();
+    }
+
+    private static String vulgarFraction(char ch) {
+        switch (ch) {
+            case '½': return "1/2";
+            case '¼': return "1/4";
+            case '¾': return "3/4";
+            case '⅓': return "1/3";
+            case '⅔': return "2/3";
+            case '⅕': return "1/5";
+            case '⅖': return "2/5";
+            case '⅗': return "3/5";
+            case '⅘': return "4/5";
+            case '⅙': return "1/6";
+            case '⅚': return "5/6";
+            case '⅛': return "1/8";
+            case '⅜': return "3/8";
+            case '⅝': return "5/8";
+            case '⅞': return "7/8";
+            default: return null;
+        }
+    }
+
+    /** The largest numerator or denominator a written fraction may have. */
+    private static final int MAX_FRACTION_PART = 999;
+
+    /**
+     * The value of a written fraction such as {@code 1/2}, or null when the token is not one.
+     *
+     * <p>Generic rather than a list, because there is no reason "2/3 of an hour" should work and
+     * "3/5 of an hour" should not. The guards are what keep it honest: a denominator of zero, a
+     * missing half, more than one solidus, a leading minus, or parts large enough to be a date
+     * rather than a fraction all return null, which ends the quantity being built rather than
+     * inventing a duration from a token nobody meant as one.
+     */
+    private static Double writtenFractionValue(String word) {
+        if (word == null) return null;
+        int slash = word.indexOf('/');
+        if (slash <= 0 || slash != word.lastIndexOf('/') || slash == word.length() - 1) return null;
+        String top = word.substring(0, slash);
+        String bottom = word.substring(slash + 1);
+        if (!top.matches("\\d{1,3}") || !bottom.matches("\\d{1,3}")) return null;
+        int numerator = Integer.parseInt(top);
+        int denominator = Integer.parseInt(bottom);
+        if (denominator <= 0 || denominator > MAX_FRACTION_PART) return null;
+        if (numerator > MAX_FRACTION_PART) return null;
+        double value = numerator / (double) denominator;
+        if (!isFinite(value) || value < 0d || value > MAX_SECONDS) return null;
+        return value;
     }
 
     private static boolean isArticle(String word) {

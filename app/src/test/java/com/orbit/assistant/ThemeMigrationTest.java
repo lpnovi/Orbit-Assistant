@@ -3,9 +3,11 @@ package com.orbit.assistant;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import android.content.Context;
+import android.graphics.Color;
 import android.content.SharedPreferences;
 
 import org.junit.Before;
@@ -198,6 +200,193 @@ public final class ThemeMigrationTest {
         assertEquals("#0B0714", theme.background);
         assertEquals("and it is recognised as the preset it actually is",
                 OrbitTheme.ID_NEBULA, theme.id);
+    }
+
+    // ---- upgrading from Beta 1 -------------------------------------------------------------------
+
+    /** Exactly what a Theme Studio Beta 1 install looks like: the schema it stamped, and its keys. */
+    private void installBetaOneAppearance(String id, String name, String accent, String userBubble,
+                                          String assistantBubble, String surface,
+                                          String background, boolean amoled) {
+        Prefs.get(context).edit()
+                .putInt(Prefs.THEME_SCHEMA, 1)
+                .putString(Prefs.THEME_ID, id)
+                .putString(Prefs.THEME_NAME, name)
+                .putString(Prefs.ACCENT, accent)
+                .putString(Prefs.USER_BUBBLE_COLOR, userBubble)
+                .putString(Prefs.ASSISTANT_BUBBLE_COLOR, assistantBubble)
+                .putString(Prefs.THEME_SURFACE, surface)
+                .putString(Prefs.THEME_BACKGROUND, background)
+                .putBoolean(Prefs.AMOLED_MODE, amoled)
+                .commit();
+    }
+
+    /**
+     * The failure this guards against, and the reason migration became stepwise.
+     *
+     * <p>The schema stamp moved from 1 to 2, so migration runs again on every Beta 1 install. The
+     * step that establishes the model decides what the appearance should be <em>called</em>, and if
+     * it ran a second time it would rename a theme the user created and saved back to "Your theme"
+     * and unlink it from their preset. Their colours would survive and everything else about their
+     * theme would not.
+     */
+    @Test public void upgradingFromBetaOneKeepsAThemeTheUserCreated() {
+        installBetaOneAppearance("t_abc123", "Midnight", "#FF8A5B", "#4A2A1F", "#2A1D1A",
+                "#241A18", "#120B0A", false);
+
+        OrbitTheme theme = OrbitThemeStore.active(context);
+
+        assertEquals("t_abc123", theme.id);
+        assertEquals("Midnight", theme.name);
+        assertFalse(theme.builtIn);
+        assertEquals("#FF8A5B", theme.accent);
+        assertEquals("#4A2A1F", theme.userBubble);
+        assertEquals("#2A1D1A", theme.assistantBubble);
+        assertEquals("#241A18", theme.surface);
+        assertEquals("#120B0A", theme.background);
+        assertFalse(theme.amoled);
+    }
+
+    /**
+     * A Beta 1 install using a preset gets its accent's name back, and keeps the preset.
+     *
+     * <p>Beta 1 stored Nebula's accent as {@code #8B7CFF}, which is Violet exactly. Schema 2 writes
+     * the name over the hex value. The colour does not move; what changes is that Theme Studio can
+     * now say "Violet" and show Nebula as selected instead of describing Orbit's own colour as
+     * custom and selecting nothing.
+     */
+    @Test public void upgradingFromBetaOneGivesAPaletteColourItsNameBack() {
+        installBetaOneAppearance(OrbitTheme.ID_NEBULA, "Nebula", "#8B7CFF", "#3A2E63", "#1F1930",
+                "#1A1626", "#0B0714", false);
+
+        OrbitTheme theme = OrbitThemeStore.active(context);
+
+        assertEquals("violet", theme.accent);
+        assertEquals("the stored preference is rewritten, not only the read",
+                "violet", Prefs.get(context).getString(Prefs.ACCENT, ""));
+        assertEquals(OrbitTheme.ID_NEBULA, theme.id);
+        assertTrue("and it is once again recognisably the preset it names",
+                theme.sameColours(OrbitTheme.builtIn(OrbitTheme.ID_NEBULA)));
+        assertEquals("the colour itself must not have moved",
+                Color.rgb(0x8B, 0x7C, 0xFF), UiKit.accent(context));
+    }
+
+    /** A hand-picked colour that is not one of Orbit's stays exactly the value that was picked. */
+    @Test public void upgradingFromBetaOneLeavesACustomColourAlone() {
+        installBetaOneAppearance(Prefs.THEME_ID_CUSTOM, "Your theme", "#8B7CFE", "#123456",
+                "#654321", "#111213", "#020304", true);
+
+        OrbitTheme theme = OrbitThemeStore.active(context);
+
+        assertEquals("#8B7CFE", theme.accent);
+        assertEquals("#123456", theme.userBubble);
+        assertEquals("#654321", theme.assistantBubble);
+        assertEquals("#111213", theme.surface);
+        assertEquals("#020304", theme.background);
+        assertTrue(theme.amoled);
+    }
+
+    /** Dynamic is a behaviour, and no migration may turn it into a fixed colour. */
+    @Test public void dynamicSurvivesEveryMigration() {
+        installBetaOneAppearance(OrbitTheme.ID_DEFAULT, "Orbit Default", OrbitTheme.DYNAMIC,
+                OrbitTheme.CLASSIC, OrbitTheme.CLASSIC, OrbitTheme.CLASSIC, OrbitTheme.CLASSIC,
+                false);
+
+        assertEquals(OrbitTheme.DYNAMIC, OrbitThemeStore.active(context).accent);
+        assertEquals(OrbitTheme.DYNAMIC, Prefs.get(context).getString(Prefs.ACCENT, ""));
+    }
+
+    /** Running the whole thing repeatedly settles after the first pass and never moves again. */
+    @Test public void theBetaOneUpgradeIsIdempotent() {
+        installBetaOneAppearance(OrbitTheme.ID_TIDE, "Tide", "#5097FF", "#1E3A5C", "#16202E",
+                "#141C28", "#070B12", false);
+
+        OrbitTheme first = OrbitThemeStore.active(context);
+        for (int i = 0; i < 5; i++) {
+            OrbitTheme again = OrbitThemeStore.active(context);
+            assertEquals("run " + i + " renamed the theme", first.name, again.name);
+            assertEquals("run " + i + " relinked the theme", first.id, again.id);
+            assertTrue("run " + i + " changed the appearance", first.sameColours(again));
+        }
+        assertEquals(OrbitTheme.SCHEMA, Prefs.get(context).getInt(Prefs.THEME_SCHEMA, 0));
+    }
+
+    /** A theme applied after the upgrade is never reverted by a later launch. */
+    @Test public void aThemeAppliedAfterTheBetaOneUpgradeSurvives() {
+        installBetaOneAppearance(OrbitTheme.ID_NEBULA, "Nebula", "#8B7CFF", "#3A2E63", "#1F1930",
+                "#1A1626", "#0B0714", false);
+        OrbitThemeStore.active(context);
+
+        OrbitTheme chosen = OrbitTheme.builtIn(OrbitTheme.ID_NOVA_AMOLED);
+        OrbitThemeStore.applyActive(context, chosen);
+        for (int i = 0; i < 3; i++) {
+            OrbitTheme active = OrbitThemeStore.active(context);
+            assertTrue("read " + i + " reverted the applied theme", active.sameColours(chosen));
+            assertEquals("Nova AMOLED", active.name);
+        }
+    }
+
+    /** A Beta 1 saved preset still loads, still renames, still duplicates and still deletes. */
+    @Test public void betaOneCustomPresetsSurviveTheUpgrade() {
+        OrbitTheme saved = OrbitThemeStore.savePreset(context,
+                OrbitTheme.custom("Midnight", "#FF8A5B", "#4A2A1F", "#2A1D1A",
+                        "#241A18", "#120B0A", false));
+        assertNotNull(saved);
+        installBetaOneAppearance(saved.id, saved.name, saved.accent, saved.userBubble,
+                saved.assistantBubble, saved.surface, saved.background, saved.amoled);
+
+        OrbitThemeStore.active(context);
+
+        OrbitTheme reloaded = OrbitThemeStore.preset(context, saved.id);
+        assertNotNull("a Beta 1 saved theme must still be there", reloaded);
+        assertEquals(saved.id, reloaded.id);
+        assertEquals("Midnight", reloaded.name);
+        assertTrue(reloaded.sameColours(saved));
+
+        assertTrue(OrbitThemeStore.renamePreset(context, saved.id, "Midnight II"));
+        assertEquals("Midnight II", OrbitThemeStore.preset(context, saved.id).name);
+        assertNotNull(OrbitThemeStore.duplicatePreset(context, saved.id));
+        assertEquals(2, OrbitThemeStore.customPresetCount(context));
+        assertTrue(OrbitThemeStore.deletePreset(context, saved.id));
+        assertEquals(1, OrbitThemeStore.customPresetCount(context));
+    }
+
+    /** A theme file written by Beta 1, at schema 1, is still read rather than discarded. */
+    @Test public void aBetaOneThemeFileIsStillReadable() throws Exception {
+        org.json.JSONObject theme = new org.json.JSONObject();
+        theme.put("format", OrbitTheme.FORMAT);
+        theme.put("schema", 1);
+        theme.put("id", "t_betaone");
+        theme.put("name", "From Beta 1");
+        theme.put("builtIn", false);
+        theme.put("accent", "#8B7CFF");
+        theme.put("userBubble", "#3A2E63");
+        theme.put("assistantBubble", OrbitTheme.CLASSIC);
+        theme.put("surface", OrbitTheme.CLASSIC);
+        theme.put("background", OrbitTheme.CLASSIC);
+        theme.put("amoled", false);
+
+        OrbitTheme parsed = OrbitTheme.fromJson(theme);
+        assertNotNull("a schema 1 theme must still parse", parsed);
+        assertEquals("t_betaone", parsed.id);
+        assertEquals("From Beta 1", parsed.name);
+        assertEquals("and its accent is recognised as Orbit's own", "violet", parsed.accent);
+        assertEquals("#3A2E63", parsed.userBubble);
+    }
+
+    /** Deleting a preset is permanent: no migration puts a removed theme back. */
+    @Test public void migrationNeverRecreatesADeletedPreset() {
+        OrbitTheme saved = OrbitThemeStore.savePreset(context,
+                OrbitTheme.custom("Gone", "#123456", OrbitTheme.CLASSIC, OrbitTheme.CLASSIC,
+                        OrbitTheme.CLASSIC, OrbitTheme.CLASSIC, false));
+        assertNotNull(saved);
+        assertTrue(OrbitThemeStore.deletePreset(context, saved.id));
+
+        Prefs.get(context).edit().remove(Prefs.THEME_SCHEMA).commit();
+        for (int i = 0; i < 3; i++) OrbitThemeStore.active(context);
+
+        assertEquals(0, OrbitThemeStore.customPresetCount(context));
+        assertNull(OrbitThemeStore.preset(context, saved.id));
     }
 
     // ---- applying ------------------------------------------------------------------------------------

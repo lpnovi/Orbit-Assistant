@@ -185,15 +185,16 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * Theme Studio opens the 0.7.8.3 line, and it opens as a Beta.
+     * The 0.7.8.3 line is Theme Studio, and it is still a Beta.
      *
-     * <p>What this release adds is almost entirely a matter of looking at it. The suite can prove
-     * that a theme round-trips, that the contrast arithmetic is right, and that an upgrading
-     * install keeps the exact appearance values it had. It cannot say whether a preview reads as
-     * trustworthy on a real OLED panel, whether a custom card colour still looks like Orbit next to
-     * a Deck tile, or whether the low-contrast warning fires where a person would agree with it.
-     * Only the Galaxy S25 Ultra answers those, so this is published as a prerelease and the guard's
-     * job is to stop it being published as Stable before that has happened.
+     * <p>What this release changes is almost entirely a matter of looking at it. The suite can
+     * prove that a theme round-trips, that the contrast arithmetic is right, that a link follows
+     * the accent, and that an upgrading install keeps the exact appearance values it had. It cannot
+     * say whether Nova AMOLED looks the way it is supposed to on a real OLED panel, whether the
+     * spacing between the Theme Studio card and the one under it now reads as deliberate, or
+     * whether the low-contrast warning fires where a person would agree with it. Only the Galaxy
+     * S25 Ultra answers those, so this is published as a prerelease and the guard's job is to stop
+     * it being published as Stable before that has happened.
      */
     @Test public void thisReleaseIsAThemeStudioBeta() {
         assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",

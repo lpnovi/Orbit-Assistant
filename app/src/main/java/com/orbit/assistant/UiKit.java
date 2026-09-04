@@ -94,22 +94,9 @@ public final class UiKit {
     /** Restrained failure/destructive tone, matching Orbit's destructive dialog action. */
     public static final int DANGER = Color.rgb(239, 105, 105);
 
-    private static final String[] ACCENT_KEYS = {
-            "dynamic", "blurple", "violet", "blue", "mint", "rose", "nova",
-            "pastel_pink", "pastel_blue"
-    };
-    private static final String[] ACCENT_LABELS = {
-            "Dynamic", "Blurple", "Violet", "Blue", "Mint", "Rose", "Nova",
-            "Pastel Pink", "Pastel Blue"
-    };
-    private static final String[] BUBBLE_COLOR_KEYS = {
-            "classic", "accent", "blurple", "violet", "blue", "mint", "rose", "nova",
-            "pastel_pink", "pastel_blue"
-    };
-    private static final String[] BUBBLE_COLOR_LABELS = {
-            "Classic", "Accent", "Blurple", "Violet", "Blue", "Mint", "Rose", "Nova",
-            "Pastel Pink", "Pastel Blue"
-    };
+    // The names themselves live in OrbitPalette, which is the single definition of every colour
+    // Orbit ships. These four arrays used to be a second copy of it, which is how a Theme Studio
+    // preset ended up storing Violet as a raw hex value that the editor then called "custom".
     private static final Map<TextView, FontPreview> FONT_PREVIEWS = new WeakHashMap<>();
     private static final Map<TextView, Boolean> INTENTIONAL_MONOSPACE = new WeakHashMap<>();
     private static final Map<TextView, Boolean> TYPOGRAPHY_APPLIED = new WeakHashMap<>();
@@ -191,14 +178,24 @@ public final class UiKit {
         if (c == null) return "";
         return "resolved=" + Integer.toHexString(accent(c)) + "|amoled=" + Prefs.amoledMode(c) +
                 "|surface=" + Prefs.get(c).getString(Prefs.THEME_SURFACE, OrbitTheme.CLASSIC) +
-                "|background=" + Prefs.get(c).getString(Prefs.THEME_BACKGROUND, OrbitTheme.CLASSIC);
+                "|background=" + Prefs.get(c).getString(Prefs.THEME_BACKGROUND, OrbitTheme.CLASSIC) +
+                // The theme's name is drawn in Settings, so it is baked into a built view exactly
+                // the way a colour is. Without it, applying a differently named theme whose accent
+                // and surfaces happen to match would leave the old name on screen.
+                "|theme=" + Prefs.get(c).getString(Prefs.THEME_NAME, "");
     }
 
-    /** Shared appearance/provider presentation catalogs used by Settings and onboarding. */
-    public static String[] accentKeys() { return ACCENT_KEYS.clone(); }
-    public static String[] accentLabels() { return ACCENT_LABELS.clone(); }
-    public static String[] bubbleColorKeys() { return BUBBLE_COLOR_KEYS.clone(); }
-    public static String[] bubbleColorLabels() { return BUBBLE_COLOR_LABELS.clone(); }
+    /**
+     * Shared appearance catalogues used by Settings, onboarding and Theme Studio.
+     *
+     * <p>Derived from {@link OrbitPalette} rather than listed here, so every surface that offers a
+     * colour offers the same colour under the same name, and a value stored by one is recognised
+     * by all the others.
+     */
+    public static String[] accentKeys() { return OrbitPalette.accentKeys(); }
+    public static String[] accentLabels() { return OrbitPalette.accentLabels(); }
+    public static String[] bubbleColorKeys() { return OrbitPalette.bubbleKeys(); }
+    public static String[] bubbleColorLabels() { return OrbitPalette.bubbleLabels(); }
 
     public static void registerAppearanceListener(AppearanceListener listener) {
         if (listener == null) return;
@@ -934,14 +931,8 @@ public final class UiKit {
         // A theme may name an accent Orbit's catalogue never had. Every existing caller keeps
         // working because a catalogue key is still a catalogue key; only the hex form is new.
         if (OrbitTheme.isHexToken(chosen)) return OrbitTheme.hexTokenColor(chosen);
-        if ("blurple".equals(chosen)) return BLURPLE;
-        if ("violet".equals(chosen)) return Color.rgb(139, 124, 255);
-        if ("blue".equals(chosen)) return Color.rgb(80, 151, 255);
-        if ("mint".equals(chosen)) return Color.rgb(69, 204, 166);
-        if ("rose".equals(chosen)) return Color.rgb(244, 110, 150);
-        if ("nova".equals(chosen)) return Color.rgb(76, 0, 255);
-        if ("pastel_pink".equals(chosen)) return PASTEL_PINK;
-        if ("pastel_blue".equals(chosen)) return PASTEL_BLUE;
+        OrbitPalette.Entry named = OrbitPalette.entry(chosen);
+        if (named != null) return named.color;
         if (Build.VERSION.SDK_INT >= 31) {
             int id = c.getResources().getIdentifier("system_accent1_500", "color", "android");
             if (id != 0) {
@@ -1000,35 +991,37 @@ public final class UiKit {
 
 
     /**
-     * Minimum contrast a link must reach against the surface it sits on. Matches the threshold
-     * {@link #syncTheme} already uses when correcting inherited OEM colours.
+     * Minimum contrast a link must reach against the surface it sits on. Non-text UI, because a
+     * link is a short coloured run inside body copy rather than a paragraph of its own.
      */
     private static final double LINK_MIN_CONTRAST = OrbitContrast.LARGE_TEXT_MIN;
 
     /**
-     * A readable link colour for text drawn on {@code background}.
+     * A readable link colour for text drawn on {@code background}, using the accent in force.
      *
-     * <p>Links used to be painted with the raw accent regardless of what was behind them. With a
-     * purple accent and a purple assistant bubble that is accent-on-accent, and the link becomes
-     * effectively invisible. The accent is still preferred whenever it actually reads; only when
-     * it does not is the colour moved, and then it is moved as little as possible so a link still
-     * looks like part of Orbit rather than a generic fallback.
+     * <p>Links are a derived theme token, not a preference: there is nothing to configure, and a
+     * link follows the accent by construction. When the accent already reads on the surface behind
+     * it, that is the link exactly; when it does not, {@link OrbitContrast#readableAccentOn} moves
+     * it along its own hue until it does, so a Nova link still looks like Nova rather than like a
+     * generic fallback.
      *
      * <p>Colour is never the only cue: inline links keep their underline, so a link remains
      * identifiable even where hue alone would not carry it.
      */
     public static int linkColorOn(Context c, int background) {
-        int accent = accent(c);
-        if (contrastRatio(accent, background) >= LINK_MIN_CONTRAST) return accent;
+        return linkColorFor(accent(c), background);
+    }
 
-        // Walk from mostly-accent toward the readable foreground for this surface, stopping at
-        // the first mix that reads clearly. This keeps some accent character where it can.
-        int readable = bestInkOn(background);
-        for (float accentShare = 0.75f; accentShare >= 0.15f; accentShare -= 0.15f) {
-            int mixed = blend(accent, readable, accentShare);
-            if (contrastRatio(mixed, background) >= LINK_MIN_CONTRAST) return mixed;
-        }
-        return readable;
+    /**
+     * The same derivation from an explicit accent.
+     *
+     * <p>This is what the Theme Studio preview calls. Without it the preview would have to ask for
+     * the accent Orbit is <em>currently</em> using, which is precisely the colour a draft has not
+     * been applied with yet, and the sample link would sit there unchanged while every other colour
+     * on the screen moved.
+     */
+    public static int linkColorFor(int accent, int background) {
+        return OrbitContrast.readableAccentOn(accent, background, LINK_MIN_CONTRAST);
     }
 
     /**

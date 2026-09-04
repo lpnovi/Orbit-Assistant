@@ -65,6 +65,54 @@ public final class TimerDurationRoutingTest {
         assertEquals(270L, timerSeconds("set a timer for 4 and a half minutes"));
     }
 
+    /**
+     * The exact sentence typed on a Galaxy S25 Ultra against 0.7.8.2 Stable.
+     *
+     * <p>Orbit answered "Setting a 5-minute timer", the action card read "Timer 5m", and Samsung
+     * Clock counted down from 5:00. This asserts the whole route at once, because narration, card
+     * and payload are only trustworthy together: all three are derived from one normalized number
+     * of seconds, and a test that checks one of them would pass while the other two lied.
+     */
+    @Test public void theDeviceFailureSetsAFourMinuteThirtySecondTimer() {
+        String request = "set a timer for 4 and 1/2 minutes";
+        assertEquals("Android must be handed 270 seconds", 270L, timerSeconds(request));
+        assertEquals("Setting a 4 minute 30 second timer.", spoken(request));
+        assertEquals("4m 30s", DurationParser.compactLabel(timerSeconds(request)));
+    }
+
+    /** Every phrasing of the same request produces the identical 270-second timer. */
+    @Test public void everyPhrasingOfFourAndAHalfMinutesSetsTheSameTimer() {
+        for (String request : new String[]{
+                "set a timer for 4 and 1/2 minutes",
+                "set a timer for 4 1/2 minutes",
+                "set a timer for 4\u00BD minutes",
+                "set a timer for 4 \u00BD minutes",
+                "set a timer for 4 and a half minutes",
+                "set a timer for 4.5 minutes",
+                "set a timer for 4 minutes and 30 seconds"}) {
+            assertEquals(request, 270L, timerSeconds(request));
+            assertEquals(request, "Setting a 4 minute 30 second timer.", spoken(request));
+        }
+    }
+
+    /** Written fractions through the router, including the ones smaller than a whole unit. */
+    @Test public void writtenFractionsRouteCorrectly() {
+        assertEquals(90L, timerSeconds("set a timer for 1 and 1/2 minutes"));
+        assertEquals(90L, timerSeconds("set a timer for 1 1/2 minutes"));
+        assertEquals(30L, timerSeconds("set a timer for 1/2 minute"));
+        assertEquals(15L, timerSeconds("set a timer for 1/4 minute"));
+        assertEquals(45L, timerSeconds("set a timer for 3/4 minute"));
+        assertEquals(135L, timerSeconds("set a timer for 2 and 1/4 minutes"));
+        assertEquals(165L, timerSeconds("set a timer for 2 and 3/4 minutes"));
+        assertEquals(1800L, timerSeconds("set a timer for 1/2 hour"));
+    }
+
+    /** A written fraction said in front of the word works the same as one said after it. */
+    @Test public void aWrittenFractionBeforeTheWordAlsoWorks() {
+        assertEquals(270L, timerSeconds("set a 4 1/2 minute timer"));
+        assertEquals(270L, timerSeconds("set a 4\u00BD minute timer"));
+    }
+
     // ---- the rest of the required forms, through the router ---------------------------------------
 
     @Test public void everyNaturalDurationRoutesToTheRightNumberOfSeconds() {

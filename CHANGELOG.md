@@ -670,6 +670,15 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - **Timers** now read "4 minutes and 30 seconds", "4 and a half minutes" and "1 hour 5 minutes 30 seconds" correctly, set in your usual Clock app.
   - Orbit's notification categories appear consistently in Android settings without anything being posted, and presentation polish continues throughout. 💜
 
+- **v0.7.8.3-beta.2**: Theme Studio refinement, and a timer fix.
+  - Theme Studio is now the one place Orbit colors are set. Look & Feel no longer repeats the accent, AMOLED and bubble controls underneath it.
+  - Orbit colors and Theme Studio presets share one palette, so Nova and Violet mean the same thing everywhere.
+  - New built-in **Nova AMOLED** preset: Nova purple on a true-black page, marked as the creator's favorite.
+  - Links now follow your accent and stay readable, in Orbit's replies and in the Theme Studio preview.
+  - Cleaner spacing and shorter wording across Theme Studio and Look & Feel.
+  - Your existing accent, AMOLED, bubble colors and saved themes all carry over.
+  - Fixed timers such as "4 and 1/2 minutes", which Orbit read as 5 minutes.
+
 - **v0.7.8.3-beta.1**: Theme Studio — design how Orbit looks, with a live preview.
   - A new **Theme Studio**, opened from Settings → Look & Feel, with a preview of a real Orbit conversation that updates as you edit.
   - Set the accent, your message bubbles, Orbit's reply bubbles, cards and the background, each on its own.

@@ -33,6 +33,83 @@ public final class DurationParserTest {
         expect(270L, "4 and a half minutes");
     }
 
+    /**
+     * The third device failure, and the reason this file exists a second time.
+     *
+     * <p>Typed on a Galaxy S25 Ultra against 0.7.8.2 Stable: Orbit answered "Setting a 5-minute
+     * timer" and Samsung Clock received 5:00. The tokenizer stripped every character it did not
+     * recognise, and the solidus was one of them, so "1/2" reached the scan as the two separate
+     * tokens "1" and "2". The "and 1" was then read as an addend of one whole minute and the
+     * stray "2" was discarded, which is how four and a half became five.
+     */
+    @Test public void fourAndOneHalfMinutesIsTwoHundredAndSeventy() {
+        expect(270L, "4 and 1/2 minutes");
+    }
+
+    /** The same duration in every way a person writes it, all reaching the same seconds. */
+    @Test public void everyWayOfWritingFourAndAHalfMinutesAgrees() {
+        for (String phrase : new String[]{
+                "4 and 1/2 minutes", "4 1/2 minutes", "4\u00BD minutes", "4 \u00BD minutes",
+                "4 and a half minutes", "4.5 minutes", "4 minutes and 30 seconds"}) {
+            expect(270L, phrase);
+        }
+    }
+
+    @Test public void writtenFractionsAreUnderstood() {
+        expect(270L, "4 and 1/2 minutes");
+        expect(270L, "4 1/2 minutes");
+        expect(90L, "1 and 1/2 minutes");
+        expect(90L, "1 1/2 minutes");
+        expect(30L, "1/2 minute");
+        expect(15L, "1/4 minute");
+        expect(45L, "3/4 minute");
+        expect(135L, "2 and 1/4 minutes");
+        expect(165L, "2 and 3/4 minutes");
+        expect(1800L, "1/2 hour");
+        expect(2700L, "3/4 hour");
+        // Generic rather than a shortlist: nothing about thirds is harder than halves.
+        expect(1200L, "1/3 hour");
+        expect(2400L, "2/3 hour");
+    }
+
+    @Test public void unicodeFractionsAreUnderstood() {
+        expect(270L, "4\u00BD minutes");
+        expect(270L, "4 \u00BD minutes");
+        expect(90L, "1\u00BD minutes");
+        expect(30L, "\u00BD minute");
+        expect(15L, "\u00BC minute");
+        expect(45L, "\u00BE minute");
+        expect(1800L, "\u00BD hour");
+        expect(5400L, "1\u00BD hours");
+    }
+
+    /**
+     * A mixed number adds; a spoken fraction after a count multiplies.
+     *
+     * <p>These two rules genuinely disagree, and both are right for the phrasing they belong to.
+     * Nobody writes "3 1/4" meaning three quarters, and nobody says "three quarters" meaning 3.25.
+     */
+    @Test public void aWrittenFractionAddsWhileASpokenOneMultiplies() {
+        expect(195L, "3 1/4 minutes");
+        expect(2700L, "three quarters of an hour");
+        expect(6300L, "one and three quarters hours");
+    }
+
+    /** A fraction that is not a number is not quietly turned into one. */
+    @Test public void malformedFractionsStateNoDuration() {
+        for (String phrase : new String[]{"1/0 minutes", "1/ minutes", "/2 minutes",
+                "1/2/3 minutes", "-1/2 minutes", "0/2 minutes", "1/1000 minutes",
+                "1000/2 minutes"}) {
+            assertEquals(phrase, DurationParser.INVALID, DurationParser.parseSeconds(phrase));
+        }
+    }
+
+    /** A date is not a duration, and the number beside it still belongs to the timer. */
+    @Test public void aDateShapedTokenIsNotAbsorbedIntoADuration() {
+        assertEquals(DurationParser.INVALID, DurationParser.parseSeconds("9/11"));
+        assertEquals(300L, DurationParser.parseFirstRun("on 9/11 set a timer for 5 minutes").seconds);
+    }
+
     // ---- every required form ----------------------------------------------------------------------
 
     @Test public void mixedUnitsAreSummedRatherThanTruncated() {

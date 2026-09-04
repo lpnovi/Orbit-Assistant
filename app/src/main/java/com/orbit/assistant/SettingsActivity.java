@@ -210,7 +210,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         page.addView(settingsCategoryCard(SECTION_CONVERSATIONS, "Conversations",
                 "History, chat behavior and background notifications"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_APPEARANCE, "Look & Feel",
-                "Accent, font, AMOLED, conversation colors and haptics"), categoryLp());
+                "Theme Studio, font, chat text size and haptics"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_UPDATES, "About & updates",
                 "Current version and verified official Orbit releases"), categoryLp());
         page.addView(settingsCategoryCard(SECTION_ADVANCED, "Advanced",
@@ -316,7 +316,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         if (SECTION_DATA.equals(section)) return "Manage weather preferences and the local information Orbit uses to personalize and organize your assistant experience.";
         if (SECTION_DECK.equals(section)) return "Choose how Orbit Deck is reached and whether it may suggest shortcuts.";
         if (SECTION_CONVERSATIONS.equals(section)) return "Choose local chat storage and background completion behavior.";
-        if (SECTION_APPEARANCE.equals(section)) return "Tune Orbit's colors, typography, AMOLED presentation and tactile feedback.";
+        if (SECTION_APPEARANCE.equals(section)) return "Design Orbit's theme, then set typography and tactile feedback.";
         if (SECTION_ADVANCED.equals(section)) return "Inspect local diagnostics and developer troubleshooting information.";
         return "Orbit settings.";
     }
@@ -804,53 +804,33 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         });
         page.addView(conversationCard);
 
+        // Look & Feel has one color destination, and one typography-and-feedback card beneath it.
+        // Until this release it had both: Theme Studio at the top, and directly under it a second
+        // set of controls for accent, AMOLED and the two bubble colors. They wrote the same
+        // preferences, so they could not contradict each other, but they could and did leave a
+        // person wondering which one was the real place to change a color. There is one answer
+        // now, and the controls that used to ask the question are gone rather than duplicated.
         page.addView(sectionTitle("LOOK & FEEL", "appearance"));
         LinearLayout studioCard = card();
         tagSectionCard(studioCard, "appearance");
         studioCard.addView(themeStudioRow());
         page.addView(studioCard);
 
+        // A heading of its own rather than a bare second card. It says what the card below is for,
+        // and it carries the same spacing every other section break on this page has, which is what
+        // stops the two surfaces from appearing fused into one.
+        page.addView(sectionTitle("TYPOGRAPHY & FEEDBACK", "appearance"));
         LinearLayout styleCard = card();
         tagSectionCard(styleCard, "appearance");
-        styleCard.addView(label("Accent"));
-        styleCard.addView(themeSelector());
-        TextView note = UiKit.text(this,
-                "Choose an Orbit accent from the menu. Dynamic follows your Samsung/Material system accent; Nova is #4C00FF.",
-                12, UiKit.MUTED, false);
-        note.setPadding(0, UiKit.dp(this, 8), 0, UiKit.dp(this, 8));
-        styleCard.addView(note);
-        styleCard.addView(amoledToggle());
 
-        TextView fontLabel = label("App font");
-        fontLabel.setPadding(UiKit.dp(this, 2), UiKit.dp(this, 14), 0, UiKit.dp(this, 6));
-        styleCard.addView(fontLabel);
+        styleCard.addView(label("App font"));
         styleCard.addView(fontSelector());
         TextView fontNote = UiKit.text(this,
                 "Orbit Default is the current app font. Times New Roman uses Android's built-in serif family for a similar classic look without adding a font file to Orbit.",
                 12, UiKit.MUTED, false);
-        fontNote.setPadding(0, 0, 0, UiKit.dp(this, 8));
+        fontNote.setPadding(0, UiKit.dp(this, 8), 0, UiKit.dp(this, 8));
         styleCard.addView(fontNote);
 
-        styleCard.addView(toggle("Haptic feedback", Prefs.HAPTICS, true));
-        TextView hapticNote = UiKit.text(this,
-                "Uses light tactile ticks for Orbit controls and Settings interactions. Turn this off to disable those haptics.",
-                12, UiKit.MUTED, false);
-        hapticNote.setPadding(UiKit.dp(this, 4), UiKit.dp(this, 1), 0, UiKit.dp(this, 6));
-        styleCard.addView(hapticNote);
-
-        TextView bubbleLabel = label("Conversation colors");
-        bubbleLabel.setPadding(UiKit.dp(this, 2), UiKit.dp(this, 18), 0, UiKit.dp(this, 6));
-        styleCard.addView(bubbleLabel);
-        TextView bubbleNote = UiKit.text(this,
-                "Choose your message-bubble color and Orbit's response-bubble color independently. Classic preserves the original Orbit look; Accent follows the current app accent, while colors such as Nova can be chosen independently.",
-                12, UiKit.MUTED, false);
-        bubbleNote.setPadding(0, 0, 0, UiKit.dp(this, 10));
-        styleCard.addView(bubbleNote);
-
-        styleCard.addView(label("Your bubbles"));
-        styleCard.addView(bubbleColorSelector(Prefs.USER_BUBBLE_COLOR, false));
-        styleCard.addView(label("Orbit bubbles"));
-        styleCard.addView(bubbleColorSelector(Prefs.ASSISTANT_BUBBLE_COLOR, true));
         TextView chatSizeLabel = label("Chat text size");
         chatSizeLabel.setPadding(UiKit.dp(this, 2), UiKit.dp(this, 12), 0, UiKit.dp(this, 6));
         styleCard.addView(chatSizeLabel);
@@ -858,7 +838,17 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         TextView chatSizeNote = UiKit.text(this,
                 "Changes conversation content only, including rich Markdown in full chat and the Side-button assistant.",
                 12, UiKit.MUTED, false);
+        chatSizeNote.setPadding(0, UiKit.dp(this, 8), 0, UiKit.dp(this, 14));
         styleCard.addView(chatSizeNote);
+
+        // Haptics stays here on purpose. It is not a color, it is not saved in a theme, and
+        // applying a Theme Studio preset must never silently change how the phone feels.
+        styleCard.addView(toggle("Haptic feedback", Prefs.HAPTICS, true));
+        TextView hapticNote = UiKit.text(this,
+                "Uses light tactile ticks for Orbit controls and Settings interactions. Turn this off to disable those haptics.",
+                12, UiKit.MUTED, false);
+        hapticNote.setPadding(UiKit.dp(this, 4), UiKit.dp(this, 1), 0, UiKit.dp(this, 6));
+        styleCard.addView(hapticNote);
 
         TextView advancedLabel = label("Advanced");
         advancedLabel.setPadding(UiKit.dp(this, 2), UiKit.dp(this, 20), 0, UiKit.dp(this, 6));
@@ -1468,15 +1458,21 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     }
 
     /**
-     * The way into Theme Studio.
+     * The way into Theme Studio, and the only place in Settings that shows Orbit's colors.
      *
-     * <p>It sits above the individual appearance controls rather than replacing them. The controls
-     * below are still the quickest way to change one thing — pick an accent, turn AMOLED on — and
-     * they write the same preferences Theme Studio does, so neither can contradict the other. The
-     * Studio is where a whole appearance is designed; this row says so and gets out of the way.
+     * <p>It used to sit above a second set of color controls that wrote the same preferences. That
+     * was defensible while Theme Studio was new and unproven, and stopped being defensible the
+     * moment it worked: two editors for one set of values is a question the app asks the user and
+     * cannot answer. So the row now states what the theme currently is, shows it, and is the way to
+     * change it.
+     *
+     * <p>The summary is read from {@link OrbitThemeTokens}, the same resolver the app itself draws
+     * from, so the strip here is the theme rather than an illustration of it.
      */
     private View themeStudioRow() {
         OrbitTheme active = OrbitThemeStore.active(this);
+        OrbitThemeTokens tokens = OrbitThemeTokens.resolve(this, active);
+
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(UiKit.dp(this, 14), UiKit.dp(this, 12),
@@ -1487,56 +1483,74 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         row.setFocusable(true);
         UiKit.pressScale(row);
 
-        View swatch = new View(this);
-        swatch.setBackground(UiKit.outlined(UiKit.accent(this),
-                UiKit.withAlpha(UiKit.TEXT, 60), 12, this));
-        swatch.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        LinearLayout.LayoutParams swatchLp =
-                new LinearLayout.LayoutParams(UiKit.dp(this, 38), UiKit.dp(this, 38));
-        swatchLp.rightMargin = UiKit.dp(this, 13);
-        row.addView(swatch, swatchLp);
+        row.addView(themeSummarySwatch(tokens), new LinearLayout.LayoutParams(
+                UiKit.dp(this, 44), UiKit.dp(this, 44)));
 
         LinearLayout text = new LinearLayout(this);
         text.setOrientation(LinearLayout.VERTICAL);
         text.addView(UiKit.text(this, "Theme Studio", 15, UiKit.TEXT, true));
-        TextView status = UiKit.text(this,
-                "Current theme: " + active.name + (active.amoled ? " · AMOLED" : ""),
-                12, UiKit.MUTED, false);
+        TextView status = UiKit.text(this, themeSummaryLine(active), 12, UiKit.MUTED, false);
         status.setPadding(0, UiKit.dp(this, 3), 0, 0);
         text.addView(status);
-        row.addView(text, new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        LinearLayout.LayoutParams textLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        textLp.leftMargin = UiKit.dp(this, 13);
+        row.addView(text, textLp);
 
         TextView arrow = UiKit.text(this, "›", 24, UiKit.accent(this), false);
         arrow.setPadding(UiKit.dp(this, 10), 0, UiKit.dp(this, 4), 0);
         row.addView(arrow);
 
-        row.setContentDescription("Theme Studio. Current theme " + active.name
-                + ". Design, preview and save Orbit themes.");
+        row.setContentDescription("Theme Studio. " + themeSummaryLine(active)
+                + ". Opens Orbit's color designer.");
         row.setOnClickListener(v -> startActivity(new Intent(this, ThemeStudioActivity.class)));
 
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         LinearLayout holder = new LinearLayout(this);
         holder.setOrientation(LinearLayout.VERTICAL);
-        holder.addView(row, lp);
+        holder.addView(row, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         TextView note = UiKit.text(this,
-                "Design a complete Orbit theme with a live preview: accent, message bubbles, cards "
-                        + "and background, with Orbit presets and your own saved themes.",
+                "Design Orbit's colors with live previews, presets and your own saved themes.",
                 12, UiKit.MUTED, false);
         note.setPadding(0, UiKit.dp(this, 10), 0, 0);
         holder.addView(note);
         return holder;
     }
 
-    private View amoledToggle() {
-        OrbitSwitch control = new OrbitSwitch(this);
-        control.setChecked(Prefs.amoledMode(this), false);
-        control.setOnCheckedChangeListener((button, checked) -> {
-            Prefs.get(this).edit().putBoolean(Prefs.AMOLED_MODE, checked).apply();
-            UiKit.notifyAppearanceChanged(this);
-        });
-        return UiKit.switchRow(this, "Use true black AMOLED backgrounds", null, control);
+    /** "Nova AMOLED, Nova, AMOLED" - the theme's name, its accent, and whether it is true black. */
+    private String themeSummaryLine(OrbitTheme active) {
+        String accent = OrbitPalette.labelFor(active.accent);
+        String line = active.name;
+        if (!accent.equalsIgnoreCase(active.name)) line += " · " + accent;
+        return active.amoled ? line + " · AMOLED" : line;
+    }
+
+    /**
+     * Three bands of the active theme on its own page colour: accent, the raised card step,
+     * and the card itself.
+     *
+     * <p>Every one of these is part of the structural appearance signature, so the strip is refreshed
+     * by the same rebuild that refreshes the rest of the page. Showing a bubble colour here would
+     * look better and be wrong: bubble colours are deliberately outside that signature, and this
+     * swatch would then be the one stale thing on an otherwise current screen.
+     */
+    private View themeSummarySwatch(OrbitThemeTokens tokens) {
+        LinearLayout strip = new LinearLayout(this);
+        strip.setOrientation(LinearLayout.VERTICAL);
+        strip.setBackground(UiKit.outlined(tokens.background,
+                UiKit.withAlpha(UiKit.TEXT, 60), 12, this));
+        strip.setPadding(UiKit.dp(this, 4), UiKit.dp(this, 4), UiKit.dp(this, 4), UiKit.dp(this, 4));
+        strip.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        int[] bands = {tokens.accent, tokens.surface2, tokens.surface};
+        for (int i = 0; i < bands.length; i++) {
+            View band = new View(this);
+            band.setBackground(UiKit.rounded(bands[i], 3, this));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+            if (i > 0) lp.topMargin = UiKit.dp(this, 3);
+            strip.addView(band, lp);
+        }
+        return strip;
     }
 
     private View notificationToggle() {
@@ -1561,13 +1575,6 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         catch (Exception ignored) {}
     }
 
-    private View themeSelector() {
-        String[] keys = UiKit.accentKeys();
-        String[] labels = UiKit.accentLabels();
-        String selected = Prefs.get(this).getString(Prefs.ACCENT, "dynamic");
-        return colorMenuSelector(keys, labels, selected, false, true, Prefs.ACCENT);
-    }
-
     private View fontSelector() {
         String[] keys = new String[]{"orbit_default", "times_new_roman", "light", "condensed", "monospace", "casual"};
         String[] labels = new String[]{"Orbit Default", "Times New Roman", "Light", "Condensed", "Monospace", "Casual"};
@@ -1582,13 +1589,6 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         });
         selector.setLayoutParams(selectorLp());
         return selector;
-    }
-
-    private View bubbleColorSelector(String prefKey, boolean assistant) {
-        String[] keys = UiKit.bubbleColorKeys();
-        String[] labels = UiKit.bubbleColorLabels();
-        String selected = Prefs.get(this).getString(prefKey, "classic");
-        return colorMenuSelector(keys, labels, selected, assistant, false, prefKey);
     }
 
     private View pageTransitionSelector() {
@@ -1652,59 +1652,6 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         });
         selector.setLayoutParams(selectorLp());
         return selector;
-    }
-
-    private View colorMenuSelector(String[] keys, String[] labels, String selectedKey,
-                                   boolean assistant, boolean accentSelector, String prefKey) {
-        LinearLayout field = new LinearLayout(this);
-        field.setOrientation(LinearLayout.HORIZONTAL);
-        field.setGravity(Gravity.CENTER_VERTICAL);
-        field.setPadding(UiKit.dp(this, 16), 0, UiKit.dp(this, 14), 0);
-        field.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2,
-                UiKit.withAlpha(UiKit.accent(this), 72), UiKit.accent(this), 16, this));
-
-        int initialIndex = indexOf(keys, selectedKey);
-        final int[] current = {initialIndex};
-
-        TextView value = UiKit.text(this, labels[initialIndex], 15, UiKit.TEXT, false);
-        value.setSingleLine(true);
-        field.addView(value, new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-
-        TextView arrow = UiKit.text(this, "▾", 18, UiKit.MUTED, true);
-        arrow.setPadding(UiKit.dp(this, 12), 0, 0, 0);
-        field.addView(arrow);
-
-        field.setOnClickListener(v -> {
-            int[] colors = new int[keys.length];
-            for (int i = 0; i < keys.length; i++) {
-                if (accentSelector) {
-                    colors[i] = UiKit.accentForName(this, keys[i]);
-                } else {
-                    colors[i] = bubblePreviewColor(keys[i], assistant);
-                }
-            }
-            UiKit.showOrbitColorMenu(this, field, labels, colors, current[0], (index, label) -> {
-                current[0] = index;
-                value.setText(label);
-                String key = keys[index];
-                String existing = Prefs.get(this).getString(prefKey, accentSelector ? "dynamic" : "classic");
-                if (!key.equals(existing)) {
-                    Prefs.get(this).edit().putString(prefKey, key).apply();
-                    UiKit.notifyAppearanceChanged(this);
-                }
-            });
-        });
-        UiKit.pressScale(field);
-        field.setLayoutParams(selectorLp());
-        return field;
-    }
-
-    private int bubblePreviewColor(String key, boolean assistant) {
-        int classic = assistant ? UiKit.SURFACE : UiKit.blend(UiKit.accent(this), UiKit.SURFACE_2, 0.46f);
-        if ("classic".equals(key)) return classic;
-        if ("accent".equals(key)) return UiKit.accent(this);
-        return UiKit.accentForName(this, key);
     }
 
     private void handleLeloSecretTap() {

@@ -38,11 +38,20 @@ public final class OrbitThemeTokens {
     public final int userBubbleInk;
     public final int assistantBubble;
     public final int assistantBubbleInk;
+    /**
+     * The colour a link is drawn in inside one of Orbit's replies.
+     *
+     * <p>Derived from the accent rather than stored, and held here so the preview and the real
+     * Markdown renderer cannot answer the question differently. Anything drawing a link on some
+     * other surface asks {@link UiKit#linkColorFor} with that surface; this is the reply case,
+     * which is where a person actually meets one.
+     */
+    public final int link;
 
     private OrbitThemeTokens(OrbitTheme theme, int background, int surface, int surface2,
                              int surface3, int text, int muted, int accent, int onAccent,
                              int userBubble, int userBubbleInk,
-                             int assistantBubble, int assistantBubbleInk) {
+                             int assistantBubble, int assistantBubbleInk, int link) {
         this.theme = theme;
         this.background = background;
         this.surface = surface;
@@ -56,6 +65,7 @@ public final class OrbitThemeTokens {
         this.userBubbleInk = userBubbleInk;
         this.assistantBubble = assistantBubble;
         this.assistantBubbleInk = assistantBubbleInk;
+        this.link = link;
     }
 
     /**
@@ -111,7 +121,8 @@ public final class OrbitThemeTokens {
         return new OrbitThemeTokens(theme, background, surface, surface2, surface3, text, muted,
                 accent, onAccent,
                 userBubble, UiKit.onBubble(userBubble),
-                assistantBubble, UiKit.onBubble(assistantBubble));
+                assistantBubble, UiKit.onBubble(assistantBubble),
+                UiKit.linkColorFor(accent, assistantBubble));
     }
 
     private static int resolveBubble(Context c, String token, int classicFill, int accent) {

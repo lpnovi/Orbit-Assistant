@@ -108,7 +108,7 @@ public final class OrbitColorPicker {
                 warning.setVisibility(parsed == null && s != null && s.length() > 0
                         ? View.VISIBLE : View.GONE);
                 if (parsed == null) {
-                    warning.setText("Use a colour like #8B7CFF.");
+                    warning.setText("Use a color like #8B7CFF.");
                     return;
                 }
                 if (parsed == current[0]) return;
@@ -153,7 +153,7 @@ public final class OrbitColorPicker {
         publish.run();
 
         AlertDialog dialog = new AlertDialog.Builder(activity)
-                .setTitle(role == null || role.trim().isEmpty() ? "Choose a colour" : role)
+                .setTitle(role == null || role.trim().isEmpty() ? "Choose a color" : role)
                 .setView(form)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Apply", null)
@@ -207,7 +207,7 @@ public final class OrbitColorPicker {
         field.setHintTextColor(UiKit.MUTED);
         field.setHint("#8B7CFF");
         field.setTextSize(15);
-        field.setContentDescription("Colour value in hexadecimal");
+        field.setContentDescription("Color value in hexadecimal");
         field.setPadding(UiKit.dp(c, 14), 0, UiKit.dp(c, 14), 0);
         field.setBackground(UiKit.outlined(UiKit.SURFACE_2,
                 UiKit.withAlpha(UiKit.accent(c), 72), 14, c));
@@ -274,7 +274,7 @@ public final class OrbitColorPicker {
 
         private void updateDescription() {
             setContentDescription("Currently " + OrbitColorName.of(original)
-                    + ". New colour " + OrbitColorName.describe("", proposed));
+                    + ". New color " + OrbitColorName.describe("", proposed));
         }
 
         @Override protected void onDraw(Canvas canvas) {
@@ -411,7 +411,7 @@ public final class OrbitColorPicker {
             knob.setStyle(Paint.Style.STROKE);
             knob.setStrokeWidth(UiKit.dp(c, 3));
             knob.setColor(Color.WHITE);
-            setContentDescription("Hue. Drag to change the colour family.");
+            setContentDescription("Hue. Drag to change the color family.");
         }
 
         void setListener(HueListener value) { this.listener = value; }
