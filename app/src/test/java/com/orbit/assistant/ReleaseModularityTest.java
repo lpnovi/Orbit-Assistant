@@ -190,13 +190,10 @@ public final class ReleaseModularityTest {
      * <p>Beta 3 made a theme portable, and the suite proves the part that has to be right: a theme
      * round-trips through a file unchanged, a file that is not an Orbit theme is refused with one
      * sentence rather than a parser error, an oversized file is never read, and no external file
-     * can claim built-in identity or land on top of a theme the user already saved. Beta 4 adds one
-     * preview fix on top of that and exists mainly so it reaches a phone, because the normal update
-     * path is the only way a Beta gets to a device. What neither Beta can settle here is how the
-     * system picker behaves on a Samsung device, whether the import preview shows enough to
-     * recognise a theme by, or whether the tablet layout and the preview mark now read as
-     * deliberate. Those are for the S25 Ultra and the Tab S9 Plus, so this is published as a
-     * prerelease and the guard stops it going out as Stable first.
+     * can claim built-in identity or land on top of a theme the user already saved. Beta 4 fixed
+     * the preview mark, and Beta 5 fixes Color-menu positioning. What these Betas cannot settle here
+     * is the final visual feel on Samsung hardware. That remains for the S25 Ultra and the Tab S9
+     * Plus, so this is published as a prerelease and the guard stops it going out as Stable first.
      */
     @Test public void thisReleaseIsAThemeStudioBeta() {
         assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",

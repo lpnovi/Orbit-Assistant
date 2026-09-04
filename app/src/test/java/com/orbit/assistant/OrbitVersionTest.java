@@ -147,32 +147,30 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * The 0.7.8.3 line is still a Beta, and this is its fourth.
+     * The 0.7.8.3 line is still a Beta, and this is its fifth.
      *
-     * <p>Beta 4 exists so one preview fix reaches a phone through the normal update path, which is
-     * the only way a Beta ever gets to a device. It changes nothing the suite can newly prove: the
-     * Theme Studio preview now draws Orbit's own mark beside the title instead of a coloured disc,
-     * and whether that reads correctly at eighteen points on a real panel is exactly the kind of
-     * question the unit tests cannot answer. So this ships as a prerelease like the three before
-     * it, and the guard's job is unchanged - stop the 0.7.8.3 line going out as Stable until the
-     * S25 Ultra and the Tab S9 Plus have said it should.
+     * <p>Beta 5 carries a focused Theme Studio popup-positioning fix through the normal update path.
+     * The geometry is deterministic in tests, while its final visual feel still belongs on the S25
+     * Ultra and Tab S9 Plus. So this ships as a prerelease like the four before it, and the guard's
+     * job is unchanged - stop the 0.7.8.3 line going out as Stable until the physical devices have
+     * said it should.
      */
-    @Test public void thisBuildIsTheFourthThemeStudioBeta() {
+    @Test public void thisBuildIsTheFifthThemeStudioBeta() {
         String version = BuildConfig.VERSION_NAME;
         assertTrue(OrbitVersion.installedIsBeta());
         assertTrue(OrbitVersion.isBeta(version));
         assertFalse(OrbitVersion.isStable(version));
         assertEquals("0.7.8.3", OrbitVersion.baseVersion(version));
-        assertEquals(4, OrbitVersion.betaNumber(version));
+        assertEquals(5, OrbitVersion.betaNumber(version));
 
-        assertEquals("Orbit Assistant v0.7.8.3 Beta 4", OrbitVersion.releaseTitle(version));
-        assertEquals("v0.7.8.3-beta.4", OrbitVersion.tagFor(version));
+        assertEquals("Orbit Assistant v0.7.8.3 Beta 5", OrbitVersion.releaseTitle(version));
+        assertEquals("v0.7.8.3-beta.5", OrbitVersion.tagFor(version));
         assertTrue("the release workflow must publish it as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
         assertFalse("and never as Stable",
                 OrbitVersion.isStableTag(OrbitVersion.tagFor(version)));
         assertTrue("it must outrank the Beta it fixes",
-                OrbitVersion.compareVersions(version, "0.7.8.3-beta.3") > 0);
+                OrbitVersion.compareVersions(version, "0.7.8.3-beta.4") > 0);
         assertTrue("and every Beta before that",
                 OrbitVersion.compareVersions(version, "0.7.8.3-beta.2") > 0);
         assertTrue("it must outrank the Stable line it was built from",
