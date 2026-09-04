@@ -1,0 +1,72 @@
+name: Bug report
+description: Report reproducible unexpected behavior in Orbit Assistant
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Orbit. GitHub Issues are public. Remove account details, notifications, private screen content, tokens, backup files, and other personal information before submitting.
+  - type: input
+    id: orbit_version
+    attributes:
+      label: Orbit version
+      description: Find this in Orbit under About & updates.
+      placeholder: 0.7.8.2
+    validations:
+      required: true
+  - type: dropdown
+    id: channel
+    attributes:
+      label: Update channel
+      options:
+        - Stable
+        - Beta
+        - Local source build
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version
+      placeholder: Galaxy S25 Ultra, Android 16
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the visible behavior and what you were trying to do.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open…
+        2. Tap…
+        3. Observe…
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional sanitized context
+      description: Add redacted screenshots or Diagnostics details only if they contain no private information.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I checked existing Issues for the same problem.
+          required: true
+        - label: I removed personal data, credentials, private screen content, and notification text.
+          required: true

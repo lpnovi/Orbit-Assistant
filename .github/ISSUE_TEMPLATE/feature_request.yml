@@ -1,0 +1,54 @@
+name: Feature request
+description: Suggest an improvement to Orbit Assistant
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Explain the user problem first. A clear use case is more useful than a long implementation proposal.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the moment or workflow where Orbit falls short today.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What would a good outcome look like?
+      description: Describe the behavior from a user's point of view.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What do you do today?
+      description: Share any workaround or alternative you currently use.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Assistant overlay and screen context
+        - Chat and attachments
+        - Android actions
+        - Routines and automation
+        - Orbit Deck
+        - Documents
+        - Orbit Local and AI providers
+        - Personalization and Theme Studio
+        - Privacy, security, or updates
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I checked the roadmap and existing Issues for a similar request.
+          required: true
+        - label: This request contains no private screen content, account data, credentials, or other personal information.
+          required: true
