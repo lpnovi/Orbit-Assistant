@@ -185,21 +185,23 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * The 0.7.8.3 line is Theme Studio, and it is still a Beta.
+     * Theme Studio passed six device Betas and is now Stable.
      *
-     * <p>Beta 3 made a theme portable, and the suite proves the part that has to be right: a theme
-     * round-trips through a file unchanged, a file that is not an Orbit theme is refused with one
-     * sentence rather than a parser error, an oversized file is never read, and no external file
-     * can claim built-in identity or land on top of a theme the user already saved. Beta 4 fixed
-     * the preview mark, Beta 5 fixed where Color menus open vertically, and Beta 6 centres them
-     * horizontally. What these Betas cannot settle here is the final visual feel on Samsung
-     * hardware. That remains for the S25 Ultra and the Tab S9 Plus, so this is published as a
-     * prerelease and the guard stops it going out as Stable first.
+     * <p>The suite proves the parts that have to be right: a theme round-trips through a file
+     * unchanged, a file that is not an Orbit theme is refused with one sentence rather than a
+     * parser error, an oversized file is never read, no external file can claim built-in identity
+     * or land on top of a theme the user already saved, and popup placement is deterministic.
+     *
+     * <p>What it could never settle is the final visual feel on Samsung hardware: whether a
+     * preview reads as Orbit, whether a Color menu sits where a thumb expects it. A Galaxy S25
+     * Ultra answered that on Beta 6, so Stable carries Beta 6's behaviour unchanged and the
+     * guard's job is now to stop a versionName that quietly regains prerelease metadata from
+     * being published here.
      */
-    @Test public void thisReleaseIsAThemeStudioBeta() {
-        assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
-                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
-        assertTrue(OrbitVersion.installedIsBeta());
+    @Test public void thisReleaseIsThemeStudioStable() {
+        assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
+                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.installedIsBeta());
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
     }
 

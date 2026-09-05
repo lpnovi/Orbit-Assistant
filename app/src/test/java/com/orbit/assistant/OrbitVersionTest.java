@@ -147,39 +147,54 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * The 0.7.8.3 line is still a Beta, and this is its sixth.
+     * The 0.7.8.3 line ran as six Betas and is now promoted to Stable.
      *
-     * <p>Beta 6 keeps Beta 5's adaptive vertical popup placement and corrects the horizontal one,
-     * so Theme Studio's Color menus read as centred. The geometry is deterministic in tests, while
-     * its final visual feel still belongs on the S25 Ultra and Tab S9 Plus. So this ships as a
-     * prerelease like the five before it, and the guard's job is unchanged - stop the 0.7.8.3 line
-     * going out as Stable until the physical devices have said it should.
+     * <p>Beta 1 built Theme Studio on Orbit's existing appearance preferences rather than beside
+     * them. Beta 2 made it the one place Orbit's colours are set, added Nova AMOLED and derived
+     * link colours, and fixed fractional timers. Beta 3 made a theme portable through a validated
+     * {@code orbit.theme} file. Betas 4, 5 and 6 were device corrections: the preview's real Orbit
+     * mark, then where a Color menu opens vertically, then how it sits horizontally.
+     *
+     * <p>Everything this line added had to be looked at rather than only measured, and a Galaxy
+     * S25 Ultra confirmed Beta 6. Stable therefore carries Beta 6's behaviour unchanged.
+     *
+     * <p>The guard now runs the other way round. A finished release must not quietly regain
+     * prerelease metadata and be published to the Beta channel by accident, so this fails before
+     * publication rather than on a phone.
      */
-    @Test public void thisBuildIsTheSixthThemeStudioBeta() {
+    @Test public void thisBuildIsTheThemeStudioStable() {
         String version = BuildConfig.VERSION_NAME;
-        assertTrue(OrbitVersion.installedIsBeta());
-        assertTrue(OrbitVersion.isBeta(version));
-        assertFalse(OrbitVersion.isStable(version));
+        assertFalse(OrbitVersion.installedIsBeta());
+        assertFalse(OrbitVersion.isBeta(version));
+        assertTrue(OrbitVersion.isStable(version));
         assertEquals("0.7.8.3", OrbitVersion.baseVersion(version));
-        assertEquals(6, OrbitVersion.betaNumber(version));
 
-        assertEquals("Orbit Assistant v0.7.8.3 Beta 6", OrbitVersion.releaseTitle(version));
-        assertEquals("v0.7.8.3-beta.6", OrbitVersion.tagFor(version));
-        assertTrue("the release workflow must publish it as a prerelease",
+        assertEquals("a Stable build carries no beta counter", 0, OrbitVersion.betaNumber(version));
+        assertEquals("Orbit Assistant v0.7.8.3", OrbitVersion.releaseTitle(version));
+        assertEquals("v0.7.8.3", OrbitVersion.tagFor(version));
+        assertFalse("the release workflow must publish it as Stable",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
-        assertFalse("and never as Stable",
+        assertTrue("and never as a prerelease",
                 OrbitVersion.isStableTag(OrbitVersion.tagFor(version)));
-        assertTrue("it must outrank the Beta it refines",
-                OrbitVersion.compareVersions(version, "0.7.8.3-beta.5") > 0);
-        assertTrue("and the Beta before that",
-                OrbitVersion.compareVersions(version, "0.7.8.3-beta.4") > 0);
-        assertTrue("and every Beta before that",
-                OrbitVersion.compareVersions(version, "0.7.8.3-beta.2") > 0);
         assertTrue("it must outrank the Stable line it was built from",
                 OrbitVersion.compareVersions(version, "0.7.8.2") > 0);
-        assertTrue("and every Beta of that line",
-                OrbitVersion.compareVersions(version, "0.7.8.2-beta.4") > 0);
-        assertTrue("while the Stable it is working towards still outranks it",
-                OrbitVersion.compareVersions("0.7.8.3", version) > 0);
+        assertTrue("and every Beta of its own line",
+                OrbitVersion.compareVersions(version, "0.7.8.3-beta.6") > 0
+                        && OrbitVersion.compareVersions(version, "0.7.8.3-beta.5") > 0
+                        && OrbitVersion.compareVersions(version, "0.7.8.3-beta.4") > 0
+                        && OrbitVersion.compareVersions(version, "0.7.8.3-beta.3") > 0
+                        && OrbitVersion.compareVersions(version, "0.7.8.3-beta.2") > 0
+                        && OrbitVersion.compareVersions(version, "0.7.8.3-beta.1") > 0);
+    }
+
+    /**
+     * The Beta channel offers whichever eligible build has the highest Android versionCode, so a
+     * Stable release only reaches the people who tested its Betas if its code is above theirs.
+     * v0.7.8.3-beta.6 published versionCode 769, confirmed from that release's own
+     * {@code orbit-update.json} rather than assumed, so this Stable must be above it.
+     */
+    @Test public void thisBuildOutranksEveryPublishedBetaOfItsLine() {
+        assertTrue("Stable must supersede v0.7.8.3-beta.6's published versionCode 769",
+                BuildConfig.VERSION_CODE > 769);
     }
 }

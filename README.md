@@ -30,7 +30,7 @@ Stable is recommended for most people. Beta offers newer features with a greater
 <table>
   <tr>
     <td align="center" width="50%"><img src="docs/assets/screenshots/documents.png" width="185" alt="Orbit Documents viewing a fictional test PDF with Ask Orbit"><br><sub><strong>Work with documents</strong><br>Read PDFs natively and ask Orbit about the current page.</sub></td>
-    <td align="center" width="50%"><img src="docs/assets/screenshots/theme-studio.jpg" width="185" alt="Orbit Theme Studio showing a customized live preview and color controls"><br><sub><strong>Make Orbit yours</strong><br>Customize Orbit's colors and presentation with a live preview. Beta feature.</sub></td>
+    <td align="center" width="50%"><img src="docs/assets/screenshots/theme-studio.jpg" width="185" alt="Orbit Theme Studio showing a customized live preview and color controls"><br><sub><strong>Make Orbit yours</strong><br>Customize Orbit's colors and presentation with a live preview.</sub></td>
   </tr>
 </table>
 
@@ -49,7 +49,7 @@ Orbit is not tied to one interaction style: type, speak, attach content, build r
 | **Assistant everywhere** | Invoke an overlay through Android's digital-assistant flow, continue in full chat, type or use Voice Beta, and optionally attach screen text or a screenshot. Side-button behavior depends on the phone maker and system configuration. |
 | **Understand and work with content** | Attach images, files, clipboard text, and PDFs; share supported content to Orbit from other apps; read PDFs in Documents; ask about a selected page; and view rich Markdown responses. Image understanding depends on the active provider. |
 | **Act on Android** | Use supported actions for timers, alarms, media, brightness, flashlight, Do Not Disturb, navigation, sharing, and more. Calendar writing uses Android's Calendar Provider and asks for confirmation before changes. Capabilities remain subject to Android permissions and device support. |
-| **Make Orbit yours** | Arrange shortcuts, Routines, apps, prompts, and safe actions in Orbit Deck. Customize accents, conversation colors, fonts, AMOLED surfaces, haptics, app profiles, Memory, and other preferences. Theme Studio is currently a Beta feature. |
+| **Make Orbit yours** | Arrange shortcuts, Routines, apps, prompts, and safe actions in Orbit Deck. Customize accents, conversation colors, fonts, AMOLED surfaces, haptics, app profiles, Memory, and other preferences. Design the whole look in Theme Studio, with a live preview, saved presets, and portable Orbit theme files. |
 | **Automate repeatable work** | Build Routines with reusable steps, conditions and branches; add time or location triggers; start from templates; use Custom Commands; and launch compatible actions from Quick Settings or home-screen widgets. Declarative Extensions can add reviewed Routine actions without loading executable plugin code. |
 | **Choose how Orbit thinks** | Use ChatGPT account mode for Orbit's fullest cloud feature set, install the optional Orbit Local component for private offline chat on supported hardware, or connect an advanced private HTTPS relay. OpenRouter configuration is a preview only. OpenRouter chat is not currently available. |
 
@@ -131,8 +131,7 @@ Never post signing keys, account tokens, diagnostic data containing private cont
 
 | Status | Examples |
 | --- | --- |
-| **Shipping in Stable** | Side-button/default-assistant access, full chat, attachments, screen context, Voice Beta, Android actions, Calendar writing, Routines, Extensions, widgets, Orbit Local, Orbit Deck, and Documents. |
-| **Available in Beta** | Theme Studio is currently being tested as part of the `0.7.8.3` Beta line. |
+| **Shipping in Stable** | Side-button/default-assistant access, full chat, attachments, screen context, Voice Beta, Android actions, Calendar writing, Routines, Extensions, widgets, Orbit Local, Orbit Deck, Documents, and Theme Studio. |
 | **Planned or under consideration** | Orbit Vault / Quick Capture, Hybrid Auto routing, deeper local capabilities, and other work listed in the roadmap. OpenRouter chat remains deferred until it can be properly validated. |
 
 See [ROADMAP.md](ROADMAP.md) for the detailed development record and future direction, or [CHANGELOG.md](CHANGELOG.md) for shipped release history. Roadmap items are direction, not promised dates.

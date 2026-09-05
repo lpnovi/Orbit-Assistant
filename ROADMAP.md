@@ -1170,24 +1170,67 @@ path.
   and wrong for a preview of a theme nobody has applied. It gains an overload that takes the accent
   as a parameter; existing callers keep the draw-time behavior they had
 
+### 0.7.8.3-beta.5 - Popup Anchoring
+Theme Studio's Color menus were positioned as free-floating popups rather than as menus belonging to
+the row that opened them, which the S25 Ultra showed immediately.
+
+- **One shared placement helper.** `anchoredOrbitPopupBounds` decides where an Orbit popup opens
+  from the anchor's on-screen bounds and the usable frame, so Theme Studio does not grow a second
+  positioning system beside `showOrbitMenu`
+- **Below when it fits, above when it does not.** A long menu flips into the space above its row
+  rather than being clipped or pushed off screen, with a fixed gap either way
+- **The Revert and Apply bar is unavailable space.** The fixed action bar is subtracted from the
+  usable frame, along with system bars and display cutouts, so a menu can never open underneath it
+
+### 0.7.8.3-beta.6 - Centered Color Menus
+Beta 5 anchored a menu's trailing edge to the trailing edge of the row that opened it. A colour row
+spans the whole content card, so the much narrower menu was pushed hard against the right margin:
+correct vertically, visibly off-centre horizontally.
+
+- **Centred on the content frame, not the anchor's edge.** The same placement helper now takes an
+  optional content frame and centres the popup within it. With no frame it keeps the previous
+  anchor-centred policy, so `showOrbitMenu` and `showOrbitActionMenu` are unchanged
+- **The clamp still wins.** The existing left and right clamp runs after centring, so a popup can
+  never touch or cross a screen edge
+- **Tablets centre within the controls pane.** Theme Studio passes its scrolling column, which is
+  the full width on a phone and the right-hand pane on a tablet, so a menu stays beside the row that
+  opened it instead of floating over the preview. No coordinate is hardcoded
+- **Beta 5's vertical behaviour is untouched**, including the flip, the row gap, and the treatment
+  of the action bar as unavailable space
+
+### 0.7.8.3 - Theme Studio
+Validated on a Galaxy S25 Ultra across six Betas (`beta.1` to `beta.6`) and released as `0.7.8.3`
+Stable. Each Beta is recorded in full above; in short:
+
+- **Beta 1** built Theme Studio on Orbit's existing appearance preferences rather than beside them,
+  so a theme *is* those preferences named as one object: six user-facing decisions, a live preview
+  built from the same resolved tokens the app draws from, a draft model with Apply and Revert, seven
+  Orbit presets, a local library of the user's own, an Orbit-native colour picker, and contrast
+  warnings rather than prohibitions
+- **Beta 2** made Theme Studio the one place Orbit's colours are set, gave every named Orbit colour
+  a single definition in `OrbitPalette`, made migration stepwise so no existing theme was renamed,
+  added the Nova AMOLED preset, made links a derived token that stays readable, and fixed fractional
+  timers such as `4 and 1/2 minutes`
+- **Beta 3** made a theme portable: one validating codec between a theme file and Orbit, import and
+  export through Android's own picker with no storage permission, external files forced to custom
+  identity with fresh local ids, and preview before anything is added or applied
+- **Betas 4, 5 and 6** were device corrections: the preview header drawing Orbit's real mark in the
+  draft accent, then where a Color menu opens vertically, then how it sits horizontally
+- **Stable** carries Beta 6's behaviour unchanged. The Galaxy S25 Ultra pass confirmed the editor,
+  the live preview, presets, AMOLED, import and export, and the corrected Color menus, and found no
+  new regression, so promotion changed version metadata and release documentation only, with no
+  functional source change
+
 # Next
-
-## 0.7.8.3 - Theme Studio Stable
-
-After device validation of Beta 4 on the Galaxy S25 Ultra and the Tab S9 Plus.
-
-- physical validation of import and export against Android's own picker on both devices
-- any remaining phone and tablet polish that device testing turns up
-- additional curated presets, only if real use shows a gap rather than a wish for more
-- optional restrained shape and corner-radius customization, only if it fits the token model cleanly
-
-# Later
 
 ## Orbit Vault / Quick Capture
 
-After Theme Studio. A searchable local-first collection for quickly saving screenshots, selected
-text, clipboard content, photos, useful Orbit answers, and later document snippets, with quick
-capture and share flows, a future **Ask Orbit about this** flow, and an eventual Orbit Deck tile.
+The next major development priority, after Theme Studio. A searchable local-first collection for
+quickly saving screenshots, selected text, clipboard content, photos, useful Orbit answers, and
+later document snippets, with quick capture and share flows, a future **Ask Orbit about this** flow,
+and an eventual Orbit Deck tile.
+
+# Later
 
 ## Future direction
 

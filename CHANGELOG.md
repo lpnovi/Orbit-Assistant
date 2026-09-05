@@ -670,6 +670,14 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - **Timers** now read "4 minutes and 30 seconds", "4 and a half minutes" and "1 hour 5 minutes 30 seconds" correctly, set in your usual Clock app.
   - Orbit's notification categories appear consistently in Android settings without anything being posted, and presentation polish continues throughout. 💜
 
+- **v0.7.8.3**: Theme Studio arrives, so you can design how Orbit looks with a live preview.
+  - Set Orbit's accent, your message bubbles, Orbit's replies, cards, the background and AMOLED, each on its own.
+  - The preview shows a real Orbit conversation as you edit it, using Orbit's own app and Deck marks.
+  - Start from built-in presets, including the new Nova AMOLED, or save, rename, duplicate and delete your own.
+  - Import and export portable Orbit theme files through Android's system picker, with no storage permission.
+  - Imported themes are checked and previewed first, then added as your own presets. Nothing changes until you press Apply.
+  - Color menus stay centred and on screen, and timers such as "4 and 1/2 minutes" are now read correctly.
+
 - **v0.7.8.3-beta.6**: A small Theme Studio polish update.
   - Theme Studio Color menus are now centred on screen, so their left and right margins look balanced.
   - Menus still open above or below the Color control you tapped, depending on the room available.
