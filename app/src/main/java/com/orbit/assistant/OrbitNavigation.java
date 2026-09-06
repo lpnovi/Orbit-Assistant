@@ -79,6 +79,11 @@ public final class OrbitNavigation {
         put(LocalAiActivity.class, Policy.PREDICTIVE, "Orbit Local");
         put(CapabilitiesActivity.class, Policy.PREDICTIVE, "Capabilities");
         put(MemoryActivity.class, Policy.PREDICTIVE, "Memory");
+        // Vault and one saved item are two ordinary pages: Chats is under the Vault, and the Vault
+        // is under an item. Both write every change the moment it is confirmed, so neither ever
+        // holds unsaved work and Back is unconditional on both.
+        put(OrbitVaultActivity.class, Policy.PREDICTIVE, "Vault");
+        put(OrbitVaultItemActivity.class, Policy.PREDICTIVE, "Vault item");
         put(AppsActivity.class, Policy.PREDICTIVE, "Apps");
         put(NotificationsActivity.class, Policy.PREDICTIVE, "Notifications");
         put(SavedPlacesActivity.class, Policy.PREDICTIVE, "Saved places");

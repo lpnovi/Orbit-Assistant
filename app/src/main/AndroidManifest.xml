@@ -260,6 +260,17 @@
             android:enableOnBackInvokedCallback="true" android:exported="false" />
         <activity android:name=".MemoryActivity"
             android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <!--
+          Orbit Vault, and one saved item.
+
+          Not exported, and deliberately so. The Vault is personal material the user chose to keep;
+          content reaches it through Orbit's own screens or through the one share doorway above,
+          which validates what arrives before anything is written. There is no second door.
+        -->
+        <activity android:name=".OrbitVaultActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".OrbitVaultItemActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".AppsActivity"
             android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".AppProfileActivity"

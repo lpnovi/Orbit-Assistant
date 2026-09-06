@@ -289,15 +289,33 @@ public final class OrbitDialogContractTest {
                         + " non-page theme",
                 count(manifest, "android:theme=\"@style/Theme.Orbit.Bridge\"") == 5);
 
-        // Both exported doorways draw nothing of their own. They validate, stage, and start a real
-        // conversation; a dialog here would be Orbit painting a window over another app's share
-        // sheet or over the text the user is in the middle of selecting.
-        for (String bridge : new String[]{"ShareToOrbitActivity", "ProcessTextToOrbitActivity"}) {
-            String source = ComponentUninstallTest.readRepositoryFile(
-                    "app/src/main/java/com/orbit/assistant/" + bridge + ".java");
-            assertFalse(bridge + " must not draw a dialog", source.contains("new AlertDialog.Builder"));
-            assertFalse(bridge + " must not style one", source.contains("styleOrbitDialog"));
-        }
+        // Ask Orbit draws nothing of its own. It validates, stages, and starts a real conversation;
+        // a dialog here would be Orbit painting a window over the text the user is in the middle of
+        // selecting, and there is only one thing selected text can become.
+        String selectedText = ComponentUninstallTest.readRepositoryFile(
+                "app/src/main/java/com/orbit/assistant/ProcessTextToOrbitActivity.java");
+        assertFalse("Ask Orbit must not draw a dialog",
+                selectedText.contains("new AlertDialog.Builder"));
+        assertFalse("nor style one", selectedText.contains("styleOrbitDialog"));
+
+        // Share to Orbit draws exactly one thing, and only since v0.7.8.4: the question of where a
+        // share should go. A shared link genuinely has two destinations now - a conversation or the
+        // Vault - and guessing would either silently change what sharing into Orbit has always
+        // meant or make the Vault unreachable from the share sheet. One Orbit-owned choice is the
+        // honest answer; anything beyond it would be this bridge growing into a screen.
+        String share = ComponentUninstallTest.readRepositoryFile(
+                "app/src/main/java/com/orbit/assistant/ShareToOrbitActivity.java");
+        assertTrue("the one dialog it may draw is Orbit's own, through the shared styling path",
+                share.contains("UiKit.styleOrbitDialog(dialog, this, false)"));
+        assertEquals("and there is exactly one of it", 1, count(share, "new AlertDialog.Builder"));
+        assertTrue("it offers the two real destinations and nothing else",
+                share.contains("setPositiveButton(ASK_ORBIT")
+                        && share.contains("setNegativeButton(SAVE_TO_VAULT"));
+        assertTrue("cancelling is a real third answer", share.contains("setOnCancelListener"));
+        assertFalse("it must never ask for a permission itself",
+                share.contains("requestPermissions("));
+        assertFalse("and must never clone an Android-owned window",
+                share.contains("setCustomTitle"));
 
         // The full-screen attachment viewer is a real screen rather than a bridge, so it keeps the
         // ordinary Orbit theme and paints its own black background. It is emphatically not a

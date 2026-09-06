@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Orbit Vault: a lidded box with a handle. Tinted by the caller, never coloured here. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
+        android:pathData="M3,3h18v5h-18zM5,9h14v12h-14zM9.5,12.5h5v2h-5z" />
+</vector>

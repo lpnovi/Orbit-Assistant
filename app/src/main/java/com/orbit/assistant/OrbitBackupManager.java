@@ -33,6 +33,19 @@ public final class OrbitBackupManager {
     private static final long MAX_BACKUP_BYTES = 100L * 1024L * 1024L;
     private static final long MAX_ATTACHMENT_BYTES = 10L * 1024L * 1024L;
     private static final long MAX_TOTAL_ATTACHMENT_BYTES = 75L * 1024L * 1024L;
+    /**
+     * The Vault's own picture budget, deliberately separate from the conversation one above.
+     *
+     * <p>Sharing one number would have meant a large conversation history quietly costing the user
+     * their saved pictures, or the reverse, and neither is a decision a backup should make on
+     * somebody's behalf. This is a second, much smaller allowance on top: {@link OrbitVaultMedia}
+     * stores a bounded 1600px JPEG, so a few hundred kilobytes each, and 20 MB is a personal
+     * collection of them rather than a photo library.
+     *
+     * <p>The existing 100 MB ceiling on the whole file is untouched and still has the final word.
+     */
+    private static final long MAX_VAULT_MEDIA_BYTES = 6L * 1024L * 1024L;
+    private static final long MAX_TOTAL_VAULT_MEDIA_BYTES = 20L * 1024L * 1024L;
 
     private OrbitBackupManager() {}
 
@@ -54,7 +67,8 @@ public final class OrbitBackupManager {
                     data.optJSONArray("routines").length() + " routines and " +
                     optionalArray(data, "customCommands").length() + " Custom Commands, and " +
                     data.optJSONArray("reminders").length() + " reminders, plus " +
-                    optionalArray(data, "extensions").length() + " extensions.\n\n" +
+                    optionalArray(data, "extensions").length() + " extensions and " +
+                    optionalArray(data, "vault").length() + " saved Vault items.\n\n" +
                     "Restoring will replace Orbit's backed-up local data on this device. " +
                     "Account credentials, Android permissions and default-assistant status are not included.";
         }
@@ -69,6 +83,7 @@ public final class OrbitBackupManager {
     public static void exportTo(Context context, Uri uri) throws Exception {
         JSONObject data = currentSnapshot(context);
         addPortableAttachments(context, data);
+        addPortableVaultMedia(context, data);
         validateData(data);
 
         long now = System.currentTimeMillis();
@@ -129,6 +144,7 @@ public final class OrbitBackupManager {
         JSONObject restored = new JSONObject(prepared.data.toString());
         try {
             materializeAttachments(context, restored, createdFiles);
+            materializeVaultMedia(context, restored, createdFiles);
         } catch (Exception e) {
             for (File file : createdFiles) if (file != null) file.delete();
             throw e;
@@ -157,6 +173,9 @@ public final class OrbitBackupManager {
         }
         RoutineTriggerScheduler.rescheduleAll(context);
         ReminderScheduler.rescheduleAll(context);
+        // Only now, with the whole restore committed and no rollback left to serve, are the
+        // previous Vault's picture files genuinely unreachable and safe to remove.
+        OrbitVaultStore.pruneUnreferencedMedia(context);
     }
 
     private static JSONObject currentSnapshot(Context c) throws Exception {
@@ -173,6 +192,10 @@ public final class OrbitBackupManager {
                 .put("appProfiles", parseArray("app profiles", AppProfileStore.backupJson(c)))
                 .put("notificationConfiguration", NotificationStore.backupConfiguration(c))
                 .put("extensions", OrbitExtensionStore.backupJson(c))
+                // Vault text and metadata travel as an ordinary array; the pictures it owns travel
+                // as records alongside, exactly as conversation attachments already do.
+                .put("vault", parseArray("Vault", OrbitVaultStore.backupJson(c)))
+                .put("vaultMedia", new JSONArray())
                 .put("attachments", new JSONArray());
     }
 
@@ -196,6 +219,10 @@ public final class OrbitBackupManager {
             ok &= NotificationStore.restoreBackupConfiguration(c, data.getJSONObject("notificationConfiguration"));
             if (data.has("extensions"))
                 ok &= OrbitExtensionStore.restoreBackupJson(c, data.getJSONArray("extensions"));
+            // Optional, so a backup written before Orbit had a Vault restores normally and simply
+            // leaves an empty one. It is applied inside the same all-or-nothing commit as
+            // everything else: a Vault that will not write rolls the whole restore back.
+            ok &= OrbitVaultStore.restoreBackupJson(c, optionalArray(data, "vault").toString());
             return ok;
         } catch (Exception ignored) {
             return false;
@@ -216,6 +243,9 @@ public final class OrbitBackupManager {
         JSONObject notifications = data.optJSONObject("notificationConfiguration");
         JSONArray extensions = optionalArray(data, "extensions");
         JSONArray attachments = requiredArray(data, "attachments");
+        // Optional on both sides: a pre-Vault backup has neither key and is entirely valid.
+        JSONArray vault = optionalArray(data, "vault");
+        JSONArray vaultMedia = optionalArray(data, "vaultMedia");
         if (actionResults == null || notifications == null) invalid("stored data");
 
         Set<String> conversationIds = validateConversations(conversations);
@@ -230,6 +260,62 @@ public final class OrbitBackupManager {
         validateNotifications(notifications);
         if (!OrbitExtensionStore.isValidBackup(extensions)) invalid("extensions");
         validateAttachments(conversations, attachments);
+        validateVault(vault, vaultMedia);
+    }
+
+    /**
+     * The Vault, held to the same standard as everything else in a backup.
+     *
+     * <p>Two rules carry the weight. A device-local path is refused outright, in the same way a
+     * conversation attachment path is: a path in a backup is a path into somebody else's phone, and
+     * honouring one would point this device's Vault at a file it does not own. And every picture an
+     * item claims must actually be present in the backup as verified JPEG bytes, with nothing
+     * present that no item refers to, so a restore can never produce a row pointing at nothing or
+     * quietly carry an unreferenced payload.
+     */
+    private static void validateVault(JSONArray items, JSONArray media) throws Exception {
+        Map<String, byte[]> decoded = new HashMap<>();
+        long total = 0L;
+        for (int i = 0; i < media.length(); i++) {
+            JSONObject record = media.optJSONObject(i);
+            String id = record == null ? "" : record.optString("id", "").trim();
+            if (record == null || id.isEmpty() || decoded.containsKey(id) ||
+                    !"image/jpeg".equals(record.optString("mimeType", ""))) invalid("Vault images");
+            byte[] bytes;
+            try { bytes = Base64.decode(record.optString("data", ""), Base64.DEFAULT); }
+            catch (Exception e) { throw new IllegalArgumentException("The backup contains a corrupt Vault image."); }
+            if (bytes.length == 0 || bytes.length > MAX_VAULT_MEDIA_BYTES || !isJpeg(bytes) ||
+                    record.optLong("size", -1L) != bytes.length) invalid("Vault images");
+            total += bytes.length;
+            if (total > MAX_TOTAL_VAULT_MEDIA_BYTES)
+                throw new IllegalArgumentException("The backup contains too many Vault images.");
+            decoded.put(id, bytes);
+        }
+
+        if (items.length() > OrbitVaultStore.MAX_ITEMS) invalid("Vault");
+        Set<String> ids = new HashSet<>();
+        Set<String> referenced = new HashSet<>();
+        for (int i = 0; i < items.length(); i++) {
+            JSONObject o = items.optJSONObject(i);
+            if (o == null || !addUnique(ids, o.optString("id", "")) ||
+                    !OrbitVaultItem.knownType(o.optString("type", "")) ||
+                    o.optLong("createdAt", 0L) <= 0L ||
+                    o.optString("title", "").length() > OrbitVaultItem.MAX_TITLE_CHARS ||
+                    o.optString("body", "").length() > OrbitVaultItem.MAX_BODY_CHARS + 200 ||
+                    o.optString("source", "").length() > OrbitVaultItem.MAX_SOURCE_CHARS)
+                invalid("Vault");
+            // No device-local path may ever arrive in a backup, in either direction.
+            if (!o.optString("mediaPath", "").isEmpty()) invalid("Vault images");
+            String ref = o.optString("mediaRef", "").trim();
+            boolean image = OrbitVaultItem.TYPE_IMAGE.equals(o.optString("type", ""));
+            if (image) {
+                if (ref.isEmpty() || !decoded.containsKey(ref)) invalid("Vault images");
+                referenced.add(ref);
+            } else if (!ref.isEmpty()) {
+                invalid("Vault images");
+            }
+        }
+        if (referenced.size() != decoded.size()) invalid("Vault images");
     }
 
     private static Set<String> validateConversations(JSONArray a) throws Exception {
@@ -534,6 +620,99 @@ public final class OrbitBackupManager {
             }
         }
         data.put("attachments", attachments);
+    }
+
+    /**
+     * Turns the Vault's private picture files into portable records.
+     *
+     * <p>The same shape the conversation attachments above already use, and for the same reason:
+     * the bytes travel, the path does not. A file the Vault does not genuinely own, one that is not
+     * a JPEG, or one that has been deleted underneath the item is skipped, and the item that named
+     * it is dropped rather than exported pointing at nothing.
+     */
+    private static void addPortableVaultMedia(Context c, JSONObject data) throws Exception {
+        JSONArray items = data.optJSONArray("vault");
+        if (items == null) {
+            data.put("vault", new JSONArray());
+            data.put("vaultMedia", new JSONArray());
+            return;
+        }
+        JSONArray media = new JSONArray();
+        JSONArray kept = new JSONArray();
+        Map<String, String> refs = new HashMap<>();
+        long total = 0L;
+        for (int i = 0; i < items.length(); i++) {
+            JSONObject item = items.getJSONObject(i);
+            String path = item.optString("mediaPath", "").trim();
+            item.put("mediaPath", "");
+            boolean image = OrbitVaultItem.TYPE_IMAGE.equals(item.optString("type", ""));
+            if (!image) {
+                item.remove("mediaRef");
+                kept.put(item);
+                continue;
+            }
+            if (path.isEmpty() || !OrbitVaultMedia.owns(c, path)) continue;
+            String ref = refs.get(path);
+            if (ref == null) {
+                File file = new File(path);
+                if (!file.isFile()) continue;
+                byte[] bytes;
+                try (InputStream in = new FileInputStream(file)) {
+                    bytes = readLimited(in, MAX_VAULT_MEDIA_BYTES);
+                }
+                if (!isJpeg(bytes)) continue;
+                total += bytes.length;
+                if (total > MAX_TOTAL_VAULT_MEDIA_BYTES)
+                    throw new IllegalStateException("Vault images are too large to back up safely.");
+                ref = UUID.randomUUID().toString();
+                refs.put(path, ref);
+                media.put(new JSONObject().put("id", ref).put("mimeType", "image/jpeg")
+                        .put("size", bytes.length).put("data", Base64.encodeToString(bytes, Base64.NO_WRAP)));
+            }
+            item.put("mediaRef", ref);
+            kept.put(item);
+        }
+        data.put("vault", kept);
+        data.put("vaultMedia", media);
+    }
+
+    /**
+     * Writes each backed-up Vault picture as a fresh private file on this device.
+     *
+     * <p>An item whose bytes cannot be written is dropped rather than restored pointing at a file
+     * that is not there, which is what "missing media degrades safely" has to mean for a store that
+     * refuses to keep an image row without a picture. The files are recorded as created so a
+     * restore that later fails removes them along with everything else it wrote.
+     */
+    private static void materializeVaultMedia(Context c, JSONObject data, List<File> created)
+            throws Exception {
+        JSONArray items = optionalArray(data, "vault");
+        JSONArray records = optionalArray(data, "vaultMedia");
+        Map<String, String> paths = new HashMap<>();
+        for (int i = 0; i < records.length(); i++) {
+            JSONObject record = records.getJSONObject(i);
+            String path = OrbitVaultMedia.writeBytes(c,
+                    Base64.decode(record.getString("data"), Base64.DEFAULT));
+            if (path.isEmpty()) throw new IllegalStateException("Orbit could not prepare Vault image storage.");
+            created.add(new File(path));
+            paths.put(record.getString("id"), path);
+        }
+        JSONArray restored = new JSONArray();
+        for (int i = 0; i < items.length(); i++) {
+            JSONObject item = items.getJSONObject(i);
+            String ref = item.optString("mediaRef", "").trim();
+            item.remove("mediaRef");
+            if (!ref.isEmpty()) {
+                String path = paths.get(ref);
+                if (path == null || path.isEmpty()) continue;
+                item.put("mediaPath", path);
+            } else {
+                item.put("mediaPath", "");
+            }
+            restored.put(item);
+        }
+        data.put("vault", restored);
+        data.put("vaultMedia", new JSONArray());
     }
 
     private static void materializeAttachments(Context c, JSONObject data, List<File> created) throws Exception {

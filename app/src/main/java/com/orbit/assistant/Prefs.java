@@ -134,6 +134,14 @@ public final class Prefs {
      * is unaffected either way.
      */
     public static final String DECK_SUGGESTIONS = "deck_suggestions";
+    /**
+     * How the Vault list is ordered on this device.
+     *
+     * <p>Deliberately outside every Backup &amp; Restore key set below, alongside the Deck shortcut
+     * and the update channel. It is a view preference about this screen on this phone, not part of
+     * what the user saved, and a restored backup should not reorder somebody else's Vault.
+     */
+    public static final String VAULT_SORT = "vault_sort";
     // Onboarding keys intentionally remain outside Backup & Restore. A backup cannot
     // restore account credentials, Android permissions, or default-assistant state.
 
@@ -267,6 +275,17 @@ public final class Prefs {
     public static boolean localDeviceActions(Context c) { return get(c).getBoolean(LOCAL_DEVICE_ACTIONS, true); }
     public static boolean deckShortcut(Context c) { return get(c).getBoolean(DECK_SHORTCUT, true); }
     public static boolean deckSuggestions(Context c) { return get(c).getBoolean(DECK_SUGGESTIONS, true); }
+
+    /** The Vault's list order. Newest first for a fresh install and for any unreadable value. */
+    public static OrbitVaultStore.Sort vaultSort(Context c) {
+        return OrbitVaultStore.Sort.fromId(get(c).getString(VAULT_SORT, OrbitVaultStore.Sort.NEWEST.id));
+    }
+
+    public static void setVaultSort(Context c, OrbitVaultStore.Sort sort) {
+        get(c).edit().putString(VAULT_SORT,
+                (sort == null ? OrbitVaultStore.Sort.NEWEST : sort).id).apply();
+    }
+
     public static boolean speak(Context c) { return get(c).getBoolean(SPEAK, true); }
     public static boolean haptics(Context c) { return get(c).getBoolean(HAPTICS, true); }
     public static boolean autoListen(Context c) { return get(c).getBoolean(AUTO_LISTEN, false); }

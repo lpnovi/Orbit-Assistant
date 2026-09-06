@@ -10,19 +10,21 @@ import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.PopupWindow;
+import android.widget.Toast;
 
 /**
  * Contextual message actions for full chat and the Side-button overlay.
  *
  * <p>The conversation stays visually quiet. Long-pressing a message gives one haptic
  * acknowledgement, sends {@link OrbitMessageHighlight}'s accent ripple through the bubble, and
- * opens one Orbit menu: Copy and Regenerate on assistant replies (Regenerate only on the latest
- * turn), Copy and Edit &amp; resend on the user's own messages. Edit &amp; resend only returns the
- * text to the composer; sending still goes through the ordinary Send path and does not rewrite
- * history.
+ * opens one Orbit menu: Copy, Save to Vault and Regenerate on assistant replies (Regenerate only on
+ * the latest turn), Copy and Edit &amp; resend on the user's own messages. Edit &amp; resend only
+ * returns the text to the composer; sending still goes through the ordinary Send path and does not
+ * rewrite history. Save to Vault writes one local item and does not leave the conversation.
  */
 final class MessageActions {
     static final String COPY_MENU_LABEL = "Copy";
+    static final String SAVE_TO_VAULT_MENU_LABEL = "Save to Vault";
     static final String REGENERATE_MENU_LABEL = "Regenerate";
     static final String EDIT_MENU_LABEL = "Edit & resend";
 
@@ -70,16 +72,42 @@ final class MessageActions {
         return raw.replace("—", "-");
     }
 
+    /**
+     * The actions offered on a held assistant reply.
+     *
+     * <p>Save to Vault joins Copy on every reply rather than becoming a second permanent control
+     * under each message. The conversation stays visually quiet, which is the whole reason these
+     * actions live behind a long press, and saving is reached by the same gesture and in the same
+     * menu language as copying already was.
+     */
     static String[] assistantLabels(boolean canRegenerate) {
         return canRegenerate
-                ? new String[]{COPY_MENU_LABEL, REGENERATE_MENU_LABEL}
-                : new String[]{COPY_MENU_LABEL};
+                ? new String[]{COPY_MENU_LABEL, SAVE_TO_VAULT_MENU_LABEL, REGENERATE_MENU_LABEL}
+                : new String[]{COPY_MENU_LABEL, SAVE_TO_VAULT_MENU_LABEL};
     }
 
     static int[] assistantIcons(boolean canRegenerate) {
         return canRegenerate
-                ? new int[]{R.drawable.ic_copy, R.drawable.ic_regenerate}
-                : new int[]{R.drawable.ic_copy};
+                ? new int[]{R.drawable.ic_copy, R.drawable.ic_vault, R.drawable.ic_regenerate}
+                : new int[]{R.drawable.ic_copy, R.drawable.ic_vault};
+    }
+
+    /**
+     * Saves exactly the reply the user was looking at, and says so where they are.
+     *
+     * <p>What travels is {@link #assistantCopyText}: the same visible words Copy would put on the
+     * clipboard, and nothing else. No hidden prompt, no screen context, no reasoning, no provider
+     * or request identity, no attachment, and nothing from the rest of the conversation. This is
+     * local storage work: it opens no screen, sends no request, and leaves the conversation exactly
+     * where it was.
+     */
+    static void saveToVault(Context c, String rawText) {
+        if (c == null) return;
+        String visible = assistantCopyText(rawText);
+        if (visible.trim().isEmpty()) return;
+        boolean saved = OrbitVaultStore.saveOrbitReply(c, visible) != null;
+        Toast.makeText(c, saved ? "Saved to Vault" : "Orbit could not save that reply",
+                Toast.LENGTH_SHORT).show();
     }
 
     /**
@@ -101,7 +129,7 @@ final class MessageActions {
         String copyText = assistantCopyText(rawText);
         if (copyText.trim().isEmpty()) return;
         bindTree(bubble, v -> {
-            showAssistantMenu(bubble, copyText, canRegenerate, regenerate, afterCopy);
+            showAssistantMenu(bubble, rawText, copyText, canRegenerate, regenerate, afterCopy);
             return true;
         });
     }
@@ -141,12 +169,15 @@ final class MessageActions {
         clearHighlight();
     }
 
-    private static void showAssistantMenu(View bubble, String copyText, boolean canRegenerate,
+    private static void showAssistantMenu(View bubble, String rawText, String copyText,
+                                          boolean canRegenerate,
                                           Runnable regenerate, AfterCopy afterCopy) {
         showMenu(bubble, assistantLabels(canRegenerate), assistantIcons(canRegenerate),
                 (index, label) -> {
                     if (COPY_MENU_LABEL.equals(label)) {
                         copy(bubble.getContext(), "Orbit response", copyText, afterCopy);
+                    } else if (SAVE_TO_VAULT_MENU_LABEL.equals(label)) {
+                        saveToVault(bubble.getContext(), rawText);
                     } else if (REGENERATE_MENU_LABEL.equals(label) && regenerate != null) {
                         regenerate.run();
                     }

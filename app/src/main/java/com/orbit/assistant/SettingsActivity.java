@@ -494,7 +494,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         LinearLayout personalDataCard = card();
         tagSectionCard(personalDataCard, "data");
         TextView personalDataHelp = UiKit.text(this,
-                "Open Orbit's dedicated managers for saved places, remembered information, per-app behavior and notification context.",
+                "Open Orbit's dedicated managers for saved places, remembered information, your Vault, per-app behavior and notification context.",
                 13, UiKit.MUTED, false);
         personalDataHelp.setPadding(0, 0, 0, UiKit.dp(this, 12));
         personalDataCard.addView(personalDataHelp);
@@ -510,6 +510,16 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
         manageMemoryLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
         personalDataCard.addView(manageMemory, manageMemoryLp);
+
+        // Orbit Vault is reachable from the Chats header; this is the second way in, so turning off
+        // nothing can ever strand it. It is deliberately listed beside Memory and read as its
+        // opposite number: Memory is what Orbit may use on its own, the Vault is what the user kept.
+        Button openVault = secondaryButton("Open Orbit Vault");
+        openVault.setOnClickListener(v -> startActivity(new Intent(this, OrbitVaultActivity.class)));
+        LinearLayout.LayoutParams openVaultLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
+        openVaultLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
+        personalDataCard.addView(openVault, openVaultLp);
 
         Button manageApps = secondaryButton("Manage app profiles");
         manageApps.setOnClickListener(v -> startActivity(new Intent(this, AppsActivity.class)));
@@ -530,7 +540,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         LinearLayout backupCard = card();
         tagSectionCard(backupCard, "data");
         TextView backupHelp = UiKit.text(this,
-                "Orbit backups stay in the file you choose. They include local chats, Memory, Routines, safe extension manifests, reminders, saved places and personalization. Sensitive account credentials are not included. Android permissions and default-assistant status are not included and may need to be granted again after reinstalling Orbit.",
+                "Orbit backups stay in the file you choose. They include local chats, Memory, your Vault, Routines, safe extension manifests, reminders, saved places and personalization. Sensitive account credentials are not included. Android permissions and default-assistant status are not included and may need to be granted again after reinstalling Orbit.",
                 13, UiKit.MUTED, false);
         backupHelp.setPadding(0, 0, 0, UiKit.dp(this, 12));
         backupCard.addView(backupHelp);

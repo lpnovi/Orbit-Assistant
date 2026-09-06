@@ -48,6 +48,7 @@ public final class ShareToOrbitTest {
         Prefs.get(context).edit().clear().commit();
         DiagnosticStore.prefs(context).edit().clear().commit();
         ConversationStore.clear(context);
+        OrbitVaultStore.prefs(context).edit().clear().commit();
         SharedContentStore.clear();
         drain();
     }
@@ -281,6 +282,77 @@ public final class ShareToOrbitTest {
         assertFalse(PendingRequestStore.hasActiveForConversation(context, conversationId));
     }
 
+    // ---- where a share goes -------------------------------------------------------------------------------
+
+    /**
+     * A share the Vault can hold is asked about; anything else takes the path it always took.
+     *
+     * <p>The second half matters as much as the first. Being asked a question with only one real
+     * answer - four photos, when the Vault keeps one - would be worse than not being asked, so the
+     * prompt is deliberately narrow and everything outside it is unchanged.
+     */
+    @Test public void onlySharesTheVaultCanHoldAreAskedAbout() {
+        assertTrue("plain text", ShareToOrbitActivity.vaultCanHold(
+                "some notes", new ArrayList<>(), "text/plain"));
+        assertTrue("one address", ShareToOrbitActivity.vaultCanHold(
+                "https://example.com/a", new ArrayList<>(), "text/plain"));
+        assertTrue("one photo", ShareToOrbitActivity.vaultCanHold(
+                "", java.util.Collections.singletonList(uri("photo")), "image/jpeg"));
+
+        assertFalse("four photos", ShareToOrbitActivity.vaultCanHold(
+                "", Arrays.asList(uri("a"), uri("b"), uri("c"), uri("d")), "image/*"));
+        assertFalse("a caption alongside a photo", ShareToOrbitActivity.vaultCanHold(
+                "which is sharper?", java.util.Collections.singletonList(uri("a")), "image/jpeg"));
+        assertFalse("a PDF", ShareToOrbitActivity.vaultCanHold(
+                "", java.util.Collections.singletonList(uri("doc")), "application/pdf"));
+        assertFalse("a mixed set Orbit resolves per item", ShareToOrbitActivity.vaultCanHold(
+                "", java.util.Collections.singletonList(uri("thing")), "*/*"));
+        assertFalse("nothing at all", ShareToOrbitActivity.vaultCanHold(
+                "   ", new ArrayList<>(), "text/plain"));
+    }
+
+    @Test public void ashareOfSeveralPhotosOpensTheConversationWithNoQuestion() {
+        runShare(sendMultiple(uri("a"), uri("b"), uri("c")), null);
+        assertFalse("Orbit must not ask about a share it could only answer one way", lastAsked);
+        assertEquals(2, allStarted().size());
+        assertEquals(ChatActivity.class.getName(),
+                allStarted().get(1).getComponent().getClassName());
+    }
+
+    @Test public void ashareOfTextOffersBothDestinations() {
+        runShare(sendText("worth keeping"), null);
+        assertTrue("Orbit asks rather than deciding for the user", lastAsked);
+        assertTrue("and opens nothing until it is answered", allStarted().isEmpty());
+    }
+
+    /** Choosing the Vault writes one local item and opens no conversation. */
+    @Test public void choosingTheVaultSavesLocallyAndOpensNothing() {
+        runShare(sendText("https://example.com/keep-this"), ShareToOrbitActivity.SAVE_TO_VAULT);
+
+        assertTrue("no conversation is opened", allStarted().isEmpty());
+        assertEquals(1, OrbitVaultStore.count(context));
+        OrbitVaultItem saved = OrbitVaultStore.list(context).get(0);
+        assertEquals(OrbitVaultItem.TYPE_LINK, saved.type);
+        assertEquals("https://example.com/keep-this", saved.body);
+        assertEquals(ShareToOrbitActivity.SOURCE_LABEL, saved.source);
+    }
+
+    /** Choosing Orbit writes nothing to the Vault; the two destinations stay separate. */
+    @Test public void choosingOrbitSavesNothingToTheVault() {
+        runShare(sendText("just asking"), ShareToOrbitActivity.ASK_ORBIT);
+        assertEquals(0, OrbitVaultStore.count(context));
+        assertEquals(2, allStarted().size());
+    }
+
+    /** Cancelling the question does neither thing, which is what cancelling has to mean. */
+    @Test public void cancellingTheQuestionSavesNothingAndOpensNothing() {
+        runShare(sendText("changed my mind"), null);
+        assertTrue(lastAsked);
+        assertTrue(allStarted().isEmpty());
+        assertEquals(0, OrbitVaultStore.count(context));
+    }
+
+
     // ---- the staging token ------------------------------------------------------------------------------
 
     /** A token is spent as it is read, so a recreated screen cannot apply the same share twice. */
@@ -405,11 +477,26 @@ public final class ShareToOrbitTest {
     private final List<Intent> lastStarted = new ArrayList<>();
 
     private void runShare(Intent intent) {
+        runShare(intent, ShareToOrbitActivity.ASK_ORBIT);
+    }
+
+    /**
+     * Runs the share bridge, answering its destination question with {@code destination}.
+     *
+     * <p>Every assertion in this file about what a share does next is about the conversation path,
+     * so the default answer is Ask Orbit. That is the point: v0.7.8.4 added a Vault destination
+     * without changing what sharing into Orbit has always meant, and these cases still prove the
+     * old behaviour, now reached through the choice rather than around it. Shares the Vault cannot
+     * hold are never asked about at all, so for those this does nothing.
+     */
+    private void runShare(Intent intent, String destination) {
         drain();
         lastStarted.clear();
+        org.robolectric.shadows.ShadowDialog.reset();
         intent.setComponent(new android.content.ComponentName(context, ShareToOrbitActivity.class));
         ActivityController<ShareToOrbitActivity> controller =
                 Robolectric.buildActivity(ShareToOrbitActivity.class, intent).create();
+        answerDestinationPrompt(destination);
         // The bridge starts its stack from the Activity, so the Activity's shadow is what records
         // it; the application shadow would report nothing at all.
         org.robolectric.shadows.ShadowActivity shadow = Shadows.shadowOf(controller.get());
@@ -419,6 +506,25 @@ public final class ShareToOrbitTest {
         // built, so they are put back into the order startActivities was given them in.
         java.util.Collections.reverse(lastStarted);
         controller.destroy();
+    }
+
+    /** Whether the last share was asked about, recorded before the prompt is answered. */
+    private boolean lastAsked;
+
+    /** Answers Orbit's destination prompt, or does nothing when there was never one. */
+    private void answerDestinationPrompt(String destination) {
+        android.app.AlertDialog dialog =
+                org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+        lastAsked = dialog != null && dialog.isShowing();
+        if (!lastAsked || destination == null) return;
+        int button = ShareToOrbitActivity.SAVE_TO_VAULT.equals(destination)
+                ? android.app.AlertDialog.BUTTON_NEGATIVE
+                : android.app.AlertDialog.BUTTON_POSITIVE;
+        android.widget.Button control = dialog.getButton(button);
+        if (control != null) control.performClick();
+        // AlertDialog dispatches a button press through a Handler message, so the answer has not
+        // actually been acted on until the looper has run.
+        org.robolectric.shadows.ShadowLooper.idleMainLooper();
     }
 
     private static Intent sendText(String text) {

@@ -52,16 +52,19 @@ public final class MessageActionsTest {
         assertEquals(body.toString().trim(), copied);
     }
 
-    @Test public void theLatestAssistantTurnOffersCopyAndRegenerate() {
-        assertArrayEquals(new String[]{MessageActions.COPY_MENU_LABEL, MessageActions.REGENERATE_MENU_LABEL},
+    @Test public void theLatestAssistantTurnOffersCopySaveAndRegenerate() {
+        assertArrayEquals(new String[]{MessageActions.COPY_MENU_LABEL,
+                        MessageActions.SAVE_TO_VAULT_MENU_LABEL, MessageActions.REGENERATE_MENU_LABEL},
                 MessageActions.assistantLabels(true));
-        assertEquals(2, MessageActions.assistantIcons(true).length);
+        assertEquals(3, MessageActions.assistantIcons(true).length);
     }
 
-    @Test public void olderAssistantTurnsOfferCopyOnly() {
-        assertArrayEquals(new String[]{MessageActions.COPY_MENU_LABEL},
+    /** Regenerate belongs to the latest turn alone. Saving an older answer is always offered. */
+    @Test public void olderAssistantTurnsOfferCopyAndSave() {
+        assertArrayEquals(new String[]{MessageActions.COPY_MENU_LABEL,
+                        MessageActions.SAVE_TO_VAULT_MENU_LABEL},
                 MessageActions.assistantLabels(false));
-        assertEquals(1, MessageActions.assistantIcons(false).length);
+        assertEquals(2, MessageActions.assistantIcons(false).length);
     }
 
     /**

@@ -1221,14 +1221,54 @@ Stable. Each Beta is recorded in full above; in short:
   new regression, so promotion changed version metadata and release documentation only, with no
   functional source change
 
+### 0.7.8.4 - Orbit Vault (active Beta line)
+
+Orbit Vault is no longer future planning. `v0.7.8.4-beta.1` ships the foundation of the loop the
+whole feature rests on - capture, save, find, reopen - and deliberately stops there, because the
+useful question about a Vault is whether the basic loop is worth reaching for, not how clever it can
+be made before anyone has used it.
+
+**What Beta 1 ships**
+
+- **A durable local Vault.** `OrbitVaultItem` and `OrbitVaultStore` hold four stable item types -
+  text, link, image and saved Orbit answer - as app-private JSON, with pictures as app-private files
+  that `OrbitVaultMedia` owns. Stable internal type ids, no Java serialization, no storage
+  permission, and a damaged document costs the damaged rows rather than the screen
+- **A Vault screen**, opened from the Chats header and from Settings, with search, sort, a polished
+  empty state, and a responsive one-to-three column layout for phone and tablet
+- **Quick Capture**: write text, paste the clipboard, or add a photo through the Gallery preference
+  Orbit already owns. Entirely offline, and the clipboard is read only from that one tap
+- **Share to Orbit gains a destination.** Plain text, one address or one photo now offers
+  **Ask Orbit** or **Save to Vault**; anything the Vault cannot hold as one item opens a
+  conversation with no question at all, exactly as before
+- **Save to Vault on an Orbit answer**, in the existing long-press message menu on both surfaces.
+  The visible reply text only, and the conversation is not left
+- **Item view and editing**: open, rename, edit a note's own text, copy, share text, open a link
+  through Orbit's safe browser handoff, and delete with confirmation. A saved answer's body and a
+  link's address stay read-only, because they are records rather than drafts
+- **Backup & Restore participation**, additively: Vault text and metadata travel as an ordinary
+  array and Vault pictures as verified JPEG records with their own size budget. Backups written
+  before the Vault existed restore normally, and a device-local path inside an imported backup is
+  refused
+- **Local-first throughout.** Zero provider calls, no background indexing, no clipboard monitoring,
+  no photo scanning, no cloud sync, and no automatic feeding of Vault content into prompts
+
+**Deliberately not in Beta 1**, and still future work below: **Ask Orbit about this**, semantic or
+vector search, AI organization, tags and summaries, OCR, automatic article extraction, document
+snippets, folders and smart collections, cloud sync and shared Vaults, Routine and Extension access
+to the Vault, a full Side-button Vault browser, and deeper Orbit Deck integration.
+
 # Next
 
-## Orbit Vault / Quick Capture
+## Orbit Vault, after Beta 1
 
-The next major development priority, after Theme Studio. A searchable local-first collection for
-quickly saving screenshots, selected text, clipboard content, photos, useful Orbit answers, and
-later document snippets, with quick capture and share flows, a future **Ask Orbit about this** flow,
-and an eventual Orbit Deck tile.
+Beta 1 built the private foundation. What remains is teaching Orbit to work with what the user has
+saved, and only once the basic loop has proved itself on a real device:
+
+- **Ask Orbit about this**, a deliberate, user-invoked send of one saved item to the active provider
+- Richer organization - collections, tags, or pinning - if a real collection turns out to need it
+- Document snippets and saved screenshots, reusing Orbit's existing document and screen pipelines
+- An Orbit Deck tile, and a light Vault presence in the Side-button overlay
 
 # Later
 

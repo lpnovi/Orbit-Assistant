@@ -1,10 +1,14 @@
 package com.orbit.assistant;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.Toast;
 
 import java.util.ArrayList;
@@ -17,9 +21,16 @@ import java.util.Locale;
  * <p>It exists so that untrusted external input has exactly one narrow door. Chats and the
  * conversation screen are Orbit's own screens with Orbit's own state; letting either of them parse
  * an Intent any installed app can construct would put hostile input next to everything they hold.
- * This Activity draws nothing, keeps nothing, and does five things: validate the Intent, collect
- * what it legitimately carries, stage that under a private token, open the real conversation with
- * a proper task stack behind it, and finish.
+ * This Activity draws almost nothing, keeps nothing, and does five things: validate the Intent,
+ * collect what it legitimately carries, stage that under a private token, hand it to the
+ * destination the user chose with a proper task stack behind it, and finish.
+ *
+ * <p>There are two destinations from v0.7.8.4. Sharing into Orbit has always meant "open a composer
+ * holding this", and that is still what happens: for anything the Vault cannot keep as one item -
+ * a PDF, a text file, several photos, a caption alongside pictures - the conversation opens with no
+ * question asked, exactly as before. For plain text, one address, or one photo, Orbit asks whether
+ * to ask about it or keep it, because those are the two things a person actually means. Saving is
+ * local storage work and sends nothing.
  *
  * <p><b>Nothing here is ever executed or interpreted.</b> Shared text is text: it is not a command,
  * not a package name, not a component name, not a file path, not an Orbit action, and not an
@@ -32,6 +43,12 @@ import java.util.Locale;
  * model: the user decides what to ask, or closes it and nothing happened.
  */
 public final class ShareToOrbitActivity extends Activity {
+
+    /** The two destinations offered for a share the Vault could hold. */
+    static final String ASK_ORBIT = "Ask Orbit";
+    static final String SAVE_TO_VAULT = "Save to Vault";
+    /** What a Vault item saved this way records about where it came from. */
+    static final String SOURCE_LABEL = "Shared to Orbit";
 
     /** MIME types Orbit will accept from a share, matching what AttachmentLoader can really read. */
     private static boolean isSupportedStreamType(String type) {
@@ -48,6 +65,9 @@ public final class ShareToOrbitActivity extends Activity {
                 || lower.equals("application/xml");
     }
 
+    /** True while Orbit's own choice of destination is on screen and this bridge must stay open. */
+    private boolean awaitingChoice;
+
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         // A configuration change must not re-stage the same share: the first pass already handed
@@ -60,7 +80,7 @@ public final class ShareToOrbitActivity extends Activity {
             DiagnosticStore.recordShareToOrbit(this, "none", "rejected", 0);
             Toast.makeText(this, "Orbit could not read what was shared", Toast.LENGTH_SHORT).show();
         }
-        finish();
+        if (!awaitingChoice) finish();
     }
 
     private void handleShare(Intent intent) {
@@ -107,6 +127,98 @@ public final class ShareToOrbitActivity extends Activity {
             chat.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         }
 
+        // Where this share should go. Sharing into Orbit has always meant "open a composer holding
+        // this", and that meaning is kept: the conversation is still what happens unless the user
+        // says otherwise, and it is still reached with no question at all for anything the Vault
+        // cannot hold. What is new is that a share the Vault *can* hold is asked about rather than
+        // decided for the user.
+        if (vaultCanHold(text, uris, declaredType)) {
+            askDestination(text, uris, token, chat);
+            return;
+        }
+        openConversation(chat);
+    }
+
+    /**
+     * Whether this share is one the Vault could keep as a single item.
+     *
+     * <p>Deliberately narrow: text on its own, or exactly one picture on its own. A PDF, a text
+     * file, four photos, or a caption alongside images is material for a conversation and takes the
+     * path it always took, with no dialog in the way. Being asked a question Orbit can only answer
+     * one way would be worse than not being asked.
+     */
+    static boolean vaultCanHold(String text, List<Uri> uris, String declaredType) {
+        boolean hasText = text != null && !text.trim().isEmpty();
+        if (uris == null || uris.isEmpty()) return hasText;
+        if (hasText || uris.size() != 1) return false;
+        String type = declaredType == null ? "" : declaredType.toLowerCase(Locale.US).trim();
+        return type.startsWith("image/");
+    }
+
+    /**
+     * Asks where the share should land, and does nothing at all until the answer arrives.
+     *
+     * <p>Cancelling is a real third answer. The staged token is simply never spent, expires on its
+     * own, and no conversation is created and no item is saved - which is what "I opened the wrong
+     * thing" should cost.
+     */
+    private void askDestination(String text, List<Uri> uris, String token, Intent chat) {
+        awaitingChoice = true;
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Share to Orbit")
+                .setMessage("Ask Orbit about this, or keep it in your Vault. "
+                        + "Nothing is sent to Orbit's AI until you send it.")
+                .setNegativeButton(SAVE_TO_VAULT, (d, which) -> {
+                    saveSharedToVault(text, uris, token);
+                    finish();
+                })
+                .setPositiveButton(ASK_ORBIT, (d, which) -> {
+                    openConversation(chat);
+                    finish();
+                })
+                .setOnCancelListener(d -> finish())
+                .create();
+        UiKit.styleOrbitDialog(dialog, this, false);
+        dialog.setCanceledOnTouchOutside(false);
+        Window window = dialog.getWindow();
+        if (window != null) {
+            // The bridge itself draws nothing, so the dialog brings its own scrim rather than
+            // floating over whichever app did the sharing with no separation at all.
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            window.setDimAmount(0.55f);
+        }
+        dialog.show();
+    }
+
+    /**
+     * Keeps the shared material as one Vault item, locally.
+     *
+     * <p>The staged token is spent here even though the composer never sees it, so a share that
+     * went to the Vault cannot also be replayed into a conversation. Nothing is sent anywhere: text
+     * is written to Orbit's own storage, and a picture is copied into it.
+     */
+    private void saveSharedToVault(String text, List<Uri> uris, String token) {
+        SharedContentStore.consume(token);
+        boolean saved = false;
+        if (uris != null && !uris.isEmpty()) {
+            try {
+                Bitmap picture = AttachmentLoader.decodeImage(this, uris.get(0),
+                        OrbitVaultMedia.MAX_PIXELS);
+                if (picture != null) {
+                    saved = OrbitVaultStore.saveImage(this, picture, "", SOURCE_LABEL) != null;
+                    picture.recycle();
+                }
+            } catch (Exception ignored) {
+                saved = false;
+            }
+        } else {
+            saved = OrbitVaultStore.saveText(this, "", text, SOURCE_LABEL) != null;
+        }
+        Toast.makeText(this, saved ? "Saved to Vault" : "Orbit could not save what was shared",
+                Toast.LENGTH_SHORT).show();
+    }
+
+    private void openConversation(Intent chat) {
         // A real stack, so Back from the shared conversation goes to Chats rather than straight
         // back to whichever app did the sharing. CLEAR_TOP with SINGLE_TOP on Chats is what stops
         // a second copy of it being created behind every share.

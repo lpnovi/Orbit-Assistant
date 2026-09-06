@@ -365,6 +365,17 @@ public class MainActivity extends Activity {
             deckLp.rightMargin = UiKit.dp(this, 2);
             top.addView(deck, deckLp);
         }
+        // Orbit Vault. A destination rather than a mode, so it sits with Deck and Settings in the
+        // header and never takes the page: Chats remains what the app opens on.
+        ImageButton vault = iconButton(com.orbit.assistant.R.drawable.ic_vault, "Open Orbit Vault");
+        vault.setOnClickListener(v -> {
+            startActivity(new Intent(this, OrbitVaultActivity.class));
+            UiKit.applyPageTransition(this);
+        });
+        LinearLayout.LayoutParams vaultLp = new LinearLayout.LayoutParams(
+                UiKit.dp(this, 48), UiKit.dp(this, 48));
+        vaultLp.rightMargin = UiKit.dp(this, 2);
+        top.addView(vault, vaultLp);
         ImageButton settings = iconButton(com.orbit.assistant.R.drawable.ic_settings, "Settings");
         settings.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
         top.addView(settings, new LinearLayout.LayoutParams(UiKit.dp(this, 48), UiKit.dp(this, 48)));

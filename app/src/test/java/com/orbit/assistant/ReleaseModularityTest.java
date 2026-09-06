@@ -185,23 +185,25 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * Theme Studio passed six device Betas and is now Stable.
+     * Orbit Vault ships first as a Beta, because most of what it promises is only answerable on a
+     * phone.
      *
-     * <p>The suite proves the parts that have to be right: a theme round-trips through a file
-     * unchanged, a file that is not an Orbit theme is refused with one sentence rather than a
-     * parser error, an oversized file is never read, no external file can claim built-in identity
-     * or land on top of a theme the user already saved, and popup placement is deterministic.
+     * <p>The suite proves the parts a machine can settle: an item round-trips through the store,
+     * search and sorting are deterministic and offline, one bare address becomes a link and a
+     * paragraph does not, deleting an image removes the private file it owned and nothing else,
+     * a damaged store loses the damaged row rather than the screen, a pre-Vault backup still
+     * restores, and no save reaches a provider.
      *
-     * <p>What it could never settle is the final visual feel on Samsung hardware: whether a
-     * preview reads as Orbit, whether a Color menu sits where a thumb expects it. A Galaxy S25
-     * Ultra answered that on Beta 6, so Stable carries Beta 6's behaviour unchanged and the
-     * guard's job is now to stop a versionName that quietly regains prerelease metadata from
-     * being published here.
+     * <p>What it cannot settle is whether the loop actually feels worth using: whether Quick
+     * Capture is fast enough to reach for, whether the share choice lands in the right place, and
+     * whether a Galaxy S25 Ultra draws the cards the way they read here. That is what the Beta is
+     * for, so this must publish as a prerelease and never as a Stable release.
      */
-    @Test public void thisReleaseIsThemeStudioStable() {
-        assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
-                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.installedIsBeta());
+    @Test public void thisReleaseIsTheFirstOrbitVaultBeta() {
+        assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
+                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+        assertTrue(OrbitVersion.installedIsBeta());
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
     }
 

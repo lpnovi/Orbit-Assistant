@@ -719,3 +719,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Nothing changes until you press Apply, and Orbit asks before discarding unapplied edits.
   - Orbit warns when a combination would be hard to read, and keeps AMOLED backgrounds truly black.
   - Your existing accent, AMOLED and bubble colours carry over exactly.
+
+- **v0.7.8.4-beta.1**: Orbit Vault arrives, a private place on your phone for things you want to keep.
+  - Save text, links, images and useful Orbit answers to a Vault that lives only on this device.
+  - Quick Capture writes a note, saves your clipboard, or adds a photo without starting a conversation.
+  - Sharing text, a link or a photo from another app now asks whether to ask Orbit or save it.
+  - Hold an Orbit answer in a chat and choose Save to Vault, without leaving the conversation.
+  - Search, reopen, rename, edit and delete saved items, all offline and with no AI request.
+  - Your Vault is included in Orbit backups, and Orbit never sends its contents anywhere on its own.
