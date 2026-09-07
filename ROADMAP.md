@@ -27,6 +27,9 @@ and shares does.
 - **A compact Screen Selection Vault control**, replacing Beta 3's full-width row and giving that
   band of the screen back to the selection itself
 - **Both roadmaps rebuilt**, which is this section
+- **Real-device refinement**, on a Galaxy S25 Ultra first and a Tab S9 Plus after it: chip density
+  at phone width, the source popup, the pinned section with real pinned things in it, long titles,
+  large text, AMOLED, and the height the screen-selection preview actually gets back
 
 Deliberately not in Beta 4: folders, tags, collections, smart collections, AI organization, semantic
 search, OCR, webpage extraction and summaries.
