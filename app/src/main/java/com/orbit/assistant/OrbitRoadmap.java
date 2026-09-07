@@ -17,12 +17,10 @@ package com.orbit.assistant;
  */
 public final class OrbitRoadmap {
 
-    /** What is being built right now. */
-    public static final String CURRENT = "Vault organization";
-    /** The next major line after the Vault reaches Stable. */
-    public static final String NEXT = "Rich Answers";
+    /** The active line after Orbit Vault reached Stable. */
+    public static final String CURRENT = "Rich Answers / Visual Web Results";
     /**
-     * The smaller piece of the same release as {@link #NEXT}.
+     * The smaller piece of the same release as {@link #CURRENT}.
      *
      * <p>Listed here rather than left to prose because it is exactly the kind of entry that gets
      * quietly promoted or quietly dropped. Settings search ships alongside Rich Answers in
@@ -38,7 +36,7 @@ public final class OrbitRoadmap {
      * <p>The list is short on purpose. It is a guard against silent drift on the things a reader
      * would be actively misled by, not an index of everything either document says.
      */
-    public static final String[] MILESTONES = {CURRENT, NEXT, ALONGSIDE, AFTER};
+    public static final String[] MILESTONES = {CURRENT, ALONGSIDE, AFTER};
 
     private OrbitRoadmap() {}
 }

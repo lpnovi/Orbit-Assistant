@@ -88,13 +88,11 @@ public final class RoadmapSyncTest {
     @Test public void theOrderIsTheSameInBothRoadmaps() {
         for (String text : new String[]{markdown(), inApp()}) {
             int current = text.indexOf(OrbitRoadmap.CURRENT);
-            int next = text.indexOf(OrbitRoadmap.NEXT);
             int alongside = text.indexOf(OrbitRoadmap.ALONGSIDE);
             int after = text.indexOf(OrbitRoadmap.AFTER);
-            assertTrue("Vault organization comes first", current >= 0);
-            assertTrue("Rich Answers follows the Vault", next > current);
+            assertTrue("Rich Answers is the active line", current >= 0);
             assertTrue("Settings search is listed under Rich Answers, not above it",
-                    alongside > next);
+                    alongside > current);
             assertTrue("and Smart Vault still follows both", after > alongside);
         }
     }
@@ -138,7 +136,7 @@ public final class RoadmapSyncTest {
      */
     @Test public void richAnswersIsRecordedAsReusingOrbitsOwnImageViewerAndVault() {
         String file = markdown();
-        int at = file.indexOf(OrbitRoadmap.NEXT);
+        int at = file.indexOf(OrbitRoadmap.CURRENT);
         assertTrue(at >= 0);
         String section = file.substring(at, Math.min(file.length(), at + 2600));
         assertTrue("inline images must open in the image viewer Orbit already has",

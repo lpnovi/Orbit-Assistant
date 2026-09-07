@@ -764,3 +764,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Your Vault feed now has a Saved Items heading, matching the way Chats labels its own list.
   - Saved from only offers the places the kind of item you are viewing actually came from.
   - Settings search is now on the roadmap for 0.7.8.5.
+
+- **v0.7.8.4**: Orbit Vault is now Stable.
+  - Save text, links, images, Orbit answers, Screen Selections and PDF pages, with optional notes, local search, filters and pinning.
+  - Use Quick Capture, or save supported text, links and images from Share to Orbit.
+  - Bring saved content into conversations with Ask Orbit and Attach from Vault.
+  - Open Vault and Quick Capture directly from Orbit Deck.
+  - Swipe Vault items to pin or delete them like Chats, with safe Undo for deletion.
+  - First-run Theme Studio setup now covers presets, AMOLED, fonts and chat text size, while Chats and Vault share refined floating glass.

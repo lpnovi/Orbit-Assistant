@@ -61,13 +61,14 @@ public final class RoadmapFutureOnlyTest {
             // is shipped work. Teaching it Orbit's device actions is what genuinely remains.
             "Modular Orbit Local",
             // v0.7.8.4 beta.1 to beta.3 shipped the Vault itself, saving from Orbit's own
-            // surfaces, notes, Ask Orbit, Attach from Vault and the Deck destinations. Only the
-            // organization of a grown collection is current work, and it has its own name.
+            // surfaces, notes, Ask Orbit, Attach from Vault and the Deck destinations. Betas 4 to
+            // 6 finished organization and polish, and the complete line is now Stable.
             //
             // "Save to Vault" is deliberately absent from this list: it is shipped, and it is also
             // a real part of the Rich Answers plan, where an inline web image has to reach the
             // Vault through the path that already exists rather than a second one.
             "Orbit Vault arrives",
+            "Vault organization",
             "Quick Capture",
             "Attach from Vault",
             "Vault notes",
@@ -104,12 +105,12 @@ public final class RoadmapFutureOnlyTest {
     @Test public void thePageLeadsWithTheCurrentPlan() {
         String text = roadmapText();
         assertTrue("the page must say what is being built now", text.contains("NOW"));
-        assertTrue(text.contains("NEXT"));
+        assertTrue(text.contains("AFTER - 0.7.8.6"));
         assertTrue(text.contains("LATER"));
         assertTrue(text.contains("EXPLORING"));
 
-        assertTrue("Vault organization is the current work", text.contains(OrbitRoadmap.CURRENT));
-        assertTrue("Rich Answers is the next major line", text.contains(OrbitRoadmap.NEXT));
+        assertTrue("Rich Answers is the current line", text.contains(OrbitRoadmap.CURRENT));
+        assertTrue("Settings search ships alongside it", text.contains(OrbitRoadmap.ALONGSIDE));
         assertTrue("and Smart Vault follows it", text.contains(OrbitRoadmap.AFTER));
     }
 
@@ -120,11 +121,11 @@ public final class RoadmapFutureOnlyTest {
     @Test public void olderIdeasSitBelowTheActivePlan() {
         String text = roadmapText();
         int current = text.indexOf(OrbitRoadmap.CURRENT);
-        int next = text.indexOf(OrbitRoadmap.NEXT);
+        int alongside = text.indexOf(OrbitRoadmap.ALONGSIDE);
         int after = text.indexOf(OrbitRoadmap.AFTER);
         assertTrue("the current work must be listed first", current >= 0);
-        assertTrue("Rich Answers follows the current work", next > current);
-        assertTrue("and Smart Vault follows Rich Answers", after > next);
+        assertTrue("Settings search follows Rich Answers in the same line", alongside > current);
+        assertTrue("and Smart Vault follows 0.7.8.5", after > alongside);
 
         for (String older : new String[]{"Local device actions", "Calendar awareness",
                 "More branch points & conditions", "Deeper Android actions", "Cook with Orbit",

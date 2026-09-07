@@ -89,28 +89,24 @@ public final class RoadmapActivity extends Activity {
         // Rebuilt in v0.7.8.4-beta.4. The page had drifted badly: it still opened with 0.7.7-era
         // priorities under NEXT UP while the whole project had moved on to Orbit Vault, so a user
         // reading it came away with a confident and wrong idea of what Orbit was working on. The
-        // shape is now the same shape ROADMAP.md uses - what is being built, what is next, what
-        // follows it, and what is genuinely further out - and the three active milestone names are
+        // shape is now the same shape ROADMAP.md uses - what is being built, what ships beside it,
+        // what follows it, and what is genuinely further out - and the active milestone names are
         // read from OrbitRoadmap so the two documents cannot silently disagree about them again.
         //
         // Older entries were not deleted. Local device actions, branching conditions, the cooking
         // session, Orbit-managed timers, OpenRouter chat and the rest are all real unfinished work
         // and are still listed; they have simply stopped being presented as the next thing to
         // happen, which they had not been for several releases.
-        addGroup(page, "NOW", new String[][]{
-                {OrbitRoadmap.CURRENT, "Making a growing Vault easy to navigate: filters by kind "
-                        + "and source, pinning for the things you keep coming back to, and search "
-                        + "that works with both."}
-        });
-        addGroup(page, "NEXT", new String[][]{
-                {OrbitRoadmap.NEXT, "Useful, clearly sourced images inside web answers, opening in "
+        addGroup(page, "NOW - 0.7.8.5", new String[][]{
+                {OrbitRoadmap.CURRENT, "Useful, clearly sourced images inside web answers, opening in "
                         + "Orbit's own image viewer with Save to Vault, and never shown when they "
                         + "add nothing."},
-                // Shipped in the same release as Rich Answers, and deliberately listed under it
-                // rather than beside it: it is the smaller piece of 0.7.8.5, not a second headline.
                 {OrbitRoadmap.ALONGSIDE, "Type what you want to change and go straight to it. "
                         + "Settings has grown enough that hunting for one control takes longer "
-                        + "than changing it. Local and instant; no AI involved."},
+                        + "than changing it. A 0.7.8.5 UX enhancement that stays local and instant, "
+                        + "with no AI involved."}
+        });
+        addGroup(page, "AFTER - 0.7.8.6", new String[][]{
                 {OrbitRoadmap.AFTER, "Making saved things easier to find and understand, with "
                         + "optional semantic search, text read from images you saved, and richer "
                         + "retrieval of saved pages. Always explicit, never automatic."}

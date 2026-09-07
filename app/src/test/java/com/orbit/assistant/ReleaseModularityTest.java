@@ -185,46 +185,16 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * Orbit Vault's third Beta, for the same reason as the first two: most of what it changes is
-     * only answerable on a phone.
+     * Orbit Vault passed its six-Beta release line and is now Stable.
      *
-     * <p>The suite proves the parts a machine can settle: a saved document page keeps its
-     * document, its page number, its bounded text and its own private rendering; deleting one
-     * removes that rendering and nothing else; a page whose rendering is gone still loads; a
-     * screen selection and a text selection save only when the user asks and only while the Vault
-     * is on; the Deck destinations resolve and refuse politely when it is off; onboarding writes
-     * the canonical theme and keeps AMOLED independent of the preset; and Beta 1 and Beta 2
-     * stores and backups still load.
-     *
-     * <p>Beta 4 adds the organization half of the same claim: type and source filters decided on
-     * canonical values, filters and search that compose, truthful empty states, and a pin that is
-     * durable, backed up and absent from every earlier document.
-     *
-     * <p>Beta 5 adds no feature and is the release candidate for the line. The suite proves that
-     * the horizontal chip strip is gone, that Type and Saved from reset independently of each
-     * other and of the search field, that a canonical source is still stored while a clearer label
-     * is drawn, that Vault cards use the same shared swipe row as Chats, and that a swipe deletion
-     * can be undone with the item's picture intact.
-     *
-     * <p>Beta 6 adds no behaviour at all. It replaces the drawn boundary between each screen's
-     * controls and the list beneath them with one shared floating-glass treatment, and the suite
-     * proves the parts a machine can settle about that: Chats and the Vault draw the same scrim at
-     * the same depth over their lists rather than beside them, the accent rule Chats used to draw
-     * is gone with nothing in its place, the glass takes its colour from the active Theme Studio
-     * theme rather than from one Orbit palette, text on it still meets AA in every shipped preset,
-     * and no capture, blur, dependency or API-level branch was added to reach it.
-     *
-     * <p>What none of it can settle is whether the two selectors read as one glance at Galaxy S25
-     * Ultra width, whether the swipe feels the same in the hand as it does in Chats, whether a
-     * long PDF title visibly has the room the removed Pin button was taking, and - the whole point
-     * of this Beta - whether the transition into the feed now reads as one continuous surface. That
-     * is what the Beta is for, so this must publish as a prerelease and never as a Stable release.
+     * <p>The complete suite proves the machine-checkable save, restore, backup, attachment,
+     * organization, swipe, Undo, onboarding and floating-glass contracts. The tested Beta 6 product
+     * behaviour is unchanged here, so this guard now prevents prerelease metadata from returning.
      */
-    @Test public void thisReleaseIsAnOrbitVaultBeta() {
-        assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
-                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
-        assertTrue(OrbitVersion.installedIsBeta());
+    @Test public void thisReleaseIsOrbitVaultStable() {
+        assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
+                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.installedIsBeta());
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
     }
 

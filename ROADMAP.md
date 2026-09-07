@@ -7,7 +7,13 @@ canonical record of what actually shipped.
 
 ---
 
-## Current
+## Shipped / Stable
+
+### `0.7.8.4` Stable - Orbit Vault
+
+Released from the tested Beta 6 line with no product-behaviour changes. Orbit Vault, Quick Capture,
+its explicit save and attach paths, organization, safe swipe actions, Theme Studio onboarding, and
+the shared floating-glass treatment for Chats and Vault are now Stable.
 
 ### `0.7.8.4-beta.6` - Floating chrome for Chats and the Vault
 
@@ -88,14 +94,7 @@ and shares does.
 Deliberately not in Beta 4: folders, tags, collections, smart collections, AI organization, semantic
 search, OCR, webpage extraction and summaries.
 
-## Next
-
-### `0.7.8.4` Stable - Orbit Vault
-
-The first complete Orbit Vault release, assuming Beta 6 tests cleanly on a real device. A further
-Beta would only be taken for regressions; no additional feature Beta is planned for this line.
-
-## After Vault
+## Current
 
 ### `0.7.8.5` - Rich Answers / Visual Web Results
 
@@ -129,8 +128,10 @@ point at which a settings page stops being browsable and starts being a search p
 - Local and deterministic. No AI, no network, and no provider is involved in finding a setting
 - Choosing a result takes the user straight to that control rather than to the section holding it
 
-Rich Answers remains the primary work of `0.7.8.5`. Settings search is the UX enhancement shipped
+Rich Answers remains the primary work of `0.7.8.5`. Settings search is the UX enhancement planned
 alongside it, not a replacement for it.
+
+## Next
 
 ### `0.7.8.6` - Smart Vault
 
@@ -1408,12 +1409,13 @@ Stable. Each Beta is recorded in full above; in short:
   new regression, so promotion changed version metadata and release documentation only, with no
   functional source change
 
-### 0.7.8.4 - Orbit Vault (active Beta line)
+### 0.7.8.4 - Orbit Vault (Stable)
 
-Orbit Vault is no longer future planning. `v0.7.8.4-beta.1` ships the foundation of the loop the
-whole feature rests on - capture, save, find, reopen - and deliberately stops there, because the
-useful question about a Vault is whether the basic loop is worth reaching for, not how clever it can
-be made before anyone has used it.
+Orbit Vault shipped through six Betas and was promoted from the tested Beta 6 line to `v0.7.8.4`
+Stable. `v0.7.8.4-beta.1` built the foundation of the loop the whole feature rests on - capture,
+save, find, reopen - and deliberately stopped there, because the useful question about a Vault was
+whether the basic loop was worth reaching for, not how clever it could be made before anyone used
+it.
 
 **What Beta 1 ships**
 
@@ -1558,6 +1560,12 @@ filing system.
 collections, a separate Recent section, semantic search, OCR, webpage extraction, AI summaries and
 AI-assisted organization. Organization in this release is entirely local and entirely explicit: no
 provider is contacted to filter, search, pin or open the Vault, and nothing is indexed in advance.
+
+**Betas 5 and 6, then Stable.** Beta 5 made the organization model operable on a phone with two
+clear selectors, shared Chat-style swipe actions and safe delete Undo. Beta 6 added the shared
+theme-derived floating-glass treatment for Chats and Vault without changing Vault behaviour.
+Stable carries that tested Beta 6 functionality unchanged; the promotion changes release metadata,
+documentation and roadmap wording only.
 
 ## Historical planning context
 

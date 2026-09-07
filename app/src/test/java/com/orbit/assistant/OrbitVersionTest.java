@@ -147,63 +147,44 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * v0.7.8.4 Beta 6 is the visual release candidate for the Orbit Vault line.
+     * The 0.7.8.4 Orbit Vault line ran as six Betas and is now promoted to Stable.
      *
-     * <p>Beta 1 proved the loop, Beta 2 made a saved item useful, Beta 3 put saving wherever the
-     * user already was, Beta 4 gave the collection type filters, source filters and pinning, and
-     * Beta 5 made all of that operable. Beta 6 adds no Vault feature and changes no Vault
-     * behaviour: it is the visual pass real-device testing of Beta 5 asked for, replacing the hard
-     * boundary between Chats' and the Vault's controls and the lists beneath them with one shared
-     * floating-glass treatment. Folders, tags, collections, semantic search, OCR and AI
-     * organization remain deliberately absent, Settings search is a roadmap entry rather than
-     * code, and Rich Answers and Smart Vault are still after this line.
+     * <p>Beta 1 proved the save and reopen loop, Beta 2 made saved items useful in conversations,
+     * Beta 3 put explicit saving across Orbit's surfaces, Beta 4 added organization, Beta 5 made
+     * those controls work naturally on a phone, and Beta 6 gave Chats and Vault one shared
+     * floating-glass treatment. The tested Beta 6 behaviour is carried into Stable unchanged.
      *
-     * <p>This must publish as a prerelease, on the Beta channel, and never as a Stable release: a
-     * versionName that quietly lost its {@code -beta.N} suffix would be offered to every Stable
-     * user, and this fails before publication rather than on their phones.
+     * <p>The guard now runs the other way round. A finished release must not quietly regain
+     * prerelease metadata and be published to the Beta channel by accident.
      */
-    @Test public void thisBuildIsTheSixthOrbitVaultBeta() {
+    @Test public void thisBuildIsOrbitVaultStable() {
         String version = BuildConfig.VERSION_NAME;
-        assertTrue(OrbitVersion.installedIsBeta());
-        assertTrue(OrbitVersion.isBeta(version));
-        assertFalse(OrbitVersion.isStable(version));
+        assertFalse(OrbitVersion.installedIsBeta());
+        assertFalse(OrbitVersion.isBeta(version));
+        assertTrue(OrbitVersion.isStable(version));
         assertEquals("0.7.8.4", OrbitVersion.baseVersion(version));
-        assertEquals(6, OrbitVersion.betaNumber(version));
 
-        assertEquals("0.7.8.4 Beta 6", OrbitVersion.displayName(version));
-        assertEquals("Orbit Assistant v0.7.8.4 Beta 6", OrbitVersion.releaseTitle(version));
-        assertEquals("v0.7.8.4-beta.6", OrbitVersion.tagFor(version));
-        assertTrue("the release workflow must publish it as a prerelease",
+        assertEquals("a Stable build carries no beta counter", 0, OrbitVersion.betaNumber(version));
+        assertEquals("Orbit Assistant v0.7.8.4", OrbitVersion.releaseTitle(version));
+        assertEquals("v0.7.8.4", OrbitVersion.tagFor(version));
+        assertFalse("the release workflow must publish it as Stable",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
-        assertFalse("and never as a Stable release",
+        assertTrue("and never as a prerelease",
                 OrbitVersion.isStableTag(OrbitVersion.tagFor(version)));
         assertTrue("it must outrank the Stable line it was built from",
                 OrbitVersion.compareVersions(version, "0.7.8.3") > 0);
-        assertTrue("and the Beta of its own line that it follows",
-                OrbitVersion.compareVersions(version, "0.7.8.4-beta.5") > 0);
-        assertTrue("while still ranking below the Stable release it is working towards",
-                OrbitVersion.compareVersions(version, "0.7.8.4") < 0);
+        assertTrue("and every Beta of its own line",
+                OrbitVersion.compareVersions(version, "0.7.8.4-beta.6") > 0
+                        && OrbitVersion.compareVersions(version, "0.7.8.4-beta.5") > 0
+                        && OrbitVersion.compareVersions(version, "0.7.8.4-beta.4") > 0
+                        && OrbitVersion.compareVersions(version, "0.7.8.4-beta.3") > 0
+                        && OrbitVersion.compareVersions(version, "0.7.8.4-beta.2") > 0
+                        && OrbitVersion.compareVersions(version, "0.7.8.4-beta.1") > 0);
     }
 
-    /**
-     * The Beta channel offers whichever eligible build has the highest Android versionCode, so this
-     * Beta only reaches the people running Beta 5 if its code is above theirs. Beta 5 published
-     * versionCode 775, Beta 4 published 774, Beta 3 published 773, Beta 2 published 772, Beta 1
-     * published 771 and v0.7.8.3 Stable published 770, all read from their own
-     * {@code orbit-update.json} rather than assumed.
-     */
-    @Test public void thisBuildOutranksTheBetaItFollows() {
-        assertTrue("this Beta must supersede v0.7.8.4 Beta 5's published versionCode 775",
-                BuildConfig.VERSION_CODE > 775);
-        assertTrue("and v0.7.8.4 Beta 4's published versionCode 774",
-                BuildConfig.VERSION_CODE > 774);
-        assertTrue("and v0.7.8.4 Beta 3's published versionCode 773",
-                BuildConfig.VERSION_CODE > 773);
-        assertTrue("and v0.7.8.4 Beta 2's published versionCode 772",
-                BuildConfig.VERSION_CODE > 772);
-        assertTrue("and v0.7.8.4 Beta 1's published versionCode 771",
-                BuildConfig.VERSION_CODE > 771);
-        assertTrue("and v0.7.8.3 Stable's published versionCode 770",
-                BuildConfig.VERSION_CODE > 770);
+    /** The Stable build must supersede Beta 6's published versionCode 776. */
+    @Test public void thisBuildOutranksEveryPublishedBetaOfItsLine() {
+        assertTrue("Stable must supersede v0.7.8.4-beta.6's published versionCode 776",
+                BuildConfig.VERSION_CODE > 776);
     }
 }
