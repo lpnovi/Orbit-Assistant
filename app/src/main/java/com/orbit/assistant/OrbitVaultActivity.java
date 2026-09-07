@@ -18,7 +18,7 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.HorizontalScrollView;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -28,7 +28,6 @@ import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * Orbit Vault: the things the user deliberately kept, and the fastest way to add another.
@@ -38,11 +37,18 @@ import java.util.Locale;
  * capture control.
  *
  * <p>Beta 4 adds the smallest organization that a growing collection genuinely needs, and stops
- * there. A row of type chips, an optional source choice, and a pin: three questions asked about one
- * flat list, none of which moves, copies, files or renames anything. There are deliberately still
- * no folders, no tags, no collections and no automatic categorization - a saved item lives in
- * exactly one place, and organizing the Vault must never become a second job the user has to do
- * before it is useful.
+ * there. Type, an optional source, and a pin: three questions asked about one flat list, none of
+ * which moves, copies, files or renames anything. There are deliberately still no folders, no
+ * tags, no collections and no automatic categorization - a saved item lives in exactly one place,
+ * and organizing the Vault must never become a second job the user has to do before it is useful.
+ *
+ * <p>Beta 5 changes none of that and changes how all of it is operated. Beta 4 spent those three
+ * questions on a horizontally scrolling row of eight controls, which was correct and unreadable:
+ * six type chips filled the phone, Source was parked off the right edge where the user had to be
+ * told it existed, and turning one choice off meant reaching for Clear filters and losing the other
+ * two with it. It is now two selectors on one fixed row - what is it, and where did I save it from
+ * - each of which resets itself, and the cards below behave like every other list in Orbit: swipe
+ * left to delete, swipe right to pin.
  *
  * <p>Nothing on this screen contacts a provider. Opening the Vault, searching it, saving into it
  * and reading it back all work with the phone in flight mode and no account signed in, which is the
@@ -88,10 +94,23 @@ public final class OrbitVaultActivity extends Activity {
     static final String NO_RESULTS_BOTH =
             "Nothing matches this search and this filter together. Try clearing one of them.";
 
-    /** The trailing chip that puts the whole Vault back, in one tap. */
+    /**
+     * The small trailing control that puts both selectors back at once.
+     *
+     * <p>Secondary on purpose, and shown only while <em>both</em> selectors are narrowing. Beta 4
+     * made this the practical way to turn any single choice off, because a selected type chip could
+     * not be deselected by tapping it again; each selector now carries its own way back, so with
+     * one constraint in force this control would be a second button that does what the first one
+     * already does. It resets Type and Source and deliberately leaves the search field alone -
+     * words the user typed are their own question, and the field has its own way to clear.
+     */
     static final String CLEAR_FILTERS = "Clear filters";
-    /** The chip that opens the secondary source choice. */
+    /** The Saved-from selector's resting value: no source chosen. */
     static final String SOURCE_ANY = "Any source";
+    /** What the Saved-from selector is asking, in the spoken description and nowhere else. */
+    static final String SOURCE_QUESTION = "Saved from";
+    /** And what the Type selector is asking. */
+    static final String TYPE_QUESTION = "Type";
     /** The heading above the items the user asked to keep near the top. */
     static final String PINNED_HEADING = "Pinned";
     /** And the one above everything else, shown only when there is a pinned section above it. */
@@ -109,16 +128,62 @@ public final class OrbitVaultActivity extends Activity {
             "Nothing has been deleted. Turn Orbit Vault back on in Settings to save new items "
                     + "and to see everything you already saved.";
 
+    /** What a swiped-away card says while it can still be brought back. */
+    static final String UNDO_MESSAGE = "Item deleted";
+    /** What the spoken swipe actions call one Vault card. */
+    static final String SWIPE_SUBJECT = "saved item";
+
+    /**
+     * How wide the two selectors together are allowed to become.
+     *
+     * <p>Never reached on a phone, where the row is simply the width of the screen. A Tab S9 Plus
+     * does reach it, and two controls stretched across a whole tablet stop reading as a compact
+     * question and start reading as a toolbar. The search field above keeps the full width, because
+     * a field genuinely uses it.
+     */
+    static final int FILTERS_MAX_WIDTH_DP = 520;
+
+    /** How long a swiped-away item can be taken back before the deletion is carried out. */
+    private static final long UNDO_WINDOW_MS = 5200L;
+
     private static final int REQ_PICK_IMAGE = 8401;
 
     private LinearLayout list;
+    private ScrollView listScroller;
     private TextView subtitle;
     private EditText searchInput;
-    private HorizontalScrollView filterScroll;
-    private LinearLayout filterRow;
+    private LinearLayout filterBar;
     private Button capture;
+    private LinearLayout undoBar;
     private boolean quickCapturePending;
     private String appearanceSignature = "";
+
+    /**
+     * The item that is being deleted but has not been yet.
+     *
+     * <p>Held by id rather than by a copy, exactly as a deleted chat is, and for a much stronger
+     * reason here: a Vault item can own a private picture. Nothing is removed from the store and no
+     * file is touched while the offer stands, so Undo is not a restore that has to reassemble an
+     * id, a note, two timestamps, a pin, document metadata and a media path without dropping one of
+     * them - it is Orbit forgetting it was asked. A snapshot-and-rebuild scheme would have to copy
+     * or re-adopt the picture, and would silently lose whichever field somebody forgot to add to it
+     * later.
+     *
+     * <p>It is also what makes process death safe. If Orbit is killed inside the window the item is
+     * simply still there, complete, with its picture where it always was. There is no half-deleted
+     * state to recover from and no orphaned file to clean up, because nothing was ever deleted.
+     */
+    private String pendingDeletionId;
+    private final Runnable undoTimeout = this::commitPendingDeletion;
+    /**
+     * Where the Undo window is counted.
+     *
+     * <p>Not on the bar itself, which is replaced whenever the page is rebuilt; a callback posted
+     * to a view that has gone cannot be taken off again, which would leave a deletion counting down
+     * with nothing on screen offering to stop it.
+     */
+    private final android.os.Handler undoTimer =
+            new android.os.Handler(android.os.Looper.getMainLooper());
 
     /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
     private OrbitPredictiveBack navigation;
@@ -164,18 +229,32 @@ public final class OrbitVaultActivity extends Activity {
     }
 
     @Override protected void onPause() {
+        // Leaving the Vault ends the offer. A deletion the user walked away from is a deletion they
+        // meant, and leaving it pending would make it depend on this process staying alive.
+        commitPendingDeletion();
+        OrbitSwipeRow.resetActive();
         UiPresence.leave(this);
         super.onPause();
     }
 
     // ---- the page --------------------------------------------------------------------------------
 
+    /**
+     * The Vault, with the transient Undo surface floating over it rather than sharing the page.
+     *
+     * <p>The same frame Chats uses, for the same reason. A bar that took its height out of the
+     * weighted list would give the list a new, higher bottom the moment something was deleted, and
+     * whichever card straddled it would be sliced flat against the window background. The list
+     * keeps its full height whether the bar is there or not.
+     */
     private View build() {
+        FrameLayout host = new FrameLayout(this);
+        host.setBackgroundColor(UiKit.BG);
+        int side = UiKit.dp(this, 18);
+        host.setPadding(side, UiKit.dp(this, 10), side, 0);
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(UiKit.BG);
-        int side = UiKit.dp(this, 18);
-        root.setPadding(side, UiKit.dp(this, 10), side, 0);
 
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
@@ -236,32 +315,87 @@ public final class OrbitVaultActivity extends Activity {
         searchLp.setMargins(0, 0, 0, UiKit.dp(this, 8));
         root.addView(searchInput, searchLp);
 
-        // One scrolling row of chips rather than a panel, a sheet, or a second screen. It is the
-        // height of a single line of text, it never pushes the collection down the page, and on a
-        // wide tablet it simply stops rather than stretching six controls across the display.
-        filterScroll = new HorizontalScrollView(this);
-        filterScroll.setHorizontalScrollBarEnabled(false);
-        filterScroll.setClipToPadding(false);
-        filterRow = new LinearLayout(this);
-        filterRow.setOrientation(LinearLayout.HORIZONTAL);
-        filterRow.setGravity(Gravity.CENTER_VERTICAL);
-        filterScroll.addView(filterRow, new HorizontalScrollView.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // Two selectors on one row that always fits, rather than a conveyor belt of chips the user
+        // had to drag sideways to discover. Both questions are on screen at once, both are the same
+        // height as one line of text, and neither pushes the collection down the page.
+        filterBar = new LinearLayout(this);
+        filterBar.setOrientation(LinearLayout.HORIZONTAL);
+        filterBar.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams filterLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                filterBarWidth(), ViewGroup.LayoutParams.WRAP_CONTENT);
         filterLp.setMargins(0, 0, 0, UiKit.dp(this, 8));
-        root.addView(filterScroll, filterLp);
+        root.addView(filterBar, filterLp);
 
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
+        listScroller = new ScrollView(this);
+        listScroller.setFillViewport(true);
         list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
         list.setPadding(0, UiKit.dp(this, 2), 0, UiKit.dp(this, 36));
-        scroll.addView(list, new ScrollView.LayoutParams(
+        listScroller.addView(list, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        root.addView(scroll, new LinearLayout.LayoutParams(
+        root.addView(listScroller, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
-        return root;
+
+        host.addView(root, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        FrameLayout.LayoutParams barLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM);
+        barLp.bottomMargin = UiKit.dp(this, 12);
+        host.addView(buildUndoBar(), barLp);
+        return host;
+    }
+
+    /**
+     * How wide the selector row is allowed to be on this device.
+     *
+     * <p>The whole width on a phone, and capped on a tablet. Left-aligned rather than centred when
+     * it is capped, so it starts under the start of the search field instead of floating in the
+     * middle of the page away from everything it belongs to.
+     */
+    private int filterBarWidth() {
+        int available = getResources().getDisplayMetrics().widthPixels;
+        int capped = UiKit.dp(this, FILTERS_MAX_WIDTH_DP);
+        return capped >= available ? ViewGroup.LayoutParams.MATCH_PARENT : capped;
+    }
+
+    /**
+     * The short window in which a swiped-away item can be brought back.
+     *
+     * <p>Built once and kept, floating over the bottom of the list the card just left, with a real
+     * focusable Undo control. It occupies no space at all until there is something to undo.
+     */
+    private View buildUndoBar() {
+        undoBar = new LinearLayout(this);
+        undoBar.setOrientation(LinearLayout.HORIZONTAL);
+        undoBar.setGravity(Gravity.CENTER_VERTICAL);
+        undoBar.setVisibility(View.GONE);
+        undoBar.setPadding(UiKit.dp(this, 16), UiKit.dp(this, 12), UiKit.dp(this, 10),
+                UiKit.dp(this, 12));
+        undoBar.setBackground(UiKit.outlined(UiKit.SURFACE_2,
+                UiKit.withAlpha(UiKit.accent(this), 46), 18, this));
+        undoBar.setElevation(UiKit.dp(this, 8));
+
+        undoBar.addView(UiKit.text(this, UNDO_MESSAGE, 14, UiKit.TEXT, false),
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
+        Button undo = new Button(this);
+        undo.setText("Undo");
+        undo.setAllCaps(false);
+        undo.setTextSize(14);
+        undo.setTextColor(UiKit.accent(this));
+        undo.setMinHeight(0);
+        undo.setMinimumHeight(0);
+        undo.setStateListAnimator(null);
+        undo.setBackground(UiKit.ripple(UiKit.SURFACE_3, UiKit.accent(this), 14, this));
+        undo.setContentDescription("Undo deleting this saved item");
+        undo.setOnClickListener(v -> undoPendingDeletion());
+        UiKit.pressScale(undo);
+        LinearLayout.LayoutParams undoLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 40));
+        undoLp.leftMargin = UiKit.dp(this, 10);
+        undoBar.addView(undo, undoLp);
+        return undoBar;
     }
 
     /**
@@ -292,7 +426,7 @@ public final class OrbitVaultActivity extends Activity {
         boolean enabled = OrbitVaultStore.enabled(this);
         if (capture != null) capture.setVisibility(enabled ? View.VISIBLE : View.GONE);
         if (searchInput != null) searchInput.setVisibility(enabled ? View.VISIBLE : View.GONE);
-        if (filterScroll != null) filterScroll.setVisibility(enabled ? View.VISIBLE : View.GONE);
+        if (filterBar != null) filterBar.setVisibility(enabled ? View.VISIBLE : View.GONE);
         if (!enabled) {
             subtitle.setText("Turned off in Settings");
             LinearLayout off = card();
@@ -305,13 +439,23 @@ public final class OrbitVaultActivity extends Activity {
         }
 
         OrbitVaultStore.Sort sort = Prefs.vaultSort(this);
-        int total = OrbitVaultStore.count(this);
         String query = searchInput == null ? "" : searchInput.getText().toString().trim();
-        // The chips carry the type and the source, the field carries the words, and the three are
-        // one question from here on. Nothing below asks any of them separately.
+        // The selectors carry the type and the source, the field carries the words, and the three
+        // are one question from here on. Nothing below asks any of them separately.
         OrbitVaultFilter filter = Prefs.vaultFilter(this).withQuery(query);
-        rebuildFilterRow(filter);
+        rebuildFilterBar(filter);
         List<OrbitVaultItem> shown = OrbitVaultStore.browse(this, filter, sort);
+        // An item waiting to be deleted is out of the list but still in storage, which is what
+        // makes Undo complete rather than a reconstruction. It is out of the count as well, so the
+        // header does not go on claiming something the user has just watched leave.
+        int total = OrbitVaultStore.count(this);
+        if (pendingDeletionId != null) {
+            int before = shown.size();
+            shown.removeIf(item -> pendingDeletionId.equals(item.id));
+            if (before != shown.size() || OrbitVaultStore.get(this, pendingDeletionId) != null) {
+                total = Math.max(0, total - 1);
+            }
+        }
 
         String counted = total + (total == 1 ? " saved item" : " saved items");
         if (total == 0) {
@@ -420,113 +564,199 @@ public final class OrbitVaultActivity extends Activity {
     // ---- narrowing the collection -----------------------------------------------------------------
 
     /**
-     * Redraws the chip row for the filter that is currently in force.
+     * Redraws the two selectors for the filter that is currently in force.
      *
-     * <p>Rebuilt rather than toggled, because the row is not a fixed set of controls: the source
-     * chip appears only when the collection actually contains more than one source, and the clear
-     * control appears only when something is genuinely hidden. A row that always showed every
-     * possible control would be a filing cabinet on a screen whose whole job is to stay out of the
-     * way of the things the user kept.
+     * <p>Rebuilt rather than toggled, because each selector's closed state <em>is</em> the current
+     * answer: the row reads "Images / Screen selection" when that is what is on screen, so the
+     * screen needs no separate banner saying what is being shown. Rebuilding is also what keeps the
+     * accent, the AMOLED surfaces and the selected treatment correct after a theme change.
+     *
+     * <p>Both controls are always present. Beta 4 showed the source choice only when the Vault
+     * already held more than one source, which is exactly the shape of thing a person cannot
+     * discover: it was absent when they first looked, appeared later without being announced, and
+     * sat behind six chips when it did. A selector that is always there and sometimes has one
+     * answer costs a line of nothing and can be found.
      */
-    private void rebuildFilterRow(OrbitVaultFilter filter) {
-        if (filterRow == null) return;
-        filterRow.removeAllViews();
+    private void rebuildFilterBar(OrbitVaultFilter filter) {
+        if (filterBar == null) return;
+        filterBar.removeAllViews();
 
-        for (OrbitVaultFilter.Type type : OrbitVaultFilter.Type.values()) {
-            boolean selected = filter.type == type;
-            View chip = chip(type.label, selected,
-                    "Show " + (type == OrbitVaultFilter.Type.ALL
-                            ? "everything in your Vault" : type.label.toLowerCase(Locale.US)),
-                    v -> applyFilter(filter.withType(type)));
-            filterRow.addView(chip, chipLp(filterRow.getChildCount() == 0));
-        }
+        boolean typed = filter.type != OrbitVaultFilter.Type.ALL;
+        filterBar.addView(selector(filter.type.label, typed,
+                        TYPE_QUESTION + ": " + filter.type.label
+                                + ". Tap to choose what kind of saved item to show.",
+                        v -> showTypeMenu(v, filter)),
+                selectorLp(true));
 
-        // Secondary, and deliberately one control rather than a second permanent row. Source is a
-        // narrower question than type - most people will never ask it - and giving it six more
-        // chips would push the collection down the page for everybody who does not.
-        List<String> sources = OrbitVaultStore.sourcesPresent(this);
-        if (sources.size() > 1) {
-            boolean chosen = !filter.source.isEmpty();
-            View source = chip(chosen ? filter.source : SOURCE_ANY, chosen,
-                    chosen ? "Source filter: " + filter.source + ". Tap to change."
-                            : "Filter by where an item came from",
-                    v -> showSourceMenu(v, filter, sources));
-            filterRow.addView(source, chipLp(false));
-        }
+        boolean sourced = !filter.source.isEmpty();
+        String from = sourced ? OrbitVaultSource.displayLabel(filter.source) : SOURCE_ANY;
+        filterBar.addView(selector(from, sourced,
+                        SOURCE_QUESTION + ": " + from
+                                + ". Tap to choose where an item was saved from.",
+                        v -> showSourceMenu(v, filter)),
+                selectorLp(false));
 
-        // One tap back to the whole Vault, rather than asking somebody to remember and reverse
-        // three separate choices they made a minute ago.
-        if (filter.isNarrowed()) {
-            View clear = chip(CLEAR_FILTERS, false, "Clear filters and search",
-                    v -> clearFilters());
-            filterRow.addView(clear, chipLp(false));
+        // Only once both questions are narrowing at the same time. With one in force, its own
+        // selector already offers the way back in one tap, and a second control doing the same
+        // thing is how Beta 4's row grew.
+        if (typed && sourced) {
+            ImageButton clear = iconButton(R.drawable.ic_close, CLEAR_FILTERS);
+            clear.setOnClickListener(v -> clearFilters());
+            LinearLayout.LayoutParams clearLp = new LinearLayout.LayoutParams(
+                    UiKit.dp(this, 40), UiKit.dp(this, 40));
+            clearLp.setMargins(UiKit.dp(this, 6), 0, 0, 0);
+            filterBar.addView(clear, clearLp);
         }
     }
 
-    private void applyFilter(OrbitVaultFilter filter) {
-        Prefs.setVaultFilter(this, filter);
-        if (filterScroll != null) filterScroll.scrollTo(0, 0);
-        refresh();
+    /**
+     * One filter selector: its current answer, and a caret saying there are others.
+     *
+     * <p>Weighted rather than sized by its words, so the row is the same shape whichever answers
+     * are showing and a long one - "Screen selection", "Orbit Documents" - shortens itself instead
+     * of pushing its neighbour off the screen. The chosen state is the accent fill with its own
+     * contrast colour, and it is written into the spoken description as well, so which selector is
+     * narrowing the Vault is never carried by colour alone.
+     */
+    private View selector(String label, boolean chosen, String description,
+                          View.OnClickListener onClick) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.HORIZONTAL);
+        box.setGravity(Gravity.CENTER_VERTICAL);
+        box.setPadding(UiKit.dp(this, 14), 0, UiKit.dp(this, 10), 0);
+
+        TextView value = UiKit.text(this, label, 13,
+                chosen ? UiKit.onAccent(this) : UiKit.TEXT, chosen);
+        value.setSingleLine(true);
+        value.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        box.addView(value, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
+        ImageView caret = new ImageView(this);
+        caret.setImageResource(R.drawable.ic_chevron_down);
+        caret.setImageTintList(ColorStateList.valueOf(
+                chosen ? UiKit.onAccent(this) : UiKit.accent(this)));
+        caret.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams caretLp = new LinearLayout.LayoutParams(
+                UiKit.dp(this, 16), UiKit.dp(this, 16));
+        caretLp.setMargins(UiKit.dp(this, 6), 0, 0, 0);
+        box.addView(caret, caretLp);
+
+        box.setBackground(chosen
+                ? UiKit.ripple(UiKit.accent(this), UiKit.onAccent(this), 16, this)
+                : UiKit.rippleOutlined(UiKit.SURFACE,
+                        UiKit.withAlpha(UiKit.accent(this), 46), UiKit.accent(this), 16, this));
+        box.setContentDescription(description + (chosen ? " Currently filtering." : ""));
+        box.setOnClickListener(onClick);
+        UiKit.pressScale(box);
+        return box;
     }
 
-    /** Puts the whole collection back: no type, no source, and no words. */
-    private void clearFilters() {
-        Prefs.setVaultFilter(this, OrbitVaultFilter.NONE);
-        if (searchInput != null && searchInput.getText().length() > 0) {
-            // Clearing the field fires the watcher, which refreshes; refreshing twice would
-            // rebuild the list under the user's finger for no reason.
-            searchInput.setText("");
-            return;
+    private LinearLayout.LayoutParams selectorLp(boolean first) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                0, UiKit.dp(this, 42), 1);
+        lp.setMargins(first ? 0 : UiKit.dp(this, 8), 0, 0, 0);
+        return lp;
+    }
+
+    /**
+     * What kind of thing to show, including the choice that shows everything.
+     *
+     * <p>"All items" is an ordinary row in this list rather than a separate control, which is the
+     * whole of the independent-reset fix: turning a type filter off is choosing the first answer to
+     * the question that set it, and it reaches {@code withType} - so the source and the search text
+     * are carried straight through untouched.
+     */
+    private void showTypeMenu(View anchor, OrbitVaultFilter filter) {
+        OrbitVaultFilter.Type[] types = OrbitVaultFilter.Type.values();
+        String[] labels = new String[types.length];
+        int selected = 0;
+        for (int i = 0; i < types.length; i++) {
+            labels[i] = types[i].label;
+            if (types[i] == filter.type) selected = i;
         }
-        refresh();
+        UiKit.showOrbitMenu(this, anchor, labels, selected, (index, label) -> {
+            if (index < 0 || index >= types.length) return;
+            applyFilter(filter.withType(types[index]));
+        });
     }
 
-    private void showSourceMenu(View anchor, OrbitVaultFilter filter, List<String> sources) {
+    /**
+     * Where an item was saved from, offered only for the doors this Vault has actually seen.
+     *
+     * <p>The list is built from canonical {@link OrbitVaultSource} values and the labels are only
+     * drawn from them, so choosing a row applies the stored word rather than the shown one. A
+     * source that is currently in force but no longer present in the collection is still listed:
+     * otherwise a filter could survive its last item and leave the user unable to turn it off from
+     * the control that set it.
+     */
+    private void showSourceMenu(View anchor, OrbitVaultFilter filter) {
+        List<String> sources = new ArrayList<>(OrbitVaultStore.sourcesPresent(this));
+        if (!filter.source.isEmpty() && !sources.contains(filter.source)) {
+            sources.add(0, filter.source);
+        }
         String[] labels = new String[sources.size() + 1];
         labels[0] = SOURCE_ANY;
         int selected = 0;
         for (int i = 0; i < sources.size(); i++) {
-            labels[i + 1] = sources.get(i);
+            labels[i + 1] = OrbitVaultSource.displayLabel(sources.get(i));
             if (sources.get(i).equals(filter.source)) selected = i + 1;
         }
         UiKit.showOrbitMenu(this, anchor, labels, selected, (index, label) ->
-                applyFilter(filter.withSource(index <= 0 ? "" : label)));
+                applyFilter(filter.withSource(index <= 0 ? "" : sources.get(index - 1))));
+    }
+
+    private void applyFilter(OrbitVaultFilter filter) {
+        Prefs.setVaultFilter(this, filter);
+        OrbitSwipeRow.resetActive();
+        refresh();
     }
 
     /**
-     * One filter chip: a line of text on Orbit's own surface, sized by its words.
+     * Puts both selectors back to their resting answers, and leaves the search field alone.
      *
-     * <p>The selected state is the accent fill plus its own contrast colour, and it is also written
-     * into the spoken description, so the current choice is never carried by colour alone.
+     * <p>Beta 4's version also emptied the search box, because it was the one control that could
+     * undo a type chip and so had to promise the whole Vault to be worth reaching for. It is no
+     * longer that control. Words the user typed are a separate question with its own way to clear,
+     * and silently deleting them because somebody reset a type filter is the kind of surprise that
+     * makes people stop trusting a screen.
      */
-    private View chip(String label, boolean selected, String description,
-                      View.OnClickListener onClick) {
-        TextView chip = UiKit.text(this, label, 13, selected ? UiKit.onAccent(this) : UiKit.TEXT,
-                selected);
-        chip.setGravity(Gravity.CENTER);
-        chip.setSingleLine(true);
-        chip.setPadding(UiKit.dp(this, 15), UiKit.dp(this, 8), UiKit.dp(this, 15),
-                UiKit.dp(this, 8));
-        chip.setBackground(selected
-                ? UiKit.ripple(UiKit.accent(this), UiKit.onAccent(this), 16, this)
-                : UiKit.rippleOutlined(UiKit.SURFACE,
-                        UiKit.withAlpha(UiKit.accent(this), 46), UiKit.accent(this), 16, this));
-        chip.setContentDescription(description + (selected ? ", selected" : ""));
-        chip.setOnClickListener(onClick);
-        UiKit.pressScale(chip);
-        return chip;
-    }
-
-    private LinearLayout.LayoutParams chipLp(boolean first) {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(first ? 0 : UiKit.dp(this, 7), 0, 0, 0);
-        return lp;
+    private void clearFilters() {
+        Prefs.setVaultFilter(this, OrbitVaultFilter.NONE);
+        OrbitSwipeRow.resetActive();
+        refresh();
     }
 
     // ---- one saved thing --------------------------------------------------------------------------
 
+    /**
+     * One saved item, wrapped in the gesture the rest of Orbit already uses.
+     *
+     * <p>The card is wrapped rather than replaced, so everything the list draws is the card it has
+     * always been, and the wrapper is Chats' own {@link OrbitSwipeRow} rather than a second gesture
+     * detector written for the Vault. Two detectors would have been within a few pixels of each
+     * other on the day this shipped and would have drifted afterwards; the commit threshold, the
+     * resistance past it, the scroll arbitration and the settle are the same code here as there,
+     * so a Vault card and a chat card feel like the same object.
+     *
+     * <p>Swiping is a shortcut, never the only route. Everything it does is also on the hold menu,
+     * and both directions are exposed as accessibility actions by the wrapper itself.
+     */
     private View itemCard(OrbitVaultItem item) {
+        OrbitSwipeRow swipe = new OrbitSwipeRow(this, buildItemCard(item));
+        final String id = item.id;
+        swipe.configure(OrbitSwipeRow.ACTION_DELETE, OrbitSwipeRow.ACTION_PIN, item.pinned,
+                SWIPE_SUBJECT,
+                // Identity, never position and never the visible title: the list rebuilds under a
+                // gesture and two saved items are allowed to be called the same thing.
+                (row, action) -> {
+                    if (action == OrbitSwipeRow.ACTION_DELETE) deleteWithUndo(id);
+                    else togglePin(id);
+                });
+        return swipe;
+    }
+
+    private View buildItemCard(OrbitVaultItem item) {
         LinearLayout card = card();
         card.setOrientation(LinearLayout.VERTICAL);
 
@@ -641,27 +871,148 @@ public final class OrbitVaultActivity extends Activity {
                 R.drawable.ic_delete};
         UiKit.showOrbitActionMenu(this, anchor, labels, icons, (index, label) -> {
             if ("Open".equals(label)) open(item);
-            else if (pin.equals(label)) togglePin(item);
+            else if (pin.equals(label)) togglePin(item.id);
             else if ("Copy".equals(label)) copy(item);
             else if ("Delete".equals(label)) confirmDelete(item);
         });
     }
 
     /**
-     * Pins or unpins one item, and says which happened.
+     * Pins or unpins one item, and puts it where it now belongs.
      *
      * <p>Nothing else moves. The item keeps its content, its note, its picture and both its
-     * timestamps; only where it is drawn changes, and it stays subject to whatever filter and
-     * search are currently in force.
+     * timestamps; only which section it is drawn in changes, and it stays subject to whatever
+     * filter and search are currently in force - so pinning a link while looking at documents does
+     * not make it appear.
+     *
+     * <p>Rebuilding the list rather than moving the card is also what clears the drag: a card that
+     * changed section while still translated would arrive in its new group holding the offset the
+     * finger left it at. The result is announced rather than the movement, so nothing is said while
+     * the finger is still on the screen.
      */
-    private void togglePin(OrbitVaultItem item) {
-        boolean wanted = !item.pinned;
-        if (!OrbitVaultStore.setPinned(this, item.id, wanted)) {
+    private void togglePin(String id) {
+        OrbitVaultItem existing = OrbitVaultStore.get(this, id);
+        if (existing == null) return;
+        boolean wanted = !existing.pinned;
+        if (!OrbitVaultStore.setPinned(this, id, wanted)) {
             Toast.makeText(this, "Orbit could not update that item", Toast.LENGTH_SHORT).show();
             return;
         }
-        Toast.makeText(this, wanted ? "Pinned" : "Unpinned", Toast.LENGTH_SHORT).show();
+        OrbitSwipeRow.resetActive();
         refresh();
+        if (list != null) {
+            UiKit.haptic(list, android.view.HapticFeedbackConstants.CONTEXT_CLICK);
+            list.announceForAccessibility(wanted ? "Item pinned" : "Item unpinned");
+        }
+    }
+
+    /**
+     * Removes an item from the list and gives the user a moment to take it back.
+     *
+     * <p>Nothing is destroyed here, and that is the whole safety argument. The item is held aside
+     * by id and stays exactly where it is in storage, so its picture is never orphaned, never
+     * copied, and never has to be re-adopted; Undo is Orbit forgetting it was asked rather than a
+     * restore that could quietly drop a field somebody added later. The deletion is carried out
+     * when the window ends, when another item is deleted, or when the Vault leaves the foreground,
+     * so it is never left indefinitely pending and never depends on this process still being alive.
+     */
+    private void deleteWithUndo(String id) {
+        if (id == null || id.trim().isEmpty()) return;
+        // A second delete while the first is still undoable commits the first rather than
+        // discarding it, so the offer always belongs to the newest action.
+        commitPendingDeletion();
+        pendingDeletionId = id;
+        OrbitSwipeRow.resetActive();
+        refresh();
+        showUndoBar();
+    }
+
+    private void showUndoBar() {
+        if (undoBar == null) return;
+        undoBar.setVisibility(View.VISIBLE);
+        undoBar.setAlpha(1f);
+        undoBar.setTranslationY(0f);
+        undoBar.announceForAccessibility(UNDO_MESSAGE + ". Undo is available.");
+        undoTimer.removeCallbacks(undoTimeout);
+        undoTimer.postDelayed(undoTimeout, UNDO_WINDOW_MS);
+        applyUndoRoom(true);
+        if (!UiKit.animationsEnabled()) return;
+        undoBar.animate().cancel();
+        undoBar.setAlpha(0f);
+        undoBar.setTranslationY(UiKit.dp(this, 14));
+        undoBar.animate().alpha(1f).translationY(0f)
+                .setDuration(170L)
+                .setInterpolator(UiKit.motionEasing())
+                .start();
+    }
+
+    private void hideUndoBar() {
+        if (undoBar == null) return;
+        undoTimer.removeCallbacks(undoTimeout);
+        applyUndoRoom(false);
+        if (undoBar.getVisibility() != View.VISIBLE) {
+            undoBar.setVisibility(View.GONE);
+            return;
+        }
+        final LinearLayout bar = undoBar;
+        bar.animate().cancel();
+        if (!UiKit.animationsEnabled()) {
+            bar.setVisibility(View.GONE);
+            return;
+        }
+        bar.animate().alpha(0f).translationY(UiKit.dp(this, 6))
+                .setDuration(UiKit.MOTION_FAST)
+                .setInterpolator(UiKit.motionEasing())
+                .withEndAction(() -> {
+                    bar.setVisibility(View.GONE);
+                    bar.setAlpha(1f);
+                    bar.setTranslationY(0f);
+                })
+                .start();
+    }
+
+    /**
+     * Lets the last card still be scrolled clear of the floating bar, and takes the room back after.
+     *
+     * <p>Padding at the bottom of the scrolled content, not height taken from the viewport, so the
+     * list is never resized and no card is ever clipped against a new bottom edge.
+     */
+    private void applyUndoRoom(boolean room) {
+        if (list == null || listScroller == null) return;
+        int wanted = UiKit.dp(this, 36) + (room ? UiKit.dp(this, 76) : 0);
+        if (list.getPaddingBottom() == wanted) return;
+        int scrollY = listScroller.getScrollY();
+        list.setPadding(list.getPaddingLeft(), list.getPaddingTop(), list.getPaddingRight(), wanted);
+        if (!room) listScroller.post(() -> listScroller.scrollTo(0, scrollY));
+    }
+
+    private void undoPendingDeletion() {
+        if (pendingDeletionId == null) {
+            hideUndoBar();
+            return;
+        }
+        // Nothing to restore, because nothing was removed. The item comes back complete because it
+        // never stopped existing: its id, its note, its pin, both timestamps, its document metadata
+        // and the picture it owns are all exactly as they were.
+        pendingDeletionId = null;
+        hideUndoBar();
+        refresh();
+        if (list != null) {
+            UiKit.haptic(list, android.view.HapticFeedbackConstants.CONTEXT_CLICK);
+            list.announceForAccessibility("Item restored");
+        }
+    }
+
+    /** Carries out a deletion the user did not take back. Uses the ordinary delete path. */
+    private void commitPendingDeletion() {
+        String id = pendingDeletionId;
+        pendingDeletionId = null;
+        hideUndoBar();
+        if (id == null) return;
+        // The store removes the row and then the picture it owned, and only when no remaining item
+        // still refers to that file. Deferring the call cannot reach anything the ordinary path
+        // would not have reached.
+        OrbitVaultStore.delete(this, id);
     }
 
     private void copy(OrbitVaultItem item) {

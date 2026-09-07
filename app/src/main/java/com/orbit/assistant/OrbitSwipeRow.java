@@ -19,7 +19,13 @@ import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 
 /**
- * A chat card that moves with the finger, revealing what letting go would do.
+ * A list card that moves with the finger, revealing what letting go would do.
+ *
+ * <p>Shared by Chats and by the Vault. The two lists hold different things and delete them in
+ * different ways, but the gesture is the same gesture and had to stay one implementation: a second
+ * detector written for the Vault would have been within a few pixels of this one on the day it
+ * shipped and slowly drifted afterwards, which is the exact way an app stops feeling like one app.
+ * The only thing a caller varies is {@link #subject}, the word the spoken actions use.
  *
  * <p>The whole design brief for this release is in the first sentence. A gesture that is
  * recognised on release and then played back as an animation always feels like a request the app
@@ -85,6 +91,20 @@ public class OrbitSwipeRow extends FrameLayout {
     private Drawable deleteGlyph;
     private Drawable pinGlyph;
 
+    /**
+     * What the spoken actions call the thing this row holds.
+     *
+     * <p>The only part of this component that was ever specific to Chats. Everything above it -
+     * the arbitration, the commit threshold, the resistance curve, the drawn surfaces, the settle
+     * - is about a card in a vertical list and is the same wherever such a list exists, which is
+     * why the Vault reuses this class rather than growing a second gesture detector that would
+     * immediately start feeling slightly different.
+     *
+     * <p>It defaults to "chat" so that every existing caller keeps the exact strings TalkBack has
+     * always read out for Chats.
+     */
+    private String subject = "chat";
+
     private int leftAction = ACTION_NONE;
     private int rightAction = ACTION_NONE;
     private boolean pinned;
@@ -124,9 +144,22 @@ public class OrbitSwipeRow extends FrameLayout {
      *                    surface means Pin or Unpin
      */
     public void configure(int leftAction, int rightAction, boolean pinned, Listener listener) {
+        configure(leftAction, rightAction, pinned, subject, listener);
+    }
+
+    /**
+     * Arms this row, naming what it holds.
+     *
+     * @param subject what the non-gesture accessibility actions call this row's content, such as
+     *                "chat" or "saved item". Only the spoken labels change; the gesture, the
+     *                thresholds and everything drawn are identical for every caller.
+     */
+    public void configure(int leftAction, int rightAction, boolean pinned, String subject,
+                          Listener listener) {
         this.leftAction = leftAction;
         this.rightAction = rightAction;
         this.pinned = pinned;
+        if (subject != null && !subject.trim().isEmpty()) this.subject = subject.trim();
         this.listener = listener;
         setWillNotDraw(leftAction == ACTION_NONE && rightAction == ACTION_NONE);
         applyAccessibilityActions();
@@ -501,11 +534,11 @@ public class OrbitSwipeRow extends FrameLayout {
                 super.onInitializeAccessibilityNodeInfo(host, info);
                 if (rightAction == ACTION_PIN) {
                     info.addAction(new AccessibilityNodeInfo.AccessibilityAction(
-                            R.id.orbit_action_pin, pinned ? "Unpin chat" : "Pin chat"));
+                            R.id.orbit_action_pin, (pinned ? "Unpin " : "Pin ") + subject));
                 }
                 if (leftAction == ACTION_DELETE) {
                     info.addAction(new AccessibilityNodeInfo.AccessibilityAction(
-                            R.id.orbit_action_delete, "Delete chat"));
+                            R.id.orbit_action_delete, "Delete " + subject));
                 }
             }
 

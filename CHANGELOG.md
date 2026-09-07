@@ -750,3 +750,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Empty results now say whether it was the search or the filter that found nothing.
   - Screen Selection gives space back to your selection with a smaller Save to Vault control.
   - Orbit's in-app and GitHub roadmaps now show what is actually being worked on next.
+- **v0.7.8.4-beta.5**: A cleaner Vault before Stable, with filters and gestures that behave like the rest of Orbit.
+  - Type and Saved from are now two clear selectors on one row, with no sideways scrolling to find them.
+  - Each filter can be changed or cleared on its own, without disturbing the other one or your search.
+  - Saved from now says Orbit Documents, so what an item is and where it came from read as different questions.
+  - Swipe a saved item left to delete it or right to pin and unpin it, exactly as in Chats.
+  - A deleted item offers Undo, and its picture is only removed once that offer has expired.
+  - Saved-item pages no longer spend header width on a Pin button, so long titles have room to breathe.

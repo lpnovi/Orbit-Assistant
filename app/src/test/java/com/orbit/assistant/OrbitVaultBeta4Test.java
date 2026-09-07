@@ -317,24 +317,18 @@ public final class OrbitVaultBeta4Test {
         return Robolectric.buildActivity(OrbitVaultActivity.class).setup().get();
     }
 
-    @Test public void theChipRowOffersEveryTypeAndDefaultsToAll() {
+    /**
+     * The type filter still narrows the list and is still remembered.
+     *
+     * <p>Driven through the preference rather than through the control that sets it, because Beta 5
+     * replaced the chip row with a selector whose choices live in a popup. What the Vault does with
+     * a type filter is this test's claim; how the user picks one is
+     * {@link OrbitVaultBeta5Test}'s.
+     */
+    @Test public void aTypeFilterNarrowsTheListAndIsRemembered() {
         seed();
-        List<String> drawn = textOf(vaultScreen().getWindow().getDecorView());
-        for (OrbitVaultFilter.Type type : OrbitVaultFilter.Type.values()) {
-            assertTrue("the chip row must offer " + type.label, drawn.contains(type.label));
-        }
-        View all = findClickableWithText(vaultScreen().getWindow().getDecorView(), "All");
-        assertNotNull(all);
-        assertTrue("All is the selected chip on a fresh Vault",
-                String.valueOf(all.getContentDescription()).endsWith(", selected"));
-    }
-
-    @Test public void tappingATypeChipNarrowsTheListAndIsRemembered() {
-        seed();
+        Prefs.setVaultFilter(context, typed(OrbitVaultFilter.Type.LINKS));
         Activity screen = vaultScreen();
-        View links = findClickableWithText(screen.getWindow().getDecorView(), "Links");
-        assertNotNull(links);
-        links.performClick();
 
         assertEquals(OrbitVaultFilter.Type.LINKS, Prefs.vaultFilter(context).type);
         List<String> drawn = textOf(screen.getWindow().getDecorView());
@@ -342,40 +336,6 @@ public final class OrbitVaultBeta4Test {
         assertFalse("and the note is not", drawn.contains("Packing list"));
         assertTrue("the header says how much of the Vault is showing",
                 joined(drawn).contains("1 of 6 saved items"));
-    }
-
-    /** The clear control appears only when something is hidden, and puts everything back. */
-    @Test public void clearFiltersReturnsTheWholeVault() {
-        seed();
-        Activity screen = vaultScreen();
-        assertNull("nothing is hidden yet, so nothing offers to unhide it",
-                findClickableWithText(screen.getWindow().getDecorView(),
-                        OrbitVaultActivity.CLEAR_FILTERS));
-
-        findClickableWithText(screen.getWindow().getDecorView(), "Images").performClick();
-        View clear = findClickableWithText(screen.getWindow().getDecorView(),
-                OrbitVaultActivity.CLEAR_FILTERS);
-        assertNotNull("a narrowed Vault must offer one way back", clear);
-        clear.performClick();
-
-        assertEquals(OrbitVaultFilter.Type.ALL, Prefs.vaultFilter(context).type);
-        assertEquals("", Prefs.vaultFilter(context).source);
-        assertTrue(textOf(screen.getWindow().getDecorView()).contains("Packing list"));
-    }
-
-    /** Search text is cleared by the same control, because the promise is the whole Vault. */
-    @Test public void clearFiltersAlsoClearsTheSearchField() {
-        seed();
-        Activity screen = vaultScreen();
-        EditText search = findSearchField(screen.getWindow().getDecorView());
-        assertNotNull(search);
-        search.setText("peak");
-        findClickableWithText(screen.getWindow().getDecorView(), "Links").performClick();
-
-        findClickableWithText(screen.getWindow().getDecorView(),
-                OrbitVaultActivity.CLEAR_FILTERS).performClick();
-        assertEquals("", search.getText().toString());
-        assertTrue(textOf(screen.getWindow().getDecorView()).contains("Packing list"));
     }
 
     // ---- empty states -------------------------------------------------------------------------------
@@ -389,8 +349,8 @@ public final class OrbitVaultBeta4Test {
     @Test public void aFilterWithNoMatchesSaysSoWithoutClaimingTheVaultIsEmpty() {
         OrbitVaultStore.saveText(context, "Packing list", "Charger",
                 OrbitVaultSource.QUICK_CAPTURE);
+        Prefs.setVaultFilter(context, typed(OrbitVaultFilter.Type.IMAGES));
         Activity screen = vaultScreen();
-        findClickableWithText(screen.getWindow().getDecorView(), "Images").performClick();
 
         String drawn = joined(textOf(screen.getWindow().getDecorView()));
         assertFalse("the Vault is not empty and must not say it is",
@@ -412,8 +372,8 @@ public final class OrbitVaultBeta4Test {
 
     @Test public void aSearchInsideAFilterSaysBothAreNarrowing() {
         seed();
+        Prefs.setVaultFilter(context, typed(OrbitVaultFilter.Type.IMAGES));
         Activity screen = vaultScreen();
-        findClickableWithText(screen.getWindow().getDecorView(), "Images").performClick();
         findSearchField(screen.getWindow().getDecorView()).setText("passport");
 
         String drawn = joined(textOf(screen.getWindow().getDecorView()));
@@ -556,8 +516,8 @@ public final class OrbitVaultBeta4Test {
         OrbitVaultItem link = browse(typed(OrbitVaultFilter.Type.LINKS)).get(0);
         OrbitVaultStore.setPinned(context, link.id, true);
 
+        Prefs.setVaultFilter(context, typed(OrbitVaultFilter.Type.DOCUMENTS));
         Activity screen = vaultScreen();
-        findClickableWithText(screen.getWindow().getDecorView(), "Documents").performClick();
         List<String> drawn = textOf(screen.getWindow().getDecorView());
         assertFalse("a pinned link is not a document", drawn.contains("Peak sourdough"));
         assertFalse("so there is no pinned section here",
@@ -605,8 +565,8 @@ public final class OrbitVaultBeta4Test {
      */
     @Test public void theFilterSurvivesOpeningAnItemAndComingBack() {
         seed();
+        Prefs.setVaultFilter(context, typed(OrbitVaultFilter.Type.DOCUMENTS));
         Activity screen = vaultScreen();
-        findClickableWithText(screen.getWindow().getDecorView(), "Documents").performClick();
         assertEquals(OrbitVaultFilter.Type.DOCUMENTS, Prefs.vaultFilter(context).type);
 
         OrbitVaultItem page = browse(typed(OrbitVaultFilter.Type.DOCUMENTS)).get(0);
@@ -791,7 +751,9 @@ public final class OrbitVaultBeta4Test {
         seed();
         Prefs.get(context).edit().putBoolean(Prefs.VAULT_ENABLED, false).commit();
         Activity screen = vaultScreen();
-        assertNull(findClickableWithText(screen.getWindow().getDecorView(), "Links"));
+        assertNull(findClickableWithDescription(screen.getWindow().getDecorView(),
+                OrbitVaultActivity.TYPE_QUESTION + ": " + OrbitVaultFilter.Type.ALL.label
+                        + ". Tap to choose what kind of saved item to show."));
         assertTrue(joined(textOf(screen.getWindow().getDecorView()))
                 .contains(OrbitVaultActivity.OFF_TITLE));
     }
@@ -867,20 +829,6 @@ public final class OrbitVaultBeta4Test {
         return null;
     }
 
-    private static View findClickableWithText(View view, String text) {
-        if (view.isClickable() && view instanceof TextView) {
-            CharSequence actual = ((TextView) view).getText();
-            if (actual != null && text.contentEquals(actual)) return view;
-        }
-        if (view instanceof ViewGroup) {
-            ViewGroup group = (ViewGroup) view;
-            for (int i = 0; i < group.getChildCount(); i++) {
-                View found = findClickableWithText(group.getChildAt(i), text);
-                if (found != null) return found;
-            }
-        }
-        return null;
-    }
 
     private static View findClickableWithDescription(View view, String description) {
         if (view.isClickable()) {

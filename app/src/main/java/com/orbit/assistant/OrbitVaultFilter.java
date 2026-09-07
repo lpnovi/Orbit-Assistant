@@ -22,20 +22,27 @@ import java.util.Locale;
 public final class OrbitVaultFilter {
 
     /**
-     * The six type choices offered on the Vault's chip row.
+     * The six type choices the Vault's Type selector offers.
      *
      * <p>Six rather than one per stored type, because two of them are what a person would ask for
-     * rather than what the store happens to hold: "Documents" is the saved-page type, and "Orbit"
-     * is the saved-answer type under the word people actually use for it.
+     * rather than what the store happens to hold: "Documents" is the saved-page type, and "Orbit
+     * answers" is the saved-answer type under the words people actually use for it.
+     *
+     * <p>The labels are what a selector draws, and Beta 5 changed two of them. "All" became "All
+     * items" so the closed selector states what it is showing rather than only that nothing is
+     * chosen, and "Orbit" became "Orbit answers" because "Orbit" beside a source list that also
+     * contains Orbit's own surfaces named the app rather than the kind of thing. The ids under
+     * both are stored and are unchanged, so a filter somebody left in force before this release is
+     * still the same filter afterwards.
      */
     public enum Type {
         /** Everything, and the default. */
-        ALL("all", "All"),
+        ALL("all", "All items"),
         TEXT("text", "Text"),
         LINKS("links", "Links"),
         IMAGES("images", "Images"),
         DOCUMENTS("documents", "Documents"),
-        ORBIT("orbit", "Orbit");
+        ORBIT("orbit", "Orbit answers");
 
         /** Stored identity: never rename. */
         public final String id;
@@ -120,8 +127,9 @@ public final class OrbitVaultFilter {
     /** "Images · Screen selection", for the line that says what is being shown. */
     public String describe() {
         if (!hasTypeOrSource()) return "";
-        if (source.isEmpty()) return type.label;
-        if (type == Type.ALL) return source;
-        return type.label + " · " + source;
+        String from = OrbitVaultSource.displayLabel(source);
+        if (from.isEmpty()) return type.label;
+        if (type == Type.ALL) return from;
+        return type.label + " · " + from;
     }
 }

@@ -20,6 +20,9 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * One saved item, opened.
  *
@@ -51,7 +54,7 @@ public final class OrbitVaultItemActivity extends Activity {
     static final String ACTION_EDIT = "Edit";
     static final String ACTION_RENAME = "Rename";
     static final String ACTION_DELETE = "Delete";
-    /** The header toggle, in the same two words the Vault list uses. */
+    /** The utility-row toggle, in the same two words the Vault list uses. */
     static final String ACTION_PIN = "Pin";
     static final String ACTION_UNPIN = "Unpin";
 
@@ -210,24 +213,12 @@ public final class OrbitVaultItemActivity extends Activity {
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
         titleLp.setMargins(UiKit.dp(this, 14), 0, 0, UiKit.dp(this, 6));
         top.addView(titles, titleLp);
-
-        // Pinning belongs beside the item's name rather than in the action row below, because it
-        // is a statement about this item's place in the collection rather than something done with
-        // its content. It also keeps the utility row at three controls on a phone.
-        if (item != null) {
-            ImageButton pin = iconButton(R.drawable.ic_pin,
-                    (item.pinned ? ACTION_UNPIN : ACTION_PIN) + " this saved item");
-            pin.setSelected(item.pinned);
-            // The filled state says pinned without needing a second glyph, and the description
-            // above already says which of the two a tap will do.
-            pin.setBackground(item.pinned
-                    ? UiKit.ripple(UiKit.accent(this), UiKit.onAccent(this), 18, this)
-                    : UiKit.ripple(UiKit.SURFACE, UiKit.accent(this), 18, this));
-            pin.setImageTintList(ColorStateList.valueOf(
-                    item.pinned ? UiKit.onAccent(this) : UiKit.accent(this)));
-            pin.setOnClickListener(v -> togglePin(item));
-            top.addView(pin, new LinearLayout.LayoutParams(UiKit.dp(this, 48), UiKit.dp(this, 48)));
-        }
+        // Nothing sits to the right of the title. Beta 4 put a 48dp Pin button there on the
+        // argument that a pin is a statement about the item rather than something done with its
+        // content, which is true and cost the title a sixth of the screen: a saved PDF page, whose
+        // name is a filename and a page number, wrapped and crammed against a control used once in
+        // its life. The title is the thing this screen is about, so it gets the width, and Pin
+        // moved down to the utility row where the other one-tap actions already are.
         return top;
     }
 
@@ -346,9 +337,9 @@ public final class OrbitVaultItemActivity extends Activity {
      * The action area, in three tiers rather than one stack.
      *
      * <p>The most relevant thing to do with this kind of item is filled with the accent and sits on
-     * its own row; the everyday utilities share one compact row below it; deletion is separated
-     * from both. Beta 1 gave Rename, Open link, Copy, Share and Delete exactly the same size and
-     * weight, which meant the screen never said what a saved link is actually for.
+     * its own row; the everyday utilities share compact rows below it; deletion is separated from
+     * both. Beta 1 gave Rename, Open link, Copy, Share and Delete exactly the same size and weight,
+     * which meant the screen never said what a saved link is actually for.
      */
     private View actions(OrbitVaultItem item) {
         LinearLayout column = new LinearLayout(this);
@@ -367,21 +358,26 @@ public final class OrbitVaultItemActivity extends Activity {
         }
         column.addView(primary, actionRowLp(ACTIONS_TOP_GAP_DP));
 
-        LinearLayout utilities = new LinearLayout(this);
-        utilities.setOrientation(LinearLayout.HORIZONTAL);
-        utilities.addView(compactAction(item.bodyIsEditable() ? ACTION_EDIT : ACTION_RENAME,
-                R.drawable.ic_edit, v -> edit(item)), utilityCellLp(0));
+        // The everyday utilities, gathered before they are laid out, because how many there are is
+        // what decides the shape of the rows below.
+        List<View> utilities = new ArrayList<>();
+        utilities.add(compactAction(item.bodyIsEditable() ? ACTION_EDIT : ACTION_RENAME,
+                R.drawable.ic_edit, v -> edit(item)));
         // An image has no words to copy or share. A saved page has the text Orbit extracted
         // from it, which is exactly the thing somebody wants out of a page they kept.
         if (!item.isImage() && !item.body.isEmpty()) {
-            utilities.addView(compactAction(ACTION_COPY, R.drawable.ic_copy,
+            utilities.add(compactAction(ACTION_COPY, R.drawable.ic_copy,
                     v -> MessageActions.copy(this, "Orbit Vault", item.body,
-                            () -> Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show())),
-                    utilityCellLp(9));
-            utilities.addView(compactAction(ACTION_SHARE, R.drawable.ic_share,
-                    v -> shareText(item)), utilityCellLp(9));
+                            () -> Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show())));
+            utilities.add(compactAction(ACTION_SHARE, R.drawable.ic_share,
+                    v -> shareText(item)));
         }
-        column.addView(utilities, actionRowLp(10));
+        // Pin arrives here from the header. It is still one tap and still without leaving the
+        // page, and it now sits beside the other one-tap actions instead of eating the title.
+        String pinLabel = item.pinned ? ACTION_UNPIN : ACTION_PIN;
+        utilities.add(compactAction(pinLabel, R.drawable.ic_pin,
+                pinLabel + " this saved item", v -> togglePin(item)));
+        addUtilityRows(column, utilities);
 
         Button delete = outlinedAction(ACTION_DELETE, v -> confirmDelete(item));
         delete.setTextColor(UiKit.DANGER);
@@ -645,6 +641,52 @@ public final class OrbitVaultItemActivity extends Activity {
     }
 
     /**
+     * Lays the utility actions out in rows that stay readable at this width.
+     *
+     * <p>Four controls across a phone is the failure this avoids: at roughly a quarter of 412dp
+     * each, "Rename" and "Unpin" are already at the edge of fitting, and one step up in the system
+     * font size finishes them. So a phone takes them two at a time and a tablet takes the row it
+     * has the width for. Every cell in the grid is weighted equally whichever shape is chosen, and
+     * a row that is short of a full pair is padded with empty weight rather than being allowed to
+     * stretch one control across the page.
+     */
+    private void addUtilityRows(LinearLayout column, List<View> actions) {
+        if (actions.isEmpty()) return;
+        int perRow = actions.size() <= 2 || wideEnoughForOneUtilityRow()
+                ? actions.size() : 2;
+        LinearLayout row = null;
+        for (int i = 0; i < actions.size(); i++) {
+            if (i % perRow == 0) {
+                row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                column.addView(row, actionRowLp(i == 0 ? 10 : 9));
+            }
+            row.addView(actions.get(i), utilityCellLp(i % perRow == 0 ? 0 : 9));
+        }
+        int missing = (perRow - (actions.size() % perRow)) % perRow;
+        for (int i = 0; i < missing; i++) {
+            row.addView(new View(this), utilityCellLp(9));
+        }
+    }
+
+    /** Whether this display can carry every utility on one row without cramping any of them. */
+    static boolean fitsOneUtilityRow(int widthDp, int actions) {
+        return actions <= 2 || widthDp >= UTILITY_ROW_MIN_WIDTH_DP;
+    }
+
+    /**
+     * The width at which four utility cells stop being cramped.
+     *
+     * <p>Above a Galaxy S25 Ultra and below a Tab S9 Plus, which is exactly the line this rule is
+     * drawn for: the phone takes two rows of two, the tablet takes one row of four.
+     */
+    static final int UTILITY_ROW_MIN_WIDTH_DP = 600;
+
+    private boolean wideEnoughForOneUtilityRow() {
+        return getResources().getConfiguration().screenWidthDp >= UTILITY_ROW_MIN_WIDTH_DP;
+    }
+
+    /**
      * One everyday utility: an accent icon above its own word, in a card the size of a fingertip.
      *
      * <p>Icon and label together rather than either alone. An icon by itself is a guess, and a word
@@ -653,6 +695,11 @@ public final class OrbitVaultItemActivity extends Activity {
      * keeps working when the system font is large.
      */
     private View compactAction(String label, int icon, View.OnClickListener listener) {
+        return compactAction(label, icon, label, listener);
+    }
+
+    private View compactAction(String label, int icon, String description,
+                               View.OnClickListener listener) {
         LinearLayout cell = new LinearLayout(this);
         cell.setOrientation(LinearLayout.VERTICAL);
         cell.setGravity(Gravity.CENTER);
@@ -670,7 +717,7 @@ public final class OrbitVaultItemActivity extends Activity {
 
         cell.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2,
                 UiKit.withAlpha(UiKit.accent(this), 70), UiKit.accent(this), 15, this));
-        cell.setContentDescription(label);
+        cell.setContentDescription(description);
         cell.setOnClickListener(listener);
         UiKit.pressScale(cell);
         return cell;

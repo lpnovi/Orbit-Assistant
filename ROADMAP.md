@@ -9,9 +9,34 @@ canonical record of what actually shipped.
 
 ## Current
 
+### `0.7.8.4-beta.5` - Vault release-candidate polish
+
+No new Vault feature, deliberately. Beta 4's organization model tested correctly on a Galaxy S25
+Ultra and read badly: the filters worked and had to be discovered by dragging a row of eight
+controls sideways, a single choice could not be turned off without losing the others, and a Pin
+button in the item header was taking width from titles that needed it. Beta 5 is the pass that makes
+the model obvious before Stable.
+
+- **Two selectors instead of a chip conveyor.** Type and Saved from sit on one row that always fits,
+  with no horizontal scrolling and nothing parked off the edge of the screen
+- **Independent reset.** Each selector returns to its own resting answer without disturbing the
+  other one, and without deleting the words the user typed into search
+- **Type and source told apart.** A source is a door in Orbit, so the one that used to read
+  "Document" beside a "Documents" type filter now reads "Orbit Documents". Display only: nothing
+  stored is renamed or migrated
+- **Vault cards swipe like chat cards.** Left to delete, right to pin and unpin, through the same
+  shared `OrbitSwipeRow` rather than a second gesture that would drift away from the first
+- **Safe deletion.** A swiped-away item is held aside rather than removed, so Undo returns it
+  complete and the picture it owns is only deleted once the offer has expired
+- **Room for the title.** The item header no longer carries a 48dp Pin control; Pin moved into the
+  responsive utility row beside Rename, Copy and Share
+
+Deliberately still not in this line: folders, tags, collections, smart collections, AI organization,
+semantic search, OCR, webpage extraction and summaries.
+
 ### `0.7.8.4-beta.4` - Vault organization and refinement
 
-The last planned feature Beta of the first Orbit Vault line. Beta 3 gave the user many more ways to
+The last feature Beta of the first Orbit Vault line. Beta 3 gave the user many more ways to
 put things in the Vault, which is exactly the condition that makes organization worth building: a
 collection of six items needs none, and a collection built from documents, screenshots, selections
 and shares does.
@@ -38,9 +63,8 @@ search, OCR, webpage extraction and summaries.
 
 ### `0.7.8.4` Stable - Orbit Vault
 
-The first complete Orbit Vault release, assuming Beta 4 tests cleanly on a real device. A further
-Beta would only be taken for regressions or release-candidate fixes; no additional feature Beta is
-planned for this line.
+The first complete Orbit Vault release, assuming Beta 5 tests cleanly on a real device. A further
+Beta would only be taken for regressions; no additional feature Beta is planned for this line.
 
 ## After Vault
 

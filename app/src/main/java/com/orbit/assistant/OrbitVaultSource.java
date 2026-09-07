@@ -59,7 +59,35 @@ public final class OrbitVaultSource {
             QUICK_CAPTURE, CLIPBOARD, PHOTO, SHARED, SELECTED_TEXT, SCREEN_SELECTION,
             ORBIT_REPLY, DOCUMENT};
 
+    /**
+     * What {@link #DOCUMENT} is called in the Saved-from filter, and nowhere else.
+     *
+     * <p>Never stored, never compared, and never written into an item.
+     */
+    public static final String DOCUMENT_DISPLAY = "Orbit Documents";
+
     private OrbitVaultSource() {}
+
+    /**
+     * The words the Saved-from filter shows for one canonical source.
+     *
+     * <p>A display mapping rather than a rename, and only one entry actually differs. Beta 4's
+     * source list offered "Document" one control away from a type filter called "Documents", which
+     * on a phone read as the same filter written twice. They are not the same question at all -
+     * one asks what an item <em>is</em>, the other asks which door of Orbit it came through - and
+     * the shorter word was doing nothing to say so. "Orbit Documents" names a surface of Orbit,
+     * which is exactly what a source is, and puts it in the same shape as "Orbit answer" beside it.
+     *
+     * <p>Nothing is migrated for this. The stored value stays {@link #DOCUMENT}, "Document · Page
+     * 7" stays exactly that under a saved page, backups written by Beta 1 through Beta 4 restore
+     * unchanged, and {@link #family} still decides every filter. A label is a thing one screen
+     * draws; the vocabulary underneath it is closed and untouched.
+     */
+    public static String displayLabel(String canonicalSource) {
+        String family = family(canonicalSource);
+        if (family.isEmpty()) return "";
+        return DOCUMENT.equals(family) ? DOCUMENT_DISPLAY : family;
+    }
 
     /**
      * The canonical source this label belongs to, or empty when Orbit did not write it.

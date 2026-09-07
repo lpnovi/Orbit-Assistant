@@ -200,11 +200,16 @@ public final class ReleaseModularityTest {
      * canonical values, filters and search that compose, truthful empty states, and a pin that is
      * durable, backed up and absent from every earlier document.
      *
-     * <p>What it cannot settle is whether the chip row reads as one glance rather than a control
-     * panel at Galaxy S25 Ultra width, whether the pinned section earns its heading once somebody
-     * has pinned real things, and whether the screen-selection preview is visibly bigger in the
-     * hand. That is what the Beta is for, so this must publish as a prerelease and never as a
-     * Stable release.
+     * <p>Beta 5 adds no feature and is the release candidate for the line. The suite proves that
+     * the horizontal chip strip is gone, that Type and Saved from reset independently of each
+     * other and of the search field, that a canonical source is still stored while a clearer label
+     * is drawn, that Vault cards use the same shared swipe row as Chats, and that a swipe deletion
+     * can be undone with the item's picture intact.
+     *
+     * <p>What none of it can settle is whether the two selectors read as one glance at Galaxy S25
+     * Ultra width, whether the swipe feels the same in the hand as it does in Chats, and whether a
+     * long PDF title visibly has the room the removed Pin button was taking. That is what the Beta
+     * is for, so this must publish as a prerelease and never as a Stable release.
      */
     @Test public void thisReleaseIsAnOrbitVaultBeta() {
         assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
