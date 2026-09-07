@@ -138,8 +138,27 @@ public final class OrbitVaultStore {
      * {@link OrbitVaultSource#family} already guarantees.
      */
     public static synchronized List<String> sourcesPresent(Context c) {
+        return sourcesPresent(c, OrbitVaultFilter.Type.ALL);
+    }
+
+    /**
+     * The same question, asked about one kind of saved item.
+     *
+     * <p>The source selector is a way of narrowing what is on screen, so the useful answers are the
+     * ones that would actually narrow it. With Documents chosen and every saved page having come
+     * from Orbit Documents, a "Saved from" list offering Quick Capture and Shared is offering two
+     * choices that can only ever empty the screen, and a third that changes nothing.
+     *
+     * <p>This narrows the offer and nothing else. The filter's own matching is untouched, so an
+     * item's stored source still decides whether it survives a filter, and a source the user
+     * already chose is still valid whatever type is in force. Nothing is renamed and nothing is
+     * migrated - this is a question about the collection, asked at the moment the menu opens.
+     */
+    public static synchronized List<String> sourcesPresent(Context c, OrbitVaultFilter.Type type) {
+        OrbitVaultFilter.Type applied = type == null ? OrbitVaultFilter.Type.ALL : type;
         Set<String> found = new HashSet<>();
         for (OrbitVaultItem item : readAll(c)) {
+            if (!applied.matches(item)) continue;
             String family = OrbitVaultSource.family(item.source);
             if (!family.isEmpty()) found.add(family);
         }

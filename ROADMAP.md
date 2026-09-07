@@ -9,6 +9,35 @@ canonical record of what actually shipped.
 
 ## Current
 
+### `0.7.8.4-beta.6` - Floating chrome for Chats and the Vault
+
+No new behaviour anywhere, deliberately. Beta 5 tested correctly on a Galaxy S25 Ultra and one
+thing about both screens still read badly: each ended with a band of controls, then a boundary, then
+a list whose first card was sliced flat against the page. Every earlier attempt - a thinner rule, a
+wrapping panel, more black space - treated it as a spacing problem and made the screens read as more
+segmented, because the boundary itself was still being drawn.
+
+- **One shared primitive.** `OrbitGlass` owns the corner radius, the surface and border alphas, the
+  scrim depth, the fade distance and the control spacing. Chats and the Vault both draw from it, and
+  a future Orbit list screen will too
+- **Floating glass controls.** Search on both screens, and the Vault's Type and Saved from
+  selectors, are translucent surfaces with a lit top edge, a hairline border and a little real
+  depth - lying over the page rather than cut into it
+- **No divider.** The accent rule under Chats' search is gone, with nothing in its place
+- **A scrim over the list, not beside it.** A theme-derived haze is laid over the top of the
+  scrolling column: the page's own colour where the list is clipped, dissolving to nothing 30dp
+  lower. Content fades out underneath the chrome instead of ending at a line
+- **Scroll-linked depth.** Two states rather than a per-frame effect: the scrim reaches full
+  strength the moment content is underneath it, and settles back at the top
+- **Theme-derived, not Nova.** Every colour comes from the active Theme Studio surfaces and accent,
+  and true black stays true black at the boundary
+- **No blur, on purpose.** Android has no backdrop blur a View can use at Orbit's `minSdk 29`
+  floor; the only route is capturing and blurring the screen every frame. A flawless translucent
+  scrim is worth more than a janky blur
+- **A Saved Items heading**, in the same voice as Chats' own RECENT CHATS
+- **Saved from narrows to the current type**, so the source list only offers doors the kind of item
+  on screen actually came through. Display only: nothing stored changes
+
 ### `0.7.8.4-beta.5` - Vault release-candidate polish
 
 No new Vault feature, deliberately. Beta 4's organization model tested correctly on a Galaxy S25
@@ -63,7 +92,7 @@ search, OCR, webpage extraction and summaries.
 
 ### `0.7.8.4` Stable - Orbit Vault
 
-The first complete Orbit Vault release, assuming Beta 5 tests cleanly on a real device. A further
+The first complete Orbit Vault release, assuming Beta 6 tests cleanly on a real device. A further
 Beta would only be taken for regressions; no additional feature Beta is planned for this line.
 
 ## After Vault
@@ -87,6 +116,21 @@ make some of those answers obviously better.
 
 **Architecture rule.** Rich response images reuse Orbit's existing image-viewer and Vault
 infrastructure. There must not be a second image ecosystem.
+
+#### UX enhancement in the same release: Settings search
+
+A smaller piece of the same release, and a real one. Orbit Settings now holds enough controls that
+finding a specific one means scrolling five sections and reading past everything else, which is the
+point at which a settings page stops being browsable and starts being a search problem.
+
+- A search field at the top of Settings
+- Type what you want to change - "AMOLED", "memory", "swipe", "notifications", "Vault", "font",
+  "provider" - and the matching rows and categories appear as you type
+- Local and deterministic. No AI, no network, and no provider is involved in finding a setting
+- Choosing a result takes the user straight to that control rather than to the section holding it
+
+Rich Answers remains the primary work of `0.7.8.5`. Settings search is the UX enhancement shipped
+alongside it, not a replacement for it.
 
 ### `0.7.8.6` - Smart Vault
 

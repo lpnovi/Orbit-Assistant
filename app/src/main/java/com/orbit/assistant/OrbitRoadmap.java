@@ -21,6 +21,14 @@ public final class OrbitRoadmap {
     public static final String CURRENT = "Vault organization";
     /** The next major line after the Vault reaches Stable. */
     public static final String NEXT = "Rich Answers";
+    /**
+     * The smaller piece of the same release as {@link #NEXT}.
+     *
+     * <p>Listed here rather than left to prose because it is exactly the kind of entry that gets
+     * quietly promoted or quietly dropped. Settings search ships alongside Rich Answers in
+     * {@code 0.7.8.5}; it is not the headline of that release and it is not a milestone of its own.
+     */
+    public static final String ALONGSIDE = "Settings search";
     /** And the one after that. */
     public static final String AFTER = "Smart Vault";
 
@@ -30,7 +38,7 @@ public final class OrbitRoadmap {
      * <p>The list is short on purpose. It is a guard against silent drift on the things a reader
      * would be actively misled by, not an index of everything either document says.
      */
-    public static final String[] MILESTONES = {CURRENT, NEXT, AFTER};
+    public static final String[] MILESTONES = {CURRENT, NEXT, ALONGSIDE, AFTER};
 
     private OrbitRoadmap() {}
 }

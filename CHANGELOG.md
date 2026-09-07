@@ -757,3 +757,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Swipe a saved item left to delete it or right to pin and unpin it, exactly as in Chats.
   - A deleted item offers Undo, and its picture is only removed once that offer has expired.
   - Saved-item pages no longer spend header width on a Pin button, so long titles have room to breathe.
+- **v0.7.8.4-beta.6**: A new layer of polish for Chats and your Vault.
+  - Chats and Vault now float their search and filter controls above the page instead of boxing them in.
+  - The hard divider under Search is gone; the list now fades softly under the controls with no visible cutoff.
+  - Glass and shading follow your Theme Studio colours and AMOLED setting rather than one fixed look.
+  - Your Vault feed now has a Saved Items heading, matching the way Chats labels its own list.
+  - Saved from only offers the places the kind of item you are viewing actually came from.
+  - Settings search is now on the roadmap for 0.7.8.5.

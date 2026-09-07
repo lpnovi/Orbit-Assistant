@@ -206,10 +206,19 @@ public final class ReleaseModularityTest {
      * is drawn, that Vault cards use the same shared swipe row as Chats, and that a swipe deletion
      * can be undone with the item's picture intact.
      *
+     * <p>Beta 6 adds no behaviour at all. It replaces the drawn boundary between each screen's
+     * controls and the list beneath them with one shared floating-glass treatment, and the suite
+     * proves the parts a machine can settle about that: Chats and the Vault draw the same scrim at
+     * the same depth over their lists rather than beside them, the accent rule Chats used to draw
+     * is gone with nothing in its place, the glass takes its colour from the active Theme Studio
+     * theme rather than from one Orbit palette, text on it still meets AA in every shipped preset,
+     * and no capture, blur, dependency or API-level branch was added to reach it.
+     *
      * <p>What none of it can settle is whether the two selectors read as one glance at Galaxy S25
-     * Ultra width, whether the swipe feels the same in the hand as it does in Chats, and whether a
-     * long PDF title visibly has the room the removed Pin button was taking. That is what the Beta
-     * is for, so this must publish as a prerelease and never as a Stable release.
+     * Ultra width, whether the swipe feels the same in the hand as it does in Chats, whether a
+     * long PDF title visibly has the room the removed Pin button was taking, and - the whole point
+     * of this Beta - whether the transition into the feed now reads as one continuous surface. That
+     * is what the Beta is for, so this must publish as a prerelease and never as a Stable release.
      */
     @Test public void thisReleaseIsAnOrbitVaultBeta() {
         assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",

@@ -1,5 +1,6 @@
 package com.orbit.assistant;
 
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import android.app.Activity;
@@ -88,11 +89,44 @@ public final class RoadmapSyncTest {
         for (String text : new String[]{markdown(), inApp()}) {
             int current = text.indexOf(OrbitRoadmap.CURRENT);
             int next = text.indexOf(OrbitRoadmap.NEXT);
+            int alongside = text.indexOf(OrbitRoadmap.ALONGSIDE);
             int after = text.indexOf(OrbitRoadmap.AFTER);
             assertTrue("Vault organization comes first", current >= 0);
             assertTrue("Rich Answers follows the Vault", next > current);
-            assertTrue("Smart Vault follows Rich Answers", after > next);
+            assertTrue("Settings search is listed under Rich Answers, not above it",
+                    alongside > next);
+            assertTrue("and Smart Vault still follows both", after > alongside);
         }
+    }
+
+    /**
+     * Settings search is planned work for 0.7.8.5, and only planned work.
+     *
+     * <p>It is on both roadmaps because the Settings page has genuinely grown past the point of
+     * being browsable, and it is asserted to be <em>under</em> Rich Answers because it is the
+     * smaller half of that release. The failure this prevents is the entry being read as shipped:
+     * nothing in Orbit builds a Settings search field yet, so a changelog line or an in-app page
+     * that implied one would be a promise the app cannot keep.
+     */
+    @Test public void settingsSearchIsPlannedForTheRichAnswersReleaseAndNotYetBuilt() {
+        String file = markdown();
+        int at = file.indexOf(OrbitRoadmap.ALONGSIDE);
+        assertTrue(OrbitRoadmap.ALONGSIDE + " must be in ROADMAP.md", at >= 0);
+        String section = file.substring(at, Math.min(file.length(), at + 1200));
+        assertTrue("it belongs to the 0.7.8.5 release", file.substring(0, at).contains("0.7.8.5"));
+        assertTrue("and finding a setting must not need a provider", section.contains("No AI"));
+        assertTrue("choosing a result goes to the control itself",
+                section.contains("straight to that control"));
+        assertTrue("Rich Answers is still the primary work of that release",
+                section.contains("remains the primary work"));
+
+        assertFalse("Settings search has not shipped, so the changelog must not claim it",
+                ComponentUninstallTest.readRepositoryFile("CHANGELOG.md")
+                        .contains("- **v" + BuildConfig.VERSION_NAME + "**: " + "Settings search"));
+        assertFalse("and no Settings screen may already offer it",
+                ComponentUninstallTest.readRepositoryFile(
+                        "app/src/main/java/com/orbit/assistant/SettingsActivity.java")
+                        .contains("Search settings"));
     }
 
     /**

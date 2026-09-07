@@ -5,7 +5,6 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
-import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -63,6 +62,8 @@ public class MainActivity extends Activity {
     private final android.os.Handler undoTimer = new android.os.Handler(android.os.Looper.getMainLooper());
     /** The scrolled column inside the list, so the floating bar can make room and give it back. */
     private LinearLayout scrollContent;
+    /** Orbit's floating chrome over the chat list: the scrim, and the depth Search takes on. */
+    private OrbitGlass.Chrome chrome;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -405,10 +406,14 @@ public class MainActivity extends Activity {
         root.addView(newChat, ncLp);
         newChat.setOnClickListener(v -> openChat(ConversationStore.newId()));
 
+        // Orbit's floating glass, from v0.7.8.4-beta.6. Search is a surface lying over the page
+        // rather than a field cut into it: translucent, lit along its top edge, with a hairline
+        // border and a little real depth. Everything about how it is drawn comes from
+        // OrbitGlass, so the Vault's search cannot slowly stop looking like this one.
         LinearLayout searchBox = new LinearLayout(this);
         searchBox.setGravity(Gravity.CENTER_VERTICAL);
         searchBox.setPadding(UiKit.dp(this, 12), 0, UiKit.dp(this, 12), 0);
-        searchBox.setBackground(UiKit.outlined(UiKit.SURFACE, Color.rgb(47,52,66), 18, this));
+        OrbitGlass.floatControl(searchBox);
         ImageButton searchIcon = new ImageButton(this);
         searchIcon.setImageResource(com.orbit.assistant.R.drawable.ic_search);
         searchIcon.setImageTintList(ColorStateList.valueOf(UiKit.MUTED));
@@ -416,63 +421,25 @@ public class MainActivity extends Activity {
         searchBox.addView(searchIcon, new LinearLayout.LayoutParams(UiKit.dp(this, 34), UiKit.dp(this, 34)));
         search = new EditText(this);
         search.setHint("Search Orbit chats");
-        search.setHintTextColor(Color.rgb(113,119,135));
+        // Theme-derived rather than the fixed slate grey this hint used to be, so a Theme Studio
+        // surface or a light theme gets a hint that reads on it instead of one tuned for one page.
+        search.setHintTextColor(UiKit.MUTED);
         search.setTextColor(UiKit.TEXT);
         search.setTextSize(14);
         search.setSingleLine(true);
         search.setBackgroundColor(Color.TRANSPARENT);
         search.setPadding(UiKit.dp(this, 7), 0, 0, 0);
         searchBox.addView(search, new LinearLayout.LayoutParams(0, UiKit.dp(this, 48), 1));
-        root.addView(searchBox, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 52)));
+        LinearLayout.LayoutParams searchLp = new LinearLayout.LayoutParams(
+                OrbitGlass.controlWidth(this), UiKit.dp(this, 52));
+        searchLp.bottomMargin = UiKit.dp(this, OrbitGlass.CHROME_GAP_DP);
+        root.addView(searchBox, searchLp);
 
-        // 0.6.3.9: Keep the divider on the exact chat-viewport boundary while giving
-        // it a restrained Orbit treatment. The soft haze sits above the crisp bottom
-        // rule, so the scrolling content still begins exactly at the visible cutoff.
-        int dividerAccent = UiKit.accent(this);
-        FrameLayout divider = new FrameLayout(this);
-        divider.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-
-        View dividerGlow = new View(this);
-        GradientDrawable glowDrawable = new GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                new int[] {
-                        Color.TRANSPARENT,
-                        UiKit.withAlpha(dividerAccent, 30),
-                        UiKit.withAlpha(dividerAccent, 42),
-                        UiKit.withAlpha(dividerAccent, 42),
-                        UiKit.withAlpha(dividerAccent, 30),
-                        Color.TRANSPARENT
-                });
-        glowDrawable.setCornerRadius(UiKit.dp(this, 3));
-        dividerGlow.setBackground(glowDrawable);
-        FrameLayout.LayoutParams glowLp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 4), Gravity.BOTTOM);
-        divider.addView(dividerGlow, glowLp);
-
-        View dividerCore = new View(this);
-        GradientDrawable coreDrawable = new GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                new int[] {
-                        Color.TRANSPARENT,
-                        UiKit.withAlpha(dividerAccent, 120),
-                        UiKit.withAlpha(dividerAccent, 170),
-                        UiKit.withAlpha(dividerAccent, 170),
-                        UiKit.withAlpha(dividerAccent, 120),
-                        Color.TRANSPARENT
-                });
-        coreDrawable.setCornerRadius(UiKit.dp(this, 1));
-        dividerCore.setBackground(coreDrawable);
-        FrameLayout.LayoutParams coreLp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 1), Gravity.BOTTOM);
-        divider.addView(dividerCore, coreLp);
-
-        // 25 dp top gap + 4 dp divider = the same 29 dp fixed height as v0.6.3.8,
-        // keeping the divider's bottom edge (and therefore chat cutoff) unchanged.
-        LinearLayout.LayoutParams dividerLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 4));
-        dividerLp.setMargins(0, UiKit.dp(this, 25), 0, 0);
-        root.addView(divider, dividerLp);
+        // No divider. Until v0.7.8.4-beta.5 a full-width accent rule was drawn here, on the exact
+        // pixel where the chat list was clipped, and every softening of it kept the boundary it was
+        // trying to soften: the first card still stopped dead against the window background. The
+        // transition is now a scrim laid over the top of the list by OrbitGlass, so a card fades
+        // out underneath the chrome instead of ending at a line.
 
         search.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
@@ -485,6 +452,8 @@ public class MainActivity extends Activity {
         LinearLayout content = new LinearLayout(this);
         scrollContent = content;
         content.setOrientation(LinearLayout.VERTICAL);
+        // The top inset is set by OrbitGlass.install, which owns the relationship between the
+        // scrim's depth and where the first heading comes to rest under it.
         content.setPadding(0, UiKit.dp(this, 4), 0, UiKit.dp(this, 40));
 
         pendingHeader = sectionTitle("STILL THINKING");
@@ -501,7 +470,9 @@ public class MainActivity extends Activity {
         content.addView(chatList);
 
         chatScroller.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        root.addView(chatScroller, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        chrome = OrbitGlass.install(chatScroller, content, searchBox);
+        root.addView(chrome.host(), new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
         host.addView(root, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -901,6 +872,12 @@ public class MainActivity extends Activity {
 
     /** Rebuilds the chat list, as a change to it does. For tests. */
     void refreshChatsForTest() { refreshChats(); }
+
+    /** Orbit's floating chrome over the chat list. For tests. */
+    OrbitGlass.Chrome chromeForTest() { return chrome; }
+
+    /** The search surface the chrome floats. For tests. */
+    View searchSurfaceForTest() { return search == null ? null : (View) search.getParent(); }
 
     private LinearLayout card() {
         LinearLayout c = new LinearLayout(this);

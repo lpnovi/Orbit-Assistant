@@ -106,6 +106,11 @@ public final class RoadmapActivity extends Activity {
                 {OrbitRoadmap.NEXT, "Useful, clearly sourced images inside web answers, opening in "
                         + "Orbit's own image viewer with Save to Vault, and never shown when they "
                         + "add nothing."},
+                // Shipped in the same release as Rich Answers, and deliberately listed under it
+                // rather than beside it: it is the smaller piece of 0.7.8.5, not a second headline.
+                {OrbitRoadmap.ALONGSIDE, "Type what you want to change and go straight to it. "
+                        + "Settings has grown enough that hunting for one control takes longer "
+                        + "than changing it. Local and instant; no AI involved."},
                 {OrbitRoadmap.AFTER, "Making saved things easier to find and understand, with "
                         + "optional semantic search, text read from images you saved, and richer "
                         + "retrieval of saved pages. Always explicit, never automatic."}

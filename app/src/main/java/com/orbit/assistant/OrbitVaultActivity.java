@@ -111,10 +111,28 @@ public final class OrbitVaultActivity extends Activity {
     static final String SOURCE_QUESTION = "Saved from";
     /** And what the Type selector is asking. */
     static final String TYPE_QUESTION = "Type";
-    /** The heading above the items the user asked to keep near the top. */
-    static final String PINNED_HEADING = "Pinned";
+    /**
+     * The heading above the items the user asked to keep near the top.
+     *
+     * <p>Set in Orbit's own section-label voice from v0.7.8.4-beta.6 - short, upper case, letter
+     * spaced - because it is the same kind of label as Chats' own PINNED and RECENT CHATS and there
+     * was no reason for the two lists to write their headings differently. The sentence-case word
+     * is still what a card's provenance line and its spoken description use, and that is
+     * {@link #PINNED_LABEL}: a heading and a fact about one item are not the same text.
+     */
+    static final String PINNED_HEADING = "PINNED";
     /** And the one above everything else, shown only when there is a pinned section above it. */
-    static final String OTHERS_HEADING = "Everything else";
+    static final String OTHERS_HEADING = "EVERYTHING ELSE";
+    /**
+     * The heading above the collection when nothing is pinned.
+     *
+     * <p>The Vault used to begin with no heading at all, which left the first card floating
+     * directly under the filters with nothing saying the feed had started. Chats answers the same
+     * question with RECENT CHATS, and this is the same answer in the same voice.
+     */
+    static final String SAVED_HEADING = "SAVED ITEMS";
+    /** "Pinned", as one item's provenance line and spoken description say it. */
+    static final String PINNED_LABEL = "Pinned";
 
     static final String ACTION_PIN = "Pin";
     static final String ACTION_UNPIN = "Unpin";
@@ -134,14 +152,18 @@ public final class OrbitVaultActivity extends Activity {
     static final String SWIPE_SUBJECT = "saved item";
 
     /**
-     * How wide the two selectors together are allowed to become.
+     * How wide a floating control on this page is allowed to become.
      *
-     * <p>Never reached on a phone, where the row is simply the width of the screen. A Tab S9 Plus
-     * does reach it, and two controls stretched across a whole tablet stop reading as a compact
-     * question and start reading as a toolbar. The search field above keeps the full width, because
-     * a field genuinely uses it.
+     * <p>Never reached on a phone, where a control is simply the width of the screen. A Tab S9 Plus
+     * does reach it, and controls stretched across a whole tablet stop reading as a compact
+     * question and start reading as a toolbar.
+     *
+     * <p>Beta 5 capped the selector row and left the search field full width, which made the
+     * control cluster two different widths on a tablet and one width on a phone. The cap now comes
+     * from {@link OrbitGlass}, is the same number for every floating control on both this screen
+     * and Chats, and is where a future Orbit list screen will read it from too.
      */
-    static final int FILTERS_MAX_WIDTH_DP = 520;
+    static final int FILTERS_MAX_WIDTH_DP = OrbitGlass.MAX_CONTROL_WIDTH_DP;
 
     /** How long a swiped-away item can be taken back before the deletion is carried out. */
     private static final long UNDO_WINDOW_MS = 5200L;
@@ -153,6 +175,8 @@ public final class OrbitVaultActivity extends Activity {
     private TextView subtitle;
     private EditText searchInput;
     private LinearLayout filterBar;
+    /** Orbit's floating chrome over the saved items: the scrim, and the depth the cluster takes. */
+    private OrbitGlass.Chrome chrome;
     private Button capture;
     private LinearLayout undoBar;
     private boolean quickCapturePending;
@@ -303,27 +327,32 @@ public final class OrbitVaultActivity extends Activity {
         searchInput.setHintTextColor(UiKit.MUTED);
         searchInput.setTextSize(14);
         searchInput.setPadding(UiKit.dp(this, 14), 0, UiKit.dp(this, 14), 0);
-        searchInput.setBackground(UiKit.outlined(UiKit.SURFACE,
-                UiKit.withAlpha(UiKit.accent(this), 52), 16, this));
+        // Orbit's floating glass, from v0.7.8.4-beta.6, and the same call Chats makes: the search
+        // field is a surface lying over the page rather than a box cut into it.
+        OrbitGlass.floatControl(searchInput);
         searchInput.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
             @Override public void onTextChanged(CharSequence s, int a, int b, int c) { refresh(); }
             @Override public void afterTextChanged(Editable s) {}
         });
         LinearLayout.LayoutParams searchLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 46));
-        searchLp.setMargins(0, 0, 0, UiKit.dp(this, 8));
+                OrbitGlass.controlWidth(this), UiKit.dp(this, 46));
+        searchLp.setMargins(0, 0, 0, UiKit.dp(this, OrbitGlass.CONTROL_GAP_DP));
         root.addView(searchInput, searchLp);
 
         // Two selectors on one row that always fits, rather than a conveyor belt of chips the user
         // had to drag sideways to discover. Both questions are on screen at once, both are the same
         // height as one line of text, and neither pushes the collection down the page.
+        //
+        // Beta 6 changes nothing about how they work. Each one is simply its own floating glass
+        // surface now, so Search and the two selectors read as a cluster of controls lying over the
+        // page rather than as a panel bolted to the top of it.
         filterBar = new LinearLayout(this);
         filterBar.setOrientation(LinearLayout.HORIZONTAL);
         filterBar.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams filterLp = new LinearLayout.LayoutParams(
-                filterBarWidth(), ViewGroup.LayoutParams.WRAP_CONTENT);
-        filterLp.setMargins(0, 0, 0, UiKit.dp(this, 8));
+                OrbitGlass.controlWidth(this), ViewGroup.LayoutParams.WRAP_CONTENT);
+        filterLp.setMargins(0, 0, 0, UiKit.dp(this, OrbitGlass.CHROME_GAP_DP));
         root.addView(filterBar, filterLp);
 
         listScroller = new ScrollView(this);
@@ -333,7 +362,10 @@ public final class OrbitVaultActivity extends Activity {
         list.setPadding(0, UiKit.dp(this, 2), 0, UiKit.dp(this, 36));
         listScroller.addView(list, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        root.addView(listScroller, new LinearLayout.LayoutParams(
+        // No divider and no hard edge: the saved items pass underneath the control cluster and
+        // fade out, rather than being clipped flat against the page.
+        chrome = OrbitGlass.install(listScroller, list, searchInput);
+        root.addView(chrome.host(), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
         host.addView(root, new FrameLayout.LayoutParams(
@@ -344,19 +376,6 @@ public final class OrbitVaultActivity extends Activity {
         barLp.bottomMargin = UiKit.dp(this, 12);
         host.addView(buildUndoBar(), barLp);
         return host;
-    }
-
-    /**
-     * How wide the selector row is allowed to be on this device.
-     *
-     * <p>The whole width on a phone, and capped on a tablet. Left-aligned rather than centred when
-     * it is capped, so it starts under the start of the search field instead of floating in the
-     * middle of the page away from everything it belongs to.
-     */
-    private int filterBarWidth() {
-        int available = getResources().getDisplayMetrics().widthPixels;
-        int capped = UiKit.dp(this, FILTERS_MAX_WIDTH_DP);
-        return capped >= available ? ViewGroup.LayoutParams.MATCH_PARENT : capped;
     }
 
     /**
@@ -427,6 +446,11 @@ public final class OrbitVaultActivity extends Activity {
         if (capture != null) capture.setVisibility(enabled ? View.VISIBLE : View.GONE);
         if (searchInput != null) searchInput.setVisibility(enabled ? View.VISIBLE : View.GONE);
         if (filterBar != null) filterBar.setVisibility(enabled ? View.VISIBLE : View.GONE);
+        // With the Vault off there is no floating chrome, so there is nothing for a scrim to sit
+        // under. Left on, it would be a haze over the top of the one notice this page can show.
+        if (chrome != null) {
+            chrome.scrim().setVisibility(enabled ? View.VISIBLE : View.GONE);
+        }
         if (!enabled) {
             subtitle.setText("Turned off in Settings");
             LinearLayout off = card();
@@ -510,6 +534,11 @@ public final class OrbitVaultActivity extends Activity {
             list.addView(sectionHeading(PINNED_HEADING, false));
             addCards(pinned);
             if (!rest.isEmpty()) list.addView(sectionHeading(OTHERS_HEADING, true));
+        } else if (!rest.isEmpty()) {
+            // With nothing pinned there is one group, and it still says where the feed begins.
+            // Exactly the shape Chats uses: a Pinned section renames the group below it, and
+            // without one the group carries the collection's own name.
+            list.addView(sectionHeading(SAVED_HEADING, false));
         }
         addCards(rest);
     }
@@ -552,12 +581,18 @@ public final class OrbitVaultActivity extends Activity {
         }
     }
 
-    /** A small muted label above a group of cards. Never a card of its own. */
+    /**
+     * A small muted label above a group of cards. Never a card of its own.
+     *
+     * <p>Set to the same size and letter spacing as Chats' own section labels from
+     * v0.7.8.4-beta.6. Two lists in the same app were writing the same kind of heading at two
+     * different weights, which is exactly the sort of drift the shared glass work exists to stop.
+     */
     private TextView sectionHeading(String name, boolean spacedAbove) {
-        TextView heading = UiKit.text(this, name, 11, UiKit.MUTED, true);
-        heading.setLetterSpacing(0.12f);
-        heading.setPadding(UiKit.dp(this, 3), UiKit.dp(this, spacedAbove ? 8 : 1), 0,
-                UiKit.dp(this, 8));
+        TextView heading = UiKit.text(this, name, 12, UiKit.MUTED, true);
+        heading.setLetterSpacing(0.18f);
+        heading.setPadding(UiKit.dp(this, 3), UiKit.dp(this, spacedAbove ? 10 : 0), 0,
+                UiKit.dp(this, 10));
         return heading;
     }
 
@@ -582,19 +617,23 @@ public final class OrbitVaultActivity extends Activity {
         filterBar.removeAllViews();
 
         boolean typed = filter.type != OrbitVaultFilter.Type.ALL;
-        filterBar.addView(selector(filter.type.label, typed,
-                        TYPE_QUESTION + ": " + filter.type.label
-                                + ". Tap to choose what kind of saved item to show.",
-                        v -> showTypeMenu(v, filter)),
-                selectorLp(true));
+        View typeSelector = selector(filter.type.label, typed,
+                TYPE_QUESTION + ": " + filter.type.label
+                        + ". Tap to choose what kind of saved item to show.",
+                v -> showTypeMenu(v, filter));
+        filterBar.addView(typeSelector, selectorLp(true));
 
         boolean sourced = !filter.source.isEmpty();
         String from = sourced ? OrbitVaultSource.displayLabel(filter.source) : SOURCE_ANY;
-        filterBar.addView(selector(from, sourced,
-                        SOURCE_QUESTION + ": " + from
-                                + ". Tap to choose where an item was saved from.",
-                        v -> showSourceMenu(v, filter)),
-                selectorLp(false));
+        View sourceSelector = selector(from, sourced,
+                SOURCE_QUESTION + ": " + from
+                        + ". Tap to choose where an item was saved from.",
+                v -> showSourceMenu(v, filter));
+        filterBar.addView(sourceSelector, selectorLp(false));
+
+        // The cluster is rebuilt here, so the chrome is told about the new selectors. Without this
+        // a scrolled list would leave Search at one depth and the row beneath it at another.
+        if (chrome != null) chrome.setControls(searchInput, typeSelector, sourceSelector);
 
         // Only once both questions are narrowing at the same time. With one in force, its own
         // selector already offers the way back in one tap, and a second control doing the same
@@ -642,10 +681,14 @@ public final class OrbitVaultActivity extends Activity {
         caretLp.setMargins(UiKit.dp(this, 6), 0, 0, 0);
         box.addView(caret, caretLp);
 
+        // Chosen keeps the accent fill it has had since Beta 4, so which selector is narrowing the
+        // Vault is still unmistakable; resting is Orbit's floating glass, the same surface Search
+        // above it is drawn on. Depth never carries the state - the fill, the ink and the spoken
+        // description all do - so a selector reads correctly with the glass and without it.
         box.setBackground(chosen
                 ? UiKit.ripple(UiKit.accent(this), UiKit.onAccent(this), 16, this)
-                : UiKit.rippleOutlined(UiKit.SURFACE,
-                        UiKit.withAlpha(UiKit.accent(this), 46), UiKit.accent(this), 16, this));
+                : OrbitGlass.interactive(this, 16));
+        box.setElevation(UiKit.dp(this, OrbitGlass.RESTING_ELEVATION_DP));
         box.setContentDescription(description + (chosen ? " Currently filtering." : ""));
         box.setOnClickListener(onClick);
         UiKit.pressScale(box);
@@ -689,9 +732,16 @@ public final class OrbitVaultActivity extends Activity {
      * source that is currently in force but no longer present in the collection is still listed:
      * otherwise a filter could survive its last item and leave the user unable to turn it off from
      * the control that set it.
+     *
+     * <p>The doors offered are the ones the <em>current type</em> came through. Asked while looking
+     * at Documents, this lists where the saved pages came from and not where a screenshot did:
+     * every other row could only ever empty the screen, which is not a choice worth presenting.
+     * Only the offer narrows - the filter itself still matches on the item's stored source exactly
+     * as it did in Beta 5.
      */
     private void showSourceMenu(View anchor, OrbitVaultFilter filter) {
-        List<String> sources = new ArrayList<>(OrbitVaultStore.sourcesPresent(this));
+        List<String> sources =
+                new ArrayList<>(OrbitVaultStore.sourcesPresent(this, filter.type));
         if (!filter.source.isEmpty() && !sources.contains(filter.source)) {
             sources.add(0, filter.source);
         }
@@ -726,6 +776,15 @@ public final class OrbitVaultActivity extends Activity {
         OrbitSwipeRow.resetActive();
         refresh();
     }
+
+    /** Orbit's floating chrome over the saved items. For tests. */
+    OrbitGlass.Chrome chromeForTest() { return chrome; }
+
+    /** The scrolled column of saved items. For tests. */
+    ScrollView listViewportForTest() { return listScroller; }
+
+    /** The search surface the chrome floats. For tests. */
+    View searchSurfaceForTest() { return searchInput; }
 
     // ---- one saved thing --------------------------------------------------------------------------
 
@@ -826,7 +885,7 @@ public final class OrbitVaultActivity extends Activity {
         // The kind of item is written out, never signalled by colour alone, so it reads the same
         // for someone who cannot tell the accent from the muted text.
         StringBuilder meta = new StringBuilder();
-        if (item.pinned) meta.append(PINNED_HEADING).append(" · ");
+        if (item.pinned) meta.append(PINNED_LABEL).append(" · ");
         meta.append(item.typeLabel());
         if (item.isLink() && !item.hostLabel().isEmpty()) meta.append(" · ").append(item.hostLabel());
         if (!item.source.isEmpty() && !item.source.equals(item.typeLabel())) {
@@ -839,7 +898,7 @@ public final class OrbitVaultActivity extends Activity {
 
         card.setBackground(UiKit.rippleOutlined(UiKit.SURFACE,
                 UiKit.withAlpha(UiKit.accent(this), 34), UiKit.accent(this), 20, this));
-        card.setContentDescription((item.pinned ? PINNED_HEADING + " " : "")
+        card.setContentDescription((item.pinned ? PINNED_LABEL + " " : "")
                 + item.typeLabel() + ": " + item.displayTitle() + ". " + item.savedLabel());
         card.setOnClickListener(v -> open(item));
         card.setOnLongClickListener(v -> {
