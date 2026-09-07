@@ -49,6 +49,15 @@ public final class OrbitVaultItem {
      */
     public static final int MAX_BODY_CHARS = 20000;
     public static final int MAX_SOURCE_CHARS = 60;
+    /**
+     * The most a user's own note about a saved item may hold.
+     *
+     * <p>Far smaller than the body on purpose. A note is why the user kept something, not a second
+     * copy of it: a sentence or two, written in a dialog, read at a glance under the content. Given
+     * the whole body budget it would stop being a note and start being a place to paste things,
+     * which is what the item itself is already for.
+     */
+    public static final int MAX_NOTE_CHARS = 600;
     /** The longest address Orbit will keep as a link rather than as ordinary text. */
     public static final int MAX_URL_CHARS = 2000;
     /** How long a derived title may be before it is trimmed at a word boundary. */
@@ -59,18 +68,39 @@ public final class OrbitVaultItem {
     public final String title;
     public final String body;
     public final String source;
+    /**
+     * What the user wrote about this item, or empty.
+     *
+     * <p>A distinct field rather than something folded into the title or the body, because it is a
+     * different thing with a different owner. The body is what was saved - an address, a picture,
+     * the words Orbit actually said - and it stays exactly as it arrived. The note is the user's
+     * own reason for keeping it, written afterwards, editable at any time, and shown as clearly
+     * theirs. Overloading either field to fake the other would lose that distinction the first
+     * time somebody searched, backed up, or asked Orbit about a saved item.
+     *
+     * <p>Absent from every Beta 1 item on disk, and that is not a migration: a missing note reads
+     * as an empty one, which is exactly what it means.
+     */
+    public final String note;
     /** Absolute path to the private file this item owns, or empty. Never a foreign content URI. */
     public final String mediaPath;
     public final long createdAt;
     public final long modifiedAt;
 
+    /** One item with no note of its own. What every Beta 1 item on disk is. */
     public OrbitVaultItem(String id, String type, String title, String body, String source,
                           String mediaPath, long createdAt, long modifiedAt) {
+        this(id, type, title, body, source, "", mediaPath, createdAt, modifiedAt);
+    }
+
+    public OrbitVaultItem(String id, String type, String title, String body, String source,
+                          String note, String mediaPath, long createdAt, long modifiedAt) {
         this.id = trim(id);
         this.type = normalizeType(type);
         this.title = bound(collapse(title), MAX_TITLE_CHARS);
         this.body = boundBody(body);
         this.source = bound(collapse(source), MAX_SOURCE_CHARS);
+        this.note = boundNote(note);
         this.mediaPath = trim(mediaPath);
         this.createdAt = createdAt;
         this.modifiedAt = modifiedAt <= 0L ? createdAt : modifiedAt;
@@ -82,6 +112,9 @@ public final class OrbitVaultItem {
     public boolean isLink() { return TYPE_LINK.equals(type); }
     public boolean isOrbitReply() { return TYPE_ORBIT_REPLY.equals(type); }
     public boolean isText() { return TYPE_TEXT.equals(type); }
+
+    /** Whether the user has written anything of their own about this item. */
+    public boolean hasNote() { return !note.isEmpty(); }
 
     /**
      * Whether the stored body itself may be rewritten.
@@ -137,9 +170,16 @@ public final class OrbitVaultItem {
         return "Edited " + DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(modifiedAt));
     }
 
-    /** Everything one item contributes to local search, lower-cased once. */
+    /**
+     * Everything one item contributes to local search, lower-cased once.
+     *
+     * <p>The note is in here because it is very often the only words the user would think to
+     * search for. A saved short-video address contains nothing anybody remembers; "animation
+     * idea", which they typed themselves, is exactly what they will type again.
+     */
     String searchHaystack() {
-        return (title + "\n" + body + "\n" + source + "\n" + typeLabel()).toLowerCase(Locale.US);
+        return (title + "\n" + body + "\n" + note + "\n" + source + "\n" + typeLabel())
+                .toLowerCase(Locale.US);
     }
 
     // ---- storage ---------------------------------------------------------------------------------
@@ -151,6 +191,7 @@ public final class OrbitVaultItem {
                 .put("title", title)
                 .put("body", body)
                 .put("source", source)
+                .put("note", note)
                 .put("mediaPath", mediaPath)
                 .put("createdAt", createdAt)
                 .put("modifiedAt", modifiedAt);
@@ -164,6 +205,9 @@ public final class OrbitVaultItem {
                 o.optString("title", ""),
                 o.optString("body", ""),
                 o.optString("source", ""),
+                // Absent in every Beta 1 document. Missing means the user never wrote one, which
+                // is what an empty note already means, so nothing has to be migrated.
+                o.optString("note", ""),
                 o.optString("mediaPath", ""),
                 o.optLong("createdAt", 0L),
                 o.optLong("modifiedAt", 0L));
@@ -270,6 +314,19 @@ public final class OrbitVaultItem {
     private static String bound(String value, int max) {
         String text = value == null ? "" : value;
         return text.length() <= max ? text : text.substring(0, max).trim();
+    }
+
+    /**
+     * A note keeps its line breaks and is cut silently at the ceiling.
+     *
+     * <p>Silently, unlike the body, because a note is written in a field the user is looking at
+     * and cannot reach the limit without typing six hundred characters into it on purpose. The
+     * body arrives from a share or a paste and can be cut without anybody watching, which is why
+     * that one announces itself.
+     */
+    private static String boundNote(String value) {
+        String text = value == null ? "" : value.trim();
+        return text.length() <= MAX_NOTE_CHARS ? text : text.substring(0, MAX_NOTE_CHARS).trim();
     }
 
     /** Body keeps its line breaks, and says so when it had to be cut. */

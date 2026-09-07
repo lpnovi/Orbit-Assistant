@@ -49,11 +49,21 @@ public final class OrbitVaultActivity extends Activity {
     static final String EMPTY_BODY =
             "Save text, images, links, and useful Orbit answers here.";
 
+    /** The optional note field, in the same words wherever something is being saved. */
+    static final String NOTE_FIELD_HINT = "Note (optional)";
+
+    /** What the Vault says about itself when the user has switched it off in Settings. */
+    static final String OFF_TITLE = "Orbit Vault is turned off";
+    static final String OFF_BODY =
+            "Nothing has been deleted. Turn Orbit Vault back on in Settings to save new items "
+                    + "and to see everything you already saved.";
+
     private static final int REQ_PICK_IMAGE = 8401;
 
     private LinearLayout list;
     private TextView subtitle;
     private EditText searchInput;
+    private Button capture;
     private String appearanceSignature = "";
 
     /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
@@ -121,7 +131,7 @@ public final class OrbitVaultActivity extends Activity {
         top.addView(sort, new LinearLayout.LayoutParams(UiKit.dp(this, 48), UiKit.dp(this, 48)));
         root.addView(top);
 
-        Button capture = new Button(this);
+        capture = new Button(this);
         capture.setText("+  Save to Vault");
         capture.setTextColor(UiKit.onAccent(this));
         capture.setTextSize(15);
@@ -191,6 +201,24 @@ public final class OrbitVaultActivity extends Activity {
         if (list == null) return;
         list.removeAllViews();
 
+        // Every ordinary way in is gone while the Vault is off, so reaching this page at all means
+        // arriving from somewhere that outlived the preference - a task the user left open, a
+        // recents entry. Saying what happened, and that nothing was lost, is the only useful thing
+        // the screen can do; offering Quick Capture would be offering a control that cannot work.
+        boolean enabled = OrbitVaultStore.enabled(this);
+        if (capture != null) capture.setVisibility(enabled ? View.VISIBLE : View.GONE);
+        if (searchInput != null) searchInput.setVisibility(enabled ? View.VISIBLE : View.GONE);
+        if (!enabled) {
+            subtitle.setText("Turned off in Settings");
+            LinearLayout off = card();
+            off.addView(UiKit.text(this, OFF_TITLE, 16, UiKit.TEXT, true));
+            TextView body = UiKit.text(this, OFF_BODY, 13, UiKit.MUTED, false);
+            body.setPadding(0, UiKit.dp(this, 6), 0, 0);
+            off.addView(body);
+            list.addView(off, cardLp());
+            return;
+        }
+
         OrbitVaultStore.Sort sort = Prefs.vaultSort(this);
         int total = OrbitVaultStore.count(this);
         String query = searchInput == null ? "" : searchInput.getText().toString().trim();
@@ -221,7 +249,8 @@ public final class OrbitVaultActivity extends Activity {
             LinearLayout empty = card();
             empty.addView(UiKit.text(this, "No matching items", 15, UiKit.TEXT, true));
             TextView hint = UiKit.text(this,
-                    "Search looks at titles, text, links and where an item came from.",
+                    "Search looks at titles, text, links, your own notes and where an item "
+                            + "came from.",
                     12, UiKit.MUTED, false);
             hint.setPadding(0, UiKit.dp(this, 5), 0, 0);
             empty.addView(hint);
@@ -296,6 +325,17 @@ public final class OrbitVaultActivity extends Activity {
             body.setEllipsize(android.text.TextUtils.TruncateAt.END);
             body.setPadding(0, UiKit.dp(this, 5), 0, 0);
             card.addView(body);
+        }
+
+        // The user's own words, on the card, because they are usually the fastest way to recognise
+        // something in a list. Marked as theirs rather than run together with the saved content,
+        // which is the same distinction the item screen makes.
+        if (item.hasNote()) {
+            TextView note = UiKit.text(this, "Your note: " + item.note, 12, UiKit.MUTED, false);
+            note.setMaxLines(2);
+            note.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            note.setPadding(0, UiKit.dp(this, 6), 0, 0);
+            card.addView(note);
         }
 
         // The kind of item is written out, never signalled by colour alone, so it reads the same
@@ -406,6 +446,14 @@ public final class OrbitVaultActivity extends Activity {
         bodyLp.setMargins(0, UiKit.dp(this, 12), 0, 0);
         form.addView(body, bodyLp);
 
+        // The moment somebody is most likely to know why they are keeping something is while they
+        // are keeping it. Optional, one line high, and never in the way of a fast save.
+        EditText userNote = field(NOTE_FIELD_HINT, false);
+        LinearLayout.LayoutParams noteLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        noteLp.setMargins(0, UiKit.dp(this, 12), 0, 0);
+        form.addView(userNote, noteLp);
+
         TextView note = UiKit.text(this,
                 "Saved on this device only. Orbit does not send it anywhere.", 12, UiKit.MUTED, false);
         note.setPadding(0, UiKit.dp(this, 12), 0, 0);
@@ -432,7 +480,7 @@ public final class OrbitVaultActivity extends Activity {
                     return;
                 }
                 if (OrbitVaultStore.saveText(this, title.getText().toString(), text,
-                        "Quick Capture") == null) {
+                        "Quick Capture", userNote.getText().toString()) == null) {
                     Toast.makeText(this, "Orbit could not save that", Toast.LENGTH_SHORT).show();
                     return;
                 }
@@ -460,11 +508,76 @@ public final class OrbitVaultActivity extends Activity {
             Toast.makeText(this, "Your clipboard has no text to save", Toast.LENGTH_SHORT).show();
             return;
         }
-        if (OrbitVaultStore.saveText(this, "", text, "Clipboard") == null) {
-            Toast.makeText(this, "Orbit could not save that", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        saved();
+        confirmClipboard(text);
+    }
+
+    /**
+     * Shows what is about to be saved, and offers a title and a note before it is.
+     *
+     * <p>Beta 1 saved the clipboard the instant it was tapped, which was fast and slightly blind:
+     * the user found out what they had kept by opening it afterwards. Two optional fields and a
+     * preview is not a wizard - it is one dialog with one button, and the content is already there
+     * - and it turns a paste into something the user can see and label while they still remember
+     * why they copied it.
+     */
+    private void confirmClipboard(String text) {
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(UiKit.dp(this, 20), UiKit.dp(this, 4), UiKit.dp(this, 20), UiKit.dp(this, 14));
+        form.setBackgroundColor(UiKit.SURFACE);
+
+        TextView preview = UiKit.text(this, text, 13, UiKit.MUTED, false);
+        preview.setMaxLines(4);
+        preview.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        preview.setPadding(UiKit.dp(this, 12), UiKit.dp(this, 10), UiKit.dp(this, 12),
+                UiKit.dp(this, 10));
+        preview.setBackground(UiKit.outlined(UiKit.SURFACE_2,
+                UiKit.withAlpha(UiKit.accent(this), 34), 14, this));
+        form.addView(preview, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        EditText title = field("Title (optional)", false);
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        titleLp.setMargins(0, UiKit.dp(this, 12), 0, 0);
+        form.addView(title, titleLp);
+
+        EditText userNote = field(NOTE_FIELD_HINT, false);
+        LinearLayout.LayoutParams noteLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        noteLp.setMargins(0, UiKit.dp(this, 12), 0, 0);
+        form.addView(userNote, noteLp);
+
+        TextView where = UiKit.text(this,
+                "Saved on this device only. Orbit does not send it anywhere.", 12, UiKit.MUTED, false);
+        where.setPadding(0, UiKit.dp(this, 12), 0, 0);
+        form.addView(where);
+
+        TextView customTitle = UiKit.text(this, "Save from clipboard", 20, UiKit.TEXT, true);
+        customTitle.setPadding(UiKit.dp(this, 20), UiKit.dp(this, 18), UiKit.dp(this, 20),
+                UiKit.dp(this, 8));
+        customTitle.setBackgroundColor(UiKit.SURFACE);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setCustomTitle(customTitle)
+                .setView(form)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save", null)
+                .create();
+        UiKit.styleOrbitDialog(dialog, this, false, () -> {
+            Button save = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            if (save == null) return;
+            save.setOnClickListener(v -> {
+                if (OrbitVaultStore.saveText(this, title.getText().toString(), text, "Clipboard",
+                        userNote.getText().toString()) == null) {
+                    Toast.makeText(this, "Orbit could not save that", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                dialog.dismiss();
+                saved();
+            });
+        });
+        dialog.show();
     }
 
     private void addImage() {

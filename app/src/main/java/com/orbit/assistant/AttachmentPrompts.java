@@ -43,6 +43,12 @@ public final class AttachmentPrompts {
         }
         if ("pdf".equals(attachment.kind)) return pdfPrompt(attachment.contentState);
         if ("clipboard".equals(attachment.kind)) return "Help me with this clipboard content.";
+        // A saved item can be a note, an address, a picture or an answer, and the default question
+        // must not claim to know which. "This saved item" is true of all four, where the image
+        // fallback below would be wrong for three of them.
+        if (OrbitVaultAttachment.KIND.equals(attachment.kind)) {
+            return "What can you tell me about this saved item?";
+        }
         if ("screen_selection".equals(attachment.kind)) {
             return "What should I know about this selection?";
         }

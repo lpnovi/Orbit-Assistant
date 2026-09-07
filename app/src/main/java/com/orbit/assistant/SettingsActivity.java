@@ -511,16 +511,6 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         manageMemoryLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
         personalDataCard.addView(manageMemory, manageMemoryLp);
 
-        // Orbit Vault is reachable from the Chats header; this is the second way in, so turning off
-        // nothing can ever strand it. It is deliberately listed beside Memory and read as its
-        // opposite number: Memory is what Orbit may use on its own, the Vault is what the user kept.
-        Button openVault = secondaryButton("Open Orbit Vault");
-        openVault.setOnClickListener(v -> startActivity(new Intent(this, OrbitVaultActivity.class)));
-        LinearLayout.LayoutParams openVaultLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
-        openVaultLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
-        personalDataCard.addView(openVault, openVaultLp);
-
         Button manageApps = secondaryButton("Manage app profiles");
         manageApps.setOnClickListener(v -> startActivity(new Intent(this, AppsActivity.class)));
         LinearLayout.LayoutParams manageAppsLp = new LinearLayout.LayoutParams(
@@ -534,6 +524,16 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
         manageNotificationsLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
         personalDataCard.addView(manageNotifications, manageNotificationsLp);
+        // Added with the other Personalization & data sections below.
+
+        // Orbit Vault gets its own small section rather than a row inside Personalization, because
+        // Beta 2 gives it three genuinely different controls: whether the feature exists, a way in,
+        // and an erase. Those are the answers to three different questions, and burying the erase
+        // among the "Manage ..." rows would put a permanent action next to six reversible ones.
+        TextView vaultSection = sectionTitle("ORBIT VAULT", "data");
+        LinearLayout vaultCard = card();
+        tagSectionCard(vaultCard, "data");
+        buildVaultCard(vaultCard);
         // Added with the other Personalization & data sections below.
 
         TextView backupSection = sectionTitle("BACKUP & RESTORE", "data");
@@ -693,6 +693,8 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         page.addView(galleryCard);
         page.addView(personalizationSection);
         page.addView(personalDataCard);
+        page.addView(vaultSection);
+        page.addView(vaultCard);
         page.addView(remindersSection);
         page.addView(remindersCard);
         page.addView(backupSection);
@@ -1434,6 +1436,87 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         b.setMinHeight(0); b.setMinimumHeight(0); b.setStateListAnimator(null);
         UiKit.pressScale(b);
         return b;
+    }
+
+    /** What the Vault's switch and its erase control say, in the words the screen shows. */
+    static final String VAULT_TOGGLE_LABEL = "Use Orbit Vault";
+    static final String VAULT_TOGGLE_HELP =
+            "Save text, links, images and useful Orbit answers for later. Everything stays on this "
+                    + "device, and Orbit uses a saved item only when you choose it yourself.";
+    static final String VAULT_OPEN_LABEL = "Open Orbit Vault";
+    static final String VAULT_DELETE_LABEL = "Delete Vault data";
+    static final String VAULT_DELETE_TITLE = "Delete all Vault data?";
+    static final String VAULT_DELETE_MESSAGE =
+            "All items saved in Orbit Vault and their local media will be removed from this "
+                    + "device. This cannot be undone.\n\nYour chats, Orbit Memory, your providers "
+                    + "and the rest of your settings are not affected.";
+
+    /**
+     * The Vault's three controls, and the difference between two of them.
+     *
+     * <p>Switching the Vault off and erasing what is in it are separate on purpose, because they
+     * are separate intentions with very different costs. Off is a preference: the Vault leaves the
+     * app, nothing is deleted, and one tap brings all of it back. Delete is permanent, so it is its
+     * own control with Orbit's destructive treatment and its own confirmation - and it stays
+     * available while the Vault is off, because somebody who has stopped using the feature should
+     * not have to switch it back on in order to be rid of the contents.
+     */
+    private void buildVaultCard(LinearLayout card) {
+        TextView help = UiKit.text(this, VAULT_TOGGLE_HELP, 13, UiKit.MUTED, false);
+        help.setPadding(0, 0, 0, UiKit.dp(this, 12));
+        card.addView(help);
+
+        Button openVault = secondaryButton(VAULT_OPEN_LABEL);
+        openVault.setOnClickListener(v -> startActivity(new Intent(this, OrbitVaultActivity.class)));
+        LinearLayout.LayoutParams openVaultLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
+        openVaultLp.setMargins(0, UiKit.dp(this, 4), 0, 0);
+
+        OrbitSwitch control = new OrbitSwitch(this);
+        control.setChecked(Prefs.vaultEnabled(this), false);
+        control.setOnCheckedChangeListener((button, checked) -> {
+            Prefs.get(this).edit().putBoolean(Prefs.VAULT_ENABLED, checked).apply();
+            // The way in disappears with the feature rather than staying as a control that opens a
+            // page saying it is switched off. Corrected here and now, because a switch whose
+            // consequences only appear after leaving Settings does not read as connected to it.
+            openVault.setVisibility(checked ? View.VISIBLE : View.GONE);
+        });
+        card.addView(UiKit.switchRow(this, VAULT_TOGGLE_LABEL, null, control));
+
+        openVault.setVisibility(Prefs.vaultEnabled(this) ? View.VISIBLE : View.GONE);
+        card.addView(openVault, openVaultLp);
+
+        Button deleteVault = dangerOutlineButton(VAULT_DELETE_LABEL);
+        deleteVault.setOnClickListener(v -> confirmDeleteVaultData());
+        LinearLayout.LayoutParams deleteVaultLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
+        deleteVaultLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
+        card.addView(deleteVault, deleteVaultLp);
+    }
+
+    /**
+     * Asks before erasing the Vault, and says exactly what is and is not included.
+     *
+     * <p>Naming what survives is as much a part of an irreversible confirmation as naming what
+     * goes. "Delete Vault data" beside a Memory control and a Backup control is precisely the kind
+     * of button somebody presses while wondering how much of their Orbit it reaches.
+     */
+    private void confirmDeleteVaultData() {
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(VAULT_DELETE_TITLE)
+                .setMessage(VAULT_DELETE_MESSAGE)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Delete all", (d, w) -> {
+                    int removed = OrbitVaultStore.deleteAllData(this);
+                    Toast.makeText(this, removed == 0
+                                    ? "Your Vault was already empty"
+                                    : "Deleted " + removed
+                                            + (removed == 1 ? " saved item" : " saved items"),
+                            Toast.LENGTH_SHORT).show();
+                })
+                .create();
+        UiKit.styleOrbitDialog(dialog, this, true);
+        dialog.show();
     }
 
     private View toggle(String label, String key, boolean def) {

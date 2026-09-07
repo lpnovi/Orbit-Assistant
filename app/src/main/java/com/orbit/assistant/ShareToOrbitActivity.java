@@ -132,7 +132,12 @@ public final class ShareToOrbitActivity extends Activity {
         // says otherwise, and it is still reached with no question at all for anything the Vault
         // cannot hold. What is new is that a share the Vault *can* hold is asked about rather than
         // decided for the user.
-        if (vaultCanHold(text, uris, declaredType)) {
+        //
+        // With the Vault switched off there is only one destination, so there is no question to
+        // ask and the share goes straight to a conversation exactly as it did before the Vault
+        // existed. The receiver itself is untouched: Share to Orbit has to keep working, and
+        // disabling a feature must never disable a door the rest of Orbit depends on.
+        if (Prefs.vaultEnabled(this) && vaultCanHold(text, uris, declaredType)) {
             askDestination(text, uris, token, chat);
             return;
         }

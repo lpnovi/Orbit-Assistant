@@ -81,12 +81,37 @@ final class MessageActions {
      * menu language as copying already was.
      */
     static String[] assistantLabels(boolean canRegenerate) {
+        return assistantLabels(canRegenerate, true);
+    }
+
+    /**
+     * The same menu with the Vault switched off: Copy, and Regenerate where it applies.
+     *
+     * <p>Removed rather than greyed out. A disabled entry in a five-item menu is a question the
+     * user has to answer every time they long-press a reply, and they already answered it in
+     * Settings.
+     */
+    static String[] assistantLabels(boolean canRegenerate, boolean vault) {
+        if (!vault) {
+            return canRegenerate
+                    ? new String[]{COPY_MENU_LABEL, REGENERATE_MENU_LABEL}
+                    : new String[]{COPY_MENU_LABEL};
+        }
         return canRegenerate
                 ? new String[]{COPY_MENU_LABEL, SAVE_TO_VAULT_MENU_LABEL, REGENERATE_MENU_LABEL}
                 : new String[]{COPY_MENU_LABEL, SAVE_TO_VAULT_MENU_LABEL};
     }
 
     static int[] assistantIcons(boolean canRegenerate) {
+        return assistantIcons(canRegenerate, true);
+    }
+
+    static int[] assistantIcons(boolean canRegenerate, boolean vault) {
+        if (!vault) {
+            return canRegenerate
+                    ? new int[]{R.drawable.ic_copy, R.drawable.ic_regenerate}
+                    : new int[]{R.drawable.ic_copy};
+        }
         return canRegenerate
                 ? new int[]{R.drawable.ic_copy, R.drawable.ic_vault, R.drawable.ic_regenerate}
                 : new int[]{R.drawable.ic_copy, R.drawable.ic_vault};
@@ -172,7 +197,8 @@ final class MessageActions {
     private static void showAssistantMenu(View bubble, String rawText, String copyText,
                                           boolean canRegenerate,
                                           Runnable regenerate, AfterCopy afterCopy) {
-        showMenu(bubble, assistantLabels(canRegenerate), assistantIcons(canRegenerate),
+        boolean vault = Prefs.vaultEnabled(bubble.getContext());
+        showMenu(bubble, assistantLabels(canRegenerate, vault), assistantIcons(canRegenerate, vault),
                 (index, label) -> {
                     if (COPY_MENU_LABEL.equals(label)) {
                         copy(bubble.getContext(), "Orbit response", copyText, afterCopy);

@@ -302,6 +302,10 @@ public final class OrbitBackupManager {
                     o.optLong("createdAt", 0L) <= 0L ||
                     o.optString("title", "").length() > OrbitVaultItem.MAX_TITLE_CHARS ||
                     o.optString("body", "").length() > OrbitVaultItem.MAX_BODY_CHARS + 200 ||
+                    // Absent from every backup written by Beta 1, and that is valid: a missing
+                    // note is an empty one. Bounded here like every other field, so a hand-edited
+                    // file cannot carry a megabyte of "note" into somebody's Vault.
+                    o.optString("note", "").length() > OrbitVaultItem.MAX_NOTE_CHARS ||
                     o.optString("source", "").length() > OrbitVaultItem.MAX_SOURCE_CHARS)
                 invalid("Vault");
             // No device-local path may ever arrive in a backup, in either direction.

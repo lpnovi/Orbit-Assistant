@@ -84,6 +84,10 @@ public final class OrbitNavigation {
         // holds unsaved work and Back is unconditional on both.
         put(OrbitVaultActivity.class, Policy.PREDICTIVE, "Vault");
         put(OrbitVaultItemActivity.class, Policy.PREDICTIVE, "Vault item");
+        // The Vault picker is opened from a composer and returns one id to it. Back from here is
+        // "I changed my mind", which costs nothing: the message being written is still there,
+        // untouched, because choosing nothing attaches nothing.
+        put(OrbitVaultPickerActivity.class, Policy.PREDICTIVE, "Attach from Vault");
         put(AppsActivity.class, Policy.PREDICTIVE, "Apps");
         put(NotificationsActivity.class, Policy.PREDICTIVE, "Notifications");
         put(SavedPlacesActivity.class, Policy.PREDICTIVE, "Saved places");

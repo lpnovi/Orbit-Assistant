@@ -185,21 +185,21 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * Orbit Vault ships first as a Beta, because most of what it promises is only answerable on a
-     * phone.
+     * Orbit Vault's second Beta, for the same reason as the first: most of what it changes is only
+     * answerable on a phone.
      *
-     * <p>The suite proves the parts a machine can settle: an item round-trips through the store,
-     * search and sorting are deterministic and offline, one bare address becomes a link and a
-     * paragraph does not, deleting an image removes the private file it owned and nothing else,
-     * a damaged store loses the damaged row rather than the screen, a pre-Vault backup still
-     * restores, and no save reaches a provider.
+     * <p>The suite proves the parts a machine can settle: a note round-trips and is searchable, a
+     * Beta 1 item with no note loads unchanged, switching the Vault off deletes nothing and blocks
+     * every save route, deleting all Vault data clears the items and their pictures and touches
+     * nothing else, Ask Orbit stages one item without sending anything, an attached saved item
+     * obeys the ordinary attachment limit, and only http and https addresses can be opened.
      *
-     * <p>What it cannot settle is whether the loop actually feels worth using: whether Quick
-     * Capture is fast enough to reach for, whether the share choice lands in the right place, and
-     * whether a Galaxy S25 Ultra draws the cards the way they read here. That is what the Beta is
-     * for, so this must publish as a prerelease and never as a Stable release.
+     * <p>What it cannot settle is whether the rebuilt action area actually reads better in the
+     * hand, whether Ask Orbit is discoverable where it now sits, and whether a Galaxy S25 Ultra
+     * draws the note section the way it reads here. That is what the Beta is for, so this must
+     * publish as a prerelease and never as a Stable release.
      */
-    @Test public void thisReleaseIsTheFirstOrbitVaultBeta() {
+    @Test public void thisReleaseIsAnOrbitVaultBeta() {
         assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
                 OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
         assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));

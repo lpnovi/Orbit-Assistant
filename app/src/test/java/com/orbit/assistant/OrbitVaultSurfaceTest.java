@@ -170,7 +170,8 @@ public final class OrbitVaultSurfaceTest {
      */
     @Test public void theClipboardIsOnlyEverReadFromTheCaptureTap() {
         for (String name : new String[]{"OrbitVaultActivity", "OrbitVaultStore", "OrbitVaultItem",
-                "OrbitVaultMedia", "OrbitVaultItemActivity"}) {
+                "OrbitVaultMedia", "OrbitVaultItemActivity", "OrbitVaultAttachment",
+                "OrbitVaultPickerActivity"}) {
             String text = source(name);
             assertFalse(name + " must never watch the clipboard",
                     text.contains("addPrimaryClipChangedListener")
@@ -252,8 +253,12 @@ public final class OrbitVaultSurfaceTest {
      * way it can be: by reading the classes that make up the feature and refusing every route out.
      */
     @Test public void noVaultClassCanReachAProviderOrTheRequestPipeline() {
+        // Beta 2 adds two deliberate, user-invoked routes out of the Vault - Ask Orbit and Attach
+        // from Vault - and neither of them is a provider call. Both end at a ComposerAttachment,
+        // so this list is unchanged in kind and simply gains the two new classes.
         for (String name : new String[]{"OrbitVaultActivity", "OrbitVaultItemActivity",
-                "OrbitVaultStore", "OrbitVaultItem", "OrbitVaultMedia"}) {
+                "OrbitVaultStore", "OrbitVaultItem", "OrbitVaultMedia", "OrbitVaultAttachment",
+                "OrbitVaultPickerActivity"}) {
             String text = source(name);
             for (String forbidden : new String[]{"AssistantClient", "AiProviders", "ChatGptClient",
                     "RelayProvider", "OpenRouterProvider", "OrbitLocalClient", "AutoRouter",
@@ -271,7 +276,8 @@ public final class OrbitVaultSurfaceTest {
         OrbitVaultStore.saveOrbitReply(context, "You said you prefer window seats.");
         assertTrue("a Vault save must never become a memory", MemoryStore.list(context).isEmpty());
         for (String name : new String[]{"OrbitVaultActivity", "OrbitVaultItemActivity",
-                "OrbitVaultStore", "OrbitVaultItem", "OrbitVaultMedia"}) {
+                "OrbitVaultStore", "OrbitVaultItem", "OrbitVaultMedia", "OrbitVaultAttachment",
+                "OrbitVaultPickerActivity"}) {
             assertFalse(name + " must not touch Orbit Memory", source(name).contains("MemoryStore"));
         }
     }
@@ -279,7 +285,8 @@ public final class OrbitVaultSurfaceTest {
     /** No background work of any kind: nothing schedules, listens, or scans. */
     @Test public void theVaultDoesNoBackgroundWork() {
         for (String name : new String[]{"OrbitVaultActivity", "OrbitVaultItemActivity",
-                "OrbitVaultStore", "OrbitVaultItem", "OrbitVaultMedia"}) {
+                "OrbitVaultStore", "OrbitVaultItem", "OrbitVaultMedia", "OrbitVaultAttachment",
+                "OrbitVaultPickerActivity"}) {
             String text = source(name);
             for (String forbidden : new String[]{"WorkManager", "AlarmManager", "BroadcastReceiver",
                     "JobScheduler", "registerReceiver", "MediaStore.Images", "NotificationListener"}) {
@@ -298,12 +305,13 @@ public final class OrbitVaultSurfaceTest {
      */
     @Test public void storedContentIsNeverInterpreted() {
         for (String name : new String[]{"OrbitVaultActivity", "OrbitVaultStore", "OrbitVaultItem",
-                "OrbitVaultMedia"}) {
+                "OrbitVaultMedia", "OrbitVaultAttachment"}) {
             assertFalse(name + " must not start an Intent from stored content",
                     source(name).contains("ACTION_VIEW"));
         }
         for (String name : new String[]{"OrbitVaultActivity", "OrbitVaultItemActivity",
-                "OrbitVaultStore", "OrbitVaultItem", "OrbitVaultMedia"}) {
+                "OrbitVaultStore", "OrbitVaultItem", "OrbitVaultMedia", "OrbitVaultAttachment",
+                "OrbitVaultPickerActivity"}) {
             String text = source(name);
             for (String forbidden : new String[]{"LocalCommandRouter", "OrbitActionEngine",
                     "DeviceActionExecutor", "RoutineStore", "OrbitExtension", "AssistantReply"}) {

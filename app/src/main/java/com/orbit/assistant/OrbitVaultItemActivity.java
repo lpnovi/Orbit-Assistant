@@ -39,6 +39,29 @@ public final class OrbitVaultItemActivity extends Activity {
     static final String DELETE_TITLE = "Delete from Vault?";
     static final String DELETE_MESSAGE = "This item will be removed from this device.";
 
+    /** The note section's two states, in the words the screen shows. */
+    static final String NOTE_HEADING = "Your note";
+    static final String NOTE_EMPTY = "Add a note";
+
+    /** The actions this screen offers, as the labels a person reads. */
+    static final String ACTION_ASK = "Ask Orbit";
+    static final String ACTION_OPEN_LINK = "Open link";
+    static final String ACTION_COPY = "Copy";
+    static final String ACTION_SHARE = "Share";
+    static final String ACTION_EDIT = "Edit";
+    static final String ACTION_RENAME = "Rename";
+    static final String ACTION_DELETE = "Delete";
+
+    /**
+     * How wide the action area is allowed to become.
+     *
+     * <p>A Galaxy S25 Ultra never reaches it and is laid out exactly as it would be without this.
+     * A Tab S9 Plus does, and the rule exists for that case: three small utility controls spread
+     * across a whole tablet stop reading as a group and start reading as a toolbar with enormous
+     * gaps in it. The content above keeps the full width, because content genuinely uses it.
+     */
+    static final int ACTIONS_MAX_WIDTH_DP = 560;
+
     private String itemId = "";
     private String appearanceSignature = "";
     private LinearLayout page;
@@ -105,12 +128,48 @@ public final class OrbitVaultItemActivity extends Activity {
             return;
         }
 
+        // The order is the point of this screen: what was saved, then what the user said about it,
+        // then when it arrived, then what can be done with it. Beta 1 had the content and the
+        // details right and then finished with a column of five identical full-width buttons,
+        // which read as a Settings page rather than as something the user had kept.
         if (item.isImage()) page.addView(imageCard(item), cardLp());
         if (item.isLink()) page.addView(linkCard(item), cardLp());
         else if (!item.body.isEmpty()) page.addView(bodyCard(item), cardLp());
 
+        page.addView(noteCard(item), cardLp());
         page.addView(detailsCard(item), cardLp());
         page.addView(actions(item));
+    }
+
+    /**
+     * The user's own note, under the saved content and visibly not part of it.
+     *
+     * <p>Drawn as its own quieter card with its own heading, because that separation is the whole
+     * idea. A saved address is what a site published; "look at this later for the animation idea"
+     * is what the user was thinking, and folding one into the other would lose which is which
+     * here, in search, in a backup, and in what Orbit is told when they ask about it.
+     */
+    private View noteCard(OrbitVaultItem item) {
+        LinearLayout card = card();
+        card.addView(UiKit.text(this, NOTE_HEADING, 12, UiKit.MUTED, true));
+
+        TextView value = UiKit.text(this,
+                item.hasNote() ? item.note : NOTE_EMPTY,
+                item.hasNote() ? Prefs.chatTextSp(this, 14) : 14,
+                item.hasNote() ? UiKit.TEXT : UiKit.MUTED, false);
+        value.setLineSpacing(0, UiKit.CHAT_LINE_SPACING);
+        value.setPadding(0, UiKit.dp(this, 7), 0, 0);
+        card.addView(value);
+
+        card.setBackground(UiKit.rippleOutlined(UiKit.SURFACE,
+                UiKit.withAlpha(UiKit.accent(this), item.hasNote() ? 34 : 22),
+                UiKit.accent(this), 20, this));
+        card.setContentDescription(item.hasNote()
+                ? "Your note: " + item.note + ". Tap to edit."
+                : "Add a note about why you saved this");
+        card.setOnClickListener(v -> editNote(item));
+        UiKit.pressScale(card);
+        return card;
     }
 
     private View header(OrbitVaultItem item) {
@@ -204,28 +263,149 @@ public final class OrbitVaultItemActivity extends Activity {
 
     // ---- what can be done to it -------------------------------------------------------------------
 
+    /**
+     * The action area, in three tiers rather than one stack.
+     *
+     * <p>The most relevant thing to do with this kind of item is filled with the accent and sits on
+     * its own row; the everyday utilities share one compact row below it; deletion is separated
+     * from both. Beta 1 gave Rename, Open link, Copy, Share and Delete exactly the same size and
+     * weight, which meant the screen never said what a saved link is actually for.
+     */
     private View actions(OrbitVaultItem item) {
         LinearLayout column = new LinearLayout(this);
         column.setOrientation(LinearLayout.VERTICAL);
 
-        column.addView(action(item.bodyIsEditable() ? "Edit" : "Rename", v -> edit(item)),
-                actionLp(0));
-
+        LinearLayout primary = new LinearLayout(this);
+        primary.setOrientation(LinearLayout.HORIZONTAL);
         if (item.isLink()) {
-            column.addView(action("Open link", v -> openLink(item)), actionLp(9));
+            // Open link keeps the priority it earned in Beta 1: it is what a saved address is for,
+            // it is the action the device testing singled out as good, and it stays the one filled
+            // control. Ask Orbit sits beside it, obvious without competing.
+            primary.addView(filledAction(ACTION_OPEN_LINK, v -> openLink(item)), primaryCellLp(0));
+            primary.addView(outlinedAction(ACTION_ASK, v -> askOrbit(item)), primaryCellLp(9));
+        } else {
+            primary.addView(filledAction(ACTION_ASK, v -> askOrbit(item)), primaryCellLp(0));
         }
-        if (!item.isImage()) {
-            column.addView(action("Copy", v -> MessageActions.copy(this, "Orbit Vault", item.body,
-                    () -> Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show())), actionLp(9));
-            column.addView(action("Share", v -> shareText(item)), actionLp(9));
-        }
+        column.addView(primary, actionRowLp(0));
 
-        Button delete = action("Delete", v -> confirmDelete(item));
+        LinearLayout utilities = new LinearLayout(this);
+        utilities.setOrientation(LinearLayout.HORIZONTAL);
+        utilities.addView(compactAction(item.bodyIsEditable() ? ACTION_EDIT : ACTION_RENAME,
+                R.drawable.ic_edit, v -> edit(item)), utilityCellLp(0));
+        if (!item.isImage()) {
+            utilities.addView(compactAction(ACTION_COPY, R.drawable.ic_copy,
+                    v -> MessageActions.copy(this, "Orbit Vault", item.body,
+                            () -> Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show())),
+                    utilityCellLp(9));
+            utilities.addView(compactAction(ACTION_SHARE, R.drawable.ic_share,
+                    v -> shareText(item)), utilityCellLp(9));
+        }
+        column.addView(utilities, actionRowLp(10));
+
+        Button delete = outlinedAction(ACTION_DELETE, v -> confirmDelete(item));
         delete.setTextColor(UiKit.DANGER);
         delete.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2,
                 UiKit.withAlpha(UiKit.DANGER, 90), UiKit.DANGER, 15, this));
-        column.addView(delete, actionLp(18));
+        LinearLayout deleteRow = new LinearLayout(this);
+        deleteRow.setOrientation(LinearLayout.HORIZONTAL);
+        deleteRow.addView(delete, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48)));
+        // Real separation rather than a slightly larger gap, so deletion never sits in the rhythm
+        // of the controls somebody uses every day.
+        column.addView(deleteRow, actionRowLp(26));
         return column;
+    }
+
+    /**
+     * Hands one saved item to a new conversation, and does not ask anything.
+     *
+     * <p>This is the whole of Ask Orbit on this side: build an Intent naming this item, open the
+     * chat, and leave. No provider is chosen here, no request is built, no prompt is written, and
+     * nothing is uploaded. The composer stages the item as an ordinary attachment and waits for
+     * the user to type a question and press Send, which is the only moment anything is sent.
+     */
+    private void askOrbit(OrbitVaultItem item) {
+        try {
+            startActivity(new Intent(this, ChatActivity.class)
+                    .putExtra(ChatActivity.EXTRA_CONVERSATION_ID, ConversationStore.newId())
+                    .putExtra(ChatActivity.EXTRA_VAULT_ITEM_ID, item.id)
+                    .putExtra(ChatActivity.EXTRA_FOCUS_COMPOSER, true));
+            UiKit.applyPageTransition(this);
+        } catch (Exception ignored) {
+            Toast.makeText(this, "Could not open a conversation", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * Writes, changes, or clears the note.
+     *
+     * <p>Clearing needs no confirmation of its own. It removes one sentence the user wrote a moment
+     * ago from a field they are looking at, and it destroys nothing that was saved - which is
+     * exactly the distinction Orbit's destructive confirmations exist to protect.
+     */
+    private void editNote(OrbitVaultItem item) {
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(UiKit.dp(this, 20), UiKit.dp(this, 4), UiKit.dp(this, 20),
+                UiKit.dp(this, 14));
+        form.setBackgroundColor(UiKit.SURFACE);
+
+        EditText note = new EditText(this);
+        note.setHint("Why did you save this?");
+        note.setContentDescription("Your note");
+        note.setText(item.note);
+        note.setSingleLine(false);
+        note.setMinLines(3);
+        note.setMaxLines(8);
+        note.setGravity(Gravity.TOP | Gravity.START);
+        note.setTextColor(UiKit.TEXT);
+        note.setHintTextColor(UiKit.MUTED);
+        note.setTextSize(14);
+        note.setBackgroundTintList(ColorStateList.valueOf(UiKit.accent(this)));
+        form.addView(note, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        TextView why = UiKit.text(this,
+                "Your note is yours. It does not change what was saved, and it stays on this "
+                        + "device until you attach this item to a message yourself.",
+                12, UiKit.MUTED, false);
+        why.setPadding(0, UiKit.dp(this, 12), 0, 0);
+        form.addView(why);
+
+        TextView customTitle = UiKit.text(this, item.hasNote() ? "Edit your note" : "Add a note",
+                20, UiKit.TEXT, true);
+        customTitle.setPadding(UiKit.dp(this, 20), UiKit.dp(this, 18), UiKit.dp(this, 20),
+                UiKit.dp(this, 8));
+        customTitle.setBackgroundColor(UiKit.SURFACE);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setCustomTitle(customTitle)
+                .setView(form)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save", null);
+        // Offered only when there is something to remove, so the dialog for a first note has two
+        // buttons rather than a third that would do nothing.
+        if (item.hasNote()) {
+            builder.setNeutralButton("Remove", (d, w) -> {
+                OrbitVaultStore.updateNote(this, item.id, "");
+                rebuild();
+            });
+        }
+        AlertDialog dialog = builder.create();
+        UiKit.styleOrbitDialog(dialog, this, false, () -> {
+            Button save = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            if (save == null) return;
+            save.setOnClickListener(v -> {
+                if (!OrbitVaultStore.updateNote(this, item.id, note.getText().toString())) {
+                    Toast.makeText(this, "Orbit could not save that note",
+                            Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                dialog.dismiss();
+                rebuild();
+            });
+        });
+        dialog.show();
     }
 
     private void edit(OrbitVaultItem item) {
@@ -373,25 +553,98 @@ public final class OrbitVaultItemActivity extends Activity {
 
     // ---- shared furniture -------------------------------------------------------------------------
 
-    private Button action(String label, View.OnClickListener listener) {
+    /** The one action this kind of item is really for: accent-filled, and the only one that is. */
+    private Button filledAction(String label, View.OnClickListener listener) {
         Button b = new Button(this);
         b.setText(label);
         b.setAllCaps(false);
-        b.setTextSize(14);
-        b.setTextColor(UiKit.TEXT);
+        b.setTextSize(15);
+        b.setTextColor(UiKit.onAccent(this));
         b.setMinHeight(0);
         b.setMinimumHeight(0);
         b.setStateListAnimator(null);
-        b.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2,
-                UiKit.withAlpha(UiKit.accent(this), 90), UiKit.accent(this), 15, this));
+        b.setBackground(UiKit.ripple(UiKit.accent(this), UiKit.onAccent(this), 16, this));
         b.setOnClickListener(listener);
         UiKit.pressScale(b);
         return b;
     }
 
-    private LinearLayout.LayoutParams actionLp(int topDp) {
+    private Button outlinedAction(String label, View.OnClickListener listener) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setAllCaps(false);
+        b.setTextSize(15);
+        b.setTextColor(UiKit.TEXT);
+        b.setMinHeight(0);
+        b.setMinimumHeight(0);
+        b.setStateListAnimator(null);
+        b.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2,
+                UiKit.withAlpha(UiKit.accent(this), 90), UiKit.accent(this), 16, this));
+        b.setOnClickListener(listener);
+        UiKit.pressScale(b);
+        return b;
+    }
+
+    /**
+     * One everyday utility: an accent icon above its own word, in a card the size of a fingertip.
+     *
+     * <p>Icon and label together rather than either alone. An icon by itself is a guess, and a word
+     * by itself at this width is what produced Beta 1's wall of identical buttons; the label is
+     * always drawn, so the control stays readable for someone who does not recognise the glyph and
+     * keeps working when the system font is large.
+     */
+    private View compactAction(String label, int icon, View.OnClickListener listener) {
+        LinearLayout cell = new LinearLayout(this);
+        cell.setOrientation(LinearLayout.VERTICAL);
+        cell.setGravity(Gravity.CENTER);
+        cell.setPadding(UiKit.dp(this, 6), UiKit.dp(this, 9), UiKit.dp(this, 6), UiKit.dp(this, 9));
+
+        ImageView glyph = new ImageView(this);
+        glyph.setImageResource(icon);
+        glyph.setImageTintList(ColorStateList.valueOf(UiKit.accent(this)));
+        cell.addView(glyph, new LinearLayout.LayoutParams(UiKit.dp(this, 20), UiKit.dp(this, 20)));
+
+        TextView word = UiKit.text(this, label, 12, UiKit.TEXT, false);
+        word.setGravity(Gravity.CENTER);
+        word.setPadding(0, UiKit.dp(this, 6), 0, 0);
+        cell.addView(word);
+
+        cell.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2,
+                UiKit.withAlpha(UiKit.accent(this), 70), UiKit.accent(this), 15, this));
+        cell.setContentDescription(label);
+        cell.setOnClickListener(listener);
+        UiKit.pressScale(cell);
+        return cell;
+    }
+
+    private LinearLayout.LayoutParams primaryCellLp(int startDp) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
+                0, UiKit.dp(this, 50), 1);
+        lp.setMargins(UiKit.dp(this, startDp), 0, 0, 0);
+        return lp;
+    }
+
+    private LinearLayout.LayoutParams utilityCellLp(int startDp) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        lp.setMargins(UiKit.dp(this, startDp), 0, 0, 0);
+        return lp;
+    }
+
+    /**
+     * One row of the action area, width-capped and centred.
+     *
+     * <p>The cap only ever bites on a tablet. It is the difference between three utility controls
+     * that read as a group and three controls a hand's width apart at the far edges of a Tab S9
+     * Plus.
+     */
+    private LinearLayout.LayoutParams actionRowLp(int topDp) {
+        int available = getResources().getDisplayMetrics().widthPixels;
+        int capped = Math.min(available, UiKit.dp(this, ACTIONS_MAX_WIDTH_DP));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                capped >= available ? ViewGroup.LayoutParams.MATCH_PARENT : capped,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.gravity = Gravity.CENTER_HORIZONTAL;
         lp.setMargins(0, UiKit.dp(this, topDp), 0, 0);
         return lp;
     }

@@ -58,7 +58,12 @@ public final class AttachmentViewerModel {
         return "image".equals(value)
                 || "camera".equals(value)
                 || "screen".equals(value)
-                || "screen_selection".equals(value);
+                || "screen_selection".equals(value)
+                // A saved picture attached from the Vault is a picture like any other, and
+                // {@link #isViewable} still requires one to actually be there - so a saved note or
+                // address, which carries no image, remains unopenable rather than opening an empty
+                // viewer.
+                || OrbitVaultAttachment.KIND.equals(value);
     }
 
     /** True when this composer attachment can be opened full screen. */

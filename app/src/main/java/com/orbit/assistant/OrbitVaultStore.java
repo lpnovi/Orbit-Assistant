@@ -63,6 +63,20 @@ public final class OrbitVaultStore {
 
     private OrbitVaultStore() {}
 
+    // ---- whether the Vault is switched on ------------------------------------------------------
+
+    /**
+     * Whether the user currently wants the Vault at all.
+     *
+     * <p>Read here rather than only at each surface, so "off" is one answer instead of a list of
+     * places that remembered to ask. Off stops new items being written and removes the Vault from
+     * the app; it deliberately does not stop anything already saved being read, because a backup
+     * still has to carry it and turning the feature back on has to return it exactly as it was.
+     */
+    public static boolean enabled(Context c) {
+        return c != null && Prefs.vaultEnabled(c);
+    }
+
     // ---- reading ---------------------------------------------------------------------------------
 
     /** Everything saved, newest first. */
@@ -116,19 +130,29 @@ public final class OrbitVaultStore {
      */
     public static synchronized OrbitVaultItem saveText(Context c, String title, String body,
                                                        String source) {
+        return saveText(c, title, body, source, "");
+    }
+
+    public static synchronized OrbitVaultItem saveText(Context c, String title, String body,
+                                                       String source, String note) {
         String text = body == null ? "" : body.trim();
         if (text.isEmpty()) return null;
         String link = OrbitVaultItem.singleLinkOrEmpty(text);
         return insert(c, link.isEmpty() ? OrbitVaultItem.TYPE_TEXT : OrbitVaultItem.TYPE_LINK,
-                title, link.isEmpty() ? text : link, source, "");
+                title, link.isEmpty() ? text : link, source, note, "");
     }
 
     /** Saves an address the caller has already decided is a link. */
     public static synchronized OrbitVaultItem saveLink(Context c, String title, String url,
                                                        String source) {
+        return saveLink(c, title, url, source, "");
+    }
+
+    public static synchronized OrbitVaultItem saveLink(Context c, String title, String url,
+                                                       String source, String note) {
         String link = OrbitVaultItem.singleLinkOrEmpty(url);
         if (link.isEmpty()) return null;
-        return insert(c, OrbitVaultItem.TYPE_LINK, title, link, source, "");
+        return insert(c, OrbitVaultItem.TYPE_LINK, title, link, source, note, "");
     }
 
     /**
@@ -139,10 +163,15 @@ public final class OrbitVaultStore {
      */
     public static synchronized OrbitVaultItem saveImage(Context c, Bitmap bitmap, String title,
                                                         String source) {
-        if (bitmap == null) return null;
+        return saveImage(c, bitmap, title, source, "");
+    }
+
+    public static synchronized OrbitVaultItem saveImage(Context c, Bitmap bitmap, String title,
+                                                        String source, String note) {
+        if (bitmap == null || !enabled(c)) return null;
         String path = OrbitVaultMedia.save(c, bitmap);
         if (path.isEmpty()) return null;
-        OrbitVaultItem saved = insert(c, OrbitVaultItem.TYPE_IMAGE, title, "", source, path);
+        OrbitVaultItem saved = insert(c, OrbitVaultItem.TYPE_IMAGE, title, "", source, note, path);
         if (saved == null) OrbitVaultMedia.delete(c, path);
         return saved;
     }
@@ -161,15 +190,19 @@ public final class OrbitVaultStore {
     public static synchronized OrbitVaultItem saveOrbitReply(Context c, String visibleReply) {
         String text = visibleReply == null ? "" : visibleReply.trim();
         if (text.isEmpty()) return null;
-        return insert(c, OrbitVaultItem.TYPE_ORBIT_REPLY, "", text, "Orbit answer", "");
+        return insert(c, OrbitVaultItem.TYPE_ORBIT_REPLY, "", text, "Orbit answer", "", "");
     }
 
     private static OrbitVaultItem insert(Context c, String type, String title, String body,
-                                         String source, String mediaPath) {
-        if (c == null) return null;
+                                         String source, String note, String mediaPath) {
+        // The one gate every new item passes through, whatever route it arrived by. The surfaces
+        // that offer saving are hidden while the Vault is off, but hiding a control is a matter of
+        // drawing and this is a matter of storage: a route that is added later, or one nobody
+        // remembered, still cannot write into a Vault the user has switched off.
+        if (c == null || !enabled(c)) return null;
         long now = System.currentTimeMillis();
         OrbitVaultItem item = new OrbitVaultItem(UUID.randomUUID().toString(), type, title, body,
-                source, mediaPath, now, now);
+                source, note, mediaPath, now, now);
         if (!OrbitVaultItem.isStorable(item)) return null;
         List<OrbitVaultItem> all = readAll(c);
         all.add(0, item);
@@ -189,7 +222,27 @@ public final class OrbitVaultStore {
         OrbitVaultItem existing = get(c, id);
         if (existing == null) return false;
         return replace(c, new OrbitVaultItem(existing.id, existing.type, title, existing.body,
-                existing.source, existing.mediaPath, existing.createdAt, System.currentTimeMillis()));
+                existing.source, existing.note, existing.mediaPath, existing.createdAt,
+                System.currentTimeMillis()));
+    }
+
+    /**
+     * Writes, rewrites, or removes the user's own note about one item.
+     *
+     * <p>Available for every kind, including the ones whose body is a record. A saved answer's
+     * words are Orbit's and stay exactly as they were; the note beside them is the user's and is
+     * theirs to change, which is the whole reason it is a separate field.
+     *
+     * <p>An empty note is a removal rather than a failure. "Clear this" and "save nothing" are the
+     * same intention, and making the user delete an item to be rid of one sentence would be absurd.
+     * The body, the title, the type, the media and the created time are all untouched either way.
+     */
+    public static synchronized boolean updateNote(Context c, String id, String note) {
+        OrbitVaultItem existing = get(c, id);
+        if (existing == null) return false;
+        return replace(c, new OrbitVaultItem(existing.id, existing.type, existing.title,
+                existing.body, existing.source, note, existing.mediaPath, existing.createdAt,
+                System.currentTimeMillis()));
     }
 
     /**
@@ -205,7 +258,8 @@ public final class OrbitVaultStore {
         String text = body == null ? "" : body.trim();
         if (text.isEmpty()) return false;
         return replace(c, new OrbitVaultItem(existing.id, existing.type, title, text,
-                existing.source, existing.mediaPath, existing.createdAt, System.currentTimeMillis()));
+                existing.source, existing.note, existing.mediaPath, existing.createdAt,
+                System.currentTimeMillis()));
     }
 
     private static boolean replace(Context c, OrbitVaultItem updated) {
@@ -250,6 +304,29 @@ public final class OrbitVaultStore {
     private static boolean stillReferenced(List<OrbitVaultItem> remaining, String path) {
         for (OrbitVaultItem item : remaining) if (path.equals(item.mediaPath)) return true;
         return false;
+    }
+
+    /**
+     * Erases everything the Vault holds on this device, and nothing else.
+     *
+     * <p>Deliberately a different act from switching the Vault off. Off is a preference and is
+     * reversible in one tap; this is not, so it exists as its own control, behind its own
+     * confirmation, and it works whether the Vault is currently on or off - somebody who turned it
+     * off in order to stop using it should not have to turn it back on to be rid of the contents.
+     *
+     * <p>What it reaches is exactly the Vault: the item document, and the picture files inside the
+     * Vault's own media directory. Conversations, Memory, reminders, Routines, providers, themes,
+     * every other preference and any backup file the user already exported are untouched, because
+     * nothing here can name them. The metadata is committed empty first, so a process that dies
+     * mid-way leaves an empty Vault and some orphaned files rather than rows pointing at pictures
+     * that are gone.
+     */
+    public static synchronized int deleteAllData(Context c) {
+        if (c == null) return 0;
+        int removed = readAll(c).size();
+        prefs(c).edit().putString(KEY, "[]").commit();
+        OrbitVaultMedia.pruneOrphans(c, new HashSet<>());
+        return removed;
     }
 
     // ---- backup ----------------------------------------------------------------------------------

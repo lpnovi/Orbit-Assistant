@@ -129,6 +129,85 @@ public final class OrbitVaultBackupTest {
         assertEquals(OrbitVaultItem.TYPE_ORBIT_REPLY, OrbitVaultStore.get(context, reply.id).type);
     }
 
+    /**
+     * A note the user wrote travels with the item it belongs to, and stays its own field.
+     *
+     * <p>A backup that carried the saved content but dropped the reason for keeping it would lose
+     * exactly the half the user wrote themselves, which is the half they cannot reconstruct.
+     */
+    @Test public void anoteSurvivesARoundTripAsItsOwnField() throws Exception {
+        OrbitVaultItem noted = OrbitVaultStore.saveLink(context, "Clip",
+                "https://example.com/clip", "Clipboard", "Look at this for the animation idea");
+        OrbitVaultItem plain = OrbitVaultStore.saveText(context, "Plain", "No note here", "test");
+
+        String backup = exported();
+        JSONObject data = new JSONObject(backup).getJSONObject("data");
+        JSONArray items = data.getJSONArray("vault");
+        boolean carried = false;
+        for (int i = 0; i < items.length(); i++) {
+            if (noted.id.equals(items.getJSONObject(i).optString("id"))) {
+                assertEquals("Look at this for the animation idea",
+                        items.getJSONObject(i).getString("note"));
+                assertEquals("and the saved address is untouched by it",
+                        "https://example.com/clip", items.getJSONObject(i).getString("body"));
+                carried = true;
+            }
+        }
+        assertTrue("the noted item must appear in the backup", carried);
+
+        OrbitVaultStore.prefs(context).edit().clear().commit();
+        restore(backup);
+
+        assertEquals("Look at this for the animation idea",
+                OrbitVaultStore.get(context, noted.id).note);
+        assertEquals("https://example.com/clip", OrbitVaultStore.get(context, noted.id).body);
+        assertEquals("an item that never had a note comes back without one",
+                "", OrbitVaultStore.get(context, plain.id).note);
+    }
+
+    /**
+     * A Beta 1 backup, written before notes existed, restores with empty notes.
+     *
+     * <p>Every backup a Beta 1 tester is holding is one of these. Removing the key entirely is
+     * what those files genuinely look like, and the result must be an ordinary Vault rather than
+     * an unsupported file.
+     */
+    @Test public void abeta1BackupWithoutNotesRestoresNormally() throws Exception {
+        OrbitVaultItem item = OrbitVaultStore.saveText(context, "Packing list", "Charger",
+                "Quick Capture", "written in Beta 2");
+
+        JSONObject root = new JSONObject(exported());
+        JSONArray items = root.getJSONObject("data").getJSONArray("vault");
+        for (int i = 0; i < items.length(); i++) items.getJSONObject(i).remove("note");
+
+        OrbitVaultStore.prefs(context).edit().clear().commit();
+        restore(root.toString());
+
+        OrbitVaultItem restored = OrbitVaultStore.get(context, item.id);
+        assertNotNull("a backup with no note key must still restore", restored);
+        assertEquals("Charger", restored.body);
+        assertEquals("Packing list", restored.title);
+        assertEquals("", restored.note);
+    }
+
+    /** An oversized note in an imported file is refused like any other field out of bounds. */
+    @Test public void anoversizedNoteInAnImportedBackupIsRefused() throws Exception {
+        OrbitVaultStore.saveText(context, "Packing list", "Charger", "Quick Capture", "fine");
+        JSONObject root = new JSONObject(exported());
+        StringBuilder huge = new StringBuilder();
+        for (int i = 0; i < OrbitVaultItem.MAX_NOTE_CHARS + 10; i++) huge.append('n');
+        root.getJSONObject("data").getJSONArray("vault").getJSONObject(0)
+                .put("note", huge.toString());
+
+        OrbitVaultStore.prefs(context).edit().clear().commit();
+        try {
+            restore(root.toString());
+            fail("an out-of-bounds note must be refused before anything is written");
+        } catch (Exception expected) {
+            assertEquals("and nothing is written when it is", 0, OrbitVaultStore.count(context));
+        }
+    }
+
     /** Bytes travel; the path this device used does not leave it. */
     @Test public void avaultPictureTravelsAsBytesAndNeverAsAPath() throws Exception {
         OrbitVaultItem image = seedImage("Receipt");

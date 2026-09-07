@@ -727,3 +727,12 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Hold an Orbit answer in a chat and choose Save to Vault, without leaving the conversation.
   - Search, reopen, rename, edit and delete saved items, all offline and with no AI request.
   - Your Vault is included in Orbit backups, and Orbit never sends its contents anywhere on its own.
+
+- **v0.7.8.4-beta.2**: Orbit Vault becomes part of Orbit, not just a place things sit.
+  - Add your own note to a saved item, so you remember why you kept it.
+  - Ask Orbit about a saved item: the chat opens holding it, and nothing is sent until you send it.
+  - Attach a saved item to any message from the chat Attach menu, beside Camera and Gallery.
+  - Turn Orbit Vault off without deleting anything, then turn it back on and find everything there.
+  - Delete all Vault data as a separate, deliberate action with its own confirmation.
+  - Redesigned saved-item actions, so Open link and Ask Orbit stand out instead of a wall of buttons.
+  - Search now looks at your notes too, and notes travel with your Orbit backups.

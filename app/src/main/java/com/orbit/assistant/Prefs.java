@@ -142,6 +142,23 @@ public final class Prefs {
      * what the user saved, and a restored backup should not reorder somebody else's Vault.
      */
     public static final String VAULT_SORT = "vault_sort";
+    /**
+     * Whether Orbit Vault exists for this user at all.
+     *
+     * <p>On by default. Off removes every way into the Vault - the Chats header control, Save to
+     * Vault on an answer, the composer's Vault attachment, the Save to Vault choice on a share -
+     * and stops anything new being written, rather than leaving controls that look like they work.
+     *
+     * <p>It deletes nothing. Somebody who does not want the feature this month should not have to
+     * choose between a control they never use and losing what they saved, so everything stays
+     * exactly where it is and comes back untouched the moment this is turned on again. Erasing is
+     * a separate, deliberate act with its own confirmation.
+     *
+     * <p>Unlike {@link #VAULT_SORT}, which is a view preference about this screen on this phone,
+     * this is part of how the user has set Orbit up and travels in Backup &amp; Restore with the
+     * other feature switches.
+     */
+    public static final String VAULT_ENABLED = "vault_enabled";
     // Onboarding keys intentionally remain outside Backup & Restore. A backup cannot
     // restore account credentials, Android permissions, or default-assistant state.
 
@@ -186,7 +203,7 @@ public final class Prefs {
             LELO_MODE, BACKGROUND_NOTIFICATIONS, WEATHER_USE_DEVICE_LOCATION,
             MEMORY_ENABLED, MEMORY_USAGE_INDICATOR, MEMORY_SUGGESTIONS,
             NOTIFICATION_AI_ENABLED, AMOLED_MODE, UPDATE_NOTIFICATIONS,
-            ENHANCED_CHAT_BACK, CHAT_SWIPE_ACTIONS, LOCAL_DEVICE_ACTIONS));
+            ENHANCED_CHAT_BACK, CHAT_SWIPE_ACTIONS, LOCAL_DEVICE_ACTIONS, VAULT_ENABLED));
     private static final Set<String> BACKUP_INTEGER_KEYS = new HashSet<>(
             Arrays.asList(NOTIFICATION_RETENTION_DAYS, THEME_SCHEMA));
 
@@ -275,6 +292,14 @@ public final class Prefs {
     public static boolean localDeviceActions(Context c) { return get(c).getBoolean(LOCAL_DEVICE_ACTIONS, true); }
     public static boolean deckShortcut(Context c) { return get(c).getBoolean(DECK_SHORTCUT, true); }
     public static boolean deckSuggestions(Context c) { return get(c).getBoolean(DECK_SUGGESTIONS, true); }
+
+    /**
+     * Whether Orbit Vault is switched on. On for a fresh install and for every existing user.
+     *
+     * <p>Defaulting to true is what keeps Beta 1's Vaults working: nobody set this preference,
+     * so nobody should find their saved items unreachable after an update.
+     */
+    public static boolean vaultEnabled(Context c) { return get(c).getBoolean(VAULT_ENABLED, true); }
 
     /** The Vault's list order. Newest first for a fresh install and for any unreadable value. */
     public static OrbitVaultStore.Sort vaultSort(Context c) {

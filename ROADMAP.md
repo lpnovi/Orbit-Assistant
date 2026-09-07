@@ -1253,20 +1253,58 @@ be made before anyone has used it.
 - **Local-first throughout.** Zero provider calls, no background indexing, no clipboard monitoring,
   no photo scanning, no cloud sync, and no automatic feeding of Vault content into prompts
 
-**Deliberately not in Beta 1**, and still future work below: **Ask Orbit about this**, semantic or
-vector search, AI organization, tags and summaries, OCR, automatic article extraction, document
-snippets, folders and smart collections, cloud sync and shared Vaults, Routine and Extension access
-to the Vault, a full Side-button Vault browser, and deeper Orbit Deck integration.
+**Deliberately not in Beta 1**, and left for the Betas that follow: **Ask Orbit about this**,
+semantic or vector search, AI organization, tags and summaries, OCR, automatic article extraction,
+document snippets, folders and smart collections, cloud sync and shared Vaults, Routine and
+Extension access to the Vault, a full Side-button Vault browser, and deeper Orbit Deck integration.
+
+**What Beta 2 ships**
+
+Beta 1 answered "how do I save something?". Beta 2 answers "what can I actually do with the thing I
+saved?", and does it without turning the Vault into a second Memory or giving any model quiet access
+to the collection.
+
+- **An optional note on every item.** A distinct field beside the saved content, never folded into
+  the title or the body: bounded, editable, removable, locally searchable, and carried in Backup &
+  Restore. A Beta 1 item with no note reads as one with an empty note, so nothing migrates and
+  nothing is recreated
+- **Ask Orbit about a saved item.** An explicit control on the item screen that opens a new
+  conversation with that one item staged as an ordinary composer attachment, and stops there. No
+  request is built, no prompt is invented and nothing is uploaded until the user writes a question
+  and presses Send. A saved link stages the address, the title and the note while stating plainly
+  that Orbit has not opened the page
+- **Attach from Vault** in the ordinary chat attachment menu, through a compact searchable picker
+  that returns one item. It becomes a normal composer attachment: same tray, same removal, same
+  `ComposerAttachments` limit, same Send. There is deliberately no Vault-only request path
+- **Use Orbit Vault**, a preference that removes the feature without deleting anything. Off hides
+  the Chats header control, Save to Vault on an answer, the composer's Vault entry and the Save to
+  Vault choice on a share, and blocks new saves at the store rather than only at each screen.
+  Share to Orbit itself keeps working exactly as it did. On restores every entry point and every
+  saved item, with no reimport
+- **Delete Vault data**, separate and permanent, with Orbit's destructive confirmation. It clears
+  the item document and the Vault's own picture files and reaches nothing else - not chats, not
+  Memory, not providers, not personalization, not backups the user already exported
+- **A rebuilt item action area.** One accent-filled primary action chosen by item type, a compact
+  icon-and-label utility row, and deletion separated below, in place of Beta 1's column of five
+  identical full-width buttons. Open link keeps its priority on a saved address, and the action
+  area is width-capped so it stays a group rather than a spread-out toolbar on a tablet
+
+**Deliberately not in Beta 2**: semantic or vector search, OCR, webpage extraction, automatic
+metadata or AI-generated titles, tags, summaries, folders, collections, pinning, cloud sync, shared
+Vaults, Routine and Extension access to the Vault, a full Side-button Vault browser, and Orbit Deck
+integration. Nothing about the Vault became automatic: no message searches it, no saved item is
+uploaded, summarized, categorized or embedded on its own, and no saved link or image is inspected
+unless the user attaches it themselves.
 
 # Next
 
-## Orbit Vault, after Beta 1
+## Orbit Vault, after Beta 2
 
-Beta 1 built the private foundation. What remains is teaching Orbit to work with what the user has
-saved, and only once the basic loop has proved itself on a real device:
+Beta 1 built the private foundation and Beta 2 connected it to the rest of Orbit. What remains is
+organization and reach, and only once the current shape has proved itself on a real device:
 
-- **Ask Orbit about this**, a deliberate, user-invoked send of one saved item to the active provider
 - Richer organization - collections, tags, or pinning - if a real collection turns out to need it
+- Semantic search and OCR, so a saved screenshot can be found by what it says
 - Document snippets and saved screenshots, reusing Orbit's existing document and screen pipelines
 - An Orbit Deck tile, and a light Vault presence in the Side-button overlay
 

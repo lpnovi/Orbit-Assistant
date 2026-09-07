@@ -147,49 +147,51 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * v0.7.8.4 Beta 1 opens the Orbit Vault line, after v0.7.8.3 Stable finished Theme Studio.
+     * v0.7.8.4 Beta 2 continues the Orbit Vault line that Beta 1 opened.
      *
-     * <p>Beta 1 is the foundation of the loop rather than the whole Vault vision: capture, save,
-     * find, reopen. A durable local store for text, links, images and saved Orbit answers; Quick
-     * Capture; a destination choice on Share to Orbit; Save to Vault in the existing message-action
-     * menu; offline search and sorting; and Backup &amp; Restore participation. The AI-facing work -
-     * Ask Orbit about this, semantic search, OCR - is deliberately not here.
+     * <p>Beta 1 proved the loop: capture, save, find, reopen. Beta 2 is about what the saved thing
+     * is then for - an optional note of the user's own, Ask Orbit about a saved item, Attach from
+     * Vault in the ordinary composer, a switch that removes the feature without deleting anything,
+     * a separate deliberate erase, and a rebuilt action area on the item screen. Semantic search,
+     * OCR, folders and cloud sync remain deliberately absent.
      *
      * <p>This must publish as a prerelease, on the Beta channel, and never as a Stable release: a
      * versionName that quietly lost its {@code -beta.N} suffix would be offered to every Stable
      * user, and this fails before publication rather than on their phones.
      */
-    @Test public void thisBuildIsTheFirstOrbitVaultBeta() {
+    @Test public void thisBuildIsTheSecondOrbitVaultBeta() {
         String version = BuildConfig.VERSION_NAME;
         assertTrue(OrbitVersion.installedIsBeta());
         assertTrue(OrbitVersion.isBeta(version));
         assertFalse(OrbitVersion.isStable(version));
         assertEquals("0.7.8.4", OrbitVersion.baseVersion(version));
-        assertEquals(1, OrbitVersion.betaNumber(version));
+        assertEquals(2, OrbitVersion.betaNumber(version));
 
-        assertEquals("0.7.8.4 Beta 1", OrbitVersion.displayName(version));
-        assertEquals("Orbit Assistant v0.7.8.4 Beta 1", OrbitVersion.releaseTitle(version));
-        assertEquals("v0.7.8.4-beta.1", OrbitVersion.tagFor(version));
+        assertEquals("0.7.8.4 Beta 2", OrbitVersion.displayName(version));
+        assertEquals("Orbit Assistant v0.7.8.4 Beta 2", OrbitVersion.releaseTitle(version));
+        assertEquals("v0.7.8.4-beta.2", OrbitVersion.tagFor(version));
         assertTrue("the release workflow must publish it as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
         assertFalse("and never as a Stable release",
                 OrbitVersion.isStableTag(OrbitVersion.tagFor(version)));
         assertTrue("it must outrank the Stable line it was built from",
                 OrbitVersion.compareVersions(version, "0.7.8.3") > 0);
-        assertTrue("and every Beta of that line",
-                OrbitVersion.compareVersions(version, "0.7.8.3-beta.6") > 0
-                        && OrbitVersion.compareVersions(version, "0.7.8.3-beta.1") > 0);
+        assertTrue("and the Beta of its own line that it follows",
+                OrbitVersion.compareVersions(version, "0.7.8.4-beta.1") > 0);
         assertTrue("while still ranking below the Stable release it is working towards",
                 OrbitVersion.compareVersions(version, "0.7.8.4") < 0);
     }
 
     /**
      * The Beta channel offers whichever eligible build has the highest Android versionCode, so this
-     * Beta only reaches the people running v0.7.8.3 Stable if its code is above theirs. That Stable
-     * published versionCode 770, read from its own {@code orbit-update.json} rather than assumed.
+     * Beta only reaches the people running Beta 1 if its code is above theirs. Beta 1 published
+     * versionCode 771 and v0.7.8.3 Stable published 770, both read from their own
+     * {@code orbit-update.json} rather than assumed.
      */
-    @Test public void thisBuildOutranksTheStableItFollows() {
-        assertTrue("this Beta must supersede v0.7.8.3's published versionCode 770",
+    @Test public void thisBuildOutranksTheBetaItFollows() {
+        assertTrue("this Beta must supersede v0.7.8.4 Beta 1's published versionCode 771",
+                BuildConfig.VERSION_CODE > 771);
+        assertTrue("and v0.7.8.3 Stable's published versionCode 770",
                 BuildConfig.VERSION_CODE > 770);
     }
 }

@@ -63,6 +63,15 @@ public class ChatActivity extends Activity {
      * recreated Activity cannot apply the same share twice.
      */
     public static final String EXTRA_SHARE_TOKEN = "orbit_share_token";
+    /**
+     * One Vault item to stage in this composer, named by its id.
+     *
+     * <p>An id rather than the content, for the same reason a share travels as a token: the store
+     * is right here and a decoded picture has no business crossing a Binder transaction. Staging
+     * is all it does. The item lands in the attachment tray unsent, exactly as a photo would, and
+     * reaches a provider only if the user writes something and presses Send.
+     */
+    public static final String EXTRA_VAULT_ITEM_ID = "orbit_vault_item_id";
 
     /**
      * The stack any surface outside Chats must open a conversation with.
@@ -148,6 +157,7 @@ public class ChatActivity extends Activity {
     private static final int REQ_CAMERA_PERMISSION = 5604;
     private static final int REQ_SCREEN_SELECTION = 5605;
     private static final int REQ_MIC_PERMISSION = 5606;
+    private static final int REQ_VAULT_PICK = 5607;
 
     /**
      * The text Edit &amp; resend recalled, or null when the composer is in its ordinary state.
@@ -233,6 +243,7 @@ public class ChatActivity extends Activity {
         attachToPending();
         applyLauncherComposerIntent();
         applySharedContent();
+        applyVaultItem();
         // Coming back from the full-screen viewer, which may have removed an image from this
         // composer. The collection is the truth either way; this just redraws from it, and
         // AttachmentStripView.planScroll treats an unchanged list as a reason to move nothing.
@@ -291,6 +302,27 @@ public class ChatActivity extends Activity {
         }
         // A document-page handoff is internal. Its visible composer chip is the confirmation, and
         // Diagnostics deliberately records neither extracted text nor the document's filename.
+    }
+
+    /**
+     * Stages the saved item behind Ask Orbit, and does nothing else.
+     *
+     * <p>The whole of Ask Orbit is here. It attaches one item to an empty composer and waits: no
+     * question is invented, no prompt is prepended, no provider is chosen and no request is made.
+     * What the user gets is a conversation already holding the thing they were looking at, and a
+     * cursor - which is the same deal Share to Orbit has always offered, arrived at from inside
+     * Orbit instead of from another app.
+     *
+     * <p>The extra is removed before the item is read, so a configuration change cannot attach the
+     * same saved item twice.
+     */
+    private void applyVaultItem() {
+        Intent intent = getIntent();
+        if (intent == null) return;
+        String id = intent.getStringExtra(EXTRA_VAULT_ITEM_ID);
+        if (id == null || id.trim().isEmpty()) return;
+        intent.removeExtra(EXTRA_VAULT_ITEM_ID);
+        attachVaultItem(id);
     }
 
     private void applyLauncherComposerIntent() {
@@ -1779,17 +1811,69 @@ public class ChatActivity extends Activity {
         });
     }
 
+    /** The attachment chooser's entries, with Vault present only when the user has it switched on. */
+    static String[] attachmentMenuLabels(boolean vault) {
+        return vault
+                ? new String[]{"Camera", "Gallery", "File", "Screen", "Clipboard", "Vault"}
+                : new String[]{"Camera", "Gallery", "File", "Screen", "Clipboard"};
+    }
+
     private void showAttachmentMenu(View anchor) {
-        String[] labels = {"Camera", "Gallery", "File", "Screen", "Clipboard"};
+        String[] labels = attachmentMenuLabels(Prefs.vaultEnabled(this));
         // Drawn inside this Activity's own content frame, so the composer keeps input focus and
         // the keyboard is left exactly as the user had it.
         OrbitAttachmentMenu.show(menuHost(), anchor, labels, (index, label) -> {
-            if (index == 0) openCamera();
-            else if (index == 1) openGallery();
-            else if (index == 2) openFile();
-            else if (index == 3) anchor.postOnAnimation(() -> showScreenAttachmentMenu(anchor));
+            if ("Camera".equals(label)) openCamera();
+            else if ("Gallery".equals(label)) openGallery();
+            else if ("File".equals(label)) openFile();
+            else if ("Screen".equals(label)) anchor.postOnAnimation(() -> showScreenAttachmentMenu(anchor));
+            else if ("Vault".equals(label)) openVaultPicker();
             else attachClipboard();
         });
+    }
+
+    /**
+     * Opens the Vault picker, unless this message is already carrying everything it can.
+     *
+     * <p>Checked before the screen opens rather than after a choice is made, because sending
+     * somebody to browse their Vault and then refusing what they picked is the worse of the two
+     * ways to say the same thing.
+     */
+    private void openVaultPicker() {
+        if (composerAttachments.remainingCapacity() <= 0) {
+            Toast.makeText(this, attachmentLimitMessage(), Toast.LENGTH_LONG).show();
+            return;
+        }
+        try {
+            startActivityForResult(new Intent(this, OrbitVaultPickerActivity.class),
+                    REQ_VAULT_PICK);
+            UiKit.applyPageTransition(this);
+        } catch (Exception ignored) {
+            Toast.makeText(this, "Could not open your Vault", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * Stages exactly the item the picker returned, and stops.
+     *
+     * <p>An ordinary composer attachment through the ordinary collection, so it is counted by the
+     * same limit, drawn by the same tray, removed by the same control, and sent by the same Send.
+     * No request happens here.
+     */
+    private void attachVaultItem(String id) {
+        OrbitVaultItem item = OrbitVaultStore.get(this, id);
+        ComposerAttachment attachment = item == null ? null : OrbitVaultAttachment.of(this, item);
+        if (attachment == null) {
+            Toast.makeText(this, "Orbit could not attach that saved item",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        ComposerAttachments.AddResult added = composerAttachments.add(attachment);
+        if (added.hitLimit()) {
+            Toast.makeText(this, attachmentLimitMessage(), Toast.LENGTH_LONG).show();
+            return;
+        }
+        refreshAttachmentStrip(true);
     }
 
     /** The frame the attachment chooser draws into, so it never needs a window of its own. */
@@ -2234,6 +2318,10 @@ public class ChatActivity extends Activity {
         }
 
         if (resultCode != RESULT_OK || data == null) return;
+        if (requestCode == REQ_VAULT_PICK) {
+            attachVaultItem(data.getStringExtra(OrbitVaultPickerActivity.EXTRA_PICKED_ID));
+            return;
+        }
         if (requestCode != REQ_GALLERY && requestCode != REQ_FILE) return;
         // Every field the picker may have used, deduplicated, in the user's own order. A Gallery
         // that returns four photos through ClipData and repeats the first through getData produces

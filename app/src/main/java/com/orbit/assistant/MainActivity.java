@@ -270,7 +270,11 @@ public class MainActivity extends Activity {
                 "|lelo=" + Prefs.leloMode(this) +
                 // The Deck shortcut is built into the header, so toggling it in Settings has to
                 // rebuild Chats on return the same way an accent change does.
-                "|deck=" + Prefs.deckShortcut(this);
+                "|deck=" + Prefs.deckShortcut(this) +
+                // And the Vault control for exactly the same reason: switching the Vault off in
+                // Settings has to remove it from the header on the way back, not on the next
+                // cold start.
+                "|vault=" + Prefs.vaultEnabled(this);
     }
 
     /**
@@ -367,15 +371,22 @@ public class MainActivity extends Activity {
         }
         // Orbit Vault. A destination rather than a mode, so it sits with Deck and Settings in the
         // header and never takes the page: Chats remains what the app opens on.
-        ImageButton vault = iconButton(com.orbit.assistant.R.drawable.ic_vault, "Open Orbit Vault");
-        vault.setOnClickListener(v -> {
-            startActivity(new Intent(this, OrbitVaultActivity.class));
-            UiKit.applyPageTransition(this);
-        });
-        LinearLayout.LayoutParams vaultLp = new LinearLayout.LayoutParams(
-                UiKit.dp(this, 48), UiKit.dp(this, 48));
-        vaultLp.rightMargin = UiKit.dp(this, 2);
-        top.addView(vault, vaultLp);
+        //
+        // Absent entirely when the user has turned the Vault off, in the same shape as the Deck
+        // shortcut above: the control is not drawn rather than drawn and disabled, so nothing is
+        // left behind that looks tappable and does nothing.
+        if (Prefs.vaultEnabled(this)) {
+            ImageButton vault = iconButton(com.orbit.assistant.R.drawable.ic_vault,
+                    "Open Orbit Vault");
+            vault.setOnClickListener(v -> {
+                startActivity(new Intent(this, OrbitVaultActivity.class));
+                UiKit.applyPageTransition(this);
+            });
+            LinearLayout.LayoutParams vaultLp = new LinearLayout.LayoutParams(
+                    UiKit.dp(this, 48), UiKit.dp(this, 48));
+            vaultLp.rightMargin = UiKit.dp(this, 2);
+            top.addView(vault, vaultLp);
+        }
         ImageButton settings = iconButton(com.orbit.assistant.R.drawable.ic_settings, "Settings");
         settings.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
         top.addView(settings, new LinearLayout.LayoutParams(UiKit.dp(this, 48), UiKit.dp(this, 48)));
