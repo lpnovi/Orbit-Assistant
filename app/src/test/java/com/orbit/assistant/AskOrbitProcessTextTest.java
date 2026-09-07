@@ -7,10 +7,12 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.Application;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
+import android.widget.Button;
 
 import org.junit.After;
 import org.junit.Before;
@@ -23,7 +25,9 @@ import org.robolectric.Shadows;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowActivity;
+import org.robolectric.shadows.ShadowAlertDialog;
 import org.robolectric.shadows.ShadowApplication;
+import org.robolectric.shadows.ShadowLooper;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -464,12 +468,34 @@ public final class AskOrbitProcessTextTest {
         // The doorway starts its stack from the Activity, so the Activity's shadow is what records
         // it; the application shadow would report nothing at all.
         lastShadow = Shadows.shadowOf(controller.get());
+        // Since v0.7.8.4 Beta 3 a valid selection is offered two destinations, and every test in
+        // this file is about the Ask Orbit one. Answering the question here rather than in each
+        // test keeps them all asserting exactly what they always asserted about that path.
+        chooseAskOrbit();
         Intent next;
         while ((next = lastShadow.getNextStartedActivity()) != null) lastStarted.add(next);
         // The shadow hands them back newest-first; these assertions are about the stack Orbit
         // built, so they are put back into the order startActivities was given them in.
         java.util.Collections.reverse(lastStarted);
         controller.destroy();
+    }
+
+    /**
+     * Answers Orbit's own destination question with Ask Orbit, when it is asked at all.
+     *
+     * <p>Silent when there is no dialog, which is exactly the case with the Vault switched off: the
+     * selection went straight to a conversation and there was nothing to answer.
+     */
+    private void chooseAskOrbit() {
+        AlertDialog dialog = ShadowAlertDialog.getLatestAlertDialog();
+        if (dialog == null || !dialog.isShowing()) return;
+        Button ask = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+        assertNotNull("the destination dialog must offer Ask Orbit", ask);
+        assertEquals(ProcessTextToOrbitActivity.ASK_ORBIT, ask.getText().toString());
+        ask.performClick();
+        // An AlertDialog button press is dispatched through a Handler, so nothing happens until
+        // the looper runs.
+        ShadowLooper.idleMainLooper();
     }
 
     /**

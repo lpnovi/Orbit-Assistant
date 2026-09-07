@@ -33,9 +33,25 @@ public final class OrbitVaultItem {
     public static final String TYPE_IMAGE = "image";
     /** A reply the user saved from a conversation. Body is the visible reply text, read-only. */
     public static final String TYPE_ORBIT_REPLY = "orbit_reply";
+    /**
+     * One page of a document the user was reading. Body is that page's extracted text.
+     *
+     * <p>Its own type rather than a text item with a helpful title, or an image item with a caption
+     * glued on. A saved page is genuinely a different thing from both: it has a document it came
+     * from, a place inside that document, words that were extracted from it and a picture of how it
+     * actually looked, and every one of those is needed to show it, to search it, and to describe
+     * it honestly to a model later. Encoding "Page 7 of Health behavior theory" into a title and
+     * hoping to read it back would lose the page number the first time somebody renamed the item.
+     *
+     * <p>The saved page is self-contained. The document it came from may be moved, deleted, or
+     * never opened again; what the Vault holds is the extracted text and Orbit's own copy of the
+     * rendering, so the item stays useful with the original long gone.
+     */
+    public static final String TYPE_DOCUMENT_PAGE = "document_page";
 
     /** Every type this build understands. Anything else on disk is not shown. */
-    public static final String[] TYPES = {TYPE_TEXT, TYPE_LINK, TYPE_IMAGE, TYPE_ORBIT_REPLY};
+    public static final String[] TYPES = {
+            TYPE_TEXT, TYPE_LINK, TYPE_IMAGE, TYPE_ORBIT_REPLY, TYPE_DOCUMENT_PAGE};
 
     // ---- bounds --------------------------------------------------------------------------------
 
@@ -60,6 +76,21 @@ public final class OrbitVaultItem {
     public static final int MAX_NOTE_CHARS = 600;
     /** The longest address Orbit will keep as a link rather than as ordinary text. */
     public static final int MAX_URL_CHARS = 2000;
+    /**
+     * How much of a document's own name a saved page keeps.
+     *
+     * <p>The same ceiling a title has, because that is what it is used as. A filename is not chosen
+     * by Orbit and can be arbitrarily long; a page saved from one has to stay drawable on a card.
+     */
+    public static final int MAX_DOCUMENT_NAME_CHARS = 120;
+    /**
+     * The largest page number a saved page may claim.
+     *
+     * <p>A bound rather than a judgement about documents: the viewer already refuses to index a PDF
+     * past {@code DocumentViewerActivity.MAX_PAGES}, and this stops a hand-edited store or a
+     * restored backup asserting page two billion of a four page file.
+     */
+    public static final int MAX_PAGE_COUNT = 100000;
     /** How long a derived title may be before it is trimmed at a word boundary. */
     private static final int AUTO_TITLE_CHARS = 60;
 
@@ -84,6 +115,18 @@ public final class OrbitVaultItem {
     public final String note;
     /** Absolute path to the private file this item owns, or empty. Never a foreign content URI. */
     public final String mediaPath;
+    /**
+     * The display name of the document a saved page came from, or empty for every other type.
+     *
+     * <p>A name and nothing else. Never a path, never a content URI, never anything that could be
+     * used to reach the original file: the document may be gone, and a saved page that depended on
+     * it would be a broken row rather than something the user kept.
+     */
+    public final String documentName;
+    /** Zero-based page inside that document, or 0 when this item is not a page. */
+    public final int pageIndex;
+    /** How many pages the document had when the page was saved, or 0 when it was not known. */
+    public final int pageCount;
     public final long createdAt;
     public final long modifiedAt;
 
@@ -93,8 +136,15 @@ public final class OrbitVaultItem {
         this(id, type, title, body, source, "", mediaPath, createdAt, modifiedAt);
     }
 
+    /** One item that is not a saved document page, which is every type but one. */
     public OrbitVaultItem(String id, String type, String title, String body, String source,
                           String note, String mediaPath, long createdAt, long modifiedAt) {
+        this(id, type, title, body, source, note, mediaPath, "", 0, 0, createdAt, modifiedAt);
+    }
+
+    public OrbitVaultItem(String id, String type, String title, String body, String source,
+                          String note, String mediaPath, String documentName, int pageIndex,
+                          int pageCount, long createdAt, long modifiedAt) {
         this.id = trim(id);
         this.type = normalizeType(type);
         this.title = bound(collapse(title), MAX_TITLE_CHARS);
@@ -102,8 +152,43 @@ public final class OrbitVaultItem {
         this.source = bound(collapse(source), MAX_SOURCE_CHARS);
         this.note = boundNote(note);
         this.mediaPath = trim(mediaPath);
+        // Page metadata is kept only for the type it describes, so a text item cannot be handed a
+        // page number by a hand-edited store and start claiming to be part of a document.
+        boolean page = TYPE_DOCUMENT_PAGE.equals(this.type);
+        this.documentName = page ? bound(collapse(documentName), MAX_DOCUMENT_NAME_CHARS) : "";
+        this.pageCount = page ? Math.max(0, Math.min(pageCount, MAX_PAGE_COUNT)) : 0;
+        this.pageIndex = page ? clampPage(pageIndex, this.pageCount) : 0;
         this.createdAt = createdAt;
         this.modifiedAt = modifiedAt <= 0L ? createdAt : modifiedAt;
+    }
+
+    /**
+     * The page a saved item may legitimately claim.
+     *
+     * <p>A known page count is the ceiling; an unknown one still has {@link #MAX_PAGE_COUNT}, so a
+     * page saved from a document whose length Orbit could not read keeps its number instead of
+     * silently becoming page one.
+     */
+    private static int clampPage(int value, int count) {
+        if (value < 0) return 0;
+        if (count > 0) return Math.min(value, count - 1);
+        return Math.min(value, MAX_PAGE_COUNT - 1);
+    }
+
+    // ---- derived copies ---------------------------------------------------------------------------
+
+    /**
+     * The same item with one field changed and everything else carried over.
+     *
+     * <p>Here rather than at each editing call site, because the fields an edit must <em>not</em>
+     * touch are the ones nobody thinks about. Renaming a saved page has to keep its document, its
+     * page number and its rendering; a rebuild written by hand at three call sites would drop one
+     * of them the first time a field was added, and the user would find a page that had forgotten
+     * which page it was.
+     */
+    OrbitVaultItem copyWith(String newTitle, String newBody, String newNote, long modifiedNow) {
+        return new OrbitVaultItem(id, type, newTitle, newBody, source, newNote, mediaPath,
+                documentName, pageIndex, pageCount, createdAt, modifiedNow);
     }
 
     // ---- what a screen may ask ------------------------------------------------------------------
@@ -112,6 +197,24 @@ public final class OrbitVaultItem {
     public boolean isLink() { return TYPE_LINK.equals(type); }
     public boolean isOrbitReply() { return TYPE_ORBIT_REPLY.equals(type); }
     public boolean isText() { return TYPE_TEXT.equals(type); }
+    public boolean isDocumentPage() { return TYPE_DOCUMENT_PAGE.equals(type); }
+
+    /**
+     * Whether this kind of item keeps a private file of its own.
+     *
+     * <p>Asked by type rather than by looking for a path, so backup, restore and deletion all agree
+     * about which items are supposed to have media before any of them reads the disk. A picture
+     * without its file is nothing; a saved page without its rendering is still its text.
+     */
+    public static boolean typeOwnsMedia(String value) {
+        return TYPE_IMAGE.equals(value) || TYPE_DOCUMENT_PAGE.equals(value);
+    }
+
+    /** Whether this particular item is one of those. */
+    public boolean ownsMedia() { return typeOwnsMedia(type); }
+
+    /** Whether the file this item owns is required for it to exist at all. */
+    public boolean requiresMedia() { return isImage(); }
 
     /** Whether the user has written anything of their own about this item. */
     public boolean hasNote() { return !note.isEmpty(); }
@@ -131,13 +234,30 @@ public final class OrbitVaultItem {
             case TYPE_LINK: return "Link";
             case TYPE_IMAGE: return "Image";
             case TYPE_ORBIT_REPLY: return "Orbit answer";
+            case TYPE_DOCUMENT_PAGE: return "Document page";
             default: return "Note";
         }
     }
 
+    /** "Page 7 of 388", "Page 7" when the length was not known, or "" for anything else. */
+    public String pageLabel() {
+        if (!isDocumentPage()) return "";
+        int human = pageIndex + 1;
+        return pageCount > 0 ? "Page " + human + " of " + pageCount : "Page " + human;
+    }
+
+    /** The human page number, counting from one, or 0 when this item is not a page. */
+    public int pageNumber() { return isDocumentPage() ? pageIndex + 1 : 0; }
+
     /** The title to draw: what the user set, or a local fallback derived from the content. */
     public String displayTitle() {
         if (!title.isEmpty()) return title;
+        // A saved page is named after the document and the page rather than after its first line.
+        // "Chapter 4 continued" is what page 118 happens to start with; it is not what the user
+        // would look for when they go back for the page they kept.
+        if (isDocumentPage() && !documentName.isEmpty()) {
+            return documentName + " · " + pageLabel();
+        }
         String derived = autoTitle(type, body);
         return derived.isEmpty() ? typeLabel() : derived;
     }
@@ -178,14 +298,15 @@ public final class OrbitVaultItem {
      * idea", which they typed themselves, is exactly what they will type again.
      */
     String searchHaystack() {
-        return (title + "\n" + body + "\n" + note + "\n" + source + "\n" + typeLabel())
+        return (title + "\n" + body + "\n" + note + "\n" + source + "\n" + documentName
+                + "\n" + pageLabel() + "\n" + typeLabel())
                 .toLowerCase(Locale.US);
     }
 
     // ---- storage ---------------------------------------------------------------------------------
 
     JSONObject toJson() throws Exception {
-        return new JSONObject()
+        JSONObject out = new JSONObject()
                 .put("id", id)
                 .put("type", type)
                 .put("title", title)
@@ -195,6 +316,14 @@ public final class OrbitVaultItem {
                 .put("mediaPath", mediaPath)
                 .put("createdAt", createdAt)
                 .put("modifiedAt", modifiedAt);
+        // Written only for the type that has them, so a Vault of notes and links is byte-for-byte
+        // the document Beta 2 wrote and an older build reading it finds nothing new.
+        if (isDocumentPage()) {
+            out.put("documentName", documentName)
+               .put("pageIndex", pageIndex)
+               .put("pageCount", pageCount);
+        }
+        return out;
     }
 
     static OrbitVaultItem fromJson(JSONObject o) {
@@ -209,6 +338,12 @@ public final class OrbitVaultItem {
                 // is what an empty note already means, so nothing has to be migrated.
                 o.optString("note", ""),
                 o.optString("mediaPath", ""),
+                // Absent in every Beta 1 and Beta 2 document, and absent from every item that is
+                // not a saved page. The constructor drops them for any other type, so a missing
+                // key and a wrong key reach the same place.
+                o.optString("documentName", ""),
+                o.optInt("pageIndex", 0),
+                o.optInt("pageCount", 0),
                 o.optLong("createdAt", 0L),
                 o.optLong("modifiedAt", 0L));
         return isStorable(item) ? item : null;
@@ -224,7 +359,14 @@ public final class OrbitVaultItem {
     static boolean isStorable(OrbitVaultItem item) {
         if (item == null || item.id.isEmpty() || item.createdAt <= 0L) return false;
         if (!knownType(item.type)) return false;
-        if (item.isImage()) return !item.mediaPath.isEmpty();
+        // A picture is its file: an image row without one is a broken thumbnail and nothing else.
+        if (item.requiresMedia()) return !item.mediaPath.isEmpty();
+        // A saved page is not. Its rendering is half of what makes it useful and its text is the
+        // other half, so either one alone is still the page the user kept - and a page whose
+        // rendering is lost must not take the rest of the Vault down with it.
+        if (item.isDocumentPage()) {
+            return !item.mediaPath.isEmpty() || !item.body.isEmpty() || !item.documentName.isEmpty();
+        }
         return !item.body.isEmpty() || !item.title.isEmpty();
     }
 

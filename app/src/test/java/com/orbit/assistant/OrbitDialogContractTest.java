@@ -289,33 +289,44 @@ public final class OrbitDialogContractTest {
                         + " non-page theme",
                 count(manifest, "android:theme=\"@style/Theme.Orbit.Bridge\"") == 5);
 
-        // Ask Orbit draws nothing of its own. It validates, stages, and starts a real conversation;
-        // a dialog here would be Orbit painting a window over the text the user is in the middle of
-        // selecting, and there is only one thing selected text can become.
+        // Both external doorways draw exactly one thing, and only since v0.7.8.4: the question of
+        // where the content should go. Share to Orbit gained it in Beta 1 and the selected-text
+        // doorway in Beta 3, for the same reason both times - a shared link and a selected
+        // paragraph each genuinely have two destinations now, a conversation or the Vault, and
+        // guessing would either silently change what the doorway has always meant or make the Vault
+        // unreachable from it. One Orbit-owned choice is the honest answer; anything beyond it
+        // would be a bridge growing into a screen.
+        //
+        // The selected-text doorway in particular must not answer this with a second entry in
+        // Android's own text-selection menu: the platform gives a handler no say in how its items
+        // are ordered or grouped, so two Orbit entries would be two unexplained words in every
+        // app's menu instead of one question the user can read.
+        for (String bridge : new String[]{"ShareToOrbitActivity", "ProcessTextToOrbitActivity"}) {
+            String source = ComponentUninstallTest.readRepositoryFile(
+                    "app/src/main/java/com/orbit/assistant/" + bridge + ".java");
+            assertTrue(bridge + ": the one dialog it may draw is Orbit's own, through the shared"
+                            + " styling path",
+                    source.contains("UiKit.styleOrbitDialog(dialog, this, false)"));
+            assertEquals(bridge + ": and there is exactly one of it",
+                    1, count(source, "new AlertDialog.Builder"));
+            assertTrue(bridge + ": it offers the two real destinations and nothing else",
+                    source.contains("setPositiveButton(ASK_ORBIT")
+                            && source.contains("setNegativeButton(SAVE_TO_VAULT"));
+            assertTrue(bridge + ": cancelling is a real third answer",
+                    source.contains("setOnCancelListener"));
+            assertFalse(bridge + ": it must never ask for a permission itself",
+                    source.contains("requestPermissions("));
+            assertFalse(bridge + ": and must never clone an Android-owned window",
+                    source.contains("setCustomTitle"));
+        }
+
+        // And the selected-text doorway still never writes back over the user's selection. This is
+        // Ask Orbit, not Replace with Orbit, and adding a second destination did not change that:
+        // there is no path through it that sets a result.
         String selectedText = ComponentUninstallTest.readRepositoryFile(
                 "app/src/main/java/com/orbit/assistant/ProcessTextToOrbitActivity.java");
-        assertFalse("Ask Orbit must not draw a dialog",
-                selectedText.contains("new AlertDialog.Builder"));
-        assertFalse("nor style one", selectedText.contains("styleOrbitDialog"));
-
-        // Share to Orbit draws exactly one thing, and only since v0.7.8.4: the question of where a
-        // share should go. A shared link genuinely has two destinations now - a conversation or the
-        // Vault - and guessing would either silently change what sharing into Orbit has always
-        // meant or make the Vault unreachable from the share sheet. One Orbit-owned choice is the
-        // honest answer; anything beyond it would be this bridge growing into a screen.
-        String share = ComponentUninstallTest.readRepositoryFile(
-                "app/src/main/java/com/orbit/assistant/ShareToOrbitActivity.java");
-        assertTrue("the one dialog it may draw is Orbit's own, through the shared styling path",
-                share.contains("UiKit.styleOrbitDialog(dialog, this, false)"));
-        assertEquals("and there is exactly one of it", 1, count(share, "new AlertDialog.Builder"));
-        assertTrue("it offers the two real destinations and nothing else",
-                share.contains("setPositiveButton(ASK_ORBIT")
-                        && share.contains("setNegativeButton(SAVE_TO_VAULT"));
-        assertTrue("cancelling is a real third answer", share.contains("setOnCancelListener"));
-        assertFalse("it must never ask for a permission itself",
-                share.contains("requestPermissions("));
-        assertFalse("and must never clone an Android-owned window",
-                share.contains("setCustomTitle"));
+        assertFalse("the selected-text doorway must never replace the user's text",
+                selectedText.contains("setResult("));
 
         // The full-screen attachment viewer is a real screen rather than a bridge, so it keeps the
         // ordinary Orbit theme and paints its own black background. It is emphatically not a

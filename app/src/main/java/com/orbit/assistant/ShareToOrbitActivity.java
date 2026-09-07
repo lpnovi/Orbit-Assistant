@@ -47,8 +47,16 @@ public final class ShareToOrbitActivity extends Activity {
     /** The two destinations offered for a share the Vault could hold. */
     static final String ASK_ORBIT = "Ask Orbit";
     static final String SAVE_TO_VAULT = "Save to Vault";
-    /** What a Vault item saved this way records about where it came from. */
-    static final String SOURCE_LABEL = "Shared to Orbit";
+    /**
+     * What a Vault item saved this way records about where it came from.
+     *
+     * <p>Read from {@link OrbitVaultSource} rather than written here, so every save route in
+     * Orbit draws its provenance from one closed vocabulary. It deliberately does not name the
+     * sending app: Android hands a share target only what the sender chose to put in the Intent,
+     * which any app can set to anything, and writing "Shared from Chrome" permanently into the
+     * user's own collection on that basis would be Orbit stating something it does not know.
+     */
+    static final String SOURCE_LABEL = OrbitVaultSource.SHARED;
 
     /** MIME types Orbit will accept from a share, matching what AttachmentLoader can really read. */
     private static boolean isSupportedStreamType(String type) {

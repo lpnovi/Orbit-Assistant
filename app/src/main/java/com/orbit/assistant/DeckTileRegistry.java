@@ -31,6 +31,8 @@ public final class DeckTileRegistry {
     public static final String TYPE_EXTENSIONS = "orbit.extensions";
     public static final String TYPE_SETTINGS = "orbit.settings";
     public static final String TYPE_THEME_STUDIO = "orbit.theme_studio";
+    public static final String TYPE_VAULT = "orbit.vault";
+    public static final String TYPE_QUICK_CAPTURE = "orbit.quick_capture";
     public static final String TYPE_FLASHLIGHT = "action.flashlight";
     public static final String TYPE_MEDIA = "action.media";
     public static final String TYPE_ROUTINE = "routine";
@@ -123,6 +125,13 @@ public final class DeckTileRegistry {
                 R.drawable.ic_deck_extension, BOTH, true, false, Category.ORBIT, "Orbit shortcut"));
         put(new Definition(TYPE_THEME_STUDIO, "Theme Studio", "Design how Orbit looks",
                 R.drawable.ic_deck_theme, BOTH, true, false, Category.ORBIT, "Orbit shortcut"));
+        put(new Definition(TYPE_VAULT, "Vault", "Open the things you have saved",
+                R.drawable.ic_vault, BOTH, true, false, Category.ORBIT, "Orbit shortcut"));
+        // Quick Capture is a destination too, not a second capture implementation: tapping it
+        // opens the Vault's own capture flow - write text, paste clipboard, add image - which
+        // is the same one the Vault screen's own button opens.
+        put(new Definition(TYPE_QUICK_CAPTURE, "Quick Capture", "Save something to your Vault",
+                R.drawable.ic_deck_note, BOTH, true, false, Category.ORBIT, "Orbit shortcut"));
         put(new Definition(TYPE_SETTINGS, "Settings", "Open Orbit settings",
                 R.drawable.ic_settings, BOTH, true, false, Category.ORBIT, "Orbit shortcut"));
 
@@ -176,6 +185,26 @@ public final class DeckTileRegistry {
             if (!inCategory(category).isEmpty()) out.add(category);
         }
         return out;
+    }
+
+    /**
+     * Whether this kind of tile is worth offering on the Add sheet right now.
+     *
+     * <p>Only ever about offering. A tile the user has already placed is never removed, never
+     * disabled in their layout by this, and never rewritten: switching a feature off must not
+     * reach into somebody's Deck and edit it. What it stops is Orbit suggesting a new tile that
+     * could not do anything if it were placed.
+     *
+     * <p>Deliberately here rather than in the Add sheet. The sheet reads this table for
+     * everything else it draws, and a second list of "except these" living in an Activity is
+     * exactly how a registry stops being the single description of what a tile is.
+     */
+    public static boolean isOfferable(android.content.Context c, Definition definition) {
+        if (definition == null) return false;
+        if (TYPE_VAULT.equals(definition.type) || TYPE_QUICK_CAPTURE.equals(definition.type)) {
+            return c != null && Prefs.vaultEnabled(c);
+        }
+        return true;
     }
 
     /**

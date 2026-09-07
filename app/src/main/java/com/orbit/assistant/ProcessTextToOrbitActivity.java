@@ -1,8 +1,11 @@
 package com.orbit.assistant;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.os.Bundle;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.Toast;
 
 import java.util.ArrayList;
@@ -34,8 +37,27 @@ import java.util.ArrayList;
  * command, not a package name, not a path, not an Orbit action, and not an instruction. It only
  * becomes a question to a model if the user presses Send, at which point it travels the ordinary
  * path inside Orbit's untrusted-attachment framing like anything else they shared.
+ *
+ * <p><b>Two destinations from v0.7.8.4 Beta 3</b>, in exactly the shape Share to Orbit already
+ * settled on. A selected paragraph now has two honest meanings - "ask Orbit about this" and "keep
+ * this" - and Orbit has no way to tell which one the user had in mind. Adding a second entry to
+ * Android's own selection menu was the alternative and it is worse: it would put two Orbit items in
+ * every app's text menu, and the platform gives a handler no say in how those are ordered or
+ * grouped. One Orbit-owned question, drawn by Orbit, with cancel as a real third answer, keeps the
+ * selection menu at one entry and lets the user see both destinations at once.
+ *
+ * <p>With the Vault switched off there is no question to ask and no dialog at all: the selection
+ * goes straight to a conversation exactly as it did before the Vault existed. Ask Orbit from a text
+ * selection must keep working whatever else the user has turned off.
  */
 public final class ProcessTextToOrbitActivity extends Activity {
+
+    /** The two destinations offered for a selection, in the words Share to Orbit already uses. */
+    static final String ASK_ORBIT = "Ask Orbit";
+    static final String SAVE_TO_VAULT = "Save to Vault";
+
+    /** True while Orbit's own choice of destination is on screen and this bridge must stay open. */
+    private boolean awaitingChoice;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -52,8 +74,10 @@ public final class ProcessTextToOrbitActivity extends Activity {
         }
         // Finished without a result, so the source app replaces nothing. This is the whole
         // read-only contract, and it is the default rather than a branch on purpose: there is no
-        // path through this Activity that can set a replacement.
-        finish();
+        // path through this Activity that can set a replacement. The one thing that may hold this
+        // open is Orbit's own question about where the selection should go, and every answer to it
+        // finishes here too - still without ever setting a result.
+        if (!awaitingChoice) finish();
     }
 
     private void handleSelection(Intent intent) {
@@ -82,6 +106,72 @@ public final class ProcessTextToOrbitActivity extends Activity {
                 .putExtra(ChatActivity.EXTRA_SHARE_TOKEN, token)
                 .putExtra(ChatActivity.EXTRA_FOCUS_COMPOSER, true);
 
+        // Where this selection should go. Asking Orbit about it is still what happens unless the
+        // user says otherwise, and it is still what happens with no question at all when the Vault
+        // is off.
+        if (Prefs.vaultEnabled(this)) {
+            askDestination(text, token, chat);
+            return;
+        }
+        openConversation(chat);
+    }
+
+    /**
+     * Asks where the selection should land, and does nothing at all until the answer arrives.
+     *
+     * <p>Cancelling is a real third answer. The staged token is simply never spent, expires on its
+     * own, and no conversation is created and no item is saved - which is what "I tapped the wrong
+     * thing" should cost somebody in the middle of reading.
+     */
+    private void askDestination(String text, String token, Intent chat) {
+        awaitingChoice = true;
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Selected text")
+                .setMessage("Ask Orbit about this, or keep it in your Vault. "
+                        + "Nothing is sent to Orbit's AI until you send it.")
+                .setNegativeButton(SAVE_TO_VAULT, (d, which) -> {
+                    saveSelectionToVault(text, token);
+                    finish();
+                })
+                .setPositiveButton(ASK_ORBIT, (d, which) -> {
+                    openConversation(chat);
+                    finish();
+                })
+                .setOnCancelListener(d -> finish())
+                .create();
+        UiKit.styleOrbitDialog(dialog, this, false);
+        dialog.setCanceledOnTouchOutside(false);
+        Window window = dialog.getWindow();
+        if (window != null) {
+            // The bridge itself draws nothing, so the dialog brings its own scrim rather than
+            // floating over whichever app the text was selected in with no separation at all.
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            window.setDimAmount(0.55f);
+        }
+        dialog.show();
+    }
+
+    /**
+     * Keeps the exact selection as one Vault item, locally.
+     *
+     * <p>The exact characters the user selected: no normalising, no unwrapping, no rewriting. They
+     * pointed at something specific, and an item holding a tidied version of it would be a
+     * different quotation from the one they kept.
+     *
+     * <p>The staged token is spent here even though no composer ever sees it, so a selection that
+     * went to the Vault cannot also be replayed into a conversation. Nothing is sent anywhere.
+     */
+    private void saveSelectionToVault(String text, String token) {
+        SharedContentStore.consume(token);
+        boolean saved = OrbitVaultStore.saveText(this, "", text,
+                OrbitVaultSource.SELECTED_TEXT) != null;
+        DiagnosticStore.recordExternalText(this, SharedContentStore.SOURCE_PROCESS_TEXT,
+                text.length(), saved ? "saved-to-vault" : "vault-save-failed");
+        Toast.makeText(this, saved ? "Saved to Vault" : "Orbit could not save that selection",
+                Toast.LENGTH_SHORT).show();
+    }
+
+    private void openConversation(Intent chat) {
         // A real stack, so Back from the conversation goes to Chats rather than straight back to
         // the app the text was selected in. CLEAR_TOP with SINGLE_TOP is what stops a second copy
         // of Chats being created behind every selection.

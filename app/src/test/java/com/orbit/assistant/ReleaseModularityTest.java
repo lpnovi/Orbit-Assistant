@@ -185,19 +185,21 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * Orbit Vault's second Beta, for the same reason as the first: most of what it changes is only
-     * answerable on a phone.
+     * Orbit Vault's third Beta, for the same reason as the first two: most of what it changes is
+     * only answerable on a phone.
      *
-     * <p>The suite proves the parts a machine can settle: a note round-trips and is searchable, a
-     * Beta 1 item with no note loads unchanged, switching the Vault off deletes nothing and blocks
-     * every save route, deleting all Vault data clears the items and their pictures and touches
-     * nothing else, Ask Orbit stages one item without sending anything, an attached saved item
-     * obeys the ordinary attachment limit, and only http and https addresses can be opened.
+     * <p>The suite proves the parts a machine can settle: a saved document page keeps its
+     * document, its page number, its bounded text and its own private rendering; deleting one
+     * removes that rendering and nothing else; a page whose rendering is gone still loads; a
+     * screen selection and a text selection save only when the user asks and only while the Vault
+     * is on; the Deck destinations resolve and refuse politely when it is off; onboarding writes
+     * the canonical theme and keeps AMOLED independent of the preset; and Beta 1 and Beta 2
+     * stores and backups still load.
      *
-     * <p>What it cannot settle is whether the rebuilt action area actually reads better in the
-     * hand, whether Ask Orbit is discoverable where it now sits, and whether a Galaxy S25 Ultra
-     * draws the note section the way it reads here. That is what the Beta is for, so this must
-     * publish as a prerelease and never as a Stable release.
+     * <p>What it cannot settle is whether Save page to Vault is discoverable in the document
+     * header, whether the note editor now reads as a box in the hand, and whether the preset grid
+     * is legible at Galaxy S25 Ultra width. That is what the Beta is for, so this must publish as
+     * a prerelease and never as a Stable release.
      */
     @Test public void thisReleaseIsAnOrbitVaultBeta() {
         assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",

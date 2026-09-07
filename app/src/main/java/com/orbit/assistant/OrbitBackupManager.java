@@ -306,15 +306,32 @@ public final class OrbitBackupManager {
                     // note is an empty one. Bounded here like every other field, so a hand-edited
                     // file cannot carry a megabyte of "note" into somebody's Vault.
                     o.optString("note", "").length() > OrbitVaultItem.MAX_NOTE_CHARS ||
-                    o.optString("source", "").length() > OrbitVaultItem.MAX_SOURCE_CHARS)
+                    o.optString("source", "").length() > OrbitVaultItem.MAX_SOURCE_CHARS ||
+                    // Absent from every backup written before saved document pages existed, which
+                    // is valid. Bounded here like every other field so a hand-edited file cannot
+                    // carry a document name of arbitrary length, or a page number of two billion,
+                    // into somebody's Vault.
+                    o.optString("documentName", "").length()
+                            > OrbitVaultItem.MAX_DOCUMENT_NAME_CHARS ||
+                    o.optInt("pageIndex", 0) < 0
+                    || o.optInt("pageIndex", 0) >= OrbitVaultItem.MAX_PAGE_COUNT ||
+                    o.optInt("pageCount", 0) < 0
+                    || o.optInt("pageCount", 0) > OrbitVaultItem.MAX_PAGE_COUNT)
                 invalid("Vault");
             // No device-local path may ever arrive in a backup, in either direction.
             if (!o.optString("mediaPath", "").isEmpty()) invalid("Vault images");
             String ref = o.optString("mediaRef", "").trim();
-            boolean image = OrbitVaultItem.TYPE_IMAGE.equals(o.optString("type", ""));
-            if (image) {
+            String type = o.optString("type", "");
+            if (OrbitVaultItem.TYPE_IMAGE.equals(type)) {
                 if (ref.isEmpty() || !decoded.containsKey(ref)) invalid("Vault images");
                 referenced.add(ref);
+            } else if (OrbitVaultItem.TYPE_DOCUMENT_PAGE.equals(type)) {
+                // A saved page may legitimately have no rendering; what it may not do is name one
+                // the backup does not actually carry.
+                if (!ref.isEmpty()) {
+                    if (!decoded.containsKey(ref)) invalid("Vault images");
+                    referenced.add(ref);
+                }
             } else if (!ref.isEmpty()) {
                 invalid("Vault images");
             }
@@ -647,24 +664,33 @@ public final class OrbitBackupManager {
         long total = 0L;
         for (int i = 0; i < items.length(); i++) {
             JSONObject item = items.getJSONObject(i);
+            String type = item.optString("type", "");
             String path = item.optString("mediaPath", "").trim();
             item.put("mediaPath", "");
-            boolean image = OrbitVaultItem.TYPE_IMAGE.equals(item.optString("type", ""));
-            if (!image) {
+            if (!OrbitVaultItem.typeOwnsMedia(type)) {
                 item.remove("mediaRef");
                 kept.put(item);
                 continue;
             }
-            if (path.isEmpty() || !OrbitVaultMedia.owns(c, path)) continue;
+            // A picture with no readable file is nothing and is dropped. A saved document page is
+            // not: its extracted text, its document and its page number are still the page the
+            // user kept, so it travels without its rendering rather than being lost with it.
+            boolean required = OrbitVaultItem.TYPE_IMAGE.equals(type);
+            if (path.isEmpty() || !OrbitVaultMedia.owns(c, path)) {
+                if (required) continue;
+                item.remove("mediaRef");
+                kept.put(item);
+                continue;
+            }
             String ref = refs.get(path);
             if (ref == null) {
                 File file = new File(path);
-                if (!file.isFile()) continue;
+                if (!file.isFile()) { if (required) continue; item.remove("mediaRef"); kept.put(item); continue; }
                 byte[] bytes;
                 try (InputStream in = new FileInputStream(file)) {
                     bytes = readLimited(in, MAX_VAULT_MEDIA_BYTES);
                 }
-                if (!isJpeg(bytes)) continue;
+                if (!isJpeg(bytes)) { if (required) continue; item.remove("mediaRef"); kept.put(item); continue; }
                 total += bytes.length;
                 if (total > MAX_TOTAL_VAULT_MEDIA_BYTES)
                     throw new IllegalStateException("Vault images are too large to back up safely.");
@@ -706,12 +732,15 @@ public final class OrbitBackupManager {
             JSONObject item = items.getJSONObject(i);
             String ref = item.optString("mediaRef", "").trim();
             item.remove("mediaRef");
-            if (!ref.isEmpty()) {
-                String path = paths.get(ref);
-                if (path == null || path.isEmpty()) continue;
-                item.put("mediaPath", path);
-            } else {
+            String path = ref.isEmpty() ? "" : paths.get(ref);
+            if (ref.isEmpty() || path == null || path.isEmpty()) {
+                // An image is its picture, so one that arrives without a usable file is dropped
+                // rather than restored as a broken row. Every other kind keeps what it has.
+                if (OrbitVaultItem.TYPE_IMAGE.equals(item.optString("type", ""))
+                        && !ref.isEmpty()) continue;
                 item.put("mediaPath", "");
+            } else {
+                item.put("mediaPath", path);
             }
             restored.put(item);
         }

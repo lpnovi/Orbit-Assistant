@@ -100,6 +100,10 @@ public final class DeckTileResolver {
         if (DeckTileRegistry.TYPE_PROMPT.equals(tile.type)) return prompt(tile, definition);
         if (DeckTileRegistry.TYPE_FLASHLIGHT.equals(tile.type)) return flashlight(c, tile, definition, live);
         if (DeckTileRegistry.TYPE_MEDIA.equals(tile.type)) return media(tile, definition, live);
+        if (DeckTileRegistry.TYPE_VAULT.equals(tile.type)
+                || DeckTileRegistry.TYPE_QUICK_CAPTURE.equals(tile.type)) {
+            return vault(c, tile, definition);
+        }
         return destination(tile, definition);
     }
 
@@ -110,6 +114,32 @@ public final class DeckTileResolver {
         return new Resolved(title, definition.description, definition.iconRes, null,
                 DeckTile.Availability.AVAILABLE, describe(title, definition.roleLabel, ""));
     }
+
+    /**
+     * A Vault tile, which is an ordinary destination until the user switches the Vault off.
+     *
+     * <p>Off makes it unavailable rather than unresolved, and the difference matters. Unresolved
+     * means "this tile is broken, tap to fix or remove it" - a Routine that was deleted, an app
+     * that was uninstalled - and offering to remove somebody's Vault tile because they turned a
+     * preference off would be Orbit suggesting they throw away a layout they will want back in
+     * a minute. Unavailable says what is true: the tile is fine, the feature is off, and turning
+     * it back on is all that is needed.
+     *
+     * <p>Nothing here writes anything. The tile stays exactly where the user put it.
+     */
+    private static Resolved vault(Context c, DeckTile tile,
+                                  DeckTileRegistry.Definition definition) {
+        String title = title(tile, definition.title);
+        if (c != null && !Prefs.vaultEnabled(c)) {
+            return new Resolved(title, VAULT_OFF, definition.iconRes, null,
+                    DeckTile.Availability.UNAVAILABLE,
+                    title + ", Orbit shortcut, " + VAULT_OFF + ".");
+        }
+        return destination(tile, definition);
+    }
+
+    /** What a Vault tile says, and what tapping one says, while the Vault is switched off. */
+    static final String VAULT_OFF = "Orbit Vault is turned off";
 
     private static Resolved routine(Context c, DeckTile tile, DeckTileRegistry.Definition definition) {
         String routineId = tile.config(DeckTile.CONFIG_ROUTINE_ID);

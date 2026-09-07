@@ -12,35 +12,54 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
- * Choosing one saved item to attach to the message being written.
+ * Choosing saved items to attach to the message being written.
  *
- * <p>A picker rather than a second Vault. It searches and it lists, and a tap returns one id to
+ * <p>A picker rather than a second Vault. It searches and it lists, and a tap marks an item for
  * whichever composer opened it; there is no editing, no capture, no sorting and no deletion here,
  * because the user is in the middle of writing a message and every one of those would take them
  * somewhere else.
  *
- * <p>One selection, deliberately. The composer's attachment limit is Orbit's one number and the
- * Vault has no business bending it, so this hands back exactly one id and the composer appends it
- * the way it appends a photo - refusing it, with the same message, when the turn is already full.
+ * <p>As many items as the message can still hold, and not one more. The composer's attachment
+ * limit is Orbit's one number and the Vault has no business bending it, so the picker is told
+ * how much room is left and stops accepting at exactly that point. What it hands back is a list
+ * of ids; the composer appends them the way it appends four photos from Gallery, through the
+ * same {@link ComposerAttachments} collection, the same tray and the same Send.
  *
- * <p>Opening this screen sends nothing. It reads the local store, draws it, and returns an id;
- * the saved item does not reach a provider until the user presses Send on a message they wrote
+ * <p>Selecting is not attaching. A tap marks an item and a second tap unmarks it; nothing
+ * reaches the composer until Attach, and closing this screen without pressing it leaves the
+ * message exactly as it was.
+ *
+ * <p>Opening this screen sends nothing. It reads the local store, draws it, and returns ids; a
+ * saved item does not reach a provider until the user presses Send on a message they wrote
  * themselves.
  */
 public final class OrbitVaultPickerActivity extends Activity {
 
-    /** The id of the chosen item, returned to the composer that asked. */
-    public static final String EXTRA_PICKED_ID = "orbit_vault_picked_id";
+    /** The ids of the chosen items, in the order they were chosen. */
+    public static final String EXTRA_PICKED_IDS = "orbit_vault_picked_ids";
+
+    /**
+     * How many more items the message that opened this can still take.
+     *
+     * <p>Passed in rather than worked out here, because the composer owns the count and already
+     * holds whatever else the user has attached. Absent or nonsensical means the whole per-turn
+     * limit, which is what a caller that has staged nothing would have anyway.
+     */
+    public static final String EXTRA_REMAINING = "orbit_vault_remaining";
 
     static final String EMPTY_TITLE = "Nothing saved yet";
     static final String EMPTY_BODY =
@@ -48,7 +67,12 @@ public final class OrbitVaultPickerActivity extends Activity {
 
     private LinearLayout list;
     private EditText searchInput;
+    private Button attachButton;
+    private TextView countLine;
     private String appearanceSignature = "";
+    /** The items marked so far, in the order the user marked them. */
+    private final List<String> picked = new ArrayList<>();
+    private int remaining = ComposerAttachments.MAX_PER_TURN;
 
     /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
     private OrbitPredictiveBack navigation;
@@ -57,6 +81,14 @@ public final class OrbitVaultPickerActivity extends Activity {
         super.onCreate(savedInstanceState);
         UiKit.syncTheme(this);
         appearanceSignature = UiKit.appearanceSignature(this);
+        int room = getIntent() == null ? 0
+                : getIntent().getIntExtra(EXTRA_REMAINING, ComposerAttachments.MAX_PER_TURN);
+        remaining = room <= 0 ? ComposerAttachments.MAX_PER_TURN
+                : Math.min(room, ComposerAttachments.MAX_PER_TURN);
+        if (savedInstanceState != null) {
+            String[] restored = savedInstanceState.getStringArray(EXTRA_PICKED_IDS);
+            if (restored != null) Collections.addAll(picked, restored);
+        }
         Window window = getWindow();
         window.setStatusBarColor(UiKit.BG);
         window.setNavigationBarColor(UiKit.BG);
@@ -65,6 +97,7 @@ public final class OrbitVaultPickerActivity extends Activity {
         UiKit.applyActivityInsets(this, root, true);
         navigation = OrbitPredictiveBack.install(this);
         refresh();
+        refreshSelectionState();
     }
 
     @Override protected void onResume() {
@@ -75,6 +108,12 @@ public final class OrbitVaultPickerActivity extends Activity {
             return;
         }
         refresh();
+        refreshSelectionState();
+    }
+
+    @Override protected void onSaveInstanceState(Bundle out) {
+        super.onSaveInstanceState(out);
+        out.putStringArray(EXTRA_PICKED_IDS, picked.toArray(new String[0]));
     }
 
     @Override protected void onPause() {
@@ -106,7 +145,8 @@ public final class OrbitVaultPickerActivity extends Activity {
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
         titles.addView(UiKit.text(this, "Attach from Vault", 22, UiKit.TEXT, true));
-        titles.addView(UiKit.text(this, "Choose one saved item", 12, UiKit.MUTED, false));
+        countLine = UiKit.text(this, "", 12, UiKit.MUTED, false);
+        titles.addView(countLine);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
         titleLp.setMargins(UiKit.dp(this, 14), 0, 0, 0);
@@ -142,6 +182,23 @@ public final class OrbitVaultPickerActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         root.addView(scroll, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+
+        // The one control that ends this screen. It is disabled rather than hidden while nothing
+        // is marked, so the screen says up front how a selection is finished.
+        attachButton = new Button(this);
+        attachButton.setAllCaps(false);
+        attachButton.setTextSize(15);
+        attachButton.setTextColor(UiKit.onAccent(this));
+        attachButton.setMinHeight(0);
+        attachButton.setMinimumHeight(0);
+        attachButton.setStateListAnimator(null);
+        attachButton.setBackground(UiKit.ripple(UiKit.accent(this), UiKit.onAccent(this), 18, this));
+        attachButton.setOnClickListener(v -> attachPicked());
+        UiKit.pressScale(attachButton);
+        LinearLayout.LayoutParams attachLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 50));
+        attachLp.setMargins(0, UiKit.dp(this, 8), 0, UiKit.dp(this, 12));
+        root.addView(attachButton, attachLp);
         return root;
     }
 
@@ -169,6 +226,64 @@ public final class OrbitVaultPickerActivity extends Activity {
             return;
         }
         for (OrbitVaultItem item : shown) list.addView(row(item), rowLp());
+    }
+
+    /** The header count and the Attach control, kept in step with what is marked. */
+    private void refreshSelectionState() {
+        int count = picked.size();
+        if (countLine != null) {
+            countLine.setText(count == 0
+                    ? (remaining == 1 ? "Choose one saved item"
+                            : "Choose up to " + remaining + " saved items")
+                    : count + (count == 1 ? " item selected" : " items selected"));
+        }
+        if (attachButton == null) return;
+        attachButton.setText(count <= 1 ? "Attach" : "Attach " + count);
+        attachButton.setEnabled(count > 0);
+        attachButton.setAlpha(count > 0 ? 1f : 0.5f);
+        attachButton.setContentDescription(count == 0
+                ? "Attach, nothing selected yet"
+                : "Attach " + count + (count == 1 ? " saved item" : " saved items"));
+    }
+
+    /**
+     * Marks or unmarks one item.
+     *
+     * <p>Refusing past the message's remaining room happens here rather than at the composer,
+     * because being told what cannot be attached while there is still time to choose differently
+     * is better than being told afterwards.
+     */
+    private void toggle(OrbitVaultItem item) {
+        if (picked.remove(item.id)) {
+            refresh();
+            refreshSelectionState();
+            return;
+        }
+        if (picked.size() >= remaining) {
+            Toast.makeText(this, remaining == 1
+                            ? "This message has room for one more attachment"
+                            : "This message has room for " + remaining + " more attachments",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        picked.add(item.id);
+        refresh();
+        refreshSelectionState();
+    }
+
+    /**
+     * Hands the marked ids back and leaves.
+     *
+     * <p>Ids rather than the items, because the composer can read the store itself and decoded
+     * pictures have no business crossing a Binder transaction. Nothing is attached here and
+     * nothing is sent: the composer stages them, and the user decides what to ask.
+     */
+    private void attachPicked() {
+        if (picked.isEmpty()) return;
+        setResult(RESULT_OK, new Intent()
+                .putExtra(EXTRA_PICKED_IDS, picked.toArray(new String[0])));
+        finish();
+        UiKit.applyPageTransition(this);
     }
 
     /** One compact row: a thumbnail where there is one, the title, and what kind of thing it is. */
@@ -211,25 +326,26 @@ public final class OrbitVaultPickerActivity extends Activity {
         row.addView(words, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
-        row.setBackground(UiKit.rippleOutlined(UiKit.SURFACE,
-                UiKit.withAlpha(UiKit.accent(this), 34), UiKit.accent(this), 18, this));
-        row.setContentDescription("Attach " + item.typeLabel() + ": " + item.displayTitle());
-        row.setOnClickListener(v -> pick(item));
+        TextView mark = UiKit.text(this, picked.contains(item.id) ? "\u2713" : "", 16,
+                UiKit.accent(this), true);
+        mark.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams markLp = new LinearLayout.LayoutParams(
+                UiKit.dp(this, 22), ViewGroup.LayoutParams.WRAP_CONTENT);
+        markLp.setMargins(UiKit.dp(this, 8), 0, 0, 0);
+        row.addView(mark, markLp);
+
+        boolean selected = picked.contains(item.id);
+        // Selection is stated as well as drawn: a brighter outline is exactly the kind of state
+        // that disappears for anyone who cannot rely on colour to carry it.
+        row.setBackground(UiKit.rippleOutlined(
+                selected ? UiKit.blend(UiKit.accent(this), UiKit.SURFACE, 0.16f) : UiKit.SURFACE,
+                UiKit.withAlpha(UiKit.accent(this), selected ? 190 : 34),
+                UiKit.accent(this), 18, this));
+        row.setContentDescription(item.typeLabel() + ": " + item.displayTitle()
+                + (selected ? ", selected" : ", not selected"));
+        row.setOnClickListener(v -> toggle(item));
         UiKit.pressScale(row);
         return row;
-    }
-
-    /**
-     * Hands one id back and leaves.
-     *
-     * <p>An id rather than the item, because the composer can read the store itself and a decoded
-     * picture has no business crossing a Binder transaction. Nothing is attached here and nothing
-     * is sent: the composer decides whether it still has room, and the user decides what to ask.
-     */
-    private void pick(OrbitVaultItem item) {
-        setResult(RESULT_OK, new Intent().putExtra(EXTRA_PICKED_ID, item.id));
-        finish();
-        UiKit.applyPageTransition(this);
     }
 
     private LinearLayout card() {

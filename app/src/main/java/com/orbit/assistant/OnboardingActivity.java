@@ -625,27 +625,71 @@ public final class OnboardingActivity extends Activity {
         page.addView(all, buttonLp());
     }
 
+    /** The line that tells a first-run user where the rest of the appearance controls live. */
+    static final String THEME_STUDIO_NOTE =
+            "You can fine-tune colors, messages, cards and backgrounds later in Theme Studio.";
+
+    /**
+     * Choose a good starting appearance quickly.
+     *
+     * <p>Before Theme Studio existed this page was where Orbit's appearance was configured, so it
+     * grew its own Accent picker and its own two bubble-colour pickers. Theme Studio now owns all
+     * three, and a first run that asks somebody to pick an accent, then a user bubble colour, then
+     * an Orbit bubble colour - before they have seen a single conversation - is asking them to
+     * design a theme before they know what one looks like. Worse, those controls wrote the same
+     * preference keys from a second place, so first-run setup and the editor were two authorities
+     * over one appearance.
+     *
+     * <p>So the colour half of this page is now one question with a visible answer: pick a preset.
+     * The presets are Orbit's own shipped built-ins read straight from {@link OrbitTheme}, never a
+     * second catalogue, and the choice is written through {@link OrbitThemeStore#applyActive} like
+     * every other appearance change in Orbit - which is what makes Theme Studio, opened afterwards,
+     * show exactly the theme the user picked here.
+     *
+     * <p>What stays is what Theme Studio does not own: the app font and the chat text size are
+     * typography rather than colour, they survive every preset change, and they are the two
+     * settings most likely to matter before somebody has read anything.
+     */
     private void buildPersonalize(LinearLayout page) {
         addTitle(page, "Make Orbit yours",
-                "These are Orbit's normal appearance settings and stay synchronized with Look & Feel.");
-        LinearLayout accentCard = card();
-        accentCard.addView(UiKit.text(this, "Accent", 16, UiKit.TEXT, true));
-        addCardDescription(accentCard, "Choose one of Orbit's existing presets.");
-        accentCard.addView(appearanceColorSelector(UiKit.accentKeys(), UiKit.accentLabels(),
-                Prefs.ACCENT, false, true));
-        OrbitSwitch amoled = new OrbitSwitch(this);
-        amoled.setChecked(Prefs.amoledMode(this), false);
-        amoled.setOnCheckedChangeListener((button, checked) -> {
-            Prefs.get(this).edit().putBoolean(Prefs.AMOLED_MODE, checked).apply();
-            UiKit.notifyAppearanceChanged(this);
-            render();
-        });
-        accentCard.addView(UiKit.switchRow(this, "Use true black AMOLED backgrounds", null, amoled));
-        page.addView(accentCard, cardLp());
+                "Pick a starting look. Everything here can be changed later in Settings.");
 
-        LinearLayout fontCard = card();
-        fontCard.addView(UiKit.text(this, "App font", 16, UiKit.TEXT, true));
-        addCardDescription(fontCard, "Preview and choose any existing Orbit font.");
+        OrbitTheme active = OrbitThemeStore.active(this);
+
+        LinearLayout presetCard = card();
+        presetCard.addView(UiKit.text(this, "Choose a preset", 16, UiKit.TEXT, true));
+        addCardDescription(presetCard, "Orbit's own themes. Pick the one you like the look of.");
+        presetCard.addView(presetGrid(active), matchWrapMargin(2));
+
+        // AMOLED is its own switch rather than a second row of near-identical cards. A true-black
+        // page is a property of a screen, not a colour scheme, and every preset is valid with it on
+        // or off; making the user choose between "Orbit Default" and "Orbit AMOLED" cards was the
+        // same question asked twice.
+        OrbitSwitch amoled = new OrbitSwitch(this);
+        amoled.setChecked(active.amoled, false);
+        amoled.setOnCheckedChangeListener((button, checked) -> {
+            // Only the flag moves. The colours the user just chose are carried over exactly, so
+            // turning AMOLED on never quietly swaps them for a different-looking preset.
+            applyOnboardingAppearance(OrbitThemeStore.active(this).withAmoled(checked));
+        });
+        LinearLayout amoledRow = UiKit.switchRow(this, "Use true black AMOLED backgrounds",
+                "Works with any preset.", amoled);
+        LinearLayout.LayoutParams amoledLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        amoledLp.setMargins(0, UiKit.dp(this, 6), 0, 0);
+        presetCard.addView(amoledRow, amoledLp);
+
+        // Education, not a step. Nobody is sent to Theme Studio during setup.
+        TextView studio = UiKit.text(this, THEME_STUDIO_NOTE, 12, UiKit.MUTED, false);
+        studio.setPadding(0, UiKit.dp(this, 10), 0, 0);
+        presetCard.addView(studio);
+        page.addView(presetCard, cardLp());
+
+        LinearLayout readingCard = card();
+        readingCard.addView(UiKit.text(this, "Text and readability", 16, UiKit.TEXT, true));
+        addCardDescription(readingCard,
+                "How Orbit's words are set. These are independent of the preset above.");
+        readingCard.addView(UiKit.text(this, "App font", 12, UiKit.MUTED, true));
         String[] fontKeys = {"orbit_default", "times_new_roman", "light", "condensed", "monospace", "casual"};
         String[] fontLabels = {"Orbit Default", "Times New Roman", "Light", "Condensed", "Monospace", "Casual"};
         int selectedFont = indexOf(fontKeys, Prefs.appFont(this));
@@ -656,30 +700,17 @@ public final class OnboardingActivity extends Activity {
                     UiKit.notifyAppearanceChanged(this);
                     render();
                 }));
-        fontCard.addView(selector, new LinearLayout.LayoutParams(-1, UiKit.dp(this, 46)));
-        page.addView(fontCard, cardLp());
+        readingCard.addView(selector, new LinearLayout.LayoutParams(-1, UiKit.dp(this, 46)));
 
-        LinearLayout conversationCard = card();
-        conversationCard.addView(UiKit.text(this, "Conversation style", 16, UiKit.TEXT, true));
-        addCardDescription(conversationCard,
-                "Choose how conversation bubbles and chat content look in full chat and the Side-button assistant.");
-        conversationCard.addView(UiKit.text(this, "Your bubbles", 12, UiKit.MUTED, true));
-        conversationCard.addView(appearanceColorSelector(UiKit.bubbleColorKeys(),
-                UiKit.bubbleColorLabels(), Prefs.USER_BUBBLE_COLOR, false, false));
-        TextView orbitLabel = UiKit.text(this, "Orbit bubbles", 12, UiKit.MUTED, true);
-        orbitLabel.setPadding(0, UiKit.dp(this, 12), 0, 0);
-        conversationCard.addView(orbitLabel);
-        conversationCard.addView(appearanceColorSelector(UiKit.bubbleColorKeys(),
-                UiKit.bubbleColorLabels(), Prefs.ASSISTANT_BUBBLE_COLOR, true, false));
         TextView chatSizeLabel = UiKit.text(this, "Chat text size", 12, UiKit.MUTED, true);
         chatSizeLabel.setPadding(0, UiKit.dp(this, 12), 0, 0);
-        conversationCard.addView(chatSizeLabel);
+        readingCard.addView(chatSizeLabel);
         String[] chatSizeKeys = {Prefs.CHAT_TEXT_SMALL, Prefs.CHAT_TEXT_DEFAULT,
                 Prefs.CHAT_TEXT_LARGE, Prefs.CHAT_TEXT_EXTRA_LARGE};
         String[] chatSizeLabels = {"Small", "Default", "Large", "Extra large"};
-        conversationCard.addView(preferenceSelector(chatSizeKeys, chatSizeLabels,
+        readingCard.addView(preferenceSelector(chatSizeKeys, chatSizeLabels,
                 Prefs.chatTextSize(this), Prefs.CHAT_TEXT_SIZE));
-        page.addView(conversationCard, cardLp());
+        page.addView(readingCard, cardLp());
 
         LinearLayout everydayCard = card();
         everydayCard.addView(UiKit.text(this, "Everyday preferences", 16, UiKit.TEXT, true));
@@ -1064,28 +1095,131 @@ public final class OnboardingActivity extends Activity {
         return field;
     }
 
-    private View appearanceColorSelector(String[] keys, String[] labels, String prefKey,
-                                         boolean assistantBubble, boolean accentSelector) {
-        String fallback = accentSelector ? "dynamic" : "classic";
-        String selected = Prefs.get(this).getString(prefKey, fallback);
-        int selectedIndex = indexOf(keys, selected);
-        Button selector = secondaryButton(labels[selectedIndex] + "  ▾");
-        selector.setOnClickListener(v -> {
-            int[] colors = new int[keys.length];
-            for (int i = 0; i < keys.length; i++) {
-                if (accentSelector) colors[i] = UiKit.accentForName(this, keys[i]);
-                else colors[i] = bubblePreviewColor(keys[i], assistantBubble);
+    /**
+     * The preset choices, two to a row on a phone and three where there is room.
+     *
+     * <p>Compact on purpose. Theme Studio's live preview belongs in Theme Studio; what somebody
+     * needs here is enough of each theme to tell them apart at a glance, which is its page colour,
+     * its cards, its two bubble fills and its accent. Four bands and a name does that in a card
+     * small enough that all of them are on screen at once.
+     */
+    private View presetGrid(OrbitTheme active) {
+        List<OrbitTheme> presets = OrbitThemeStore.onboardingPresets();
+        int columns = getResources().getConfiguration().screenWidthDp >= 600 ? 3 : 2;
+        LinearLayout grid = new LinearLayout(this);
+        grid.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout row = null;
+        for (int i = 0; i < presets.size(); i++) {
+            if (i % columns == 0) {
+                row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                grid.addView(row, matchWrapMargin(i == 0 ? 0 : 10));
             }
-            UiKit.showOrbitColorMenu(this, selector, labels, colors, selectedIndex,
-                    (index, label) -> {
-                        String key = keys[index];
-                        Prefs.get(this).edit().putString(prefKey, key).apply();
-                        UiKit.notifyAppearanceChanged(this);
-                        render();
-                    });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            if (i % columns != 0) lp.leftMargin = UiKit.dp(this, 10);
+            row.addView(presetChoice(presets.get(i), active), lp);
+        }
+        // A short final row must not stretch its cards across the whole width.
+        int remainder = presets.size() % columns;
+        if (remainder != 0 && row != null) {
+            for (int i = remainder; i < columns; i++) {
+                View filler = new View(this);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, 1, 1f);
+                lp.leftMargin = UiKit.dp(this, 10);
+                row.addView(filler, lp);
+            }
+        }
+        return grid;
+    }
+
+    /**
+     * One preset, shown as it would look with the AMOLED switch as it currently stands.
+     *
+     * <p>Selection is worked out from colours rather than from a stored name, exactly as Theme
+     * Studio does it: the active appearance with its AMOLED flag set aside is the base the user
+     * chose, and whichever preset matches that is the one drawn as selected. So turning AMOLED on
+     * does not make the page forget which preset is highlighted.
+     */
+    private View presetChoice(OrbitTheme preset, OrbitTheme active) {
+        boolean selected = preset.sameColours(active.withAmoled(false));
+        OrbitThemeTokens tokens = OrbitThemeTokens.resolve(this, preset.withAmoled(active.amoled));
+
+        LinearLayout choice = new LinearLayout(this);
+        choice.setOrientation(LinearLayout.VERTICAL);
+        int pad = UiKit.dp(this, 9);
+        choice.setPadding(pad, pad, pad, UiKit.dp(this, 10));
+        choice.setBackground(UiKit.rippleOutlined(
+                selected ? UiKit.blend(UiKit.accent(this), UiKit.SURFACE_2, 0.18f) : UiKit.SURFACE_2,
+                UiKit.withAlpha(UiKit.accent(this), selected ? 190 : 54),
+                UiKit.accent(this), 16, this));
+        // Stated, not only drawn: a ring around a card of colours is exactly the kind of state that
+        // disappears for anybody who cannot rely on colour to carry it.
+        choice.setContentDescription(preset.name + ", Orbit preset"
+                + (preset.note().isEmpty() ? "" : ", " + preset.note())
+                + (selected ? ", selected" : ""));
+        UiKit.pressScale(choice);
+        choice.setOnClickListener(v -> {
+            UiKit.haptic(v, HapticFeedbackConstants.VIRTUAL_KEY);
+            // The AMOLED switch is left exactly where the user set it.
+            applyOnboardingAppearance(preset.withAmoled(OrbitThemeStore.active(this).amoled));
         });
-        selector.setLayoutParams(new LinearLayout.LayoutParams(-1, UiKit.dp(this, 46)));
-        return selector;
+
+        LinearLayout strip = new LinearLayout(this);
+        strip.setOrientation(LinearLayout.HORIZONTAL);
+        strip.setBackground(UiKit.rounded(tokens.background, 9, this));
+        int stripPad = UiKit.dp(this, 4);
+        strip.setPadding(stripPad, stripPad, stripPad, stripPad);
+        int[] bands = {tokens.surface, tokens.userBubble, tokens.assistantBubble, tokens.accent};
+        for (int i = 0; i < bands.length; i++) {
+            View band = new View(this);
+            band.setBackground(UiKit.rounded(bands[i], 5, this));
+            LinearLayout.LayoutParams bandLp = new LinearLayout.LayoutParams(0,
+                    ViewGroup.LayoutParams.MATCH_PARENT, 1f);
+            if (i > 0) bandLp.leftMargin = UiKit.dp(this, 3);
+            strip.addView(band, bandLp);
+        }
+        choice.addView(strip, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 30)));
+
+        TextView name = UiKit.text(this, preset.name, 13, UiKit.TEXT, selected);
+        name.setSingleLine(true);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        name.setPadding(0, UiKit.dp(this, 8), 0, 0);
+        choice.addView(name);
+
+        choice.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+        for (int i = 0; i < choice.getChildCount(); i++) {
+            choice.getChildAt(i).setImportantForAccessibility(
+                    View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        }
+        return choice;
+    }
+
+    /**
+     * Writes an appearance the way every other part of Orbit writes one.
+     *
+     * <p>There is no onboarding-only theme state and no second set of colour preferences. The
+     * chosen colours are labelled by the canonical rule - so Orbit Default with AMOLED on records
+     * itself as Orbit AMOLED, and Nebula with AMOLED on records itself as a theme of the user's own
+     * that started at Nebula - and then applied through the store every other surface reads. Opening
+     * Theme Studio afterwards therefore shows what the user actually picked here, with no reconciling
+     * step and nothing to keep in sync.
+     *
+     * <p>The page is rebuilt rather than the Activity recreated, which is what keeps the step
+     * counter, the resumable step state and the rest of the flow exactly where they were.
+     */
+    private void applyOnboardingAppearance(OrbitTheme theme) {
+        OrbitThemeStore.applyActive(this, OrbitThemeStore.canonicalIdentity(this, theme));
+        UiKit.notifyAppearanceChanged(this);
+        render();
+    }
+
+    private LinearLayout.LayoutParams matchWrapMargin(int topDp) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, UiKit.dp(this, topDp), 0, 0);
+        return lp;
     }
 
     private View preferenceSelector(String[] keys, String[] labels, String selectedKey,
@@ -1121,14 +1255,6 @@ public final class OnboardingActivity extends Activity {
                 }));
         selector.setLayoutParams(new LinearLayout.LayoutParams(-1, UiKit.dp(this, 46)));
         return selector;
-    }
-
-    private int bubblePreviewColor(String key, boolean assistant) {
-        int classic = assistant ? UiKit.SURFACE :
-                UiKit.blend(UiKit.accent(this), UiKit.SURFACE_2, 0.46f);
-        if ("classic".equals(key)) return classic;
-        if ("accent".equals(key)) return UiKit.accent(this);
-        return UiKit.accentForName(this, key);
     }
 
     private int indexOf(String[] values, String target) {

@@ -74,8 +74,15 @@ public final class DeckActionExecutor {
             return;
         }
         if (resolved.availability == DeckTile.Availability.UNAVAILABLE) {
-            finish(callback, Outcome.failed(resolved.subtitle.isEmpty()
-                    ? "That is not available on this device." : resolved.subtitle));
+            // A tile whose feature the user switched off explains itself and says where to switch
+            // it back on, because that is a decision they made and can undo in one place. Deck does
+            // not undo it for them: tapping a tile must never quietly turn a feature back on.
+            boolean vault = DeckTileRegistry.TYPE_VAULT.equals(tile.type)
+                    || DeckTileRegistry.TYPE_QUICK_CAPTURE.equals(tile.type);
+            finish(callback, Outcome.failed(vault
+                    ? DeckTileResolver.VAULT_OFF + ". Turn it back on in Settings."
+                    : resolved.subtitle.isEmpty()
+                            ? "That is not available on this device." : resolved.subtitle));
             return;
         }
 
@@ -113,6 +120,16 @@ public final class DeckActionExecutor {
         }
         if (DeckTileRegistry.TYPE_SETTINGS.equals(type)) {
             open(activity, new Intent(activity, SettingsActivity.class), callback); return;
+        }
+        if (DeckTileRegistry.TYPE_VAULT.equals(type)) {
+            open(activity, new Intent(activity, OrbitVaultActivity.class), callback); return;
+        }
+        if (DeckTileRegistry.TYPE_QUICK_CAPTURE.equals(type)) {
+            // The Vault's own capture flow, opened by name rather than reimplemented. Deck adds
+            // no second way to write a note, paste the clipboard, or pick an image.
+            open(activity, new Intent(activity, OrbitVaultActivity.class)
+                    .putExtra(OrbitVaultActivity.EXTRA_QUICK_CAPTURE, true), callback);
+            return;
         }
         if (DeckTileRegistry.TYPE_APP.equals(type)) {
             runApp(activity, tile, callback); return;

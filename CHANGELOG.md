@@ -736,3 +736,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Delete all Vault data as a separate, deliberate action with its own confirmation.
   - Redesigned saved-item actions, so Open link and Ask Orbit stand out instead of a wall of buttons.
   - Search now looks at your notes too, and notes travel with your Orbit backups.
+- **v0.7.8.4-beta.3**: Vault spreads across Orbit, and first-run setup gets a simpler look.
+  - Save the page you are reading in Orbit Documents straight to your Vault.
+  - Save a screen selection, or text you selected in another app, for later.
+  - Open Vault or Quick Capture straight from Orbit Deck.
+  - Attach several saved items to one message instead of one at a time.
+  - First-run setup now offers Orbit's theme presets with a separate true black switch.
+  - Saved items sit better on screen, and the note editor is a clear box instead of a stray line.

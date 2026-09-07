@@ -19,6 +19,10 @@ import android.widget.Toast;
 
 /** Shared native Crop + Mark up editor for overlay and full-chat screen attachments. */
 public final class ScreenSelectionActivity extends Activity {
+
+    /** The Vault control's label, in the words every other Save to Vault in Orbit uses. */
+    static final String SAVE_TO_VAULT = "Save to Vault";
+
     private String sourcePath = "";
     private String callbackToken = "";
     private ScreenSelectionView editor;
@@ -26,6 +30,7 @@ public final class ScreenSelectionActivity extends Activity {
     private Button cropButton;
     private Button markupButton;
     private Button undoButton;
+    private Button vaultButton;
     private LinearLayout undoRow;
     private boolean finished;
     private boolean bridgeDeliveryPending;
@@ -135,6 +140,21 @@ public final class ScreenSelectionActivity extends Activity {
         root.addView(tools, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 46)));
 
+        // Save to Vault sits on its own row above the two "use this now" actions, not beside them.
+        // It is a different kind of answer: Use selection and Use full screen both finish this
+        // editor and hand the picture to the message being written, while this one keeps the crop
+        // and leaves the user exactly where they were, free to carry on and still attach it.
+        //
+        // Absent entirely while the Vault is switched off. Screen Selection's ordinary path is
+        // untouched by that preference.
+        vaultButton = secondaryButton(SAVE_TO_VAULT, "Save this selection to your Vault");
+        vaultButton.setOnClickListener(v -> saveSelectionToVault());
+        vaultButton.setVisibility(Prefs.vaultEnabled(this) ? View.VISIBLE : View.GONE);
+        LinearLayout.LayoutParams vaultLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 42));
+        vaultLp.setMargins(0, UiKit.dp(this, 4), 0, 0);
+        root.addView(vaultButton, vaultLp);
+
         LinearLayout actions = new LinearLayout(this);
         actions.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams actionsLp = new LinearLayout.LayoutParams(
@@ -185,6 +205,42 @@ public final class ScreenSelectionActivity extends Activity {
         button.setBackground(selected
                 ? UiKit.ripple(UiKit.accent(this), UiKit.onAccent(this), 14, this)
                 : UiKit.ripple(Color.TRANSPARENT, UiKit.accent(this), 14, this));
+    }
+
+    /**
+     * Keeps the current selection in Orbit Vault, and stays here.
+     *
+     * <p>Speed is the whole point. Somebody who has just cropped the thing they wanted has already
+     * done the work; asking them to name it and write a note before it is saved would make keeping
+     * a screenshot slower than asking about one. So it saves immediately, says so, and leaves the
+     * editor open - the note, the title and the rest are all still there on the item afterwards,
+     * and the crop the user made is still available to attach to a message.
+     *
+     * <p>Nothing is saved automatically. There is exactly one route into this method and it is a
+     * tap on a control the user can see.
+     */
+    private void saveSelectionToVault() {
+        if (editor == null || finished) return;
+        if (!Prefs.vaultEnabled(this)) {
+            Toast.makeText(this, "Orbit Vault is turned off", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Bitmap result;
+        try { result = editor.renderResult(false); }
+        catch (Exception e) { result = null; }
+        if (result == null) {
+            Toast.makeText(this, "Orbit could not render this selection", Toast.LENGTH_LONG).show();
+            return;
+        }
+        OrbitVaultItem saved = OrbitVaultStore.saveImage(this, result, "",
+                OrbitVaultSource.SCREEN_SELECTION);
+        if (!result.isRecycled()) result.recycle();
+        if (saved == null) {
+            Toast.makeText(this, "Orbit could not save this selection", Toast.LENGTH_LONG).show();
+            return;
+        }
+        performTick();
+        Toast.makeText(this, "Saved to Vault", Toast.LENGTH_SHORT).show();
     }
 
     private void complete(boolean useFullScreen) {

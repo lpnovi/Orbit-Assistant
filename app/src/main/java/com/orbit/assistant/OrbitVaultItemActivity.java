@@ -62,6 +62,18 @@ public final class OrbitVaultItemActivity extends Activity {
      */
     static final int ACTIONS_MAX_WIDTH_DP = 560;
 
+    /**
+     * The gap between the last content card and the first action.
+     *
+     * <p>Beta 2 gave the action area no top margin at all, so the primary row began exactly where
+     * the details card ended. On a Galaxy S25 Ultra that read as Open link and Ask Orbit clipping
+     * into the card above them: two rounded outlines a hairline apart look like one broken shape
+     * rather than two controls. This is the same 14dp rhythm the content cards already keep between
+     * themselves, so the actions become the next thing down the page rather than a fifth card
+     * pressed against the fourth.
+     */
+    static final int ACTIONS_TOP_GAP_DP = 14;
+
     private String itemId = "";
     private String appearanceSignature = "";
     private LinearLayout page;
@@ -132,7 +144,12 @@ public final class OrbitVaultItemActivity extends Activity {
         // then when it arrived, then what can be done with it. Beta 1 had the content and the
         // details right and then finished with a column of five identical full-width buttons,
         // which read as a Settings page rather than as something the user had kept.
-        if (item.isImage()) page.addView(imageCard(item), cardLp());
+        // A saved page shows the page first and its words underneath, which is the order somebody
+        // reading a document experiences them in. It is deliberately not a second document viewer:
+        // one page was saved, so one page is what this screen has to show.
+        if (item.isImage() || (item.isDocumentPage() && !item.mediaPath.isEmpty())) {
+            page.addView(mediaCard(item), cardLp());
+        }
         if (item.isLink()) page.addView(linkCard(item), cardLp());
         else if (!item.body.isEmpty()) page.addView(bodyCard(item), cardLp());
 
@@ -193,12 +210,24 @@ public final class OrbitVaultItemActivity extends Activity {
         return top;
     }
 
-    private View imageCard(OrbitVaultItem item) {
+    /**
+     * The picture this item owns, whatever kind of item it is.
+     *
+     * <p>A saved photo and a saved document page draw the same card, because the user is looking at
+     * the same thing: the image Orbit copied into its own storage when they saved it. A file that
+     * has gone says so rather than leaving a blank; for a saved page the rest of the item - its
+     * text, its document, its page number - is genuinely still there, which is what the second line
+     * is for.
+     */
+    private View mediaCard(OrbitVaultItem item) {
         LinearLayout card = card();
         Bitmap picture = OrbitVaultMedia.load(item.mediaPath);
+        boolean page = item.isDocumentPage();
         if (picture == null) {
-            card.addView(UiKit.text(this, "This image is no longer on this device", 14,
-                    UiKit.TEXT, false));
+            card.addView(UiKit.text(this, page
+                            ? "This saved page image is no longer on this device"
+                            : "This image is no longer on this device",
+                    14, UiKit.TEXT, false));
             TextView why = UiKit.text(this,
                     "Its file was removed. The saved details below are still here.",
                     12, UiKit.MUTED, false);
@@ -210,7 +239,7 @@ public final class OrbitVaultItemActivity extends Activity {
         view.setImageBitmap(picture);
         view.setAdjustViewBounds(true);
         view.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        view.setContentDescription("Saved image: " + item.displayTitle());
+        view.setContentDescription((page ? "Saved page: " : "Saved image: ") + item.displayTitle());
         card.addView(view, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return card;
@@ -218,9 +247,15 @@ public final class OrbitVaultItemActivity extends Activity {
 
     private View bodyCard(OrbitVaultItem item) {
         LinearLayout card = card();
+        // A saved page's body is text Orbit extracted from a document rather than words the user
+        // wrote, so it is labelled. Everything else is the thing itself and needs no heading.
+        if (item.isDocumentPage()) {
+            card.addView(UiKit.text(this, "Text on this page", 12, UiKit.MUTED, true));
+        }
         TextView body = UiKit.text(this, item.body, Prefs.chatTextSp(this, 15), UiKit.TEXT, false);
         body.setLineSpacing(0, UiKit.CHAT_LINE_SPACING);
         body.setTextIsSelectable(true);
+        if (item.isDocumentPage()) body.setPadding(0, UiKit.dp(this, 7), 0, 0);
         card.addView(body);
         return card;
     }
@@ -249,6 +284,13 @@ public final class OrbitVaultItemActivity extends Activity {
             details.append(" · ").append(item.source);
         }
         card.addView(UiKit.text(this, details.toString(), 12, UiKit.MUTED, false));
+        // The document's own name, once, in the details rather than glued into the source line.
+        // A filename can be very long and the source line has to stay one readable phrase.
+        if (item.isDocumentPage() && !item.documentName.isEmpty()) {
+            TextView from = UiKit.text(this, "From " + item.documentName, 12, UiKit.MUTED, false);
+            from.setPadding(0, UiKit.dp(this, 4), 0, 0);
+            card.addView(from);
+        }
         TextView saved = UiKit.text(this, item.savedLabel(), 12, UiKit.MUTED, false);
         saved.setPadding(0, UiKit.dp(this, 4), 0, 0);
         card.addView(saved);
@@ -286,13 +328,15 @@ public final class OrbitVaultItemActivity extends Activity {
         } else {
             primary.addView(filledAction(ACTION_ASK, v -> askOrbit(item)), primaryCellLp(0));
         }
-        column.addView(primary, actionRowLp(0));
+        column.addView(primary, actionRowLp(ACTIONS_TOP_GAP_DP));
 
         LinearLayout utilities = new LinearLayout(this);
         utilities.setOrientation(LinearLayout.HORIZONTAL);
         utilities.addView(compactAction(item.bodyIsEditable() ? ACTION_EDIT : ACTION_RENAME,
                 R.drawable.ic_edit, v -> edit(item)), utilityCellLp(0));
-        if (!item.isImage()) {
+        // An image has no words to copy or share. A saved page has the text Orbit extracted
+        // from it, which is exactly the thing somebody wants out of a page they kept.
+        if (!item.isImage() && !item.body.isEmpty()) {
             utilities.addView(compactAction(ACTION_COPY, R.drawable.ic_copy,
                     v -> MessageActions.copy(this, "Orbit Vault", item.body,
                             () -> Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show())),
@@ -350,18 +394,13 @@ public final class OrbitVaultItemActivity extends Activity {
                 UiKit.dp(this, 14));
         form.setBackgroundColor(UiKit.SURFACE);
 
-        EditText note = new EditText(this);
-        note.setHint("Why did you save this?");
+        // One clearly bounded Orbit surface rather than a tall blank area with a rule under it.
+        // The box is where the note goes, it starts two lines high, and it grows as the user
+        // writes; nothing about it can be mistaken for a length indicator.
+        EditText note = UiKit.input(this, "Why did you save this?", true);
         note.setContentDescription("Your note");
         note.setText(item.note);
-        note.setSingleLine(false);
-        note.setMinLines(3);
-        note.setMaxLines(8);
-        note.setGravity(Gravity.TOP | Gravity.START);
-        note.setTextColor(UiKit.TEXT);
-        note.setHintTextColor(UiKit.MUTED);
-        note.setTextSize(14);
-        note.setBackgroundTintList(ColorStateList.valueOf(UiKit.accent(this)));
+        note.setSelection(note.length());
         form.addView(note, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -414,32 +453,15 @@ public final class OrbitVaultItemActivity extends Activity {
         form.setPadding(UiKit.dp(this, 20), UiKit.dp(this, 4), UiKit.dp(this, 20), UiKit.dp(this, 14));
         form.setBackgroundColor(UiKit.SURFACE);
 
-        EditText title = new EditText(this);
-        title.setHint("Title");
-        title.setContentDescription("Title");
+        EditText title = UiKit.input(this, "Title", false);
         title.setText(item.title);
-        title.setSingleLine(true);
-        title.setTextColor(UiKit.TEXT);
-        title.setHintTextColor(UiKit.MUTED);
-        title.setTextSize(14);
-        title.setBackgroundTintList(ColorStateList.valueOf(UiKit.accent(this)));
         form.addView(title, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         final EditText body;
         if (item.bodyIsEditable()) {
-            body = new EditText(this);
-            body.setHint("Text");
-            body.setContentDescription("Text");
+            body = UiKit.input(this, "Text", true);
             body.setText(item.body);
-            body.setSingleLine(false);
-            body.setMinLines(4);
-            body.setMaxLines(12);
-            body.setGravity(Gravity.TOP | Gravity.START);
-            body.setTextColor(UiKit.TEXT);
-            body.setHintTextColor(UiKit.MUTED);
-            body.setTextSize(14);
-            body.setBackgroundTintList(ColorStateList.valueOf(UiKit.accent(this)));
             LinearLayout.LayoutParams bodyLp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             bodyLp.setMargins(0, UiKit.dp(this, 12), 0, 0);

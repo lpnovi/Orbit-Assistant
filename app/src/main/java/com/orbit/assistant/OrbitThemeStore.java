@@ -192,6 +192,66 @@ public final class OrbitThemeStore {
         if (any) e.commit();
     }
 
+    // ---- canonical identity --------------------------------------------------------------------
+
+    /**
+     * The same colours, labelled as whichever theme they actually are.
+     *
+     * <p>A theme's identity in Orbit is derived from its colours, never asserted alongside them.
+     * Turning AMOLED on while Nebula is selected does not produce a modified Nebula - Nebula is
+     * immutable and still exists - it produces a theme of the user's own that started there.
+     * Landing exactly on some preset's colours re-binds to that preset. Without this rule the
+     * gallery would show a preset as selected while Orbit was drawing something else, which is a
+     * screen lying about the user's own setting.
+     *
+     * <p>Extracted here in v0.7.8.4 Beta 3 rather than left inside Theme Studio, because
+     * onboarding now writes the appearance too. Onboarding offers a base preset and an
+     * independent AMOLED switch, which is exactly the combination that needs re-labelling:
+     * Orbit Default with AMOLED on <em>is</em> Orbit AMOLED and must say so, while Nebula with
+     * AMOLED on is not any shipped preset and must not claim to be one. Two implementations of
+     * that rule would be two answers to the same question, and first-run setup is exactly where
+     * the wrong one would go unnoticed.
+     */
+    public static OrbitTheme canonicalIdentity(Context c, OrbitTheme theme) {
+        if (theme == null) return OrbitTheme.orbitDefault();
+        for (OrbitTheme preset : allPresets(c)) {
+            if (preset.sameColours(theme)) return preset;
+        }
+        if (theme.builtIn || OrbitTheme.isBuiltInId(theme.id)) {
+            return OrbitTheme.custom("Your theme", theme.accent, theme.userBubble,
+                    theme.assistantBubble, theme.surface, theme.background, theme.amoled);
+        }
+        if (!Prefs.THEME_ID_CUSTOM.equals(theme.id)) {
+            return new OrbitTheme(Prefs.THEME_ID_CUSTOM, "Your theme", false, theme.accent,
+                    theme.userBubble, theme.assistantBubble, theme.surface, theme.background,
+                    theme.amoled);
+        }
+        return theme;
+    }
+
+    /**
+     * The base presets a first run may start from.
+     *
+     * <p>Orbit's own shipped themes, minus the ones whose only real difference from another is
+     * that they are the true-black version of it. Onboarding controls AMOLED with its own switch,
+     * so offering both Orbit Default and Orbit AMOLED as separate cards would be asking the same
+     * question twice and answering it two different ways.
+     *
+     * <p>Read from {@link OrbitTheme#builtIns()} rather than listed here, so onboarding cannot
+     * drift into a second colour catalogue: a preset retuned in Theme Studio is retuned in first-
+     * run setup on the same day. The user's own saved themes are deliberately absent - a fresh
+     * install has none, and somebody re-running setup is choosing a starting point rather than
+     * managing their library.
+     */
+    public static List<OrbitTheme> onboardingPresets() {
+        List<OrbitTheme> out = new ArrayList<>();
+        for (OrbitTheme preset : OrbitTheme.builtIns()) {
+            if (preset.amoled) continue;
+            out.add(preset);
+        }
+        return Collections.unmodifiableList(out);
+    }
+
     // ---- saved presets -------------------------------------------------------------------------
 
     /** Orbit's presets first, then the user's own in the order they were saved. */

@@ -40,6 +40,18 @@ import java.util.List;
  */
 public final class OrbitVaultActivity extends Activity {
 
+    /**
+     * Opens this screen with Quick Capture already showing.
+     *
+     * <p>How Orbit Deck's Quick Capture tile reaches the capture flow, and deliberately the only
+     * way it does. A Deck tile is a shortcut to Orbit's own behaviour rather than a second copy
+     * of it, so the tile opens this screen and asks it to do the thing its own button does.
+     *
+     * <p>Consumed once. The extra is removed as it is read, so rotating the phone or coming back
+     * to the screen later does not reopen the menu over a Vault the user is trying to read.
+     */
+    public static final String EXTRA_QUICK_CAPTURE = "orbit_vault_quick_capture";
+
     /** Quick Capture's three ways in, in the order the menu lists them. */
     static final String CAPTURE_WRITE = "Write text";
     static final String CAPTURE_PASTE = "Paste clipboard";
@@ -64,6 +76,7 @@ public final class OrbitVaultActivity extends Activity {
     private TextView subtitle;
     private EditText searchInput;
     private Button capture;
+    private boolean quickCapturePending;
     private String appearanceSignature = "";
 
     /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
@@ -80,6 +93,11 @@ public final class OrbitVaultActivity extends Activity {
         setContentView(root);
         UiKit.applyActivityInsets(this, root, true);
         navigation = OrbitPredictiveBack.install(this);
+        Intent intent = getIntent();
+        if (intent != null && intent.getBooleanExtra(EXTRA_QUICK_CAPTURE, false)) {
+            intent.removeExtra(EXTRA_QUICK_CAPTURE);
+            quickCapturePending = true;
+        }
     }
 
     @Override protected void onResume() {
@@ -93,6 +111,15 @@ public final class OrbitVaultActivity extends Activity {
             return;
         }
         refresh();
+        if (quickCapturePending) {
+            quickCapturePending = false;
+            // Only when the Vault is actually on. A tile tapped while it is off has already
+            // said so, and opening a capture menu over the turned-off notice would offer a
+            // control that cannot write anything.
+            if (capture != null && OrbitVaultStore.enabled(this)) {
+                capture.post(() -> showCaptureMenu(capture));
+            }
+        }
     }
 
     @Override protected void onPause() {
@@ -480,7 +507,8 @@ public final class OrbitVaultActivity extends Activity {
                     return;
                 }
                 if (OrbitVaultStore.saveText(this, title.getText().toString(), text,
-                        "Quick Capture", userNote.getText().toString()) == null) {
+                        OrbitVaultSource.QUICK_CAPTURE,
+                        userNote.getText().toString()) == null) {
                     Toast.makeText(this, "Orbit could not save that", Toast.LENGTH_SHORT).show();
                     return;
                 }
@@ -568,7 +596,8 @@ public final class OrbitVaultActivity extends Activity {
             Button save = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
             if (save == null) return;
             save.setOnClickListener(v -> {
-                if (OrbitVaultStore.saveText(this, title.getText().toString(), text, "Clipboard",
+                if (OrbitVaultStore.saveText(this, title.getText().toString(), text,
+                        OrbitVaultSource.CLIPBOARD,
                         userNote.getText().toString()) == null) {
                     Toast.makeText(this, "Orbit could not save that", Toast.LENGTH_SHORT).show();
                     return;
@@ -620,7 +649,7 @@ public final class OrbitVaultActivity extends Activity {
             Toast.makeText(this, "Orbit could not read that image", Toast.LENGTH_SHORT).show();
             return;
         }
-        OrbitVaultItem item = OrbitVaultStore.saveImage(this, image, "", "Photo");
+        OrbitVaultItem item = OrbitVaultStore.saveImage(this, image, "", OrbitVaultSource.PHOTO);
         image.recycle();
         if (item == null) {
             Toast.makeText(this, "Orbit could not save that image", Toast.LENGTH_SHORT).show();
@@ -637,21 +666,15 @@ public final class OrbitVaultActivity extends Activity {
 
     // ---- shared furniture -------------------------------------------------------------------------
 
+    /**
+     * One capture field, on Orbit's own input surface.
+     *
+     * <p>The same surface the item screen's note editor uses, for the same reason: a multi-line
+     * field with a platform underline puts a bright rule a long way below the words it belongs to,
+     * and a person reasonably reads that as a meter. Every field in the Vault's dialogs is a box.
+     */
     private EditText field(String hint, boolean multiline) {
-        EditText input = new EditText(this);
-        input.setHint(hint);
-        input.setContentDescription(hint);
-        input.setTextColor(UiKit.TEXT);
-        input.setHintTextColor(UiKit.MUTED);
-        input.setTextSize(14);
-        input.setSingleLine(!multiline);
-        if (multiline) {
-            input.setMinLines(3);
-            input.setMaxLines(8);
-            input.setGravity(Gravity.TOP | Gravity.START);
-        }
-        input.setBackgroundTintList(ColorStateList.valueOf(UiKit.accent(this)));
-        return input;
+        return UiKit.input(this, hint, multiline);
     }
 
     private LinearLayout card() {

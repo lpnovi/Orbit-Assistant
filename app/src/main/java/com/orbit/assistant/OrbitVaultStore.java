@@ -190,20 +190,60 @@ public final class OrbitVaultStore {
     public static synchronized OrbitVaultItem saveOrbitReply(Context c, String visibleReply) {
         String text = visibleReply == null ? "" : visibleReply.trim();
         if (text.isEmpty()) return null;
-        return insert(c, OrbitVaultItem.TYPE_ORBIT_REPLY, "", text, "Orbit answer", "", "");
+        return insert(c, OrbitVaultItem.TYPE_ORBIT_REPLY, "", text,
+                OrbitVaultSource.ORBIT_REPLY, "", "");
+    }
+
+    /**
+     * Keeps one page of a document the user was reading, and only that page.
+     *
+     * <p>Self-contained on purpose. What is stored is the page's extracted text, Orbit's own copy of
+     * the rendering, the document's display name and where the page sat inside it - never a path to
+     * the original file and never the rest of the document. The user asked to keep a page, so a
+     * page is what is kept; duplicating a four hundred page book into the Vault to preserve one of
+     * them would be a different and much worse answer to the same request.
+     *
+     * <p>The rendering is optional. A page that would not render is still worth keeping when its
+     * text came out, and a page with neither is refused rather than saved as an empty row.
+     */
+    public static synchronized OrbitVaultItem saveDocumentPage(Context c, String documentName,
+                                                               int pageIndex, int pageCount,
+                                                               String pageText, Bitmap rendering,
+                                                               String note) {
+        if (c == null || !enabled(c)) return null;
+        String text = pageText == null ? "" : pageText.trim();
+        if (text.isEmpty() && rendering == null) return null;
+        // The picture is written before the row that names it, exactly as a saved photo is, so a
+        // failure here leaves nothing behind rather than an item pointing at a file never written.
+        String path = rendering == null ? "" : OrbitVaultMedia.save(c, rendering);
+        if (path.isEmpty() && text.isEmpty()) return null;
+        long now = System.currentTimeMillis();
+        OrbitVaultItem item = new OrbitVaultItem(UUID.randomUUID().toString(),
+                OrbitVaultItem.TYPE_DOCUMENT_PAGE, "", text,
+                OrbitVaultSource.documentPage(pageIndex + 1), note, path,
+                documentName, pageIndex, pageCount, now, now);
+        OrbitVaultItem saved = insert(c, item);
+        if (saved == null && !path.isEmpty()) OrbitVaultMedia.delete(c, path);
+        return saved;
     }
 
     private static OrbitVaultItem insert(Context c, String type, String title, String body,
                                          String source, String note, String mediaPath) {
-        // The one gate every new item passes through, whatever route it arrived by. The surfaces
-        // that offer saving are hidden while the Vault is off, but hiding a control is a matter of
-        // drawing and this is a matter of storage: a route that is added later, or one nobody
-        // remembered, still cannot write into a Vault the user has switched off.
         if (c == null || !enabled(c)) return null;
         long now = System.currentTimeMillis();
-        OrbitVaultItem item = new OrbitVaultItem(UUID.randomUUID().toString(), type, title, body,
-                source, note, mediaPath, now, now);
-        if (!OrbitVaultItem.isStorable(item)) return null;
+        return insert(c, new OrbitVaultItem(UUID.randomUUID().toString(), type, title, body,
+                source, note, mediaPath, now, now));
+    }
+
+    /**
+     * The one gate every new item passes through, whatever route it arrived by.
+     *
+     * <p>The surfaces that offer saving are hidden while the Vault is off, but hiding a control is
+     * a matter of drawing and this is a matter of storage: a route that is added later, or one
+     * nobody remembered, still cannot write into a Vault the user has switched off.
+     */
+    private static OrbitVaultItem insert(Context c, OrbitVaultItem item) {
+        if (c == null || !enabled(c) || !OrbitVaultItem.isStorable(item)) return null;
         List<OrbitVaultItem> all = readAll(c);
         all.add(0, item);
         // The oldest items go first when the ceiling is reached, and their pictures go with them.
@@ -221,8 +261,7 @@ public final class OrbitVaultStore {
     public static synchronized boolean updateTitle(Context c, String id, String title) {
         OrbitVaultItem existing = get(c, id);
         if (existing == null) return false;
-        return replace(c, new OrbitVaultItem(existing.id, existing.type, title, existing.body,
-                existing.source, existing.note, existing.mediaPath, existing.createdAt,
+        return replace(c, existing.copyWith(title, existing.body, existing.note,
                 System.currentTimeMillis()));
     }
 
@@ -240,8 +279,7 @@ public final class OrbitVaultStore {
     public static synchronized boolean updateNote(Context c, String id, String note) {
         OrbitVaultItem existing = get(c, id);
         if (existing == null) return false;
-        return replace(c, new OrbitVaultItem(existing.id, existing.type, existing.title,
-                existing.body, existing.source, note, existing.mediaPath, existing.createdAt,
+        return replace(c, existing.copyWith(existing.title, existing.body, note,
                 System.currentTimeMillis()));
     }
 
@@ -257,8 +295,7 @@ public final class OrbitVaultStore {
         if (existing == null || !existing.bodyIsEditable()) return false;
         String text = body == null ? "" : body.trim();
         if (text.isEmpty()) return false;
-        return replace(c, new OrbitVaultItem(existing.id, existing.type, title, text,
-                existing.source, existing.note, existing.mediaPath, existing.createdAt,
+        return replace(c, existing.copyWith(title, text, existing.note,
                 System.currentTimeMillis()));
     }
 

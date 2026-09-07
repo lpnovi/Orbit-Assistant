@@ -18,6 +18,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.ClipDrawable;
 import android.graphics.drawable.LayerDrawable;
 import android.graphics.drawable.RippleDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -37,6 +38,7 @@ import android.view.animation.Interpolator;
 import android.widget.TextView;
 import android.widget.Button;
 import android.widget.CompoundButton;
+import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.FrameLayout;
@@ -1615,6 +1617,67 @@ public final class UiKit {
         int y = placeBelow ? belowY : aboveY;
         y = Math.max(safeTop, Math.min(safeBottom - popupHeight, y));
         return new Rect(x, y, x + popupWidth, y + popupHeight);
+    }
+
+    // ---- text entry ------------------------------------------------------------------------------
+
+    /** How many lines a multi-line Orbit field shows before it starts to scroll inside itself. */
+    public static final int INPUT_MAX_LINES = 7;
+    /** How tall a multi-line Orbit field starts. Two lines: enough to look like a box, not a page. */
+    public static final int INPUT_MIN_LINES = 2;
+
+    /**
+     * One text field, drawn as an Orbit surface rather than as a platform underline.
+     *
+     * <p>The underline is what this exists to remove. A stock {@code EditText} draws a hairline
+     * along the <em>bottom</em> of whatever height it has been given, which is fine on one line and
+     * actively misleading on several: a field reserving room for three lines shows the user's first
+     * sentence at the top and a thin accent-coloured rule floating well below it, with nothing
+     * joining the two. Device testing of Beta 2 read that rule as a character-count indicator,
+     * which is exactly what it looks like.
+     *
+     * <p>So the whole field is the surface. A rounded outline encloses the text at every height,
+     * the border strengthens on focus so the field says where the cursor is, and the box grows a
+     * line at a time as the user types until {@link #INPUT_MAX_LINES}, after which it scrolls
+     * inside itself instead of pushing a dialog's buttons off the screen. There is deliberately no
+     * character counter: the ceilings are far beyond anything typed by hand, and a counter would
+     * turn writing one sentence into a measured exercise.
+     */
+    public static EditText input(Context c, String hint, boolean multiline) {
+        EditText field = new EditText(c);
+        field.setHint(hint);
+        field.setContentDescription(hint);
+        field.setTextColor(TEXT);
+        field.setHintTextColor(MUTED);
+        field.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        // Never a tint: a tint is what colours the underline this field does not have.
+        field.setBackgroundTintList(null);
+        field.setBackground(inputSurface(c));
+        int side = dp(c, 13);
+        int vertical = dp(c, multiline ? 11 : 12);
+        field.setPadding(side, vertical, side, vertical);
+        field.setSingleLine(!multiline);
+        if (multiline) {
+            field.setMinLines(INPUT_MIN_LINES);
+            field.setMaxLines(INPUT_MAX_LINES);
+            field.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
+            field.setVerticalScrollBarEnabled(true);
+            field.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                    | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                    | android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        } else {
+            field.setMinHeight(dp(c, 46));
+        }
+        return field;
+    }
+
+    /** The outlined box behind an Orbit field, brighter while it has the cursor. */
+    private static Drawable inputSurface(Context c) {
+        StateListDrawable states = new StateListDrawable();
+        states.addState(new int[]{android.R.attr.state_focused},
+                outlined(SURFACE_2, accent(c), 15, c));
+        states.addState(new int[]{}, outlined(SURFACE_2, withAlpha(accent(c), 62), 15, c));
+        return states;
     }
 
     public static TextView text(Context c, String value, float sizeSp, int color, boolean bold) {

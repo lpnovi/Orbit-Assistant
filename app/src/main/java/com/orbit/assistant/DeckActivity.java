@@ -961,8 +961,15 @@ public final class DeckActivity extends Activity {
     private void openAddSheet() {
         LinearLayout column = openSheet("Add tile", "Choose what this tile should do");
         for (DeckTileRegistry.Category category : DeckTileRegistry.categories()) {
-            column.addView(sectionLabel(category.label.toUpperCase(Locale.US)));
+            List<DeckTileRegistry.Definition> offered = new ArrayList<>();
             for (DeckTileRegistry.Definition definition : DeckTileRegistry.inCategory(category)) {
+                // A tile whose feature is switched off is not offered as something new to add.
+                // Tiles the user already placed are untouched by this: their layout is theirs.
+                if (DeckTileRegistry.isOfferable(this, definition)) offered.add(definition);
+            }
+            if (offered.isEmpty()) continue;
+            column.addView(sectionLabel(category.label.toUpperCase(Locale.US)));
+            for (DeckTileRegistry.Definition definition : offered) {
                 boolean placed = definition.singleton && DeckLayoutStore.contains(this, definition.type);
                 column.addView(addRow(definition, placed), rowLp());
             }

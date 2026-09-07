@@ -47,11 +47,20 @@ public final class OrbitVaultAttachment {
      */
     public static ComposerAttachment of(Context c, OrbitVaultItem item) {
         if (item == null) return null;
-        Bitmap image = item.isImage() ? OrbitVaultMedia.load(item.mediaPath) : null;
+        Bitmap image = item.ownsMedia() ? OrbitVaultMedia.load(item.mediaPath) : null;
         String context = contextTextFor(item, image != null);
         if (context.trim().isEmpty() && image == null) return null;
+        // The card's second line says which page this is, so the composer shows "Page 7 of 388"
+        // under the document's name rather than making the user open the item to find out.
+        String detail = item.isDocumentPage() && !item.pageLabel().isEmpty()
+                ? item.pageLabel() : item.typeLabel();
+        // Stated truthfully rather than assumed. A saved page whose text came out is full text; a
+        // scanned page that only rendered is visual only, and the wording Orbit uses when the user
+        // sends it with no message of their own has to match which of those it actually is.
+        String contentState = item.isDocumentPage() && item.body.isEmpty()
+                ? ComposerAttachment.CONTENT_VISUAL_ONLY : ComposerAttachment.CONTENT_FULL_TEXT;
         return new ComposerAttachment(KIND, label(item), context, image, null,
-                item.typeLabel(), ComposerAttachment.CONTENT_FULL_TEXT);
+                detail, contentState);
     }
 
     /**
@@ -94,6 +103,31 @@ public final class OrbitVaultAttachment {
                     ? "\nThe saved image itself is attached to this message."
                     : "\nThe saved image file is no longer on this device, so only these saved "
                             + "details are available.");
+        } else if (item.isDocumentPage()) {
+            // Written the way Orbit already describes a page attached straight from the document
+            // viewer, because it is the same thing arriving later: one exact page, named, with its
+            // extracted text fenced so the model can tell the page apart from the framing.
+            //
+            // It never claims the rendering travelled. Whether the picture actually reaches a model
+            // depends on the provider the user has connected, and that is decided long after this
+            // string is built - so a provider without vision receives an honest description of the
+            // page's text rather than a sentence about an image it was never sent.
+            out.append("\nThis is one page the user saved from a document they were reading");
+            if (!item.documentName.isEmpty()) {
+                out.append(", \"").append(item.documentName).append('"');
+            }
+            String page = item.pageLabel();
+            if (!page.isEmpty()) out.append(" (").append(page).append(')');
+            out.append(". This context is only that page, not the rest of the document.");
+            if (item.body.isEmpty()) {
+                out.append(" Orbit found little or no extractable text on this page - it is likely "
+                        + "scanned or entirely a figure. Describe only what you can actually see, "
+                        + "and do not claim to have read text that was not provided.");
+            } else {
+                out.append("\n\n<orbit_saved_page number=\"").append(item.pageNumber())
+                        .append("\" total=\"").append(item.pageCount).append("\">\n")
+                        .append(item.body).append("\n</orbit_saved_page>");
+            }
         } else if (item.isOrbitReply()) {
             // The visible reply and nothing else. Whatever produced it - the provider, the model,
             // the request, the rest of that conversation - was never stored and cannot appear here.

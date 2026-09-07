@@ -548,15 +548,24 @@ public final class OrbitVaultBeta2Test {
         assertTrue("a saved item with a note says so", drawn.contains("Has a note"));
 
         View row = findClickableWithDescription(picker.getWindow().getDecorView(),
-                "Attach Link: Recipe");
+                "Link: Recipe, not selected");
         assertNotNull("each saved item must be selectable", row);
+        // Marking is not attaching: the picker stays open until Attach is pressed.
         row.performClick();
+        assertFalse("marking an item must not close the picker", picker.isFinishing());
+        View attach = findClickableWithDescription(picker.getWindow().getDecorView(),
+                "Attach 1 saved item");
+        assertNotNull("marking one item arms the Attach control", attach);
+        attach.performClick();
         assertTrue(picker.isFinishing());
         Intent result = Shadows.shadowOf(picker).getResultIntent();
         assertNotNull(result);
+        String[] picked = result.getStringArrayExtra(OrbitVaultPickerActivity.EXTRA_PICKED_IDS);
+        assertNotNull(picked);
+        assertEquals(1, picked.length);
         assertEquals(OrbitVaultStore.search(context, "Recipe", OrbitVaultStore.Sort.NEWEST)
                         .get(0).id,
-                result.getStringExtra(OrbitVaultPickerActivity.EXTRA_PICKED_ID));
+                picked[0]);
     }
 
     @Test public void anemptyPickerExplainsItself() {
@@ -617,8 +626,8 @@ public final class OrbitVaultBeta2Test {
         assertTrue("it produces an ordinary ComposerAttachment",
                 bridge.contains("return new ComposerAttachment("));
         String chat = source("ChatActivity");
-        assertTrue("the composer appends it to the one collection it already owns",
-                chat.contains("composerAttachments.add(attachment)"));
+        assertTrue("the composer appends them to the one collection it already owns",
+                chat.contains("composerAttachments.addAll(staged)"));
         assertFalse("and no Vault-only collection exists",
                 chat.contains("vaultAttachments"));
     }

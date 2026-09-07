@@ -1296,17 +1296,68 @@ integration. Nothing about the Vault became automatic: no message searches it, n
 uploaded, summarized, categorized or embedded on its own, and no saved link or image is inspected
 unless the user attaches it themselves.
 
+**What Beta 3 ships - Vault Everywhere, and onboarding for the Theme Studio era**
+
+Beta 1 asked "how do I save something?" and Beta 2 asked "what is a saved thing for?". Beta 3 asks
+where saving belongs, and the answer is: wherever the user is already looking at something worth
+keeping. The Vault stops being a screen they have to go to and becomes a destination Orbit's own
+surfaces can offer - always explicitly, never on its own initiative.
+
+- **Save page to Vault in Orbit Documents.** One page, not the document. A new canonical item type,
+  `DOCUMENT_PAGE`, holds the page's bounded extracted text, Orbit's own copy of the rendering, the
+  document's display name and the page's place inside it. No path to the original is kept, so the
+  saved page still opens after the PDF has been moved or deleted, and a four hundred page book is
+  never duplicated into the Vault to preserve one page of it
+- **Save to Vault in Screen Selection**, beside the two actions that use a crop in a message. It
+  saves the crop immediately and leaves the editor open, because somebody who has just framed the
+  thing they wanted should not have to name it before it is kept
+- **Save to Vault from selected text**, through the same one-question choice Share to Orbit already
+  uses rather than a second entry in every app's text-selection menu. Ask Orbit stays the default
+  and the only destination while the Vault is off
+- **Vault and Quick Capture as Orbit Deck destinations**, through the canonical registry, resolver
+  and executor. Quick Capture opens the Vault's own capture flow rather than a second copy of it.
+  With the Vault off, neither is offered as a new tile, tiles the user already placed stay exactly
+  where they are, and tapping one says the Vault is off instead of quietly turning it back on
+- **A closed source vocabulary.** Every saved item's provenance now comes from one list Orbit writes
+  itself. A share stays "Shared to Orbit" and is never labelled with the sending app's name, because
+  Android hands a share target only what the sender chose to claim
+- **Several Vault items on one message.** The picker marks items and hands back a list, which the
+  composer appends through the same `ComposerAttachments` collection four photos go through - same
+  limit, same tray, same removal, same Send
+- **Modernized first-run appearance setup.** The standalone Accent picker and the two bubble-colour
+  pickers are gone, replaced by Orbit's own shipped theme presets and an independent true-black
+  switch. The choice is written through the canonical appearance store, so Theme Studio opened
+  afterwards shows exactly what was picked during setup. App font and chat text size stay, because
+  they are typography rather than colour and Theme Studio does not own them
+- **Two Beta 2 device findings closed**: the saved-item action row no longer touches the card above
+  it, and the note editor is a bounded outlined box that grows as it is written instead of a field
+  with an accent rule floating far below the text
+
+**Deliberately not in Beta 3**: filter chips, pinning, recent-item sections, folders, tags,
+collections, semantic search, OCR, webpage extraction, AI summaries, AI organization and automatic
+categorization. Nothing became automatic: no PDF, screenshot or selection is ever saved without a
+tap, no saved item is searched during a conversation, and no saved link is inspected.
+
 # Next
 
-## Orbit Vault, after Beta 2
+## Orbit Vault, Beta 4 - organization and refinement
 
-Beta 1 built the private foundation and Beta 2 connected it to the rest of Orbit. What remains is
-organization and reach, and only once the current shape has proved itself on a real device:
+Beta 3 gave the user many more ways to put things in the Vault, which is exactly the condition that
+makes organization worth building: a collection of six items needs none, and a collection built from
+documents, screenshots, selections and shares does. Beta 4 is that release, and only that.
 
-- Richer organization - collections, tags, or pinning - if a real collection turns out to need it
-- Semantic search and OCR, so a saved screenshot can be found by what it says
-- Document snippets and saved screenshots, reusing Orbit's existing document and screen pipelines
-- An Orbit Deck tile, and a light Vault presence in the Side-button overlay
+- Type and source filters, so "the pages I saved" and "things I selected" are one tap apart
+- Pinning, for the handful of items somebody keeps coming back to
+- A better search and filter experience, building on the local search Beta 2 shipped
+- A recent-items section, if real use shows the newest-first list is not already enough
+- Phone and tablet polish driven by how the collection actually looks once it is full
+
+**Still after that, not in Beta 4**: Smart Vault. Semantic search, OCR, webpage extraction and any
+AI-assisted organization remain future work, deliberately after the initial Stable Vault release -
+the Vault has to be worth organizing by hand before it is worth organizing by model.
+
+Also still ahead, unchanged: cloud sync and shared Vaults, Routine and Extension access to the
+Vault, and a full Side-button Vault browser.
 
 # Later
 

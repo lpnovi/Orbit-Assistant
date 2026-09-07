@@ -132,6 +132,7 @@ public final class DocumentViewerActivity extends Activity {
     private ImageButton previous;
     private ImageButton next;
     private ImageButton searchButton;
+    private ImageButton saveToVaultButton;
     private Button askButton;
     private Button pageButton;
     private LinearLayout searchPanel;
@@ -179,6 +180,18 @@ public final class DocumentViewerActivity extends Activity {
         indexText();
     }
 
+    /**
+     * Re-reads the one preference this screen can be affected by while it is in the background.
+     *
+     * <p>Switching the Vault off in Settings and coming back has to remove Save page to Vault, and
+     * switching it back on has to return it. Nothing else about the viewer is re-read here: the
+     * document, the page and the render cache are all still exactly as they were.
+     */
+    @Override protected void onResume() {
+        super.onResume();
+        if (askButton != null) updateAskEnabled();
+    }
+
     private View buildContent() {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -210,6 +223,21 @@ public final class DocumentViewerActivity extends Activity {
         LinearLayout.LayoutParams searchButtonLp = new LinearLayout.LayoutParams(
                 UiKit.dp(this, 48), UiKit.dp(this, 48));
         header.addView(searchButton, searchButtonLp);
+
+        // Save page to Vault, beside Ask Orbit rather than buried in a menu, because they are the
+        // two things a reader wants to do with a page that matters: ask about it now, or keep it
+        // for later. An icon rather than a word so the header still fits a long filename, and the
+        // whole action is what a screen reader is told.
+        //
+        // Absent entirely while the Vault is switched off. Nothing else on this screen changes:
+        // reading, searching and Ask Orbit are untouched by a preference about saving.
+        saveToVaultButton = iconButton(R.drawable.ic_vault, "Save this page to your Vault");
+        saveToVaultButton.setEnabled(false);
+        saveToVaultButton.setAlpha(0.5f);
+        saveToVaultButton.setOnClickListener(v -> savePageToVault());
+        saveToVaultButton.setVisibility(Prefs.vaultEnabled(this) ? View.VISIBLE : View.GONE);
+        header.addView(saveToVaultButton, new LinearLayout.LayoutParams(
+                UiKit.dp(this, 48), UiKit.dp(this, 48)));
 
         // The visible label stays two words. The whole action — "Ask Orbit about this page" — is
         // what a screen reader is told, which is where the extra words are worth their room.
@@ -730,6 +758,16 @@ public final class DocumentViewerActivity extends Activity {
         boolean enabled = model != null && model.pageCount() > 0;
         askButton.setEnabled(enabled);
         askButton.setAlpha(enabled ? 1f : 0.5f);
+        if (saveToVaultButton != null) {
+            // Available for exactly the pages Ask Orbit is available for, and for the same reason:
+            // a page Orbit can render is a page worth keeping even when nothing could be extracted
+            // from it. The Vault preference is re-read here because Settings can be visited while
+            // this screen is in the background.
+            boolean vault = enabled && Prefs.vaultEnabled(this);
+            saveToVaultButton.setVisibility(Prefs.vaultEnabled(this) ? View.VISIBLE : View.GONE);
+            saveToVaultButton.setEnabled(vault);
+            saveToVaultButton.setAlpha(vault ? 1f : 0.5f);
+        }
         boolean hasText = model != null && textIndex != null
                 && !textIndex.pageText(model.page()).trim().isEmpty();
         // The visible label stays "Ask Orbit"; the whole action is only ever spoken here.
@@ -770,6 +808,44 @@ public final class DocumentViewerActivity extends Activity {
         // This is only a local composer handoff. The ordinary Send button remains the sole route
         // to SubmissionGate and OrbitRequestManager.
         startActivities(OrbitNavigation.stackFor(this, chat));
+    }
+
+    /**
+     * Keeps this exact page, and nothing else, in Orbit Vault.
+     *
+     * <p>Deliberately one page. The user asked to save the page they are looking at, so copying the
+     * whole PDF into the Vault to preserve it would answer a question nobody asked and fill a
+     * personal collection with a textbook. What is stored is the page's extracted text and Orbit's
+     * own bounded copy of the rendering, both inside the Vault's existing budgets.
+     *
+     * <p>Self-contained on purpose. No path to the original document is kept, so the saved page
+     * still opens after the PDF has been moved, deleted, or never seen again - which is the whole
+     * difference between saving something and bookmarking it.
+     *
+     * <p>Nothing is sent. This is local storage work: no provider is chosen, no request is built,
+     * and no model ever learns that this page exists.
+     */
+    private void savePageToVault() {
+        if (model == null || model.pageCount() <= 0) return;
+        if (!Prefs.vaultEnabled(this)) {
+            Toast.makeText(this, "Orbit Vault is turned off", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        int pageIndex = model.page();
+        String text = textIndex == null ? "" : textIndex.pageText(pageIndex);
+        // Rendered on the UI thread for the same reason Ask Orbit does it: one bounded page, and
+        // the user has just tapped a control and is waiting to be told it worked.
+        Bitmap rendered = PdfPageImage.render(session.document.path, pageIndex);
+        OrbitVaultItem saved = OrbitVaultStore.saveDocumentPage(this, session.document.label,
+                pageIndex, model.pageCount(), text, rendered, "");
+        if (rendered != null && !rendered.isRecycled()) rendered.recycle();
+        if (saved == null) {
+            Toast.makeText(this, "Orbit could not save this page", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        UiKit.haptic(saveToVaultButton, HapticFeedbackConstants.CLOCK_TICK);
+        Toast.makeText(this, "Page " + (pageIndex + 1) + " saved to Vault",
+                Toast.LENGTH_SHORT).show();
     }
 
     private ImageButton iconButton(int icon, String description) {

@@ -238,6 +238,91 @@ public final class OrbitVaultBackupTest {
     }
 
     /**
+     * A saved document page survives a round trip whole: its text, its document, its page and its
+     * rendering.
+     *
+     * <p>The rendering travels as bytes like any other Vault picture, so a restore writes a fresh
+     * private file on this device and the item points at that rather than at a path from somebody
+     * else's phone.
+     */
+    @Test public void asavedDocumentPageSurvivesARoundTripWithItsRendering() throws Exception {
+        OrbitVaultItem page = seedDocumentPage();
+        String originalPath = page.mediaPath;
+
+        String backup = exported();
+        JSONObject data = new JSONObject(backup).getJSONObject("data");
+        JSONObject stored = data.getJSONArray("vault").getJSONObject(0);
+        assertEquals(OrbitVaultItem.TYPE_DOCUMENT_PAGE, stored.getString("type"));
+        assertEquals("Health behavior theory", stored.getString("documentName"));
+        assertEquals(6, stored.getInt("pageIndex"));
+        assertEquals(388, stored.getInt("pageCount"));
+        assertEquals("no device-local path may leave this phone", "",
+                stored.optString("mediaPath", ""));
+        assertEquals("its rendering travels as bytes", 1,
+                data.getJSONArray("vaultMedia").length());
+
+        OrbitVaultStore.prefs(context).edit().clear().commit();
+        assertTrue(new File(originalPath).delete());
+        restore(backup);
+
+        OrbitVaultItem restored = OrbitVaultStore.get(context, page.id);
+        assertNotNull(restored);
+        assertTrue(restored.isDocumentPage());
+        assertEquals("Health behavior theory", restored.documentName);
+        assertEquals(6, restored.pageIndex);
+        assertEquals(388, restored.pageCount);
+        assertEquals("Page 7 of 388", restored.pageLabel());
+        assertEquals("Self-efficacy is a belief about capability.", restored.body);
+        assertTrue("the rendering is written fresh, into a file the Vault owns",
+                OrbitVaultMedia.owns(context, restored.mediaPath));
+        assertFalse(restored.mediaPath.equals(originalPath));
+    }
+
+    /**
+     * A saved page whose rendering is gone still travels, carrying what is left of it.
+     *
+     * <p>Different from an image on purpose. A picture with no file is nothing and is dropped; a
+     * page is also its text, its document and its number, and losing all of that because a JPEG
+     * went missing would be the backup deciding the item was worthless.
+     */
+    @Test public void asavedPageWithoutItsRenderingStillTravels() throws Exception {
+        OrbitVaultItem page = seedDocumentPage();
+        assertTrue(new File(page.mediaPath).delete());
+
+        String backup = exported();
+        JSONObject data = new JSONObject(backup).getJSONObject("data");
+        assertEquals("the page is kept", 1, data.getJSONArray("vault").length());
+        assertEquals("with no rendering to carry", 0, data.getJSONArray("vaultMedia").length());
+
+        OrbitVaultStore.prefs(context).edit().clear().commit();
+        restore(backup);
+
+        OrbitVaultItem restored = OrbitVaultStore.get(context, page.id);
+        assertNotNull("the page is still the page", restored);
+        assertEquals("Self-efficacy is a belief about capability.", restored.body);
+        assertEquals(6, restored.pageIndex);
+        assertEquals("", restored.mediaPath);
+    }
+
+    /** An imported page cannot carry a document name or page number past Orbit's own bounds. */
+    @Test public void anoversizedDocumentPageInAnImportedBackupIsRefused() throws Exception {
+        seedDocumentPage();
+        String backup = exported();
+
+        StringBuilder name = new StringBuilder();
+        while (name.length() <= OrbitVaultItem.MAX_DOCUMENT_NAME_CHARS) name.append("long name ");
+        JSONObject oversizedName = new JSONObject(backup);
+        oversizedName.getJSONObject("data").getJSONArray("vault").getJSONObject(0)
+                .put("documentName", name.toString());
+        assertRefused(oversizedName.toString());
+
+        JSONObject impossiblePage = new JSONObject(backup);
+        impossiblePage.getJSONObject("data").getJSONArray("vault").getJSONObject(0)
+                .put("pageIndex", OrbitVaultItem.MAX_PAGE_COUNT + 1);
+        assertRefused(impossiblePage.toString());
+    }
+
+    /**
      * A backup written before Orbit had a Vault restores exactly as it always did.
      *
      * <p>The single most important case in this file: every backup anybody is currently holding is
@@ -347,6 +432,27 @@ public final class OrbitVaultBackupTest {
 
         OrbitVaultItem item = new OrbitVaultItem("image-" + title, OrbitVaultItem.TYPE_IMAGE,
                 title, "", "Photo", path, 4000L, 4000L);
+        JSONArray stored = new JSONArray(OrbitVaultStore.backupJson(context));
+        stored.put(item.toJson());
+        assertTrue(OrbitVaultStore.prefs(context).edit()
+                .putString("items_v1", stored.toString()).commit());
+        return item;
+    }
+
+    /** One saved document page with a real JPEG behind it, for the same reason {@link #seedImage} does. */
+    private OrbitVaultItem seedDocumentPage() throws Exception {
+        byte[] jpeg = new byte[640];
+        jpeg[0] = (byte) 0xff;
+        jpeg[1] = (byte) 0xd8;
+        jpeg[2] = (byte) 0xff;
+        for (int i = 3; i < jpeg.length; i++) jpeg[i] = (byte) (i % 241);
+        String path = OrbitVaultMedia.writeBytes(context, jpeg);
+        assertFalse("the test rendering must be written", path.isEmpty());
+
+        OrbitVaultItem item = new OrbitVaultItem("page-1",
+                OrbitVaultItem.TYPE_DOCUMENT_PAGE, "", "Self-efficacy is a belief about capability.",
+                OrbitVaultSource.documentPage(7), "", path,
+                "Health behavior theory", 6, 388, 5000L, 5000L);
         JSONArray stored = new JSONArray(OrbitVaultStore.backupJson(context));
         stored.put(item.toJson());
         assertTrue(OrbitVaultStore.prefs(context).edit()

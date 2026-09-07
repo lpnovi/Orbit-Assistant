@@ -1845,7 +1845,11 @@ public class ChatActivity extends Activity {
             return;
         }
         try {
-            startActivityForResult(new Intent(this, OrbitVaultPickerActivity.class),
+            // The picker is told how much room this message still has, so it can stop the user
+            // at the limit while they are choosing rather than after they have finished.
+            startActivityForResult(new Intent(this, OrbitVaultPickerActivity.class)
+                    .putExtra(OrbitVaultPickerActivity.EXTRA_REMAINING,
+                            composerAttachments.remainingCapacity()),
                     REQ_VAULT_PICK);
             UiKit.applyPageTransition(this);
         } catch (Exception ignored) {
@@ -1861,19 +1865,41 @@ public class ChatActivity extends Activity {
      * No request happens here.
      */
     private void attachVaultItem(String id) {
-        OrbitVaultItem item = OrbitVaultStore.get(this, id);
-        ComposerAttachment attachment = item == null ? null : OrbitVaultAttachment.of(this, item);
-        if (attachment == null) {
-            Toast.makeText(this, "Orbit could not attach that saved item",
+        attachVaultItems(id == null ? null : new String[]{id});
+    }
+
+    /**
+     * Stages exactly the items the picker returned, and stops.
+     *
+     * <p>Ordinary composer attachments through the ordinary collection, so they are counted by
+     * the same limit, drawn by the same tray, removed by the same control, and sent by the same
+     * Send. There is deliberately no Vault-only path here: this is the identical
+     * {@link ComposerAttachments#addAll} that four photos from Gallery go through.
+     *
+     * <p>No request happens here. Nothing about staging an attachment reaches a provider.
+     */
+    private void attachVaultItems(String[] ids) {
+        if (ids == null || ids.length == 0) return;
+        List<ComposerAttachment> staged = new ArrayList<>();
+        for (String id : ids) {
+            OrbitVaultItem item = OrbitVaultStore.get(this, id);
+            ComposerAttachment attachment = item == null ? null
+                    : OrbitVaultAttachment.of(this, item);
+            if (attachment != null) staged.add(attachment);
+        }
+        if (staged.isEmpty()) {
+            Toast.makeText(this, ids.length == 1
+                            ? "Orbit could not attach that saved item"
+                            : "Orbit could not attach those saved items",
                     Toast.LENGTH_SHORT).show();
             return;
         }
-        ComposerAttachments.AddResult added = composerAttachments.add(attachment);
-        if (added.hitLimit()) {
-            Toast.makeText(this, attachmentLimitMessage(), Toast.LENGTH_LONG).show();
-            return;
-        }
+        ComposerAttachments.AddResult added = composerAttachments.addAll(staged);
         refreshAttachmentStrip(true);
+        if (added.hitLimit()) {
+            Toast.makeText(this, added.accepted + " added \u00b7 " + attachmentLimitMessage(),
+                    Toast.LENGTH_LONG).show();
+        }
     }
 
     /** The frame the attachment chooser draws into, so it never needs a window of its own. */
@@ -2319,7 +2345,8 @@ public class ChatActivity extends Activity {
 
         if (resultCode != RESULT_OK || data == null) return;
         if (requestCode == REQ_VAULT_PICK) {
-            attachVaultItem(data.getStringExtra(OrbitVaultPickerActivity.EXTRA_PICKED_ID));
+            attachVaultItems(
+                    data.getStringArrayExtra(OrbitVaultPickerActivity.EXTRA_PICKED_IDS));
             return;
         }
         if (requestCode != REQ_GALLERY && requestCode != REQ_FILE) return;

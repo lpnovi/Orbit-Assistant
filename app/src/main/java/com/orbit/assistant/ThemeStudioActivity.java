@@ -182,21 +182,9 @@ public final class ThemeStudioActivity extends Activity {
      * so the gallery's selected state always tells the truth about what the draft actually is.
      */
     private void edit(OrbitTheme next) {
-        draft = next;
-        OrbitTheme match = null;
-        for (OrbitTheme preset : OrbitThemeStore.allPresets(this)) {
-            if (preset.sameColours(draft)) { match = preset; break; }
-        }
-        if (match != null) {
-            draft = match;
-        } else if (draft.builtIn || OrbitTheme.isBuiltInId(draft.id)) {
-            draft = OrbitTheme.custom("Your theme", draft.accent, draft.userBubble,
-                    draft.assistantBubble, draft.surface, draft.background, draft.amoled);
-        } else if (!Prefs.THEME_ID_CUSTOM.equals(draft.id)) {
-            draft = new OrbitTheme(Prefs.THEME_ID_CUSTOM, "Your theme", false, draft.accent,
-                    draft.userBubble, draft.assistantBubble, draft.surface, draft.background,
-                    draft.amoled);
-        }
+        // The rule itself lives in OrbitThemeStore, because onboarding writes an appearance too
+        // and the two must label the same colours the same way.
+        draft = OrbitThemeStore.canonicalIdentity(this, next);
         refreshDraftSurfaces();
     }
 
