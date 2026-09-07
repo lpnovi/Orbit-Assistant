@@ -18,6 +18,7 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -25,14 +26,23 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Orbit Vault: the things the user deliberately kept, and the fastest way to add another.
  *
  * <p>Not a notes app and not a second chat list. The loop this screen has to make excellent is
  * capture, save, find, reopen - so it is one column of plain cards, one search field, and one
- * capture control, and it deliberately has no folders, tags, filters, or dashboard.
+ * capture control.
+ *
+ * <p>Beta 4 adds the smallest organization that a growing collection genuinely needs, and stops
+ * there. A row of type chips, an optional source choice, and a pin: three questions asked about one
+ * flat list, none of which moves, copies, files or renames anything. There are deliberately still
+ * no folders, no tags, no collections and no automatic categorization - a saved item lives in
+ * exactly one place, and organizing the Vault must never become a second job the user has to do
+ * before it is useful.
  *
  * <p>Nothing on this screen contacts a provider. Opening the Vault, searching it, saving into it
  * and reading it back all work with the phone in flight mode and no account signed in, which is the
@@ -61,6 +71,35 @@ public final class OrbitVaultActivity extends Activity {
     static final String EMPTY_BODY =
             "Save text, images, links, and useful Orbit answers here.";
 
+    /**
+     * The three ways a list can be empty, said apart rather than together.
+     *
+     * <p>"Your Vault is empty" in front of a Vault holding forty things is simply a lie, and it is
+     * the exact moment somebody decides a filter is broken. A collection with nothing in it, a
+     * search that found nothing, and a filter that matches nothing are three different situations
+     * with three different next steps, so the screen says which one it is.
+     */
+    static final String NO_RESULTS_TITLE = "No matching items";
+    static final String NO_RESULTS_SEARCH =
+            "Search looks at titles, text, links, your own notes and where an item came from.";
+    static final String NO_RESULTS_FILTER =
+            "Nothing in your Vault matches this filter. Try another one, or clear filters to see "
+                    + "everything.";
+    static final String NO_RESULTS_BOTH =
+            "Nothing matches this search and this filter together. Try clearing one of them.";
+
+    /** The trailing chip that puts the whole Vault back, in one tap. */
+    static final String CLEAR_FILTERS = "Clear filters";
+    /** The chip that opens the secondary source choice. */
+    static final String SOURCE_ANY = "Any source";
+    /** The heading above the items the user asked to keep near the top. */
+    static final String PINNED_HEADING = "Pinned";
+    /** And the one above everything else, shown only when there is a pinned section above it. */
+    static final String OTHERS_HEADING = "Everything else";
+
+    static final String ACTION_PIN = "Pin";
+    static final String ACTION_UNPIN = "Unpin";
+
     /** The optional note field, in the same words wherever something is being saved. */
     static final String NOTE_FIELD_HINT = "Note (optional)";
 
@@ -75,6 +114,8 @@ public final class OrbitVaultActivity extends Activity {
     private LinearLayout list;
     private TextView subtitle;
     private EditText searchInput;
+    private HorizontalScrollView filterScroll;
+    private LinearLayout filterRow;
     private Button capture;
     private boolean quickCapturePending;
     private String appearanceSignature = "";
@@ -192,8 +233,24 @@ public final class OrbitVaultActivity extends Activity {
         });
         LinearLayout.LayoutParams searchLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 46));
-        searchLp.setMargins(0, 0, 0, UiKit.dp(this, 10));
+        searchLp.setMargins(0, 0, 0, UiKit.dp(this, 8));
         root.addView(searchInput, searchLp);
+
+        // One scrolling row of chips rather than a panel, a sheet, or a second screen. It is the
+        // height of a single line of text, it never pushes the collection down the page, and on a
+        // wide tablet it simply stops rather than stretching six controls across the display.
+        filterScroll = new HorizontalScrollView(this);
+        filterScroll.setHorizontalScrollBarEnabled(false);
+        filterScroll.setClipToPadding(false);
+        filterRow = new LinearLayout(this);
+        filterRow.setOrientation(LinearLayout.HORIZONTAL);
+        filterRow.setGravity(Gravity.CENTER_VERTICAL);
+        filterScroll.addView(filterRow, new HorizontalScrollView.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams filterLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        filterLp.setMargins(0, 0, 0, UiKit.dp(this, 8));
+        root.addView(filterScroll, filterLp);
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
@@ -235,6 +292,7 @@ public final class OrbitVaultActivity extends Activity {
         boolean enabled = OrbitVaultStore.enabled(this);
         if (capture != null) capture.setVisibility(enabled ? View.VISIBLE : View.GONE);
         if (searchInput != null) searchInput.setVisibility(enabled ? View.VISIBLE : View.GONE);
+        if (filterScroll != null) filterScroll.setVisibility(enabled ? View.VISIBLE : View.GONE);
         if (!enabled) {
             subtitle.setText("Turned off in Settings");
             LinearLayout off = card();
@@ -249,12 +307,22 @@ public final class OrbitVaultActivity extends Activity {
         OrbitVaultStore.Sort sort = Prefs.vaultSort(this);
         int total = OrbitVaultStore.count(this);
         String query = searchInput == null ? "" : searchInput.getText().toString().trim();
-        List<OrbitVaultItem> shown = query.isEmpty()
-                ? OrbitVaultStore.list(this, sort)
-                : OrbitVaultStore.search(this, query, sort);
+        // The chips carry the type and the source, the field carries the words, and the three are
+        // one question from here on. Nothing below asks any of them separately.
+        OrbitVaultFilter filter = Prefs.vaultFilter(this).withQuery(query);
+        rebuildFilterRow(filter);
+        List<OrbitVaultItem> shown = OrbitVaultStore.browse(this, filter, sort);
 
         String counted = total + (total == 1 ? " saved item" : " saved items");
-        subtitle.setText(total == 0 ? "Nothing saved yet" : counted + " · " + sort.label);
+        if (total == 0) {
+            subtitle.setText("Nothing saved yet");
+        } else if (filter.isNarrowed()) {
+            // What is on screen, and how much of the collection that is, so a short list after a
+            // filter never reads as a Vault that has lost things.
+            subtitle.setText(shown.size() + " of " + counted + " · " + sort.label);
+        } else {
+            subtitle.setText(counted + " · " + sort.label);
+        }
 
         if (total == 0) {
             LinearLayout empty = card();
@@ -274,22 +342,48 @@ public final class OrbitVaultActivity extends Activity {
 
         if (shown.isEmpty()) {
             LinearLayout empty = card();
-            empty.addView(UiKit.text(this, "No matching items", 15, UiKit.TEXT, true));
-            TextView hint = UiKit.text(this,
-                    "Search looks at titles, text, links, your own notes and where an item "
-                            + "came from.",
-                    12, UiKit.MUTED, false);
+            empty.addView(UiKit.text(this, NO_RESULTS_TITLE, 15, UiKit.TEXT, true));
+            // Which of the three situations this actually is. The Vault is not empty here - it
+            // has items and the current question has no answers - so it must never say it is.
+            String body = filter.hasTypeOrSource()
+                    ? (filter.hasQuery() ? NO_RESULTS_BOTH : NO_RESULTS_FILTER)
+                    : NO_RESULTS_SEARCH;
+            TextView hint = UiKit.text(this, body, 12, UiKit.MUTED, false);
             hint.setPadding(0, UiKit.dp(this, 5), 0, 0);
             empty.addView(hint);
             list.addView(empty, cardLp());
             return;
         }
 
+        // Pinned first, then everything else, with each item in exactly one of the two. Both
+        // sections are drawn from the same filtered, searched, sorted list, so pinning a document
+        // page does not make it appear while the user is looking at links.
+        List<OrbitVaultItem> pinned = new ArrayList<>();
+        List<OrbitVaultItem> rest = new ArrayList<>();
+        for (OrbitVaultItem item : shown) (item.pinned ? pinned : rest).add(item);
+
+        if (!pinned.isEmpty()) {
+            list.addView(sectionHeading(PINNED_HEADING, false));
+            addCards(pinned);
+            if (!rest.isEmpty()) list.addView(sectionHeading(OTHERS_HEADING, true));
+        }
+        addCards(rest);
+    }
+
+    /**
+     * One group of cards, in the current column layout.
+     *
+     * <p>Shared by the pinned group and the ordinary one rather than written twice, so the
+     * responsive rule, the gutters and the part-filled last row cannot drift apart between the two
+     * halves of the same screen.
+     */
+    private void addCards(List<OrbitVaultItem> items) {
+        if (items.isEmpty()) return;
         int columns = columns();
         LinearLayout row = null;
-        for (int i = 0; i < shown.size(); i++) {
+        for (int i = 0; i < items.size(); i++) {
             if (columns == 1) {
-                list.addView(itemCard(shown.get(i)), cardLp());
+                list.addView(itemCard(items.get(i)), cardLp());
                 continue;
             }
             if (i % columns == 0) {
@@ -302,17 +396,132 @@ public final class OrbitVaultActivity extends Activity {
                     0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
             cellLp.setMargins(i % columns == 0 ? 0 : UiKit.dp(this, 5), 0,
                     i % columns == columns - 1 ? 0 : UiKit.dp(this, 5), UiKit.dp(this, 10));
-            row.addView(itemCard(shown.get(i)), cellLp);
+            row.addView(itemCard(items.get(i)), cellLp);
         }
         // A part-filled last row keeps its cards at column width instead of stretching one of them
         // across the whole tablet.
         if (columns > 1 && row != null) {
-            int missing = (columns - (shown.size() % columns)) % columns;
+            int missing = (columns - (items.size() % columns)) % columns;
             for (int i = 0; i < missing; i++) {
-                row.addView(new View(this), new LinearLayout.LayoutParams(
-                        0, 1, 1));
+                row.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
             }
         }
+    }
+
+    /** A small muted label above a group of cards. Never a card of its own. */
+    private TextView sectionHeading(String name, boolean spacedAbove) {
+        TextView heading = UiKit.text(this, name, 11, UiKit.MUTED, true);
+        heading.setLetterSpacing(0.12f);
+        heading.setPadding(UiKit.dp(this, 3), UiKit.dp(this, spacedAbove ? 8 : 1), 0,
+                UiKit.dp(this, 8));
+        return heading;
+    }
+
+    // ---- narrowing the collection -----------------------------------------------------------------
+
+    /**
+     * Redraws the chip row for the filter that is currently in force.
+     *
+     * <p>Rebuilt rather than toggled, because the row is not a fixed set of controls: the source
+     * chip appears only when the collection actually contains more than one source, and the clear
+     * control appears only when something is genuinely hidden. A row that always showed every
+     * possible control would be a filing cabinet on a screen whose whole job is to stay out of the
+     * way of the things the user kept.
+     */
+    private void rebuildFilterRow(OrbitVaultFilter filter) {
+        if (filterRow == null) return;
+        filterRow.removeAllViews();
+
+        for (OrbitVaultFilter.Type type : OrbitVaultFilter.Type.values()) {
+            boolean selected = filter.type == type;
+            View chip = chip(type.label, selected,
+                    "Show " + (type == OrbitVaultFilter.Type.ALL
+                            ? "everything in your Vault" : type.label.toLowerCase(Locale.US)),
+                    v -> applyFilter(filter.withType(type)));
+            filterRow.addView(chip, chipLp(filterRow.getChildCount() == 0));
+        }
+
+        // Secondary, and deliberately one control rather than a second permanent row. Source is a
+        // narrower question than type - most people will never ask it - and giving it six more
+        // chips would push the collection down the page for everybody who does not.
+        List<String> sources = OrbitVaultStore.sourcesPresent(this);
+        if (sources.size() > 1) {
+            boolean chosen = !filter.source.isEmpty();
+            View source = chip(chosen ? filter.source : SOURCE_ANY, chosen,
+                    chosen ? "Source filter: " + filter.source + ". Tap to change."
+                            : "Filter by where an item came from",
+                    v -> showSourceMenu(v, filter, sources));
+            filterRow.addView(source, chipLp(false));
+        }
+
+        // One tap back to the whole Vault, rather than asking somebody to remember and reverse
+        // three separate choices they made a minute ago.
+        if (filter.isNarrowed()) {
+            View clear = chip(CLEAR_FILTERS, false, "Clear filters and search",
+                    v -> clearFilters());
+            filterRow.addView(clear, chipLp(false));
+        }
+    }
+
+    private void applyFilter(OrbitVaultFilter filter) {
+        Prefs.setVaultFilter(this, filter);
+        if (filterScroll != null) filterScroll.scrollTo(0, 0);
+        refresh();
+    }
+
+    /** Puts the whole collection back: no type, no source, and no words. */
+    private void clearFilters() {
+        Prefs.setVaultFilter(this, OrbitVaultFilter.NONE);
+        if (searchInput != null && searchInput.getText().length() > 0) {
+            // Clearing the field fires the watcher, which refreshes; refreshing twice would
+            // rebuild the list under the user's finger for no reason.
+            searchInput.setText("");
+            return;
+        }
+        refresh();
+    }
+
+    private void showSourceMenu(View anchor, OrbitVaultFilter filter, List<String> sources) {
+        String[] labels = new String[sources.size() + 1];
+        labels[0] = SOURCE_ANY;
+        int selected = 0;
+        for (int i = 0; i < sources.size(); i++) {
+            labels[i + 1] = sources.get(i);
+            if (sources.get(i).equals(filter.source)) selected = i + 1;
+        }
+        UiKit.showOrbitMenu(this, anchor, labels, selected, (index, label) ->
+                applyFilter(filter.withSource(index <= 0 ? "" : label)));
+    }
+
+    /**
+     * One filter chip: a line of text on Orbit's own surface, sized by its words.
+     *
+     * <p>The selected state is the accent fill plus its own contrast colour, and it is also written
+     * into the spoken description, so the current choice is never carried by colour alone.
+     */
+    private View chip(String label, boolean selected, String description,
+                      View.OnClickListener onClick) {
+        TextView chip = UiKit.text(this, label, 13, selected ? UiKit.onAccent(this) : UiKit.TEXT,
+                selected);
+        chip.setGravity(Gravity.CENTER);
+        chip.setSingleLine(true);
+        chip.setPadding(UiKit.dp(this, 15), UiKit.dp(this, 8), UiKit.dp(this, 15),
+                UiKit.dp(this, 8));
+        chip.setBackground(selected
+                ? UiKit.ripple(UiKit.accent(this), UiKit.onAccent(this), 16, this)
+                : UiKit.rippleOutlined(UiKit.SURFACE,
+                        UiKit.withAlpha(UiKit.accent(this), 46), UiKit.accent(this), 16, this));
+        chip.setContentDescription(description + (selected ? ", selected" : ""));
+        chip.setOnClickListener(onClick);
+        UiKit.pressScale(chip);
+        return chip;
+    }
+
+    private LinearLayout.LayoutParams chipLp(boolean first) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(first ? 0 : UiKit.dp(this, 7), 0, 0, 0);
+        return lp;
     }
 
     // ---- one saved thing --------------------------------------------------------------------------
@@ -343,7 +552,26 @@ public final class OrbitVaultActivity extends Activity {
             }
         }
 
-        card.addView(UiKit.text(this, item.displayTitle(), 15, UiKit.TEXT, true));
+        // The title, and beside it the smallest possible mark that this is one of the items the
+        // user asked to keep near the top. The word "Pinned" is in the spoken description and in
+        // the metadata line below, so nothing here depends on seeing a small accent glyph.
+        LinearLayout titleRow = new LinearLayout(this);
+        titleRow.setOrientation(LinearLayout.HORIZONTAL);
+        titleRow.setGravity(Gravity.TOP);
+        titleRow.addView(UiKit.text(this, item.displayTitle(), 15, UiKit.TEXT, true),
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        if (item.pinned) {
+            ImageView mark = new ImageView(this);
+            mark.setImageResource(R.drawable.ic_pin);
+            mark.setImageTintList(ColorStateList.valueOf(UiKit.accent(this)));
+            mark.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            LinearLayout.LayoutParams markLp = new LinearLayout.LayoutParams(
+                    UiKit.dp(this, 15), UiKit.dp(this, 15));
+            markLp.setMargins(UiKit.dp(this, 8), UiKit.dp(this, 2), 0, 0);
+            titleRow.addView(mark, markLp);
+        }
+        card.addView(titleRow, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         String preview = item.isLink() ? item.body : item.preview();
         if (!preview.isEmpty()) {
@@ -367,7 +595,9 @@ public final class OrbitVaultActivity extends Activity {
 
         // The kind of item is written out, never signalled by colour alone, so it reads the same
         // for someone who cannot tell the accent from the muted text.
-        StringBuilder meta = new StringBuilder(item.typeLabel());
+        StringBuilder meta = new StringBuilder();
+        if (item.pinned) meta.append(PINNED_HEADING).append(" · ");
+        meta.append(item.typeLabel());
         if (item.isLink() && !item.hostLabel().isEmpty()) meta.append(" · ").append(item.hostLabel());
         if (!item.source.isEmpty() && !item.source.equals(item.typeLabel())) {
             meta.append(" · ").append(item.source);
@@ -379,8 +609,8 @@ public final class OrbitVaultActivity extends Activity {
 
         card.setBackground(UiKit.rippleOutlined(UiKit.SURFACE,
                 UiKit.withAlpha(UiKit.accent(this), 34), UiKit.accent(this), 20, this));
-        card.setContentDescription(item.typeLabel() + ": " + item.displayTitle()
-                + ". " + item.savedLabel());
+        card.setContentDescription((item.pinned ? PINNED_HEADING + " " : "")
+                + item.typeLabel() + ": " + item.displayTitle() + ". " + item.savedLabel());
         card.setOnClickListener(v -> open(item));
         card.setOnLongClickListener(v -> {
             UiKit.haptic(v, android.view.HapticFeedbackConstants.LONG_PRESS);
@@ -397,14 +627,41 @@ public final class OrbitVaultActivity extends Activity {
         UiKit.applyPageTransition(this);
     }
 
+    /**
+     * What can be done to one card without opening it.
+     *
+     * <p>Pinning lives here, and deliberately not as a control on every card. A pin is used rarely
+     * and on a handful of items; a permanent button for it on forty cards would cost the list its
+     * scannability to serve the least frequent thing anybody does with a saved item.
+     */
     private void showItemMenu(View anchor, OrbitVaultItem item) {
-        String[] labels = {"Open", "Copy", "Delete"};
-        int[] icons = {R.drawable.ic_document, R.drawable.ic_copy, R.drawable.ic_delete};
+        String pin = item.pinned ? ACTION_UNPIN : ACTION_PIN;
+        String[] labels = {"Open", pin, "Copy", "Delete"};
+        int[] icons = {R.drawable.ic_document, R.drawable.ic_pin, R.drawable.ic_copy,
+                R.drawable.ic_delete};
         UiKit.showOrbitActionMenu(this, anchor, labels, icons, (index, label) -> {
             if ("Open".equals(label)) open(item);
+            else if (pin.equals(label)) togglePin(item);
             else if ("Copy".equals(label)) copy(item);
             else if ("Delete".equals(label)) confirmDelete(item);
         });
+    }
+
+    /**
+     * Pins or unpins one item, and says which happened.
+     *
+     * <p>Nothing else moves. The item keeps its content, its note, its picture and both its
+     * timestamps; only where it is drawn changes, and it stays subject to whatever filter and
+     * search are currently in force.
+     */
+    private void togglePin(OrbitVaultItem item) {
+        boolean wanted = !item.pinned;
+        if (!OrbitVaultStore.setPinned(this, item.id, wanted)) {
+            Toast.makeText(this, "Orbit could not update that item", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Toast.makeText(this, wanted ? "Pinned" : "Unpinned", Toast.LENGTH_SHORT).show();
+        refresh();
     }
 
     private void copy(OrbitVaultItem item) {

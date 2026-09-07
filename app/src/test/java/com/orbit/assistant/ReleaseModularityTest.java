@@ -196,10 +196,15 @@ public final class ReleaseModularityTest {
      * the canonical theme and keeps AMOLED independent of the preset; and Beta 1 and Beta 2
      * stores and backups still load.
      *
-     * <p>What it cannot settle is whether Save page to Vault is discoverable in the document
-     * header, whether the note editor now reads as a box in the hand, and whether the preset grid
-     * is legible at Galaxy S25 Ultra width. That is what the Beta is for, so this must publish as
-     * a prerelease and never as a Stable release.
+     * <p>Beta 4 adds the organization half of the same claim: type and source filters decided on
+     * canonical values, filters and search that compose, truthful empty states, and a pin that is
+     * durable, backed up and absent from every earlier document.
+     *
+     * <p>What it cannot settle is whether the chip row reads as one glance rather than a control
+     * panel at Galaxy S25 Ultra width, whether the pinned section earns its heading once somebody
+     * has pinned real things, and whether the screen-selection preview is visibly bigger in the
+     * hand. That is what the Beta is for, so this must publish as a prerelease and never as a
+     * Stable release.
      */
     @Test public void thisReleaseIsAnOrbitVaultBeta() {
         assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",

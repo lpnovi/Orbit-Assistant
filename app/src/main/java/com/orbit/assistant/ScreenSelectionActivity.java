@@ -6,6 +6,7 @@ import android.content.pm.ActivityInfo;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -20,8 +21,27 @@ import android.widget.Toast;
 /** Shared native Crop + Mark up editor for overlay and full-chat screen attachments. */
 public final class ScreenSelectionActivity extends Activity {
 
-    /** The Vault control's label, in the words every other Save to Vault in Orbit uses. */
-    static final String SAVE_TO_VAULT = "Save to Vault";
+    /**
+     * The Vault control's label.
+     *
+     * <p>One word rather than the three every other Save to Vault in Orbit uses, and that is the
+     * whole point of it. Beta 3 gave this a full-width row of its own, which read correctly and
+     * cost an entire band of the screen; on a Galaxy S25 Ultra that band came out of the only
+     * thing this editor exists to show, which is the selection itself. The action is unchanged and
+     * still says exactly where the picture is going - the destination is written on the control,
+     * the verb is what the tap is - and it now shares one row with the two actions beside it.
+     */
+    static final String SAVE_TO_VAULT = "Vault";
+
+    /**
+     * How wide the compact Vault control is, in dp.
+     *
+     * <p>Fixed rather than weighted, so it takes what an icon and one short word need and gives
+     * every remaining pixel to the two actions that finish the editor. A third of the row would be
+     * the wrong answer twice over: it would say the three controls are equals when they are not,
+     * and it would shrink Use selection, which is the one somebody reaches for most.
+     */
+    static final int VAULT_ACTION_WIDTH_DP = 92;
 
     private String sourcePath = "";
     private String callbackToken = "";
@@ -140,33 +160,40 @@ public final class ScreenSelectionActivity extends Activity {
         root.addView(tools, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 46)));
 
-        // Save to Vault sits on its own row above the two "use this now" actions, not beside them.
-        // It is a different kind of answer: Use selection and Use full screen both finish this
-        // editor and hand the picture to the message being written, while this one keeps the crop
-        // and leaves the user exactly where they were, free to carry on and still attach it.
+        // One row of actions, not two. Crop and Mark up above are editor modes; these three are
+        // things to do with what has been made, and they belong on the same line.
         //
-        // Absent entirely while the Vault is switched off. Screen Selection's ordinary path is
-        // untouched by that preference.
-        vaultButton = secondaryButton(SAVE_TO_VAULT, "Save this selection to your Vault");
-        vaultButton.setOnClickListener(v -> saveSelectionToVault());
-        vaultButton.setVisibility(Prefs.vaultEnabled(this) ? View.VISIBLE : View.GONE);
-        LinearLayout.LayoutParams vaultLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 42));
-        vaultLp.setMargins(0, UiKit.dp(this, 4), 0, 0);
-        root.addView(vaultButton, vaultLp);
-
+        // Vault is still a different kind of answer from the other two - Use selection and Use
+        // full screen both finish this editor and hand the picture to the message being written,
+        // while this one keeps the crop and leaves the user exactly where they were - which is why
+        // it is quiet, compact, and first rather than sharing their size and weight.
+        //
+        // Absent entirely while the Vault is switched off, and the two remaining controls simply
+        // take the width back. Screen Selection's ordinary path is untouched by that preference.
         LinearLayout actions = new LinearLayout(this);
         actions.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams actionsLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         actionsLp.setMargins(0, UiKit.dp(this, 3), 0, 0);
+
+        vaultButton = compactVaultButton();
+        vaultButton.setOnClickListener(v -> saveSelectionToVault());
+        vaultButton.setVisibility(Prefs.vaultEnabled(this) ? View.VISIBLE : View.GONE);
+        actions.addView(vaultButton, new LinearLayout.LayoutParams(
+                UiKit.dp(this, VAULT_ACTION_WIDTH_DP), UiKit.dp(this, 46)));
+
         Button full = secondaryButton("Use full screen", "Use full screen");
         full.setOnClickListener(v -> complete(true));
-        actions.addView(full, new LinearLayout.LayoutParams(0, UiKit.dp(this, 46), 1));
+        LinearLayout.LayoutParams fullLp = new LinearLayout.LayoutParams(0, UiKit.dp(this, 46), 1);
+        fullLp.setMargins(UiKit.dp(this, 8), 0, 0, 0);
+        actions.addView(full, fullLp);
+
         Button use = primaryButton("Use selection", "Use screen selection");
         use.setOnClickListener(v -> complete(false));
+        // A little more than an equal share, so the strongest action still reads as the strongest
+        // one now that it is sharing the row with two others rather than one.
         LinearLayout.LayoutParams useLp = new LinearLayout.LayoutParams(0,
-                UiKit.dp(this, 46), 1);
+                UiKit.dp(this, 46), 1.25f);
         useLp.setMargins(UiKit.dp(this, 8), 0, 0, 0);
         actions.addView(use, useLp);
         root.addView(actions, actionsLp);
@@ -352,6 +379,31 @@ public final class ScreenSelectionActivity extends Activity {
         if (!Prefs.haptics(this)) return;
         try { getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK); }
         catch (Exception ignored) { }
+    }
+
+    /**
+     * The compact Vault action: Orbit's own Vault glyph and one word.
+     *
+     * <p>The real drawable rather than a generic save icon, because it is the same destination the
+     * Documents viewer, the share sheet and the message menu all name, and a person should be able
+     * to recognise it without reading. The word stays beside it so the icon never has to carry the
+     * meaning on its own.
+     */
+    private Button compactVaultButton() {
+        Button button = secondaryButton(SAVE_TO_VAULT, "Save this selection to your Vault");
+        button.setTextSize(12);
+        button.setPadding(UiKit.dp(this, 6), 0, UiKit.dp(this, 6), 0);
+        button.setCompoundDrawablePadding(UiKit.dp(this, 5));
+        Drawable glyph = getResources().getDrawable(R.drawable.ic_vault, getTheme());
+        if (glyph != null) {
+            glyph = glyph.mutate();
+            glyph.setTint(UiKit.accent(this));
+            // Sized down from the 24dp source, because this control is a compact action beside two
+            // full-size ones rather than an icon button of its own.
+            glyph.setBounds(0, 0, UiKit.dp(this, 16), UiKit.dp(this, 16));
+            button.setCompoundDrawablesRelative(glyph, null, null, null);
+        }
+        return button;
     }
 
     private Button quietButton(String text, String description) {

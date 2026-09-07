@@ -108,6 +108,48 @@ public final class OrbitVaultStore {
         return matches;
     }
 
+    /**
+     * Everything that survives one filter, in the order the user chose.
+     *
+     * <p>The single reading path the Vault screen uses, so the type chips, the source choice, the
+     * search field and the sort cannot disagree about what is on screen. All four compose: a
+     * narrowed Vault is one pass over the same list with one predicate, not four screens with four
+     * rules that drift apart the first time one of them is changed.
+     *
+     * <p>Local exactly as {@link #search} is. No provider is asked, nothing is indexed in advance,
+     * no embedding exists, and a filtered Vault on a plane is the same filtered Vault as at home.
+     */
+    public static synchronized List<OrbitVaultItem> browse(Context c, OrbitVaultFilter filter,
+                                                           Sort sort) {
+        OrbitVaultFilter applied = filter == null ? OrbitVaultFilter.NONE : filter;
+        List<OrbitVaultItem> matches = new ArrayList<>();
+        for (OrbitVaultItem item : readAll(c)) {
+            if (applied.matches(item)) matches.add(item);
+        }
+        sort(matches, sort);
+        return matches;
+    }
+
+    /**
+     * The canonical sources this device's Vault actually contains, in Orbit's own order.
+     *
+     * <p>Offered rather than the whole vocabulary, so the source filter never lists a door the
+     * user has not walked through. A source Orbit did not write is not counted, which is what
+     * {@link OrbitVaultSource#family} already guarantees.
+     */
+    public static synchronized List<String> sourcesPresent(Context c) {
+        Set<String> found = new HashSet<>();
+        for (OrbitVaultItem item : readAll(c)) {
+            String family = OrbitVaultSource.family(item.source);
+            if (!family.isEmpty()) found.add(family);
+        }
+        List<String> ordered = new ArrayList<>();
+        for (String known : OrbitVaultSource.FILTERABLE) {
+            if (found.contains(known)) ordered.add(known);
+        }
+        return ordered;
+    }
+
     public static synchronized OrbitVaultItem get(Context c, String id) {
         if (id == null || id.trim().isEmpty()) return null;
         for (OrbitVaultItem item : readAll(c)) if (id.equals(item.id)) return item;
@@ -297,6 +339,30 @@ public final class OrbitVaultStore {
         if (text.isEmpty()) return false;
         return replace(c, existing.copyWith(title, text, existing.note,
                 System.currentTimeMillis()));
+    }
+
+    /**
+     * Pins or unpins one item, and changes nothing else about it.
+     *
+     * <p>Deliberately not an edit. The title, the body, the note, the media, the source, the page
+     * metadata and both timestamps are all carried across exactly as they were, so a pin cannot
+     * reorder a Newest-first Vault, cannot make an item claim to have been edited, and cannot turn
+     * a saved answer into something that is no longer a faithful record of what Orbit said.
+     *
+     * <p>Works whatever the user is currently filtering by and whatever is currently on screen: a
+     * pin is a property of the item, not of the view somebody happened to pin it from.
+     */
+    public static synchronized boolean setPinned(Context c, String id, boolean pinned) {
+        OrbitVaultItem existing = get(c, id);
+        if (existing == null || existing.pinned == pinned) return existing != null;
+        return replace(c, existing.copyPinned(pinned));
+    }
+
+    /** How many items the user has pinned. */
+    public static synchronized int pinnedCount(Context c) {
+        int total = 0;
+        for (OrbitVaultItem item : readAll(c)) if (item.pinned) total++;
+        return total;
     }
 
     private static boolean replace(Context c, OrbitVaultItem updated) {

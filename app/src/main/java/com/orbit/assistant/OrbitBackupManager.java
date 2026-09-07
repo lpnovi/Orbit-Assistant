@@ -274,6 +274,9 @@ public final class OrbitBackupManager {
      * quietly carry an unreferenced payload.
      */
     private static void validateVault(JSONArray items, JSONArray media) throws Exception {
+        // A pin is one optional boolean that travels with the item document and needs no rule of
+        // its own: a backup written before Beta 4 simply has no such key, and every item in it
+        // restores unpinned, which is exactly what it was.
         Map<String, byte[]> decoded = new HashMap<>();
         long total = 0L;
         for (int i = 0; i < media.length(); i++) {

@@ -18,9 +18,19 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The in-app Roadmap is future-only, and it drifted: it still offered natural-language Routine
- * creation as upcoming long after Create with Orbit shipped it in the 0.7.3 series. This keeps the
- * page honest by naming the features Orbit has actually released.
+ * The in-app Roadmap is future-only, and it keeps drifting in two different ways.
+ *
+ * <p>The first drift is the old one: the page offered natural-language Routine creation as upcoming
+ * long after Create with Orbit shipped it, and several more entries went the same way. That is what
+ * {@link #shippedFeaturesAreNotOfferedAsUpcoming} exists for, and the list only ever grows.
+ *
+ * <p>The second is worse and is what v0.7.8.4-beta.4 fixed. By the Vault line the page still opened
+ * with 0.7.7-era priorities under "NEXT UP" while the whole project had moved to Orbit Vault, so
+ * nothing on it was false and the page as a whole was still misleading: a reader came away with a
+ * confident and wrong idea of what Orbit was working on. Stale-but-real work is therefore asserted
+ * to be listed <em>below</em> the active plan rather than merely listed, and the three active
+ * milestones are asserted to be present in the page and in {@code ROADMAP.md} at once - see
+ * {@link RoadmapSyncTest}.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {29, 35})
@@ -50,6 +60,18 @@ public final class RoadmapFutureOnlyTest {
             // v0.7.7.5 promoted Modular Orbit Local from Beta to Stable, so the component itself
             // is shipped work. Teaching it Orbit's device actions is what genuinely remains.
             "Modular Orbit Local",
+            // v0.7.8.4 beta.1 to beta.3 shipped the Vault itself, saving from Orbit's own
+            // surfaces, notes, Ask Orbit, Attach from Vault and the Deck destinations. Only the
+            // organization of a grown collection is current work, and it has its own name.
+            //
+            // "Save to Vault" is deliberately absent from this list: it is shipped, and it is also
+            // a real part of the Rich Answers plan, where an inline web image has to reach the
+            // Vault through the path that already exists rather than a second one.
+            "Orbit Vault arrives",
+            "Quick Capture",
+            "Attach from Vault",
+            "Vault notes",
+            "Theme Studio",
     };
 
     private String roadmapText() {
@@ -78,24 +100,48 @@ public final class RoadmapFutureOnlyTest {
         }
     }
 
-    @Test public void genuinelyUnfinishedWorkIsStillListed() {
+    /** The page leads with what Orbit is building, then what follows it. */
+    @Test public void thePageLeadsWithTheCurrentPlan() {
         String text = roadmapText();
-        assertTrue(text.contains("NEXT UP"));
-        assertTrue(text.contains("PLANNED"));
+        assertTrue("the page must say what is being built now", text.contains("NOW"));
+        assertTrue(text.contains("NEXT"));
+        assertTrue(text.contains("LATER"));
         assertTrue(text.contains("EXPLORING"));
-        assertTrue("more than one branch point is genuinely unfinished",
-                text.contains("More branch points & conditions"));
-        assertTrue(text.contains("Deeper Android actions"));
-        assertTrue(text.contains("Proactive screen intelligence"));
+
+        assertTrue("Vault organization is the current work", text.contains(OrbitRoadmap.CURRENT));
+        assertTrue("Rich Answers is the next major line", text.contains(OrbitRoadmap.NEXT));
+        assertTrue("and Smart Vault follows it", text.contains(OrbitRoadmap.AFTER));
     }
 
-    /** The remaining 0.7.7 direction must be discoverable in the app, not only in git. */
-    @Test public void theProviderAndOnDeviceDirectionIsListed() {
+    /**
+     * Order matters more than presence here. Every entry below was true before this release too;
+     * what was wrong was that they sat above the actual plan.
+     */
+    @Test public void olderIdeasSitBelowTheActivePlan() {
         String text = roadmapText();
-        assertTrue("finishing OpenRouter chat is the next provider work",
-                text.contains("OpenRouter chat"));
-        assertTrue("local tool calling is the next Orbit Local work",
-                text.contains("Local device actions"));
+        int current = text.indexOf(OrbitRoadmap.CURRENT);
+        int next = text.indexOf(OrbitRoadmap.NEXT);
+        int after = text.indexOf(OrbitRoadmap.AFTER);
+        assertTrue("the current work must be listed first", current >= 0);
+        assertTrue("Rich Answers follows the current work", next > current);
+        assertTrue("and Smart Vault follows Rich Answers", after > next);
+
+        for (String older : new String[]{"Local device actions", "Calendar awareness",
+                "More branch points & conditions", "Deeper Android actions", "Cook with Orbit",
+                "OpenRouter chat", "Hybrid Auto", "Proactive screen intelligence"}) {
+            int at = text.indexOf(older);
+            assertTrue(older + " is still genuinely unfinished and must still be listed", at >= 0);
+            assertTrue(older + " must not be presented above the active plan", at > after);
+        }
+    }
+
+    /**
+     * The remaining 0.7.7 direction is still promised, just no longer promised next.
+     */
+    @Test public void theProviderAndOnDeviceDirectionIsStillListed() {
+        String text = roadmapText();
+        assertTrue("finishing OpenRouter chat is still owed", text.contains("OpenRouter chat"));
+        assertTrue("local tool calling is still owed", text.contains("Local device actions"));
         assertTrue("the withdrawn Edit & resend action must be promised back",
                 text.contains("Edit & resend, reliably"));
         assertTrue(text.contains("Hybrid Auto"));
@@ -116,8 +162,7 @@ public final class RoadmapFutureOnlyTest {
 
     /**
      * OpenRouter is not abandoned and not imminent. It needs a real account to validate against,
-     * and until there is one the honest thing is to say so on the page rather than keep listing it
-     * as next up.
+     * and until there is one the honest thing is to say so on the page.
      */
     @Test public void openRouterIsShownAsDeferredRatherThanNext() {
         String text = roadmapText();
@@ -126,17 +171,6 @@ public final class RoadmapFutureOnlyTest {
         assertTrue("and the reason is stated", text.contains("account to test it with"));
         assertTrue("the existing secure groundwork is not being discarded",
                 text.contains("secure setup already in Orbit stays"));
-    }
-
-    /** The near-term order agreed for the 0.7.7 line, so the page and ROADMAP.md cannot drift.
-     *  Modular Orbit Local left this list in v0.7.7.5, which shipped it. */
-    @Test public void theNearTermOrderIsListed() {
-        String text = roadmapText();
-        assertTrue(text.contains("Local device actions"));
-        assertTrue(text.contains("More branch points & conditions"));
-        assertTrue(text.contains("Cook with Orbit"));
-        assertTrue(text.contains("Kitchen hands-free"));
-        assertTrue(text.contains("Recipe intelligence"));
     }
 
     @Test public void thePageStillSaysItIsFutureOnly() {

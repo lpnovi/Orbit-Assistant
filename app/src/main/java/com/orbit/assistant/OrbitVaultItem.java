@@ -127,6 +127,23 @@ public final class OrbitVaultItem {
     public final int pageIndex;
     /** How many pages the document had when the page was saved, or 0 when it was not known. */
     public final int pageCount;
+    /**
+     * Whether the user asked for this item to stay near the top of their Vault.
+     *
+     * <p>One boolean, and deliberately not a collection. A pin is the smallest possible answer to
+     * "I keep coming back to this one": it needs no folder to live in, no name to be given, and no
+     * decision about where something belongs before it can be kept. A saved item is in exactly one
+     * place either way - the Vault - and pinning only changes where it is drawn.
+     *
+     * <p>Absent from every Beta 1, Beta 2 and Beta 3 item on disk, and absent from every item
+     * nobody has pinned. A missing key reads as unpinned, which is what it means, so there is no
+     * migration and an older Orbit reading the same document finds nothing it does not understand.
+     *
+     * <p>Pinning is not an edit. It never moves {@link #modifiedAt}, because the user did not
+     * change the thing they saved - "Edited today" on a link somebody merely pinned would be Orbit
+     * stating something untrue about their own collection.
+     */
+    public final boolean pinned;
     public final long createdAt;
     public final long modifiedAt;
 
@@ -142,9 +159,17 @@ public final class OrbitVaultItem {
         this(id, type, title, body, source, note, mediaPath, "", 0, 0, createdAt, modifiedAt);
     }
 
+    /** One item nobody has pinned, which is what every item saved before Beta 4 is. */
     public OrbitVaultItem(String id, String type, String title, String body, String source,
                           String note, String mediaPath, String documentName, int pageIndex,
                           int pageCount, long createdAt, long modifiedAt) {
+        this(id, type, title, body, source, note, mediaPath, documentName, pageIndex, pageCount,
+                false, createdAt, modifiedAt);
+    }
+
+    public OrbitVaultItem(String id, String type, String title, String body, String source,
+                          String note, String mediaPath, String documentName, int pageIndex,
+                          int pageCount, boolean pinned, long createdAt, long modifiedAt) {
         this.id = trim(id);
         this.type = normalizeType(type);
         this.title = bound(collapse(title), MAX_TITLE_CHARS);
@@ -158,6 +183,7 @@ public final class OrbitVaultItem {
         this.documentName = page ? bound(collapse(documentName), MAX_DOCUMENT_NAME_CHARS) : "";
         this.pageCount = page ? Math.max(0, Math.min(pageCount, MAX_PAGE_COUNT)) : 0;
         this.pageIndex = page ? clampPage(pageIndex, this.pageCount) : 0;
+        this.pinned = pinned;
         this.createdAt = createdAt;
         this.modifiedAt = modifiedAt <= 0L ? createdAt : modifiedAt;
     }
@@ -188,7 +214,20 @@ public final class OrbitVaultItem {
      */
     OrbitVaultItem copyWith(String newTitle, String newBody, String newNote, long modifiedNow) {
         return new OrbitVaultItem(id, type, newTitle, newBody, source, newNote, mediaPath,
-                documentName, pageIndex, pageCount, createdAt, modifiedNow);
+                documentName, pageIndex, pageCount, pinned, createdAt, modifiedNow);
+    }
+
+    /**
+     * The same item, pinned or unpinned, and identical in every other respect.
+     *
+     * <p>{@link #modifiedAt} is carried across untouched rather than stamped with now. Pinning is
+     * a statement about where the user wants to find something, not a change to the thing itself,
+     * and moving the timestamp would quietly reorder an Oldest-first Vault and make every pinned
+     * item claim to have been edited.
+     */
+    OrbitVaultItem copyPinned(boolean nowPinned) {
+        return new OrbitVaultItem(id, type, title, body, source, note, mediaPath,
+                documentName, pageIndex, pageCount, nowPinned, createdAt, modifiedAt);
     }
 
     // ---- what a screen may ask ------------------------------------------------------------------
@@ -218,6 +257,9 @@ public final class OrbitVaultItem {
 
     /** Whether the user has written anything of their own about this item. */
     public boolean hasNote() { return !note.isEmpty(); }
+
+    /** Whether the user asked for this one to stay near the top. */
+    public boolean isPinned() { return pinned; }
 
     /**
      * Whether the stored body itself may be rewritten.
@@ -316,6 +358,9 @@ public final class OrbitVaultItem {
                 .put("mediaPath", mediaPath)
                 .put("createdAt", createdAt)
                 .put("modifiedAt", modifiedAt);
+        // Written only when it is true, so a Vault nobody has pinned anything in is byte-for-byte
+        // the document Beta 3 wrote and an older build reading it finds nothing new.
+        if (pinned) out.put("pinned", true);
         // Written only for the type that has them, so a Vault of notes and links is byte-for-byte
         // the document Beta 2 wrote and an older build reading it finds nothing new.
         if (isDocumentPage()) {
@@ -344,6 +389,9 @@ public final class OrbitVaultItem {
                 o.optString("documentName", ""),
                 o.optInt("pageIndex", 0),
                 o.optInt("pageCount", 0),
+                // Absent in every document written before Beta 4, and absent from every item
+                // nobody has pinned. Missing means unpinned, which is what unpinned already means.
+                o.optBoolean("pinned", false),
                 o.optLong("createdAt", 0L),
                 o.optLong("modifiedAt", 0L));
         return isStorable(item) ? item : null;

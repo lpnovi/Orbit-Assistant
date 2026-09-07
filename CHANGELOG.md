@@ -743,3 +743,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Attach several saved items to one message instead of one at a time.
   - First-run setup now offers Orbit's theme presets with a separate true black switch.
   - Saved items sit better on screen, and the note editor is a clear box instead of a stray line.
+- **v0.7.8.4-beta.4**: A more organized Vault, and a clearer roadmap.
+  - Filter your Vault by the kind of thing you saved: text, links, images, documents or Orbit answers.
+  - Filter by where something came from, and combine that with a type and a search.
+  - Pin the items you keep coming back to, and find them in their own section at the top.
+  - Empty results now say whether it was the search or the filter that found nothing.
+  - Screen Selection gives space back to your selection with a smaller Save to Vault control.
+  - Orbit's in-app and GitHub roadmaps now show what is actually being worked on next.

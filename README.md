@@ -132,7 +132,7 @@ Never post signing keys, account tokens, diagnostic data containing private cont
 | Status | Examples |
 | --- | --- |
 | **Shipping in Stable** | Side-button/default-assistant access, full chat, attachments, screen context, Voice Beta, Android actions, Calendar writing, Routines, Extensions, widgets, Orbit Local, Orbit Deck, Documents, and Theme Studio. |
-| **Available in Beta** | Orbit Vault / Quick Capture, a private local place to save text, links, images, screen selections, pages from Orbit Documents and useful Orbit answers, with your own notes, reachable from Orbit Deck, and attach or ask Orbit about saved items when you choose to. |
+| **Available in Beta** | Orbit Vault / Quick Capture, a private local place to save text, links, images, screen selections, pages from Orbit Documents and useful Orbit answers, with your own notes, filters by kind and source, pinning, reachable from Orbit Deck, and attach or ask Orbit about saved items when you choose to. |
 | **Planned or under consideration** | Hybrid Auto routing, deeper local capabilities, and other work listed in the roadmap. OpenRouter chat remains deferred until it can be properly validated. |
 
 See [ROADMAP.md](ROADMAP.md) for the detailed development record and future direction, or [CHANGELOG.md](CHANGELOG.md) for shipped release history. Roadmap items are direction, not promised dates.

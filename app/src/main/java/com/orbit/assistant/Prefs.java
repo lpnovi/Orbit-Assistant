@@ -143,6 +143,17 @@ public final class Prefs {
      */
     public static final String VAULT_SORT = "vault_sort";
     /**
+     * The Vault's current type and source filter, for the same reason the sort is remembered.
+     *
+     * <p>Kept so that opening a saved item and coming back does not silently throw away the
+     * narrowing the user just did, which is the whole point of narrowing. Two view preferences
+     * about this screen on this phone, deliberately outside every Backup &amp; Restore key set
+     * beside {@link #VAULT_SORT}: a restored backup must not decide what somebody else is looking
+     * at.
+     */
+    public static final String VAULT_TYPE_FILTER = "vault_type_filter";
+    public static final String VAULT_SOURCE_FILTER = "vault_source_filter";
+    /**
      * Whether Orbit Vault exists for this user at all.
      *
      * <p>On by default. Off removes every way into the Vault - the Chats header control, Save to
@@ -309,6 +320,30 @@ public final class Prefs {
     public static void setVaultSort(Context c, OrbitVaultStore.Sort sort) {
         get(c).edit().putString(VAULT_SORT,
                 (sort == null ? OrbitVaultStore.Sort.NEWEST : sort).id).apply();
+    }
+
+    /**
+     * The type and source the Vault is currently narrowed to, with no query.
+     *
+     * <p>The query is deliberately not stored. A search is something the user is doing right now
+     * and re-reading it out of a preference days later would reopen the Vault already hiding most
+     * of itself with no obvious reason why; a type chip is visible on the screen that is applying
+     * it. An unreadable or withdrawn value reads as All, so nothing can strand the collection.
+     */
+    public static OrbitVaultFilter vaultFilter(Context c) {
+        return new OrbitVaultFilter(
+                OrbitVaultFilter.Type.fromId(get(c).getString(VAULT_TYPE_FILTER,
+                        OrbitVaultFilter.Type.ALL.id)),
+                get(c).getString(VAULT_SOURCE_FILTER, ""),
+                "");
+    }
+
+    public static void setVaultFilter(Context c, OrbitVaultFilter filter) {
+        OrbitVaultFilter applied = filter == null ? OrbitVaultFilter.NONE : filter;
+        get(c).edit()
+                .putString(VAULT_TYPE_FILTER, applied.type.id)
+                .putString(VAULT_SOURCE_FILTER, applied.source)
+                .apply();
     }
 
     public static boolean speak(Context c) { return get(c).getBoolean(SPEAK, true); }

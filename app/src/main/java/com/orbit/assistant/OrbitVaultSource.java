@@ -47,7 +47,41 @@ public final class OrbitVaultSource {
     /** The prefix a page saved from Orbit's own document viewer carries. */
     public static final String DOCUMENT = "Document";
 
+    /**
+     * Every source a saved item may be filtered by, in the order the filter offers them.
+     *
+     * <p>The same closed list the constants above declare, written once so the filter cannot
+     * invent a seventh source or quietly drop one when a save route is added. A shaped document
+     * source collapses to {@link #DOCUMENT} here: "the pages I kept" is the question somebody
+     * actually asks, and one filter per page number would be absurd.
+     */
+    public static final String[] FILTERABLE = {
+            QUICK_CAPTURE, CLIPBOARD, PHOTO, SHARED, SELECTED_TEXT, SCREEN_SELECTION,
+            ORBIT_REPLY, DOCUMENT};
+
     private OrbitVaultSource() {}
+
+    /**
+     * The canonical source this label belongs to, or empty when Orbit did not write it.
+     *
+     * <p>The one place a stored source string is turned back into something Orbit will act on, and
+     * it is deliberately strict: a label from the closed vocabulary maps to itself, "Document ·
+     * Page 7" maps to {@link #DOCUMENT}, and anything else - a hand-edited store, a restored backup
+     * written by some other build, a string that arrived from another app - maps to nothing at all.
+     * Filtering can therefore never be driven by a word Orbit did not choose.
+     *
+     * <p>It is not a gate on storage. An item whose source Orbit no longer recognises keeps that
+     * source, keeps its place in the Vault, and is simply not offered as a source to filter by.
+     */
+    public static String family(String value) {
+        if (value == null) return "";
+        String source = value.trim();
+        if (source.isEmpty()) return "";
+        for (String known : FILTERABLE) {
+            if (known.equals(source)) return known;
+        }
+        return isCanonical(source) ? DOCUMENT : "";
+    }
 
     /**
      * "Document · Page 7", the line shown under a saved page.

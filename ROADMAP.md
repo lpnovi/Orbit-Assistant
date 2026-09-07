@@ -1,5 +1,121 @@
 # Orbit roadmap
 
+This file has two halves and they are not the same thing. **The plan is at the top.** Everything
+below `Development history` is the record of how Orbit got here, kept because the reasoning in it is
+often still useful, and it is not a statement about what happens next. `CHANGELOG.md` remains the
+canonical record of what actually shipped.
+
+---
+
+## Current
+
+### `0.7.8.4-beta.4` - Vault organization and refinement
+
+The last planned feature Beta of the first Orbit Vault line. Beta 3 gave the user many more ways to
+put things in the Vault, which is exactly the condition that makes organization worth building: a
+collection of six items needs none, and a collection built from documents, screenshots, selections
+and shares does.
+
+- **Type filters** across the six kinds a saved item can be: All, Text, Links, Images, Documents and
+  Orbit answers, matched on canonical item types rather than on the words a card happens to draw
+- **Source filtering** over Orbit's own closed source vocabulary, so "things I selected" and "pages
+  I kept" are one choice apart, and no filter can ever be steered by a string another app supplied
+- **Pinning**, one durable boolean on the item, for the handful of things somebody keeps coming back
+  to. No folder, no collection, no second list, and no change to any timestamp
+- **Search, filters and sort compose.** One reading path answers all four questions at once, and the
+  empty state says which of them found nothing rather than claiming the Vault is empty
+- **A compact Screen Selection Vault control**, replacing Beta 3's full-width row and giving that
+  band of the screen back to the selection itself
+- **Both roadmaps rebuilt**, which is this section
+
+Deliberately not in Beta 4: folders, tags, collections, smart collections, AI organization, semantic
+search, OCR, webpage extraction and summaries.
+
+## Next
+
+### `0.7.8.4` Stable - Orbit Vault
+
+The first complete Orbit Vault release, assuming Beta 4 tests cleanly on a real device. A further
+Beta would only be taken for regressions or release-candidate fixes; no additional feature Beta is
+planned for this line.
+
+## After Vault
+
+### `0.7.8.5` - Rich Answers / Visual Web Results
+
+The next major feature line, and a high priority one. Orbit already answers questions from the web
+and already has an image viewer and a Vault; what it does not do is show the pictures that would
+make some of those answers obviously better.
+
+- Sourced web images shown inline in the answers they genuinely improve, and nowhere else
+- **Structured image result metadata**, never blind trust in whatever Markdown image URL a model
+  happened to write
+- Safe HTTPS fetching, bounded caching, captions, and clear source attribution
+- Tap an inline image to open **Orbit's existing image viewer**; from there, open its real source or
+  **Save to Vault**, keeping the useful source and caption information with the saved item
+- Answer text keeps streaming while images resolve, so nothing waits on a picture
+- The same architecture must also fit provider-generated response images later. A generated image
+  must be clearly distinguished from a sourced web one, and should eventually reach the same viewer
+  and the same Save to Vault path
+
+**Architecture rule.** Rich response images reuse Orbit's existing image-viewer and Vault
+infrastructure. There must not be a second image ecosystem.
+
+### `0.7.8.6` - Smart Vault
+
+After Rich Answers, and deliberately after the Vault has been worth organizing by hand.
+
+- Semantic Vault search and natural-language retrieval
+- OCR for screenshots and images the user explicitly saved
+- Optional webpage and article extraction
+- Optional AI summaries and AI-assisted organization
+- Richer retrieval of saved document content
+
+**Privacy rule.** Smart Vault stays opt-in and explicit. Orbit must never silently upload, index or
+embed somebody's whole Vault.
+
+## Later / parked
+
+Real unfinished ideas that are not the current direction. They are not abandoned, and they are not
+next.
+
+- **Local device actions**, beyond the first allowlist: more actions, short follow-ups through the
+  semantic path, and requests needing more than one action. The foundation shipped in `0.7.8.0`
+- **Calendar awareness**: reading the day back, and changing or removing events Orbit added
+- **Routine branching**: conditions beyond time and place, and more than one branch point
+- **Stronger Custom Commands**, accepting variation and detail beyond exact wording
+- **Deeper Android actions** through supported Android surfaces
+- **More Orbit Local models**, sized to different phones
+- **Edit & resend**, returning once editing and resending is dependable
+- **Cook with Orbit** and the hands-busy principle: an explicit cooking session, kitchen hands-free
+  voice, recipe intelligence, food-safety care, and optional Orbit-managed timers with the system
+  Clock app permanently kept as the default owner of timers
+- **Hands-busy help beyond cooking**: repairs, cleaning, assembly, and other guided tasks
+- **OpenRouter chat**, deferred until there is a configured account to validate it against. The
+  secure setup groundwork and Keystore-only key storage remain intact
+- **Hybrid Auto**: automatic local/cloud routing chosen from capability, task and availability
+- **Proactive screen intelligence**, transparent and controllable
+- Still ahead for the Vault itself: cloud sync and shared Vaults, Routine and Extension access, and
+  a full Side-button Vault browser
+
+## 1.0 direction
+
+- Reliable daily-driver overlay and chat experience
+- Strong privacy controls and predictable automation behavior
+- Fast draft/research/help flows that feel polished, not experimental
+- Routines and context tools mature enough to trust every day
+
+---
+
+# Development history
+
+Everything below this line is historical. It records what was planned, why, and what shipped, and
+several of its arguments are still worth reading. **None of it is a statement of current priority**,
+including any section that still uses words like "near-term" or "next up" in its own local context.
+The active plan is at the top of this file, and the in-app Roadmap in `RoadmapActivity` shows the
+same three milestones to users.
+
+
 ## Completed 0.5 personalization and context intelligence
 
 ### 0.5.5
@@ -1338,34 +1454,52 @@ collections, semantic search, OCR, webpage extraction, AI summaries, AI organiza
 categorization. Nothing became automatic: no PDF, screenshot or selection is ever saved without a
 tap, no saved item is searched during a conversation, and no saved link is inspected.
 
-# Next
-
-## Orbit Vault, Beta 4 - organization and refinement
+**What Beta 4 ships - organization, and only organization**
 
 Beta 3 gave the user many more ways to put things in the Vault, which is exactly the condition that
-makes organization worth building: a collection of six items needs none, and a collection built from
-documents, screenshots, selections and shares does. Beta 4 is that release, and only that.
+makes organization worth building. Beta 4 is that release and nothing else, and the shape of it is
+deliberately small: a collection is easier to use because it holds more, not because it has become a
+filing system.
 
-- Type and source filters, so "the pages I saved" and "things I selected" are one tap apart
-- Pinning, for the handful of items somebody keeps coming back to
-- A better search and filter experience, building on the local search Beta 2 shipped
-- A recent-items section, if real use shows the newest-first list is not already enough
-- Phone and tablet polish driven by how the collection actually looks once it is full
+- **Type filters** on the Vault's own chip row - All, Text, Links, Images, Documents, Orbit - decided
+  on the canonical item types rather than on the words a card draws, so rewording a label tomorrow
+  cannot silently empty a filter
+- **Source filtering** as a secondary, compact control rather than a second permanent row. It offers
+  only the canonical sources this device's Vault actually contains, resolved through
+  `OrbitVaultSource`, so no filter can ever be driven by a string another app supplied
+- **Search, type, source and sort compose** through one reading path, `OrbitVaultStore.browse`. A
+  narrowed Vault is one pass over one list with one predicate, not four rules that drift apart
+- **Truthful empty states.** A Vault with nothing in it, a search with no results, and a filter with
+  no matches are three different situations with three different next steps, and the screen says
+  which one it is instead of claiming an occupied Vault is empty
+- **Pinning**: one durable boolean on the item, backed up, restored, and absent from every earlier
+  document, so every Beta 1, Beta 2 and Beta 3 item loads unpinned with nothing migrated. Pinning is
+  not an edit and never moves a timestamp
+- **A Pinned section** above the ordinary results, drawn from the same filtered and searched list,
+  so pinned items respect the active filter and appear in exactly one of the two sections
+- **Filter state survives opening an item**, because throwing away the narrowing somebody just did
+  is the fastest way to make narrowing not worth doing
+- **A compact Screen Selection Vault action.** Beta 3's full-width Save to Vault row read correctly
+  and cost an entire band of the editor; the control is now an icon and one word beside the two
+  actions that finish the editor, and the selection preview has that band back
 
-**Still after that, not in Beta 4**: Smart Vault. Semantic search, OCR, webpage extraction and any
-AI-assisted organization remain future work, deliberately after the initial Stable Vault release -
-the Vault has to be worth organizing by hand before it is worth organizing by model.
+**Deliberately not in Beta 4**: folders, nested folders, manual tags, smart tags, collections, smart
+collections, a separate Recent section, semantic search, OCR, webpage extraction, AI summaries and
+AI-assisted organization. Organization in this release is entirely local and entirely explicit: no
+provider is contacted to filter, search, pin or open the Vault, and nothing is indexed in advance.
 
-Also still ahead, unchanged: cloud sync and shared Vaults, Routine and Extension access to the
-Vault, and a full Side-button Vault browser.
-
-# Later
+## Historical planning context
 
 ## Future direction
 
 The in-app Roadmap in `RoadmapActivity` is future-only and is audited against this history whenever
 it changes. Anything released belongs to the sections above and to What's New, never to the list
 below.
+
+**This section is historical.** It records the direction as it stood through the 0.7.7 and early
+0.7.8 lines. The current plan - Vault, then Rich Answers, then Smart Vault - is at the top of this
+file, and `OrbitRoadmap` holds those three milestone names so this document and the in-app page
+cannot drift apart about them again.
 
 ### 0.7.7 development line — hybrid, provider-agnostic AI
 
@@ -1868,14 +2002,19 @@ Shopping lists from an active recipe, combining ingredients across recipes, save
 awareness, "what can I make with what I have". Not built until real use shows they earn their
 place. Orbit should first be excellent *during* cooking rather than become a meal planner.
 
-### Next up
+### Historical near-term order (superseded)
+
+The order below was the plan for the 0.7.7 line. It is kept for the reasoning in it and is no
+longer current: the active plan is Vault, then Rich Answers, then Smart Vault, at the top of this
+file. Everything still unfinished here is listed under **Later / parked** there.
+
 - Local device actions, beyond the first allowlist: more actions, short follow-ups through the
   semantic path, and requests that need more than one action. The foundation shipped in
   `0.7.8.0-beta.1`
 - Conditions beyond time and location, and more than one branch point in a single routine
 - Cook with Orbit: an explicit temporary cooking session with step state, quantities, and timers
 
-### Planned
+### Historically planned (superseded)
 - Kitchen hands-free voice inside an active cooking session
 - Recipe intelligence: extraction, whole-recipe scaling, substitutions, and sequencing
 - More local models, sized to different phones and needs
@@ -1886,18 +2025,18 @@ place. Orbit should first be excellent *during* cooking rather than become a mea
   kept as the default owner of timers
 - Food-safety assistance, designed conservatively because it affects health
 
-### Deferred
+### Historically deferred (still deferred)
 - OpenRouter chat, until a configured account is available to validate it on a real device. The
   secure setup groundwork and Keystore-only key storage remain intact
 
-### Exploring
+### Historically exploratory
 - Hybrid Auto: automatic local/cloud routing chosen from capability, task, and availability
 - Proactive screen intelligence
 - Image retrieval integrations with safe sourcing and attribution
 - Hands-busy assistance beyond cooking: repairs, cleaning, assembly, and other guided tasks
 - Grocery lists, saved recipes, and pantry awareness, only if real use shows they earn their place
 
-## 1.0 direction
+## 1.0 direction (restated at the top of this file)
 - Reliable daily-driver overlay and chat experience
 - Strong privacy controls and predictable automation behavior
 - Fast draft/research/help flows that feel polished, not experimental

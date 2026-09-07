@@ -51,6 +51,9 @@ public final class OrbitVaultItemActivity extends Activity {
     static final String ACTION_EDIT = "Edit";
     static final String ACTION_RENAME = "Rename";
     static final String ACTION_DELETE = "Delete";
+    /** The header toggle, in the same two words the Vault list uses. */
+    static final String ACTION_PIN = "Pin";
+    static final String ACTION_UNPIN = "Unpin";
 
     /**
      * How wide the action area is allowed to become.
@@ -207,7 +210,41 @@ public final class OrbitVaultItemActivity extends Activity {
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
         titleLp.setMargins(UiKit.dp(this, 14), 0, 0, UiKit.dp(this, 6));
         top.addView(titles, titleLp);
+
+        // Pinning belongs beside the item's name rather than in the action row below, because it
+        // is a statement about this item's place in the collection rather than something done with
+        // its content. It also keeps the utility row at three controls on a phone.
+        if (item != null) {
+            ImageButton pin = iconButton(R.drawable.ic_pin,
+                    (item.pinned ? ACTION_UNPIN : ACTION_PIN) + " this saved item");
+            pin.setSelected(item.pinned);
+            // The filled state says pinned without needing a second glyph, and the description
+            // above already says which of the two a tap will do.
+            pin.setBackground(item.pinned
+                    ? UiKit.ripple(UiKit.accent(this), UiKit.onAccent(this), 18, this)
+                    : UiKit.ripple(UiKit.SURFACE, UiKit.accent(this), 18, this));
+            pin.setImageTintList(ColorStateList.valueOf(
+                    item.pinned ? UiKit.onAccent(this) : UiKit.accent(this)));
+            pin.setOnClickListener(v -> togglePin(item));
+            top.addView(pin, new LinearLayout.LayoutParams(UiKit.dp(this, 48), UiKit.dp(this, 48)));
+        }
         return top;
+    }
+
+    /**
+     * Pins or unpins this item, and redraws the page.
+     *
+     * <p>The store carries every other field across untouched, including both timestamps, so this
+     * screen shows the same saved date and the same edited line afterwards as it did before.
+     */
+    private void togglePin(OrbitVaultItem item) {
+        boolean wanted = !item.pinned;
+        if (!OrbitVaultStore.setPinned(this, item.id, wanted)) {
+            Toast.makeText(this, "Orbit could not update that item", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Toast.makeText(this, wanted ? "Pinned" : "Unpinned", Toast.LENGTH_SHORT).show();
+        rebuild();
     }
 
     /**

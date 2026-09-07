@@ -75,7 +75,7 @@ public final class RoadmapActivity extends Activity {
         page.addView(header);
 
         TextView intro = UiKit.text(this,
-                "Orbit's roadmap is a direction, not a promise of dates or release numbers. Shipped features stay in What's New; this page remains future-only.",
+                "Orbit's roadmap is a direction, not a promise of dates or release numbers. It starts with what is being built now. Shipped features stay in What's New; this page remains future-only.",
                 13, UiKit.MUTED, false);
         intro.setLineSpacing(0, 1.14f);
         LinearLayout.LayoutParams introLp = new LinearLayout.LayoutParams(
@@ -83,48 +83,44 @@ public final class RoadmapActivity extends Activity {
         introLp.setMargins(UiKit.dp(this, 3), UiKit.dp(this, 18), UiKit.dp(this, 3), 0);
         page.addView(intro, introLp);
 
-        // Future-only, and audited against release history each time it changes. Three entries left
-        // in v0.7.4.2 because the work they described had already shipped: natural-language Routine
-        // creation as Create with Orbit in the 0.7.3 series, automation history as Routine Run
-        // history, and quick access as widgets, tiles and Custom Commands. A fourth was rewritten in
-        // v0.7.5.0, which shipped IF / ELSE branching, so what is listed now is the branching work
-        // that genuinely remains. A fifth left in v0.7.6.0: conversation-aware voice follow-ups
-        // shipped as Smart follow-ups. Shipped work belongs in What's New, never here.
+        // Future-only, and audited against release history each time it changes. Everything Orbit
+        // has actually released belongs to What's New and to CHANGELOG.md, never here.
         //
-        // Two more entries left in v0.7.7.0, which shipped provider choice and the first Orbit
-        // Local release: "Choice of AI provider" and the old planned "Orbit Local" wording are now
-        // What's New material. What remains here is the genuinely unfinished part of that line —
-        // finishing OpenRouter chat, teaching the local model Orbit's device actions, and the
-        // temporarily withdrawn Edit & resend action, which returns once resending is dependable.
+        // Rebuilt in v0.7.8.4-beta.4. The page had drifted badly: it still opened with 0.7.7-era
+        // priorities under NEXT UP while the whole project had moved on to Orbit Vault, so a user
+        // reading it came away with a confident and wrong idea of what Orbit was working on. The
+        // shape is now the same shape ROADMAP.md uses - what is being built, what is next, what
+        // follows it, and what is genuinely further out - and the three active milestone names are
+        // read from OrbitRoadmap so the two documents cannot silently disagree about them again.
         //
-        // The cooking entries added in v0.7.7.3 are future-only by construction. That release
-        // shipped the deterministic kitchen maths - conversions, fractions, scaling, better timer
-        // labels - and none of it is described here. What is listed is the part that does not
-        // exist yet: the cooking session itself, its hands-free vocabulary, and the optional
-        // Orbit-owned timers that Android's Clock app is deliberately still the default for.
-        //
-        // One more entry left in v0.7.7.5, which promoted Modular Orbit Local from Beta to Stable.
-        // "Modular Orbit Local" is now shipped work and belongs to What's New, so only the part of
-        // that line which does not exist yet - teaching Orbit Local Orbit's device actions -
-        // remains listed below.
-        //
-        // v0.7.7.7 shipped Orbit writing calendar events itself, so adding a schedule is What's
-        // New material and is not offered here. What is listed below is only the part of calendar
-        // work that genuinely does not exist yet: reading your calendar back as context, and
-        // changing or removing events Orbit created. That release never touches an existing event.
-        addGroup(page, "NEXT UP", new String[][]{
+        // Older entries were not deleted. Local device actions, branching conditions, the cooking
+        // session, Orbit-managed timers, OpenRouter chat and the rest are all real unfinished work
+        // and are still listed; they have simply stopped being presented as the next thing to
+        // happen, which they had not been for several releases.
+        addGroup(page, "NOW", new String[][]{
+                {OrbitRoadmap.CURRENT, "Making a growing Vault easy to navigate: filters by kind "
+                        + "and source, pinning for the things you keep coming back to, and search "
+                        + "that works with both."}
+        });
+        addGroup(page, "NEXT", new String[][]{
+                {OrbitRoadmap.NEXT, "Useful, clearly sourced images inside web answers, opening in "
+                        + "Orbit's own image viewer with Save to Vault, and never shown when they "
+                        + "add nothing."},
+                {OrbitRoadmap.AFTER, "Making saved things easier to find and understand, with "
+                        + "optional semantic search, text read from images you saved, and richer "
+                        + "retrieval of saved pages. Always explicit, never automatic."}
+        });
+        addGroup(page, "LATER", new String[][]{
                 {"Local device actions", "Growing what Orbit Local can act on by itself, beyond the first safe set of controls it understands today."},
                 {"Calendar awareness", "Orbit reading your day back to you, and changing or removing events it added for you."},
                 {"More branch points & conditions", "Several decision points in one Routine, and conditions beyond time and place."},
-                {"Cook with Orbit", "A cooking session you start on purpose and end when you're done, following a recipe with you step by step."}
-        });
-        addGroup(page, "PLANNED", new String[][]{
-                {"Kitchen hands-free", "Short spoken commands while cooking, on the Voice you already use: next, back, repeat, how much."},
-                {"Recipe intelligence", "Reading a whole recipe, scaling all of it at once, suggesting substitutions and a sensible order of work."},
+                {"Stronger Custom Commands", "Personal phrases that accept variation and detail, beyond today's exact wording."},
+                {"Deeper Android actions", "Broader device controls through supported Android surfaces."},
                 {"More local models", "A choice of on-device models sized to different phones and needs."},
                 {"Edit & resend, reliably", "The message action returns once editing and resending an earlier message is dependable."},
-                {"Deeper Android actions", "Broader device controls through supported Android surfaces."},
-                {"Stronger Custom Commands", "Personal phrases that accept variation and detail, beyond today's exact wording."},
+                {"Cook with Orbit", "A cooking session you start on purpose and end when you're done, following a recipe with you step by step."},
+                {"Kitchen hands-free", "Short spoken commands while cooking, on the Voice you already use: next, back, repeat, how much."},
+                {"Recipe intelligence", "Reading a whole recipe, scaling all of it at once, suggesting substitutions and a sensible order of work."},
                 {"Orbit-managed timers", "An optional alternative to your Clock app for several named timers at once. Off by default; your Clock app stays."}
         });
         addGroup(page, "DEFERRED", new String[][]{
@@ -133,7 +129,6 @@ public final class RoadmapActivity extends Activity {
         addGroup(page, "EXPLORING", new String[][]{
                 {"Hybrid Auto", "Orbit choosing on-device or cloud by itself, from the task, what is available, and your preference."},
                 {"Proactive screen intelligence", "Helpful context-aware assistance that remains transparent and controllable."},
-                {"Image retrieval integrations", "Purpose-built image discovery with safe sources and clear attribution."},
                 {"Hands-busy help beyond cooking", "The same guided sessions for repairs, cleaning, assembly, and anything else done with full hands."},
                 {"Food safety guidance", "Careful answers on cooking temperatures, storage and reheating, written to be trustworthy rather than alarming."}
         });
