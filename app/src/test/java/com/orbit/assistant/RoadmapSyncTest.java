@@ -145,7 +145,11 @@ public final class RoadmapSyncTest {
         String file = markdown();
         int at = file.indexOf(OrbitRoadmap.CURRENT);
         assertTrue(at >= 0);
-        String section = file.substring(at, Math.min(file.length(), at + 2600));
+        // Bounded by the next release heading rather than by a character count. The section grows
+        // as each Beta records what it shipped, and a fixed window quietly stops covering the
+        // commitments it was written to protect.
+        int end = file.indexOf("## Next", at);
+        String section = file.substring(at, end > at ? end : file.length());
         assertTrue("inline images must open in the image viewer Orbit already has",
                 section.contains("image viewer"));
         assertTrue("and reach the Vault through Save to Vault",

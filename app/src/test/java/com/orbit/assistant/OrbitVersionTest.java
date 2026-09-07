@@ -147,23 +147,23 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * The 0.7.8.5 Rich Answers line opens as a Beta, and must be published as one.
+     * The 0.7.8.5 Rich Answers line continues as a Beta, and must be published as one.
      *
-     * <p>Beta 1 brings sourced web images inside answers, Settings search, and optional GPT-6
-     * Astra. It follows the Stable 0.7.8.4 Vault release, so the guard runs in the Beta direction
-     * again: a prerelease must carry prerelease metadata, must produce a prerelease tag, and must
-     * never be published to the Stable channel by accident.
+     * <p>Beta 2 is the real-device follow-up to Beta 1: the image transport now survives the
+     * messy public web, and nothing about the release channel changed. A prerelease must carry
+     * prerelease metadata, must produce a prerelease tag, and must never be published to the
+     * Stable channel by accident.
      */
-    @Test public void thisBuildIsRichAnswersBetaOne() {
+    @Test public void thisBuildIsRichAnswersBetaTwo() {
         String version = BuildConfig.VERSION_NAME;
         assertTrue(OrbitVersion.installedIsBeta());
         assertTrue(OrbitVersion.isBeta(version));
         assertFalse(OrbitVersion.isStable(version));
         assertEquals("0.7.8.5", OrbitVersion.baseVersion(version));
 
-        assertEquals("this is the first Beta of the line", 1, OrbitVersion.betaNumber(version));
-        assertEquals("Orbit Assistant v0.7.8.5 Beta 1", OrbitVersion.releaseTitle(version));
-        assertEquals("v0.7.8.5-beta.1", OrbitVersion.tagFor(version));
+        assertEquals("this is the second Beta of the line", 2, OrbitVersion.betaNumber(version));
+        assertEquals("Orbit Assistant v0.7.8.5 Beta 2", OrbitVersion.releaseTitle(version));
+        assertEquals("v0.7.8.5-beta.2", OrbitVersion.tagFor(version));
         assertTrue("the release workflow must publish it as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
         assertFalse("and never as Stable",
@@ -172,13 +172,15 @@ public final class OrbitVersionTest {
                 OrbitVersion.compareVersions(version, "0.7.8.4") > 0);
         assertTrue("and every Beta of that line",
                 OrbitVersion.compareVersions(version, "0.7.8.4-beta.6") > 0);
+        assertTrue("and the Beta of its own line that it replaces",
+                OrbitVersion.compareVersions(version, "0.7.8.5-beta.1") > 0);
         assertTrue("while its own Stable release will outrank it",
                 OrbitVersion.compareVersions("0.7.8.5", version) > 0);
     }
 
-    /** Beta 1 must supersede the Stable 0.7.8.4 build published as versionCode 777. */
-    @Test public void thisBuildOutranksThePublishedStableItFollows() {
-        assertTrue("Beta 1 must supersede v0.7.8.4 published as versionCode 777",
-                BuildConfig.VERSION_CODE > 777);
+    /** Beta 2 must supersede Beta 1, published as versionCode 778. */
+    @Test public void thisBuildOutranksThePublishedBetaItFollows() {
+        assertTrue("Beta 2 must supersede v0.7.8.5-beta.1 published as versionCode 778",
+                BuildConfig.VERSION_CODE > 778);
     }
 }

@@ -37,6 +37,17 @@ final class RichAnswerPageFetcher {
     /** Content types a page's markup can arrive as. Anything else is not a page. */
     private static final String[] HTML_TYPES = {"text/html", "application/xhtml"};
 
+    /**
+     * How Orbit identifies itself, truthfully, and identically to the image loader.
+     *
+     * <p>Not a browser and never claiming to be one. It names the app, its version and a contact
+     * address, which is what large public hosts ask of an automated client and what stops an
+     * anonymous request being refused before it is even considered.
+     */
+    static final String USER_AGENT =
+            "OrbitAssistant/" + BuildConfig.VERSION_NAME
+                    + " (Android; +https://github.com/lpnovi/Orbit-Assistant)";
+
     private RichAnswerPageFetcher() {}
 
     /**
@@ -57,16 +68,28 @@ final class RichAnswerPageFetcher {
             }
             HttpURLConnection connection = null;
             try {
-                connection = (HttpURLConnection) URI.create(current).toURL().openConnection();
+                // Encoded exactly as the image loader encodes an address, so a page whose path
+                // carries an accent is reached rather than refused with a raw-byte HTTP 400. The
+                // two fetchers do different jobs with different bounds, but what goes on the wire
+                // and what the policy judges must never be two different strings.
+                String request = RichAnswerUrlPolicy.normalizedForRequest(current);
+                if (request.isEmpty()) return RichAnswerPageMetadata.empty();
+                connection = (HttpURLConnection) URI.create(request).toURL().openConnection();
                 connection.setInstanceFollowRedirects(false);
                 connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
                 connection.setReadTimeout(READ_TIMEOUT_MS);
                 connection.setRequestMethod("GET");
                 connection.setRequestProperty("Accept", "text/html,application/xhtml+xml");
                 connection.setRequestProperty("Accept-Language", "en");
-                connection.setRequestProperty("User-Agent", "Orbit-Assistant-Preview/1.0");
-                // Explicitly emptied rather than merely not set: a platform cookie handler can
-                // otherwise attach whatever this device happens to hold for the host.
+                // The same truthful identification the image loader sends. Several large public
+                // hosts refuse an anonymous or unrecognised client outright, and being one
+                // recognisable, contactable agent everywhere is both politer and more reliable
+                // than being two.
+                connection.setRequestProperty("User-Agent", USER_AGENT);
+                // Explicitly emptied rather than merely not set. A JVM-wide CookieHandler would
+                // otherwise attach whatever this device happens to hold for the host, and a
+                // metadata read must carry nothing identifying. Verified against real public hosts
+                // as part of the Beta 2 diagnosis: it is not what any of them were refusing.
                 connection.setRequestProperty("Cookie", "");
                 connection.setUseCaches(false);
                 connection.setDoInput(true);

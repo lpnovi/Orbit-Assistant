@@ -102,7 +102,14 @@ public final class RichAnswerUrlPolicy {
     public static String redirectTarget(String from, String location) {
         if (location == null || location.trim().isEmpty()) return "";
         try {
-            String resolved = URI.create(from).resolve(location.trim()).toString();
+            // Both sides are normalised first. A {@code Location} header is written by somebody
+            // else and routinely contains the same unencoded characters a filename does, so
+            // resolving it raw threw before it could ever be judged - which read as a redirect
+            // being blocked when nothing unsafe had happened at all.
+            String base = normalizedForRequest(from);
+            String target = normalizedForRequest(location);
+            if (base.isEmpty() || target.isEmpty()) return "";
+            String resolved = URI.create(base).resolve(target).toString();
             return hasSafeFetchSyntax(resolved) ? resolved : "";
         } catch (Exception ignored) {
             return "";
@@ -229,14 +236,80 @@ public final class RichAnswerUrlPolicy {
         }
     }
 
-    private static URI parse(String value) {
+    /**
+     * The address Orbit will actually put on the wire, percent-encoded where it has to be.
+     *
+     * <p>This exists because of a real failure on a real device. Java sends a URL's path bytes
+     * more or less as it finds them, so an ordinary Wikimedia filename containing an accent or a
+     * non-Latin character produced a raw high byte in the request line and the CDN answered
+     * <b>HTTP 400</b> - a legitimate public picture, refused for a reason that had nothing to do
+     * with safety. Browsers encode those characters before sending; Orbit now does too.
+     *
+     * <p><b>It is an encoder, not a relaxation.</b> The characters that make request-splitting
+     * possible - carriage return, line feed, tab, every other control character - are still refused
+     * outright rather than encoded, because a URL containing one is not a URL somebody meant to
+     * write. What gets encoded is the ordinary stuff a person types into a filename: a space, an
+     * accent, a non-Latin script. An escape that is already there is left exactly as it is, so a
+     * correctly written {@code %28} never becomes {@code %2528}.
+     *
+     * @return the encoded address, or empty when this is not something Orbit will fetch.
+     */
+    public static String normalizedForRequest(String value) {
         String text = value == null ? "" : value.trim();
-        if (text.isEmpty() || text.length() > RichAnswerImage.MAX_URL_CHARS) return null;
-        // Whitespace inside a URL is not a URL. Rejecting it here rather than letting a parser
-        // normalise it away keeps a header-splitting attempt from ever becoming a request.
+        if (text.isEmpty() || text.length() > RichAnswerImage.MAX_URL_CHARS) return "";
+        StringBuilder out = new StringBuilder(text.length() + 16);
         for (int i = 0; i < text.length(); i++) {
-            if (Character.isWhitespace(text.charAt(i)) || text.charAt(i) < 0x20) return null;
+            char c = text.charAt(i);
+            // Control characters, including CR, LF and tab. Never encoded, never sent: a request
+            // line cannot be split by something that was refused before it got here.
+            if (c < 0x20 || c == 0x7f) return "";
+            if (c == ' ') { out.append("%20"); continue; }
+            if (c == '%') {
+                // An escape that is already well formed is preserved untouched; a stray percent
+                // sign is encoded so it cannot be read as the start of one.
+                if (i + 2 < text.length() && isHex(text.charAt(i + 1)) && isHex(text.charAt(i + 2))) {
+                    out.append(text, i, i + 3);
+                    i += 2;
+                } else {
+                    out.append("%25");
+                }
+                continue;
+            }
+            if (c < 0x80) { out.append(c); continue; }
+            // Everything above ASCII is written as its UTF-8 bytes, which is what a browser sends
+            // and what a CDN expects to receive.
+            out.append(percentEncodeUtf8(text.substring(i, i + charCountAt(text, i))));
+            i += charCountAt(text, i) - 1;
         }
+        return out.toString();
+    }
+
+    private static int charCountAt(String text, int index) {
+        return Character.charCount(text.codePointAt(index));
+    }
+
+    private static boolean isHex(char c) {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+    }
+
+    private static String percentEncodeUtf8(String value) {
+        StringBuilder out = new StringBuilder();
+        for (byte b : value.getBytes(java.nio.charset.StandardCharsets.UTF_8)) {
+            out.append('%').append(String.format(Locale.US, "%02X", b & 0xff));
+        }
+        return out.toString();
+    }
+
+    /**
+     * Parses an address for judging, after normalising what a browser would normalise.
+     *
+     * <p>The normalisation happens first so that the decision Orbit makes about an address is the
+     * decision about the address it is going to send. Judging the raw text and then sending
+     * something slightly different is how a check and a request come to disagree.
+     */
+    private static URI parse(String value) {
+        String text = normalizedForRequest(value);
+        if (text.isEmpty()) return null;
         try {
             URI uri = new URI(text);
             return uri.isAbsolute() ? uri : null;

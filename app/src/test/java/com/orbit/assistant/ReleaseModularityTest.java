@@ -185,14 +185,14 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * Rich Answers opens a new Beta line after the Stable Vault release.
+     * Rich Answers continues as a Beta line after the Stable Vault release.
      *
-     * <p>Beta 1 adds sourced web images inside answers, Settings search, and optional GPT-6 Astra.
-     * All three want real-device testing before any of them is called finished, so this ships as a
-     * prerelease and the guard runs in the Beta direction: prerelease metadata must be present, and
-     * the changelog entry the release workflow builds its notes from must already exist.
+     * <p>Beta 2 is the real-device fix pass for Beta 1's image transport. It stays a prerelease for
+     * the same reason Beta 1 was one - the point of it is to be tested on a real phone against the
+     * real web - so the guard still runs in the Beta direction: prerelease metadata must be
+     * present, and the changelog entry the release workflow builds its notes from must exist.
      */
-    @Test public void thisReleaseIsRichAnswersBetaOne() {
+    @Test public void thisReleaseIsRichAnswersBeta() {
         assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
                 OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
         assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));

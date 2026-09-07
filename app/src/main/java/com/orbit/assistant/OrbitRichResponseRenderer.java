@@ -99,6 +99,12 @@ public final class OrbitRichResponseRenderer {
         boolean anyRich = RichAnswerPlacement.hasAnyImage(richImages);
         for (int i = 0; i < blocks.size(); i++) {
             ResponseBlocks.Block block = blocks.get(i);
+            // A model that wrote the same picture Orbit already attached as a structured one must
+            // not produce two of it. The Markdown block is skipped rather than the answer being
+            // rewritten: what is stored, copied, spoken and sent back as history is untouched, and
+            // only this one drawing of it is suppressed.
+            if (block.kind == ResponseBlocks.Kind.IMAGE
+                    && duplicatesRichImage(block, richImages)) continue;
             boolean asImage = block.kind == ResponseBlocks.Kind.IMAGE && images < MAX_IMAGES;
             if (block.kind == ResponseBlocks.Kind.IMAGE) images++;
             addBlock(out, buildBlock(c, block, fill, compact, asImage), c,
@@ -112,6 +118,36 @@ public final class OrbitRichResponseRenderer {
         if (out.getChildCount() == 0) out.addView(text(c, source,
                 chatSize(c, compact ? 14 : 15),
                 foreground, false));
+    }
+
+    /**
+     * Whether a Markdown image block draws the same picture a structured one already has.
+     *
+     * <p>Deliberately an exact address match after normalisation, and nothing cleverer. The
+     * temptation is to match on "the same subject" or "the same host", and both would eventually
+     * hide a second picture that was genuinely different - which is a worse outcome than showing
+     * one twice. Exact equality is a fact rather than a guess, so it can only ever suppress a real
+     * duplicate.
+     *
+     * <p>The answer's own text is never touched by this. Copy, speech, storage and the history sent
+     * back to a model all still contain exactly what the model wrote.
+     */
+    static boolean duplicatesRichImage(ResponseBlocks.Block block,
+                                       java.util.List<RichAnswerImage> richImages) {
+        if (block == null || richImages == null || richImages.isEmpty()) return false;
+        Matcher image = ResponseBlocks.IMAGE.matcher(block.displaySource().trim());
+        if (!image.matches()) return false;
+        String written = RichAnswerUrlPolicy.normalizedForRequest(image.group(2));
+        if (written.isEmpty()) return false;
+        for (RichAnswerImage rich : richImages) {
+            if (rich == null) continue;
+            if (written.equals(RichAnswerUrlPolicy.normalizedForRequest(rich.imageUrl))) return true;
+            // The other real duplicate: the model wrote the source page as though it were the
+            // picture, which is exactly the Commons "File:" shape that produced the failed card
+            // this release exists to fix. Orbit already draws that page's picture properly.
+            if (written.equals(RichAnswerUrlPolicy.normalizedForRequest(rich.sourceUrl))) return true;
+        }
+        return false;
     }
 
     /**

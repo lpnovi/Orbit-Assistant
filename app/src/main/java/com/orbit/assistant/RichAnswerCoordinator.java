@@ -146,28 +146,86 @@ public final class RichAnswerCoordinator {
             RichAnswerPageMetadata.Preview preview = RichAnswerPageFetcher.fetchPreview(page);
             if (!preview.hasImage()) continue;
 
-            String best = "";
-            int bestScore = Integer.MIN_VALUE;
-            for (String candidate : preview.imageUrls) {
-                if (seenImages.contains(candidate)) continue;
-                int score = RichAnswerRelevance.score(candidate, page, preview.description, true);
-                if (score > bestScore) { bestScore = score; best = candidate; }
-            }
-            if (best.isEmpty() || bestScore < 0) continue;
-
-            // Fetched before it is committed to, because a declared preview image can be a
-            // 40-pixel logo, a placeholder, or something that is not an image at all - and the
-            // decoded bounds are the only honest answer to which of those it is.
-            Bitmap bitmap = RemoteImageLoader.fetchForRichAnswer(context, best);
-            if (bitmap == null) continue;
-            seenImages.add(best);
-
             String caption = captionFor(preview);
-            RichAnswerImage image = RichAnswerImage.webSource(best, page, caption, caption, anchor);
-            if (image.isUsable()) found.add(image);
+            RichAnswerImage image = firstUsableCandidate(
+                    context, preview, page, caption, anchor, seenImages);
+            if (image != null) found.add(image);
         }
         return found;
     }
+
+    /**
+     * The first candidate from one page that genuinely fetches and decodes, or null.
+     *
+     * <p>Beta 1 picked the single best-scoring candidate and gave up on the whole page if it
+     * failed, which real-device testing showed to be the wrong shape. A page routinely declares
+     * several images, and the highest-scoring one can be the one that happens to be in a format
+     * this Android version cannot decode, or the one whose CDN answers 403 - while an ordinary
+     * JPEG sat in the same {@code <head>} the entire time. Losing the picture in that situation is
+     * a self-inflicted failure.
+     *
+     * <p>Still strictly bounded. At most {@link #MAX_CANDIDATES_PER_PAGE} attempts, in score order,
+     * each one going through exactly the same URL policy, redirect limit, byte ceiling and decode
+     * bound as the first. There is no retry of a candidate that already failed, so this cannot
+     * become a loop.
+     */
+    static RichAnswerImage firstUsableCandidate(Context context,
+                                                RichAnswerPageMetadata.Preview preview,
+                                                String page, String caption, int anchor,
+                                                Set<String> seenImages) {
+        for (String candidate : rankedCandidates(preview, page, seenImages)) {
+            // Fetched before it is committed to, because a declared preview image can be a
+            // 40-pixel logo, a placeholder, or something that is not an image at all - and the
+            // decoded bounds are the only honest answer to which of those it is.
+            RemoteImageLoader.Result result =
+                    RemoteImageLoader.fetchForRichAnswer(context, candidate);
+            if (!result.loaded()) continue;
+            seenImages.add(candidate);
+            RichAnswerImage image =
+                    RichAnswerImage.webSource(candidate, page, caption, caption, anchor);
+            if (image.isUsable()) return image;
+        }
+        return null;
+    }
+
+    /**
+     * The candidates of one page worth trying, best first.
+     *
+     * <p>Ordered by {@link RichAnswerRelevance#score}, which now folds in whether this device can
+     * decode the format at all: an AVIF on Android 10 sorts below a JPEG rather than winning on
+     * path length and then failing. Anything the scorer refuses outright, and anything already used
+     * by an earlier picture in the same answer, is left out entirely.
+     */
+    static List<String> rankedCandidates(RichAnswerPageMetadata.Preview preview, String page,
+                                         Set<String> seenImages) {
+        List<String> ranked = new ArrayList<>();
+        if (preview == null) return ranked;
+        List<int[]> scored = new ArrayList<>();
+        List<String> urls = new ArrayList<>(preview.imageUrls);
+        for (int i = 0; i < urls.size(); i++) {
+            String candidate = urls.get(i);
+            if (seenImages != null && seenImages.contains(candidate)) continue;
+            int score = RichAnswerRelevance.score(candidate, page, preview.description, true);
+            if (score < 0) continue;
+            scored.add(new int[]{score, i});
+        }
+        // Descending by score, and by declared order when they tie, so the page's own first choice
+        // wins a tie and the ordering is stable between runs.
+        scored.sort((a, b) -> a[0] != b[0] ? Integer.compare(b[0], a[0]) : Integer.compare(a[1], b[1]));
+        for (int[] row : scored) {
+            if (ranked.size() >= MAX_CANDIDATES_PER_PAGE) break;
+            ranked.add(urls.get(row[1]));
+        }
+        return ranked;
+    }
+
+    /**
+     * How many declared images of one page Orbit will actually try to fetch.
+     *
+     * <p>Three. Enough that a page's first choice being unusable does not lose the picture, small
+     * enough that a page declaring nothing usable costs three bounded requests rather than a dozen.
+     */
+    static final int MAX_CANDIDATES_PER_PAGE = 3;
 
     /**
      * The line drawn under a picture: the page's own words for it, trimmed to one clause.

@@ -130,19 +130,61 @@ public final class RichAnswerCardView extends LinearLayout {
         if (ready != null) {
             settle(card, frame, view, resolving, ready, all, image);
         } else {
-            RemoteImageLoader.load(context, image.imageUrl, (bitmap, error) -> {
-                if (bitmap == null) {
-                    // The picture is gone and the attribution is not. Saying where it came from is
-                    // still true, and the answer keeps its shape instead of a hole appearing in it.
-                    resolving.setText(attribution.isEmpty() ? "Image unavailable" : "Image unavailable");
+            RemoteImageLoader.loadDetailed(context, image.imageUrl, result -> {
+                if (!result.loaded()) {
+                    showUnavailable(frame, resolving, image);
                     return;
                 }
-                settle(card, frame, view, resolving, bitmap, all, image);
+                settle(card, frame, view, resolving, result.bitmap, all, image);
             });
         }
 
         UiKit.watchTypography(card);
         return card;
+    }
+
+    /**
+     * The quiet state a picture that would not load settles into.
+     *
+     * <p>Two deliberate differences from the Markdown path's failure card. It offers <b>Open
+     * source</b> rather than the raw file, because for a structured picture Orbit knows the page
+     * the picture belongs to and that page is what a person actually wants - a bare asset on a CDN
+     * is not somewhere to send anybody. And it says nothing about why: the category is recorded for
+     * Diagnostics, and an answer somebody is reading is not the place for a transport error.
+     *
+     * <p>The attribution above it is untouched, because it is still true. The answer keeps its
+     * shape rather than developing a hole where a picture was going to be.
+     */
+    private static void showUnavailable(FrameLayout frame, TextView resolving,
+                                        RichAnswerImage image) {
+        Context context = frame.getContext();
+        boolean openable = RichAnswerUrlPolicy.isOpenableWebUrl(image.sourceUrl);
+        resolving.setText("Image unavailable");
+        if (!openable) return;
+        frame.setClickable(true);
+        frame.setFocusable(true);
+        frame.setContentDescription("Open the page this image came from");
+        frame.setOnClickListener(v -> {
+            UiKit.haptic(v, HapticFeedbackConstants.CLOCK_TICK);
+            // Revalidated at the tap, exactly as the viewer does: a stored address is data, and a
+            // check performed when it was saved is not a check performed now.
+            if (!RichAnswerUrlPolicy.isOpenableWebUrl(image.sourceUrl)) return;
+            try {
+                context.startActivity(new android.content.Intent(
+                        android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse(image.sourceUrl))
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (Exception ignored) {}
+        });
+        UiKit.pressScale(frame);
+        TextView open = UiKit.text(context, "Open source",
+                Prefs.chatTextSp(context, 12), UiKit.accent(context), false);
+        open.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.gravity = Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM;
+        lp.bottomMargin = UiKit.dp(context, 14);
+        frame.addView(open, lp);
     }
 
     /**

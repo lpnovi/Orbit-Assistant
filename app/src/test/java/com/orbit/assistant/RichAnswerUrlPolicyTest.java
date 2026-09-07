@@ -97,10 +97,19 @@ public final class RichAnswerUrlPolicyTest {
     }
 
     /** A URL containing whitespace or a control character is not a URL. */
-    @Test public void whitespaceAndControlCharactersAreRefused() {
-        assertFalse(RichAnswerUrlPolicy.isFetchableImageUrl("https://example.com/a b.jpg"));
+    @Test public void controlCharactersAreRefusedAndSpacesAreEncoded() {
         assertFalse(RichAnswerUrlPolicy.isFetchableImageUrl("https://example.com/x.jpg\nHost: evil"));
         assertFalse(RichAnswerUrlPolicy.isFetchableImageUrl("https://exa\tmple.com/x.jpg"));
+        assertEquals("a splitting attempt is refused rather than escaped", "",
+                RichAnswerUrlPolicy.normalizedForRequest("https://example.com/a\r\nHost:evil"));
+
+        // Beta 1 refused this too, which was safe and wrong. A space in a filename is something
+        // people type and browsers encode; refusing it lost real public pictures for no gain.
+        assertTrue("an ordinary space is encoded, as a browser encodes it",
+                RichAnswerUrlPolicy.isFetchableImageUrl("https://example.com/a b.jpg"));
+        assertEquals("https://example.com/a%20b.jpg",
+                RichAnswerUrlPolicy.normalizedForRequest("https://example.com/a b.jpg"));
+
         assertTrue("surrounding whitespace is trimmed, exactly as any field would trim it",
                 RichAnswerUrlPolicy.isFetchableImageUrl("  https://example.com/x.jpg\r\n"));
         assertFalse(RichAnswerUrlPolicy.isFetchableImageUrl(""));

@@ -778,3 +778,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Saved rich images keep their caption and source page, and appear under a new Rich answer source.
   - Search Orbit Settings to jump straight to the exact control you want.
   - Added optional GPT-6 Astra for eligible ChatGPT accounts, without changing Orbit's Auto routing.
+- **v0.7.8.5-beta.2**: Rich Answer images now load on the real web.
+  - Fixed sourced images failing to appear when the address was a picture's web page rather than the picture itself.
+  - Fixed images failing on filenames containing accents or non-Latin characters.
+  - Orbit now tries another image from the same page when the first one cannot be shown.
+  - Pictures in formats your Android version cannot display are no longer chosen over ones it can.
+  - Damaged cached images are now discarded and fetched again instead of failing every time.
+  - An image that still cannot be shown offers Open source, and Diagnostics reports why.

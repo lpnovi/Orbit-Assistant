@@ -119,12 +119,21 @@ public final class RichAnswerRelevance {
         String lower = imageUrl.toLowerCase(Locale.US);
         if (endsWithAny(lower, REFUSED_EXTENSIONS)) return -1;
         if (containsAny(lower, CHROME_MARKERS)) return -1;
+        // A format this device cannot decode is not a candidate at all. Beta 1 scored an AVIF on
+        // its path and its host like anything else, picked it because those looked good, and then
+        // lost the picture entirely on an Android version where AVIF does not decode - while an
+        // ordinary JPEG sat in the same page. Asked of the device rather than assumed.
+        int tier = RichAnswerImageFormat.tierForUrl(imageUrl);
+        if (tier == RichAnswerImageFormat.TIER_UNSUPPORTED) return -1;
 
         int score = cited ? 40 : 0;
         // A recognisable static raster extension is a strong signal that this is a photograph
         // rather than an interface asset; a URL with no extension at all is common for CDNs and is
         // neither rewarded nor punished.
         if (endsWithAny(pathOf(lower), ALLOWED_EXTENSIONS)) score += 10;
+        // Two candidates that are otherwise equal are separated by how certain their formats are.
+        // This is what puts a JPEG ahead of a HEIC without ever refusing the HEIC outright.
+        if (tier == RichAnswerImageFormat.TIER_UNIVERSAL) score += 8;
         String host = RichAnswerImage.hostOf(sourceUrl);
         if (containsAny(host, BRANDED_PREVIEW_HOSTS)) score -= 25;
         String words = normalize(caption);

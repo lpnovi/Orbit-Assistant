@@ -122,6 +122,31 @@ obviously better. It does now, for the answers a picture genuinely improves and 
 - **Settings search**, described below
 - **Optional GPT-6 Astra**, described below
 
+**Shipped in `0.7.8.5-beta.2` - Rich Answer image compatibility and real-device transport fixes:**
+
+Beta 1 proved the architecture existed. Galaxy S25 Ultra testing proved it did not survive contact
+with the real web: a Northern black widow question produced the right decision, the right card and
+the right attribution, and no picture. Reproducing the exact request found three separate causes,
+none of them the security policy.
+
+- **A page where a picture was expected.** The address was a Wikimedia Commons file page, which
+  correctly answers as HTML, so the loader correctly refused it having asked the wrong question.
+  Orbit now resolves such a page, once, into the preview image it declares - the same bounded,
+  policy-checked read Rich Answers already performs, for every site rather than for one
+- **Addresses are now encoded the way a browser encodes them.** A filename with an accent or a
+  non-Latin character went onto the wire as raw bytes and the CDN answered HTTP 400
+- **Content types are read properly**, including parameters and the ordinary JPEGs that some hosts
+  serve as `application/octet-stream`
+- **Candidate fallback.** A page declaring several images no longer loses its picture because the
+  first one was unusable; up to three are tried, under identical bounds
+- **Codec awareness.** A format this Android version cannot decode is no longer chosen over one it
+  can
+- **Damaged cache entries are discarded** rather than re-downloaded forever
+- **Failure categories.** One line in Diagnostics says whether the last image loaded, or gave
+  HTTP 403, or was not an image at all, without recording any address
+- **Every protection held.** Private and device-local addresses, credentials in URLs, non-web
+  schemes, redirect revalidation and the byte and decode ceilings are all unchanged
+
 **Still ahead in `0.7.8.5`, depending on real-device testing:**
 
 - Richer multi-image presentation, where a comparison genuinely needs two pictures side by side

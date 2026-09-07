@@ -539,7 +539,27 @@ public final class DiagnosticsActivity extends Activity {
                .append(" to ").append(orNone(d.getString("model_fallback_to", "")))
                .append(" at ").append(DateFormat.getDateTimeInstance().format(new Date(fallback)));
         }
+        out.append(richImageReport());
         return out.toString();
+    }
+
+    /**
+     * How the last response image fetch ended.
+     *
+     * <p>Added for Beta 2, because Beta 1 could only ever say "Image could not be loaded" and that
+     * turned out to cover a refused address, a 403, a redirect Orbit would not follow, a page
+     * returned where a picture was expected, and a format the device cannot decode - five very
+     * different problems wearing one sentence.
+     *
+     * <p>A category and a timestamp. No address, no host, no header and no server message: which
+     * picture somebody was looking at is not something Orbit records anywhere, including here.
+     */
+    private String richImageReport() {
+        String outcome = RichAnswerImageStatus.lastOutcome(this);
+        if (outcome == null || outcome.isEmpty()) return "";
+        long at = RichAnswerImageStatus.lastUpdated(this);
+        String when = at > 0L ? " at " + DateFormat.getDateTimeInstance().format(new Date(at)) : "";
+        return "\n  Last rich image: " + outcome + when;
     }
 
     private String screenContext(SharedPreferences d) {

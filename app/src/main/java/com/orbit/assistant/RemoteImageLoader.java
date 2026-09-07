@@ -21,13 +21,125 @@ import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** Bounded, credential-free loader for untrusted public HTTPS response images. */
+/**
+ * The one bounded, credential-free way Orbit fetches a picture from the public web.
+ *
+ * <p>Both image paths come through here - the structured Rich Answer image and the older
+ * model-written Markdown one - and that is deliberate. Two HTTP implementations means two redirect
+ * policies, two MIME rules and two sets of request-forgery checks, and the day they disagree is the
+ * day one of them is wrong. There is one transport, and it is this.
+ *
+ * <p><b>What Beta 2 changed, and why.</b> Beta 1's transport was safe and too literal about the
+ * web. Real-device testing against Wikimedia produced a card reading "Image could not be loaded"
+ * for a picture that was perfectly fine, and reproducing the request exactly showed three separate
+ * causes:
+ *
+ * <ul>
+ *   <li>The address was a Commons <em>file page</em> rather than a raw image, so the server
+ *       correctly answered {@code text/html} and Orbit correctly refused it - having asked the
+ *       wrong question. A page that describes a picture now gets resolved, once, into the picture
+ *       it declares.</li>
+ *   <li>A filename containing an accent or a non-Latin character went onto the wire as raw bytes
+ *       and the CDN answered <b>HTTP 400</b>. Addresses are now encoded the way a browser encodes
+ *       them, in {@link RichAnswerUrlPolicy#normalizedForRequest}.</li>
+ *   <li>A content type carrying parameters, or an ordinary JPEG served as
+ *       {@code application/octet-stream}, was refused for not starting with {@code image/}.</li>
+ * </ul>
+ *
+ * <p><b>None of it weakened the policy.</b> Every fetch still goes through
+ * {@link RichAnswerUrlPolicy}: https only, no credentials, no {@code file:}/{@code content:}/
+ * {@code javascript:}/{@code intent:}, loopback and link-local and RFC1918 and unique-local refused,
+ * literal private addresses refused before DNS, and every redirect hop revalidated against all of
+ * it. A website failing to load was never a reason to open any of that up, and none of it moved.
+ */
 public final class RemoteImageLoader {
+
+    /**
+     * Why a fetch did not produce a picture, in the only words Orbit will say about it.
+     *
+     * <p>Beta 1 had one message for every failure, which is fine for the user and useless for
+     * working out what went wrong on somebody's phone. These are categories rather than
+     * exceptions: each one names a class of outcome, none of them carries a URL, a header, a
+     * server message or anything else from the network, and the two that describe a refusal say so
+     * without describing the address that was refused.
+     */
+    public enum Failure {
+        NONE(""),
+        BLOCKED("Orbit blocked this private or unsafe image address"),
+        REDIRECT_BLOCKED("Redirect blocked"),
+        TOO_MANY_REDIRECTS("Too many redirects"),
+        HTTP_ERROR("Image host refused the request"),
+        NOT_AN_IMAGE("Not an image"),
+        UNSUPPORTED_FORMAT("Unsupported image format"),
+        TOO_LARGE("Image too large"),
+        DECODE_FAILED("Image could not be read"),
+        TIMEOUT("Image host did not respond"),
+        NETWORK("Image could not be loaded");
+
+        /** The short line a surface may show. Never a URL and never a server's own words. */
+        public final String message;
+
+        Failure(String message) { this.message = message; }
+
+        public boolean failed() { return this != NONE; }
+    }
+
+    /** What one fetch produced: a picture, or a reason there is not one. */
+    public static final class Result {
+        public final Bitmap bitmap;
+        public final Failure failure;
+        /**
+         * The HTTP status behind {@link Failure#HTTP_ERROR}, or 0.
+         *
+         * <p>Kept because "403" and "404" mean genuinely different things to somebody testing on a
+         * real device - one is a host refusing Orbit, the other is an address that is simply wrong.
+         */
+        public final int status;
+
+        Result(Bitmap bitmap, Failure failure, int status) {
+            this.bitmap = bitmap;
+            this.failure = failure == null ? Failure.NONE : failure;
+            this.status = status;
+        }
+
+        static Result ok(Bitmap bitmap) { return new Result(bitmap, Failure.NONE, 0); }
+
+        static Result failed(Failure failure) { return new Result(null, failure, 0); }
+
+        static Result http(int status) { return new Result(null, Failure.HTTP_ERROR, status); }
+
+        public boolean loaded() { return bitmap != null && !failure.failed(); }
+
+        /** The line a surface shows, with the status folded in where there is one. */
+        public String describe() {
+            if (!failure.failed()) return "";
+            return status > 0 ? "HTTP " + status : failure.message;
+        }
+    }
+
     public interface Callback { void onComplete(Bitmap bitmap, String error); }
 
     private static final int MAX_BYTES = 8 * 1024 * 1024;
     private static final int MAX_DIMENSION = 1800;
     private static final long MAX_DISK_BYTES = 24L * 1024L * 1024L;
+    /**
+     * How many times one fetch may be handed a web page instead of a picture.
+     *
+     * <p>Exactly one. A page that describes a picture is resolved into that picture; a page that
+     * resolves to another page is somebody's redirect loop wearing a different hat, and Orbit stops.
+     */
+    private static final int MAX_PAGE_RESOLUTIONS = 1;
+
+    /**
+     * How Orbit identifies itself when fetching a picture.
+     *
+     * <p>Truthful, and deliberately not a browser. Several large public hosts - Wikimedia among
+     * them - refuse requests carrying no User-Agent or an anonymous one, and asking for a contact
+     * address in it is a documented condition of using them politely rather than a trick to get
+     * past a filter. Orbit says what it is and where it comes from; it never claims to be Chrome.
+     */
+    private static final String USER_AGENT = RichAnswerPageFetcher.USER_AGENT;
+
     private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(3);
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final LruCache<String, Bitmap> MEMORY = new LruCache<String, Bitmap>(16 * 1024) {
@@ -61,36 +173,25 @@ public final class RemoteImageLoader {
      * Markdown path does not: a picture that turns out to be a 48-pixel icon is refused rather than
      * drawn small, and refusing it needs the decoded bounds. Blocking, and background threads only.
      *
-     * @return the decoded bitmap, or null when the address is refused, the fetch fails, the content
-     *         is not an image, or what came back is too small or too oddly shaped to be worth
-     *         showing. Null is always a clean outcome: the answer keeps its text.
+     * @return the picture, or the category of what went wrong. A failure is always clean: the
+     *         answer keeps its text, and the caller is free to try another candidate.
      */
-    static Bitmap fetchForRichAnswer(Context context, String url) {
-        if (context == null || !RichAnswerUrlPolicy.isFetchableImageUrl(url)) return null;
-        try {
-            Context app = context.getApplicationContext();
-            File cache = cacheFile(app, url);
-            Bitmap bitmap = null;
-            if (cache.isFile() && cache.length() > 0 && cache.length() <= MAX_BYTES) {
-                bitmap = decode(cache);
-                if (bitmap != null) cache.setLastModified(System.currentTimeMillis());
-            }
-            if (bitmap == null) {
-                if (!RichAnswerUrlPolicy.resolvesToPublicHost(url)) return null;
-                byte[] bytes = download(url);
-                try (FileOutputStream output = new FileOutputStream(cache)) { output.write(bytes); }
-                bitmap = decode(cache);
-                trimDiskCache(cache.getParentFile());
-            }
-            if (bitmap == null) return null;
-            if (!RichAnswerRelevance.hasUsefulDimensions(bitmap.getWidth(), bitmap.getHeight())) {
-                return null;
-            }
-            MEMORY.put(url, bitmap);
-            return bitmap;
-        } catch (Exception ignored) {
-            return null;
+    static Result fetchForRichAnswer(Context context, String url) {
+        if (context == null) return Result.failed(Failure.BLOCKED);
+        if (!RichAnswerUrlPolicy.isFetchableImageUrl(url)) return Result.failed(Failure.BLOCKED);
+        Context app = context.getApplicationContext();
+        Result result = fetchPicture(app, url);
+        if (result.loaded() && !RichAnswerRelevance.hasUsefulDimensions(
+                result.bitmap.getWidth(), result.bitmap.getHeight())) {
+            // Not a failure of the transport. The picture arrived and turned out to be an icon or a
+            // banner, which is a judgement about content and belongs with the other content rules.
+            result = Result.failed(Failure.UNSUPPORTED_FORMAT);
         }
+        // The transport already recorded its own outcome; this records the one case it cannot
+        // know about, which is a picture refused for being too small to be worth drawing.
+        if (!result.loaded()) RichAnswerImageStatus.record(app, result);
+        if (result.loaded()) MEMORY.put(url, result.bitmap);
+        return result;
     }
 
     /**
@@ -107,117 +208,439 @@ public final class RemoteImageLoader {
         return memory != null && !memory.isRecycled() ? memory : null;
     }
 
+    /** The asynchronous path both the Markdown renderer and the Rich Answer card draw through. */
     public static void load(Context context, String url, Callback callback) {
-        Bitmap cached = MEMORY.get(url);
-        if (cached != null && !cached.isRecycled()) {
-            MAIN.post(() -> callback.onComplete(cached, ""));
+        loadDetailed(context, url, result ->
+                callback.onComplete(result.bitmap, result.describe()));
+    }
+
+    /** What {@link #load} does, with the failure category kept rather than flattened to a string. */
+    public static void loadDetailed(Context context, String url, java.util.function.Consumer<Result> callback) {
+        Bitmap cached = memoryCached(url);
+        if (cached != null) {
+            MAIN.post(() -> callback.accept(Result.ok(cached)));
             return;
         }
         Context app = context.getApplicationContext();
         EXECUTOR.execute(() -> {
-            Bitmap bitmap = null;
-            String error = "Image could not be loaded";
-            try {
-                if (!isAllowedPublicHttpsUrl(url)) throw new SecurityException("Blocked image address");
-                File cache = cacheFile(app, url);
-                if (cache.isFile() && cache.length() > 0 && cache.length() <= MAX_BYTES) {
-                    bitmap = decode(cache);
-                    if (bitmap != null) cache.setLastModified(System.currentTimeMillis());
-                }
-                if (bitmap == null) {
-                    byte[] bytes = download(url);
-                    try (FileOutputStream output = new FileOutputStream(cache)) { output.write(bytes); }
-                    bitmap = decode(cache);
-                    trimDiskCache(cache.getParentFile());
-                }
-                if (bitmap == null) throw new IllegalArgumentException("Invalid image data");
-                MEMORY.put(url, bitmap);
-                error = "";
-            } catch (SecurityException e) {
-                error = "Orbit blocked this private or unsafe image address";
-            } catch (Exception ignored) {}
-            Bitmap result = bitmap;
-            String finalError = error;
-            MAIN.post(() -> callback.onComplete(result, finalError));
+            Result result = fetchPicture(app, url);
+            if (result.loaded()) MEMORY.put(url, result.bitmap);
+            MAIN.post(() -> callback.accept(result));
         });
     }
 
-    private static byte[] download(String initial) throws Exception {
+    /**
+     * The cache-then-network path, shared by every caller. Blocking.
+     *
+     * <p>A cached file that no longer decodes is <em>deleted</em> rather than merely stepped past.
+     * Beta 1 left it there, so a picture whose bytes were truncated by a killed process or whose
+     * format this device cannot read was re-downloaded on every single draw, forever, and the disk
+     * entry sat in the way of the size budget the whole time. Only the entry for this exact address
+     * is removed; nothing else in the cache is touched.
+     */
+    /**
+     * The transport itself: cache, then network, then decode. Blocking.
+     *
+     * <p>Deliberately separate from {@link #fetchForRichAnswer}, which layers a judgement about
+     * <em>content</em> on top - whether what arrived is big enough to be worth drawing. That is a
+     * different question with a different answer, and keeping them apart is what lets each be
+     * tested for what it actually decides.
+     */
+    static Result fetchPicture(Context app, String url) {
+        File cache = null;
+        try {
+            cache = cacheFile(app, url);
+            if (cache.isFile()) {
+                if (isUsableCacheLength(cache.length())) {
+                    Bitmap fromCache = decode(cache);
+                    if (fromCache != null) {
+                        cache.setLastModified(System.currentTimeMillis());
+                        return record(app, Result.ok(fromCache));
+                    }
+                }
+                // Unusable: empty, past the ceiling, or bytes that will not decode. All three are
+                // what a process killed mid-write or a format this device cannot read leaves
+                // behind, and Beta 1 left every one of them on disk forever - sitting inside the
+                // size budget while every draw paid for a fresh download. Only this address's own
+                // entry is ever removed.
+                deleteQuietly(cache);
+            }
+        } catch (Exception ignored) {
+            // A cache that cannot be reached is not a reason to refuse the picture.
+        }
+
+        Download download;
+        try {
+            download = download(url);
+        } catch (FetchException e) {
+            return record(app, e.status > 0 ? Result.http(e.status) : Result.failed(e.failure));
+        } catch (java.net.SocketTimeoutException e) {
+            return record(app, Result.failed(Failure.TIMEOUT));
+        } catch (Exception e) {
+            return record(app, Result.failed(Failure.NETWORK));
+        }
+
+        // Decoded before it is stored, never after. The bytes themselves are the only authority on
+        // whether this is a picture, and proving it first means undecodable bytes never reach the
+        // disk at all - which is strictly better than writing them and deleting them again.
+        Bitmap bitmap = decode(download.bytes);
+        if (bitmap == null) {
+            return record(app, Result.failed(
+                    RichAnswerImageFormat.isDecodableContentType(download.contentType)
+                            ? Failure.DECODE_FAILED : Failure.UNSUPPORTED_FORMAT));
+        }
+        try {
+            if (cache == null) cache = cacheFile(app, url);
+            try (FileOutputStream output = new FileOutputStream(cache)) {
+                output.write(download.bytes);
+            }
+            trimDiskCache(cache.getParentFile());
+        } catch (Exception ignored) {
+            // The picture is in hand; only keeping it failed. A full disk costs the next draw a
+            // second fetch and costs this one nothing.
+            deleteQuietly(cache);
+        }
+        return record(app, Result.ok(bitmap));
+    }
+
+    /** Records one outcome for Diagnostics and hands it straight back. */
+    private static Result record(Context app, Result result) {
+        RichAnswerImageStatus.record(app, result);
+        return result;
+    }
+
+    /**
+     * Whether a cached file is worth reading at all.
+     *
+     * <p>An entry outside this range is not a picture: zero bytes is what a process killed between
+     * creating a file and writing it leaves behind, and anything past the ceiling could not have
+     * been written by this loader.
+     */
+    static boolean isUsableCacheLength(long length) {
+        return length > 0 && length <= MAX_BYTES;
+    }
+
+    /** What a completed fetch returned. */
+    private static final class Download {
+        final byte[] bytes;
+        final String contentType;
+        Download(byte[] bytes, String contentType) {
+            this.bytes = bytes;
+            this.contentType = contentType == null ? "" : contentType;
+        }
+    }
+
+    /**
+     * One HTTP response, reduced to the four things this loader actually reads.
+     *
+     * <p>Deliberately not {@link HttpURLConnection}. The loader's interesting behaviour is its
+     * decision table - which statuses redirect, which content types are pictures, where the byte
+     * ceiling bites, what a refused redirect does - and none of that should need a socket to
+     * exercise. A response is data, so it is a small value type that a test can simply construct.
+     */
+    static final class Response {
+        final int status;
+        final String contentType;
+        final String location;
+        final long contentLength;
+        final InputStream body;
+
+        Response(int status, String contentType, String location, long contentLength,
+                 InputStream body) {
+            this.status = status;
+            this.contentType = contentType;
+            this.location = location;
+            this.contentLength = contentLength;
+            this.body = body;
+        }
+    }
+
+    /**
+     * Where a picture's bytes come from, and whether Orbit is allowed to ask.
+     *
+     * <p>A seam with exactly one production implementation, which is installed permanently and is
+     * never replaced by anything in the app. It exists so the loader's rules can be tested against
+     * a 403, a redirect chain, a chunked body that runs past the ceiling, and a page returned where
+     * a picture was expected - none of which can be produced reliably by contacting a real server,
+     * and all of which are exactly what broke on a real device.
+     *
+     * <p><b>The address check is part of the seam on purpose.</b> Splitting it out would mean a
+     * test could exercise the transport while silently skipping the check that guards it. Keeping
+     * them together means the production transport is the only thing that can ever answer both, and
+     * it answers the second by asking {@link RichAnswerUrlPolicy} exactly as before.
+     */
+    interface Transport {
+        /** Whether every address this host resolves to is on the public internet. */
+        boolean allowsHost(String url);
+
+        /** Opens the address with Orbit's own headers applied. Never follows redirects itself. */
+        Response open(String url) throws Exception;
+    }
+
+    /** The real network. The only implementation the app ever installs. */
+    private static final Transport NETWORK = new Transport() {
+        @Override public boolean allowsHost(String url) {
+            return RichAnswerUrlPolicy.resolvesToPublicHost(url);
+        }
+
+        @Override public Response open(String url) throws Exception {
+            HttpURLConnection connection =
+                    (HttpURLConnection) URI.create(url).toURL().openConnection();
+            // Off, so Orbit follows every hop itself and can revalidate each one. This is the
+            // whole reason the redirect handling below is hand-written.
+            connection.setInstanceFollowRedirects(false);
+            connection.setConnectTimeout(8000);
+            connection.setReadTimeout(12000);
+            connection.setRequestProperty("Accept", RichAnswerImageFormat.acceptHeader());
+            connection.setRequestProperty("Accept-Language", "en;q=0.9,*;q=0.5");
+            connection.setRequestProperty("User-Agent", USER_AGENT);
+            // Explicitly emptied rather than merely not set, so a JVM-wide CookieHandler cannot
+            // attach anything this device holds for the host. Confirmed harmless against real
+            // public CDNs during the Beta 2 diagnosis.
+            connection.setRequestProperty("Cookie", "");
+            connection.setUseCaches(true);
+            connection.setDoOutput(false);
+            int status = connection.getResponseCode();
+            InputStream body = status >= 200 && status < 300 ? connection.getInputStream() : null;
+            return new Response(status, connection.getContentType(),
+                    connection.getHeaderField("Location"), connection.getContentLengthLong(),
+                    body == null ? null : new ClosingStream(body, connection));
+        }
+    };
+
+    /** Keeps a connection alive exactly as long as the body being read from it. */
+    private static final class ClosingStream extends java.io.FilterInputStream {
+        private final HttpURLConnection connection;
+        ClosingStream(InputStream in, HttpURLConnection connection) {
+            super(in);
+            this.connection = connection;
+        }
+        @Override public void close() throws java.io.IOException {
+            try { super.close(); } finally { connection.disconnect(); }
+        }
+    }
+
+    private static volatile Transport transport = NETWORK;
+
+    /** Installs a transport for one test, and returns the one it replaced. Tests only. */
+    static Transport installTransportForTest(Transport replacement) {
+        Transport previous = transport;
+        transport = replacement == null ? NETWORK : replacement;
+        return previous;
+    }
+
+    /** Whether the real network transport is the one currently installed. */
+    static boolean usingNetworkTransport() { return transport == NETWORK; }
+
+    /** A fetch that ended in a category rather than in bytes. */
+    private static final class FetchException extends Exception {
+        final Failure failure;
+        final int status;
+        FetchException(Failure failure) { this(failure, 0); }
+        FetchException(Failure failure, int status) {
+            super(failure.name());
+            this.failure = failure;
+            this.status = status;
+        }
+    }
+
+    private static Download download(String initial) throws Exception {
+        return download(initial, 0);
+    }
+
+    /**
+     * One picture off the public web, with every hop revalidated.
+     *
+     * @param pageResolutions how many times this fetch has already been handed a web page instead
+     *                        of a picture. Bounded by {@link #MAX_PAGE_RESOLUTIONS}.
+     */
+    private static Download download(String initial, int pageResolutions) throws Exception {
         String current = initial;
         for (int redirect = 0; redirect <= RichAnswerUrlPolicy.MAX_REDIRECTS; redirect++) {
             // Revalidated at every hop, never only at the first. A redirect chain that starts on a
             // public host and ends on this device's own network is exactly what one check at the
             // top would let through.
-            if (!isAllowedPublicHttpsUrl(current)) throw new SecurityException();
-            HttpURLConnection connection = (HttpURLConnection) URI.create(current).toURL().openConnection();
-            connection.setInstanceFollowRedirects(false);
-            connection.setConnectTimeout(8000);
-            connection.setReadTimeout(12000);
-            connection.setRequestProperty("Accept", "image/*");
-            connection.setRequestProperty("User-Agent", "Orbit-Assistant-Image/1.0");
-            connection.setRequestProperty("Cookie", "");
-            connection.setUseCaches(true);
-            int status = connection.getResponseCode();
-            if (status >= 300 && status < 400) {
-                String location = connection.getHeaderField("Location");
-                connection.disconnect();
-                String next = RichAnswerUrlPolicy.redirectTarget(current, location);
-                if (next.isEmpty()) throw new SecurityException();
-                current = next;
-                continue;
-            }
-            if (status < 200 || status >= 300) {
-                connection.disconnect();
-                throw new IllegalStateException("HTTP " + status);
-            }
-            String type = connection.getContentType();
-            if (type == null || !type.toLowerCase(Locale.US).startsWith("image/")) {
-                connection.disconnect();
-                throw new IllegalArgumentException("Not an image");
-            }
-            int length = connection.getContentLength();
-            if (length > MAX_BYTES) {
-                connection.disconnect();
-                throw new IllegalArgumentException("Image too large");
-            }
-            try (InputStream input = connection.getInputStream();
-                 ByteArrayOutputStream output = new ByteArrayOutputStream(
-                         length > 0 ? Math.min(length, MAX_BYTES) : 32 * 1024)) {
-                byte[] buffer = new byte[16 * 1024];
-                int total = 0;
-                int read;
-                while ((read = input.read(buffer)) != -1) {
-                    total += read;
-                    if (total > MAX_BYTES) throw new IllegalArgumentException("Image too large");
-                    output.write(buffer, 0, read);
+            if (!transport.allowsHost(current)) throw new FetchException(Failure.BLOCKED);
+            String request = RichAnswerUrlPolicy.normalizedForRequest(current);
+            if (request.isEmpty()) throw new FetchException(Failure.BLOCKED);
+
+            Response response = transport.open(request);
+            InputStream body = response == null ? null : response.body;
+            try {
+                if (response == null) throw new FetchException(Failure.NETWORK);
+                if (response.status >= 300 && response.status < 400) {
+                    // 301, 302, 303, 307 and 308 alike: Orbit follows them itself so that each one
+                    // can be checked, which is the whole reason automatic redirects are off.
+                    String next = RichAnswerUrlPolicy.redirectTarget(current, response.location);
+                    if (next.isEmpty()) throw new FetchException(Failure.REDIRECT_BLOCKED);
+                    current = next;
+                    continue;
                 }
-                return output.toByteArray();
+                if (response.status < 200 || response.status >= 300) {
+                    throw new FetchException(Failure.HTTP_ERROR, response.status);
+                }
+
+                String type = response.contentType;
+                if (RichAnswerImageFormat.isHtmlContentType(type)) {
+                    // A page, not a picture. This is what a Commons "File:" address is, and what a
+                    // model writes far more often than a raw image URL. Reading the preview image
+                    // the page declares about itself turns a dead card into the right picture, and
+                    // it is the same bounded, policy-checked read Rich Answers already performs -
+                    // not a special case for one website.
+                    if (pageResolutions >= MAX_PAGE_RESOLUTIONS) {
+                        throw new FetchException(Failure.NOT_AN_IMAGE);
+                    }
+                    // The markup is already arriving on this connection, so it is read here rather
+                    // than fetched a second time: one request, one transport, and the bounded read
+                    // stops at </head> exactly as the Rich Answer metadata reader does.
+                    String declared = declaredImageOf(readHead(body), current);
+                    closeQuietly(body);
+                    body = null;
+                    if (declared.isEmpty()) throw new FetchException(Failure.NOT_AN_IMAGE);
+                    return download(declared, pageResolutions + 1);
+                }
+                if (!RichAnswerImageFormat.isDecodableContentType(type)) {
+                    throw new FetchException(RichAnswerImageFormat.baseType(type).startsWith("image/")
+                            ? Failure.UNSUPPORTED_FORMAT : Failure.NOT_AN_IMAGE);
+                }
+
+                // A declared length that is already past the ceiling saves reading a byte of it.
+                if (response.contentLength > MAX_BYTES) throw new FetchException(Failure.TOO_LARGE);
+                if (body == null) throw new FetchException(Failure.NETWORK);
+                try (ByteArrayOutputStream output = new ByteArrayOutputStream(
+                        response.contentLength > 0
+                                ? (int) Math.min(response.contentLength, MAX_BYTES) : 32 * 1024)) {
+                    byte[] buffer = new byte[16 * 1024];
+                    long total = 0;
+                    int read;
+                    while ((read = body.read(buffer)) != -1) {
+                        total += read;
+                        // A declared length is only a claim. This is the bound that actually holds,
+                        // and it is what stops a chunked response streaming without end.
+                        if (total > MAX_BYTES) throw new FetchException(Failure.TOO_LARGE);
+                        output.write(buffer, 0, read);
+                    }
+                    return new Download(output.toByteArray(), type);
+                }
             } finally {
-                connection.disconnect();
+                closeQuietly(body);
             }
         }
-        throw new SecurityException("Too many redirects");
+        throw new FetchException(Failure.TOO_MANY_REDIRECTS);
     }
 
-    private static Bitmap decode(File file) throws Exception {
-        BitmapFactory.Options bounds = new BitmapFactory.Options();
-        bounds.inJustDecodeBounds = true;
-        try (FileInputStream input = new FileInputStream(file)) {
-            BitmapFactory.decodeStream(input, null, bounds);
+    private static void closeQuietly(InputStream stream) {
+        try { if (stream != null) stream.close(); }
+        catch (Exception ignored) {}
+    }
+
+    /**
+     * The picture a web page declares about itself, or empty.
+     *
+     * <p>Reuses the Rich Answer metadata reader rather than adding a second one: same bounded
+     * read, same {@code </head>} stop, same refusal of anything the URL policy will not fetch. The
+     * result is only ever used as the next address for this same fetch, so it inherits every check
+     * the first address had to pass.
+     */
+    private static String declaredImageOf(String html, String pageUrl) {
+        try {
+            RichAnswerPageMetadata.Preview preview = RichAnswerPageMetadata.parse(html, pageUrl);
+            for (String candidate : preview.imageUrls) {
+                // A page's declaration is untrusted like everything else: the format has to be one
+                // this device can read, and the address has to pass the same policy the original
+                // did. Nothing is inherited just because a page said it.
+                if (RichAnswerImageFormat.tierForUrl(candidate)
+                        == RichAnswerImageFormat.TIER_UNSUPPORTED) continue;
+                if (RichAnswerUrlPolicy.isFetchableImageUrl(candidate)) return candidate;
+            }
+        } catch (Exception ignored) {}
+        return "";
+    }
+
+    /**
+     * As much of a document as it takes to find its head, and no more.
+     *
+     * <p>The same ceiling and the same early stop the Rich Answer metadata reader uses. A page's
+     * declarations are in the first few kilobytes, so reading a whole article to find one would be
+     * paying an enormous cost for something that arrived in the first packet.
+     */
+    private static String readHead(InputStream body) throws Exception {
+        if (body == null) return "";
+        StringBuilder out = new StringBuilder(8192);
+        java.io.Reader reader =
+                new java.io.InputStreamReader(body, java.nio.charset.StandardCharsets.UTF_8);
+        char[] buffer = new char[4096];
+        int read;
+        while ((read = reader.read(buffer)) != -1) {
+            out.append(buffer, 0, read);
+            if (out.length() >= RichAnswerPageFetcher.MAX_BYTES) break;
+            if (out.indexOf("</head") >= 0 || out.indexOf("</HEAD") >= 0) break;
         }
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null;
+        return out.toString();
+    }
+
+    private static Bitmap decode(File file) {
+        try (FileInputStream bounds = new FileInputStream(file)) {
+            BitmapFactory.Options measured = new BitmapFactory.Options();
+            measured.inJustDecodeBounds = true;
+            BitmapFactory.decodeStream(bounds, null, measured);
+            int sample = sampleSizeFor(measured.outWidth, measured.outHeight);
+            if (sample <= 0) return null;
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inSampleSize = sample;
+            options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+            try (FileInputStream input = new FileInputStream(file)) {
+                return BitmapFactory.decodeStream(input, null, options);
+            }
+        } catch (Exception ignored) {
+            return null;
+        } catch (OutOfMemoryError ignored) {
+            // A decode that will not fit is a picture Orbit does not show, never a crashed chat.
+            return null;
+        }
+    }
+
+    /** The same decode for bytes that never reached the disk. */
+    private static Bitmap decode(byte[] bytes) {
+        try {
+            BitmapFactory.Options measured = new BitmapFactory.Options();
+            measured.inJustDecodeBounds = true;
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.length, measured);
+            int sample = sampleSizeFor(measured.outWidth, measured.outHeight);
+            if (sample <= 0) return null;
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inSampleSize = sample;
+            options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+            return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
+        } catch (Exception | OutOfMemoryError ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * How far down a picture has to be sampled to be worth allocating, or 0 to refuse it.
+     *
+     * <p>The refusal is the important half. A file can declare dimensions far beyond anything a
+     * phone should allocate, and a decode bomb is exactly a small download claiming to be an
+     * enormous picture; sampling brings an honest large photograph inside {@link #MAX_DIMENSION},
+     * and a declared size past {@link #MAX_DECLARED_DIMENSION} is refused before a single pixel is
+     * allocated.
+     */
+    static int sampleSizeFor(int width, int height) {
+        if (width <= 0 || height <= 0) return 0;
+        if (width > MAX_DECLARED_DIMENSION || height > MAX_DECLARED_DIMENSION) return 0;
         int sample = 1;
-        while (Math.max(bounds.outWidth / sample, bounds.outHeight / sample) > MAX_DIMENSION) {
-            sample *= 2;
-        }
-        BitmapFactory.Options options = new BitmapFactory.Options();
-        options.inSampleSize = sample;
-        options.inPreferredConfig = Bitmap.Config.ARGB_8888;
-        try (FileInputStream input = new FileInputStream(file)) {
-            return BitmapFactory.decodeStream(input, null, options);
-        }
+        while (Math.max(width / sample, height / sample) > MAX_DIMENSION) sample *= 2;
+        return sample;
     }
 
+    /** The largest a picture may claim to be before Orbit will not decode it at all. */
+    static final int MAX_DECLARED_DIMENSION = 20000;
+
+    private static void deleteQuietly(File file) {
+        try { if (file != null && file.isFile()) file.delete(); }
+        catch (Exception ignored) {}
+    }
 
     private static File cacheFile(Context context, String url) throws Exception {
         File dir = new File(context.getCacheDir(), "orbit_response_images");
