@@ -843,7 +843,7 @@ public class OrbitSession extends VoiceInteractionSession {
             String rawVisible = user ? item.content : removeEmDashes(item.content);
             String visible = user ? rawVisible : SourceLinkUtil.displayText(rawVisible);
             if (user) addBubbleNow(visible, true, false);
-            else addRichAssistantBubble(visible, rawVisible, i == history.size() - 1);
+            else addRichAssistantBubble(visible, rawVisible, i == history.size() - 1, item.richImages);
             if (user && item.screenAttached) addScreenAttachmentBadge(
                     item.attachmentLabel == null || item.attachmentLabel.trim().isEmpty()
                             ? ("screen_selection".equals(item.attachmentKind)
@@ -1080,8 +1080,27 @@ public class OrbitSession extends VoiceInteractionSession {
         }
     }
 
+    /**
+     * Redraws the overlay's conversation when one of its answers gains a sourced picture.
+     *
+     * <p>The overlay is where a question about something visual is most often asked, so a picture
+     * that only appeared after reopening the sheet would mostly never be seen. Carries no content:
+     * it names the conversation, and the sheet reloads from storage the way it already does.
+     */
+    private final RichAnswerCoordinator.Listener richImageListener = chat -> main.post(() -> {
+        if (chat == null || !chat.equals(conversationId)) return;
+        if (!sessionVisible || historyMode || busy) return;
+        ConversationStore.Conversation stored =
+                ConversationStore.load(getContext(), conversationId);
+        if (stored == null) return;
+        history.clear();
+        history.addAll(stored.messages);
+        renderConversation();
+    });
+
     private void showInternal(Bundle args, int showFlags) {
         super.onShow(args, showFlags);
+        RichAnswerCoordinator.addListener(richImageListener);
         boolean internalResume = internalScreenSelectionResume || args != null &&
                 args.getBoolean(INTERNAL_SCREEN_SELECTION_RESUME, false);
         internalScreenSelectionResume = false;
@@ -3691,12 +3710,18 @@ public class OrbitSession extends VoiceInteractionSession {
     }
 
     private void addRichAssistantBubble(String displayText, String rawText, boolean canRegenerate) {
+        addRichAssistantBubble(displayText, rawText, canRegenerate, null);
+    }
+
+    private void addRichAssistantBubble(String displayText, String rawText, boolean canRegenerate,
+                                        java.util.List<RichAnswerImage> richImages) {
         if (messages == null) return;
         Context c = getContext();
         int fill = UiKit.assistantBubbleFill(c, UiKit.SURFACE);
-        View bubble = OrbitRichResponseRenderer.render(c, displayText, fill, true);
+        View bubble = OrbitRichResponseRenderer.render(c, displayText, fill, true, richImages);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 OrbitRichResponseRenderer.prefersWideLayout(displayText)
+                        || RichAnswerPlacement.hasAnyImage(richImages)
                         ? ViewGroup.LayoutParams.MATCH_PARENT
                         : ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -4466,6 +4491,7 @@ public class OrbitSession extends VoiceInteractionSession {
                         .flag("firstFrame", firstFrameRecorded)
                         .flag("sessionVisible", sessionVisible)
                         .flag("busy", busy));
+        RichAnswerCoordinator.removeListener(richImageListener);
         detachFirstFrameListener();
         UiPresence.leave(this);
         ScreenSelectionBridge.cancel(screenSelectionCallbackToken);

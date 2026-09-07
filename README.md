@@ -132,6 +132,7 @@ Never post signing keys, account tokens, diagnostic data containing private cont
 | Status | Examples |
 | --- | --- |
 | **Shipping in Stable** | Side-button/default-assistant access, full chat, attachments, screen context, Voice Beta, Android actions, Calendar writing, Routines, Extensions, widgets, Orbit Local, Orbit Deck, Documents, Theme Studio, and Orbit Vault / Quick Capture. |
+| **In Beta** | Rich Answers: sourced web images shown inside answers, opened in Orbit's image viewer and saved to Vault. Settings search. Optional GPT-6 Astra for eligible ChatGPT accounts. |
 | **Planned or under consideration** | Hybrid Auto routing, deeper local capabilities, and other work listed in the roadmap. OpenRouter chat remains deferred until it can be properly validated. |
 
 See [ROADMAP.md](ROADMAP.md) for the detailed development record and future direction, or [CHANGELOG.md](CHANGELOG.md) for shipped release history. Roadmap items are direction, not promised dates.

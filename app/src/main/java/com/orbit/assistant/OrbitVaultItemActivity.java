@@ -49,6 +49,8 @@ public final class OrbitVaultItemActivity extends Activity {
     /** The actions this screen offers, as the labels a person reads. */
     static final String ACTION_ASK = "Ask Orbit";
     static final String ACTION_OPEN_LINK = "Open link";
+    /** What a saved picture that remembers its page offers, and only such an item. */
+    static final String ACTION_OPEN_SOURCE = "Open source";
     static final String ACTION_COPY = "Copy";
     static final String ACTION_SHARE = "Share";
     static final String ACTION_EDIT = "Edit";
@@ -319,6 +321,15 @@ public final class OrbitVaultItemActivity extends Activity {
             from.setPadding(0, UiKit.dp(this, 4), 0, 0);
             card.addView(from);
         }
+        // The page behind a saved picture, as its host rather than its full address. A hostname is
+        // what somebody recognises; a URL with a tracking query on the end is a wall of characters
+        // that pushes the dates off the card. The whole address is still what Open source opens.
+        String sourceHost = item.sourceHostLabel();
+        if (!sourceHost.isEmpty()) {
+            TextView from = UiKit.text(this, "From " + sourceHost, 12, UiKit.MUTED, false);
+            from.setPadding(0, UiKit.dp(this, 4), 0, 0);
+            card.addView(from);
+        }
         TextView saved = UiKit.text(this, item.savedLabel(), 12, UiKit.MUTED, false);
         saved.setPadding(0, UiKit.dp(this, 4), 0, 0);
         card.addView(saved);
@@ -353,6 +364,12 @@ public final class OrbitVaultItemActivity extends Activity {
             // control. Ask Orbit sits beside it, obvious without competing.
             primary.addView(filledAction(ACTION_OPEN_LINK, v -> openLink(item)), primaryCellLp(0));
             primary.addView(outlinedAction(ACTION_ASK, v -> askOrbit(item)), primaryCellLp(9));
+        } else if (item.hasSourceUrl()) {
+            // A saved picture that remembers its page. Ask Orbit stays the filled control, because
+            // the picture is the thing the user kept; Open source sits beside it for the times they
+            // want to go back and read where it came from.
+            primary.addView(filledAction(ACTION_ASK, v -> askOrbit(item)), primaryCellLp(0));
+            primary.addView(outlinedAction(ACTION_OPEN_SOURCE, v -> openSource(item)), primaryCellLp(9));
         } else {
             primary.addView(filledAction(ACTION_ASK, v -> askOrbit(item)), primaryCellLp(0));
         }
@@ -568,6 +585,27 @@ public final class OrbitVaultItemActivity extends Activity {
             startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
         } catch (Exception ignored) {
             Toast.makeText(this, "Could not open link", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * Opens the page a saved picture came from.
+     *
+     * <p>Validated again here rather than trusted from storage, for the same reason Open link is:
+     * the address has been sitting in a store since the day it was saved, and a store can be
+     * restored from a backup, edited by hand, or written by a build that checked something else.
+     * Only an ordinary http or https address is handed to Android, and only from this tap.
+     */
+    private void openSource(OrbitVaultItem item) {
+        if (item == null || !RichAnswerUrlPolicy.isOpenableWebUrl(item.sourceUrl)) {
+            Toast.makeText(this, "That is not a web address Orbit can open",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(item.sourceUrl)));
+        } catch (Exception ignored) {
+            Toast.makeText(this, "Could not open this source", Toast.LENGTH_SHORT).show();
         }
     }
 

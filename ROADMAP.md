@@ -98,38 +98,71 @@ search, OCR, webpage extraction and summaries.
 
 ### `0.7.8.5` - Rich Answers / Visual Web Results
 
-The next major feature line, and a high priority one. Orbit already answers questions from the web
-and already has an image viewer and a Vault; what it does not do is show the pictures that would
-make some of those answers obviously better.
+The active line, opened by Beta 1. Orbit already answered questions from the web and already had an
+image viewer and a Vault; what it did not do was show the pictures that make some of those answers
+obviously better. It does now, for the answers a picture genuinely improves and for no others.
 
-- Sourced web images shown inline in the answers they genuinely improve, and nowhere else
+**Shipped in `0.7.8.5-beta.1`:**
+
+- **Sourced web images inside answers.** When a question has a visual answer and the search cited a
+  page that declares a preview image, Orbit shows that picture in the answer, with a caption and the
+  domain it belongs to
 - **Structured image result metadata**, never blind trust in whatever Markdown image URL a model
-  happened to write
-- Safe HTTPS fetching, bounded caching, captions, and clear source attribution
-- Tap an inline image to open **Orbit's existing image viewer**; from there, open its real source or
-  **Save to Vault**, keeping the useful source and caption information with the saved item
-- Answer text keeps streaming while images resolve, so nothing waits on a picture
-- The same architecture must also fit provider-generated response images later. A generated image
-  must be clearly distinguished from a sourced web one, and should eventually reach the same viewer
-  and the same Save to Vault path
+  happened to write. A rich image is a record with a real source page, a domain, a caption and a
+  provenance, and it is stored beside the answer rather than inside its text
+- **Safe HTTPS fetching, bounded caching, captions, and clear source attribution.** One policy
+  decides every fetch, revalidated at every redirect, with private and device-local addresses
+  refused outright
+- **Orbit's existing image viewer**, reached by tapping an inline picture, with a source line, Open
+  source and Save to Vault added to it. There is no second viewer
+- **Save to Vault** copies the picture into Vault-owned storage under a new canonical
+  `Rich answer` source, keeping its caption and its source page
+- **Answer text keeps streaming while images resolve**, so nothing waits on a picture and a failed
+  lookup is never a failed answer
+- **Settings search**, described below
+- **Optional GPT-6 Astra**, described below
+
+**Still ahead in `0.7.8.5`, depending on real-device testing:**
+
+- Richer multi-image presentation, where a comparison genuinely needs two pictures side by side
+- Better placement, if the deterministic first-paragraph anchor turns out to read badly in practice
+- Provider-generated response images, if and when the provider path exposes them in a way Orbit can
+  present honestly. The architecture already distinguishes a generated image from a sourced one
+- Optional Astra-aware Auto routing, only after availability and allowance behaviour are understood
+  on a real account
+- Rich Answer caching and performance refinement
+- Settings search refinement
 
 **Architecture rule.** Rich response images reuse Orbit's existing image-viewer and Vault
 infrastructure. There must not be a second image ecosystem.
 
-#### UX enhancement in the same release: Settings search
+#### In the same release: Settings search
 
-A smaller piece of the same release, and a real one. Orbit Settings now holds enough controls that
-finding a specific one means scrolling five sections and reading past everything else, which is the
-point at which a settings page stops being browsable and starts being a search problem.
+The smaller half of `0.7.8.5`, and a real one. Orbit Settings held enough controls that finding a
+specific one meant scrolling five sections and reading past everything else, which is the point at
+which a settings page stops being browsable and starts being a search problem.
 
 - A search field at the top of Settings
 - Type what you want to change - "AMOLED", "memory", "swipe", "notifications", "Vault", "font",
-  "provider" - and the matching rows and categories appear as you type
+  "provider" - and the matching controls appear as you type, with the section each one lives in
 - Local and deterministic. No AI, no network, and no provider is involved in finding a setting
-- Choosing a result takes the user straight to that control rather than to the section holding it
+- Choosing a result takes the user straight to that control, scrolling to it and marking it, rather
+  than to the section holding it
+- A hand-written index with aliases, so "dark mode" reaches AMOLED and "saved stuff" reaches Vault
 
-Rich Answers remains the primary work of `0.7.8.5`. Settings search is the UX enhancement planned
-alongside it, not a replacement for it.
+#### In the same release: optional GPT-6 Astra
+
+Advanced access rather than a new default, for people whose ChatGPT/Codex account can reach it.
+
+- `gpt-6-astra` is offered in Custom model selection on the ChatGPT provider, and nowhere else
+- **Auto routing is unchanged.** Fast still means Luna, Balanced Terra, Deep Sol. Nothing routes to
+  Astra unless the user picked it
+- Reasoning is corrected for the model, so an unsupported effort is never sent
+- Thinking updates and Diagnostics report the model that actually answered, not the one selected
+- An account that cannot reach Astra is told so plainly, and a fallback to Sol says it did
+
+Rich Answers remains the primary work of `0.7.8.5`. Settings search and Astra ship in the same
+release, not as replacements for it.
 
 ## Next
 

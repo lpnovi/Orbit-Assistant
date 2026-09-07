@@ -162,6 +162,31 @@ public final class DiagnosticStore {
                 .apply();
     }
 
+    /**
+     * Which model a request asked for, and which one it actually went to.
+     *
+     * <p>Two fields rather than one, because they are two different facts and the interesting case
+     * is when they disagree. Orbit shipping a diagnostics line that says "Astra" merely because the
+     * user selected Astra would be the screen agreeing with the setting instead of reporting the
+     * request, which is the opposite of what a diagnostics screen is for.
+     */
+    public static void recordEffectiveModel(Context c, String requested, String effective) {
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+                .putString("model_requested", safe(requested))
+                .putString("model_effective", safe(effective))
+                .putLong("model_updated", System.currentTimeMillis())
+                .apply();
+    }
+
+    /** A model Orbit could not reach, and the one it fell back to after saying so. */
+    public static void recordModelFallback(Context c, String from, String to) {
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+                .putString("model_fallback_from", safe(from))
+                .putString("model_fallback_to", safe(to))
+                .putLong("model_fallback_updated", System.currentTimeMillis())
+                .apply();
+    }
+
     public static void recordAppBehavior(Context c, String profileSource, String privacy,
                                          String screenPolicy, String screenshotPolicy,
                                          String mode, String actions) {

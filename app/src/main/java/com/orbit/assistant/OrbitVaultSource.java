@@ -44,6 +44,17 @@ public final class OrbitVaultSource {
     public static final String SCREEN_SELECTION = "Screen selection";
     /** An answer Orbit gave, saved from a conversation. */
     public static final String ORBIT_REPLY = "Orbit answer";
+    /**
+     * A sourced picture Orbit showed inside an answer, saved from the image viewer.
+     *
+     * <p>Names a surface of Orbit, exactly as every other source here does: the user was looking at
+     * an Orbit answer and kept the picture in it. The page that picture came from is separate
+     * metadata on the item and is deliberately <em>not</em> its source. A hostname is a third
+     * party's word about itself, and letting one into this vocabulary would mean the Saved-from
+     * filter offering whatever domains a week of asking questions happened to produce, as though
+     * Orbit vouched for each of them.
+     */
+    public static final String RICH_ANSWER = "Rich answer";
     /** The prefix a page saved from Orbit's own document viewer carries. */
     public static final String DOCUMENT = "Document";
 
@@ -57,7 +68,7 @@ public final class OrbitVaultSource {
      */
     public static final String[] FILTERABLE = {
             QUICK_CAPTURE, CLIPBOARD, PHOTO, SHARED, SELECTED_TEXT, SCREEN_SELECTION,
-            ORBIT_REPLY, DOCUMENT};
+            ORBIT_REPLY, RICH_ANSWER, DOCUMENT};
 
     /**
      * What {@link #DOCUMENT} is called in the Saved-from filter, and nowhere else.
@@ -137,7 +148,7 @@ public final class OrbitVaultSource {
         String source = value.trim();
         if (source.isEmpty()) return false;
         for (String known : new String[]{QUICK_CAPTURE, CLIPBOARD, PHOTO, SHARED, SELECTED_TEXT,
-                SCREEN_SELECTION, ORBIT_REPLY, DOCUMENT}) {
+                SCREEN_SELECTION, ORBIT_REPLY, RICH_ANSWER, DOCUMENT}) {
             if (known.equals(source)) return true;
         }
         if (!source.startsWith(DOCUMENT + " · Page ")) return false;

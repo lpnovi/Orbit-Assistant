@@ -13,9 +13,6 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
-import java.net.IDN;
-import java.net.Inet6Address;
-import java.net.InetAddress;
 import java.net.URI;
 import java.security.MessageDigest;
 import java.util.Arrays;
@@ -41,29 +38,73 @@ public final class RemoteImageLoader {
 
     private RemoteImageLoader() {}
 
+    /**
+     * Syntax only: https, a real public-looking host, and no credentials.
+     *
+     * <p>Delegated to {@link RichAnswerUrlPolicy} rather than implemented twice. Two copies of a
+     * request-forgery rule is how one of them ends up a hop behind the other, and this loader and
+     * the Rich Answer fetches now guard the same thing.
+     */
     public static boolean hasSafeHttpsSyntax(String value) {
-        try {
-            URI uri = URI.create(value == null ? "" : value.trim());
-            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getUserInfo() != null ||
-                    uri.getHost() == null || uri.getHost().trim().isEmpty()) return false;
-            String host = IDN.toASCII(uri.getHost()).toLowerCase(Locale.US);
-            return !host.equals("localhost") && !host.endsWith(".localhost") &&
-                    !host.endsWith(".local") && !host.endsWith(".internal");
-        } catch (Exception ignored) { return false; }
+        return RichAnswerUrlPolicy.hasSafeFetchSyntax(value);
     }
 
+    /** The same question, plus every address the host actually resolves to. Performs DNS. */
     public static boolean isAllowedPublicHttpsUrl(String value) {
+        return RichAnswerUrlPolicy.resolvesToPublicHost(value);
+    }
+
+    /**
+     * A picture fetched for a Rich Answer, decoded and measured.
+     *
+     * <p>Separate from {@link #load} because the Rich Answer path has a decision to make that the
+     * Markdown path does not: a picture that turns out to be a 48-pixel icon is refused rather than
+     * drawn small, and refusing it needs the decoded bounds. Blocking, and background threads only.
+     *
+     * @return the decoded bitmap, or null when the address is refused, the fetch fails, the content
+     *         is not an image, or what came back is too small or too oddly shaped to be worth
+     *         showing. Null is always a clean outcome: the answer keeps its text.
+     */
+    static Bitmap fetchForRichAnswer(Context context, String url) {
+        if (context == null || !RichAnswerUrlPolicy.isFetchableImageUrl(url)) return null;
         try {
-            if (!hasSafeHttpsSyntax(value)) return false;
-            URI uri = URI.create(value == null ? "" : value.trim());
-            String host = IDN.toASCII(uri.getHost()).toLowerCase(Locale.US);
-            InetAddress[] addresses = InetAddress.getAllByName(host);
-            if (addresses.length == 0) return false;
-            for (InetAddress address : addresses) if (!isPublic(address)) return false;
-            return true;
+            Context app = context.getApplicationContext();
+            File cache = cacheFile(app, url);
+            Bitmap bitmap = null;
+            if (cache.isFile() && cache.length() > 0 && cache.length() <= MAX_BYTES) {
+                bitmap = decode(cache);
+                if (bitmap != null) cache.setLastModified(System.currentTimeMillis());
+            }
+            if (bitmap == null) {
+                if (!RichAnswerUrlPolicy.resolvesToPublicHost(url)) return null;
+                byte[] bytes = download(url);
+                try (FileOutputStream output = new FileOutputStream(cache)) { output.write(bytes); }
+                bitmap = decode(cache);
+                trimDiskCache(cache.getParentFile());
+            }
+            if (bitmap == null) return null;
+            if (!RichAnswerRelevance.hasUsefulDimensions(bitmap.getWidth(), bitmap.getHeight())) {
+                return null;
+            }
+            MEMORY.put(url, bitmap);
+            return bitmap;
         } catch (Exception ignored) {
-            return false;
+            return null;
         }
+    }
+
+    /**
+     * A picture already decoded in memory, or null. Touches no disk and starts no fetch.
+     *
+     * <p>Exists so a rich image that has just been discovered can be drawn in the same frame the
+     * answer redraws in, with no placeholder at all. Deliberately memory only: reading and decoding
+     * a file is not something a view builder may do on the main thread, so a cache miss here means
+     * the ordinary asynchronous load rather than a stall.
+     */
+    static Bitmap memoryCached(String url) {
+        if (url == null || url.isEmpty()) return null;
+        Bitmap memory = MEMORY.get(url);
+        return memory != null && !memory.isRecycled() ? memory : null;
     }
 
     public static void load(Context context, String url, Callback callback) {
@@ -103,7 +144,10 @@ public final class RemoteImageLoader {
 
     private static byte[] download(String initial) throws Exception {
         String current = initial;
-        for (int redirect = 0; redirect <= 4; redirect++) {
+        for (int redirect = 0; redirect <= RichAnswerUrlPolicy.MAX_REDIRECTS; redirect++) {
+            // Revalidated at every hop, never only at the first. A redirect chain that starts on a
+            // public host and ends on this device's own network is exactly what one check at the
+            // top would let through.
             if (!isAllowedPublicHttpsUrl(current)) throw new SecurityException();
             HttpURLConnection connection = (HttpURLConnection) URI.create(current).toURL().openConnection();
             connection.setInstanceFollowRedirects(false);
@@ -117,8 +161,9 @@ public final class RemoteImageLoader {
             if (status >= 300 && status < 400) {
                 String location = connection.getHeaderField("Location");
                 connection.disconnect();
-                if (location == null || location.trim().isEmpty()) throw new SecurityException();
-                current = URI.create(current).resolve(location).toString();
+                String next = RichAnswerUrlPolicy.redirectTarget(current, location);
+                if (next.isEmpty()) throw new SecurityException();
+                current = next;
                 continue;
             }
             if (status < 200 || status >= 300) {
@@ -173,29 +218,6 @@ public final class RemoteImageLoader {
         }
     }
 
-    private static boolean isPublic(InetAddress address) {
-        if (address.isAnyLocalAddress() || address.isLoopbackAddress() ||
-                address.isLinkLocalAddress() || address.isSiteLocalAddress() ||
-                address.isMulticastAddress()) return false;
-        byte[] bytes = address.getAddress();
-        if (bytes.length == 4) {
-            int a = bytes[0] & 0xff;
-            int b = bytes[1] & 0xff;
-            int d = bytes[2] & 0xff;
-            if (a == 0 || a == 10 || a == 127 || a >= 224 ||
-                    (a == 100 && b >= 64 && b <= 127) ||
-                    (a == 169 && b == 254) ||
-                    (a == 172 && b >= 16 && b <= 31) ||
-                    (a == 192 && ((b == 0 && d == 0) || b == 168)) ||
-                    (a == 198 && (b == 18 || b == 19 || (b == 51 && d == 100))) ||
-                    (a == 203 && b == 0 && d == 113)) return false;
-        }
-        if (address instanceof Inet6Address && bytes.length == 16) {
-            int first = bytes[0] & 0xff;
-            if ((first & 0xfe) == 0xfc) return false;
-        }
-        return true;
-    }
 
     private static File cacheFile(Context context, String url) throws Exception {
         File dir = new File(context.getCacheDir(), "orbit_response_images");

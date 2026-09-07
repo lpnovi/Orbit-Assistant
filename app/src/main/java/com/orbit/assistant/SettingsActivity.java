@@ -44,6 +44,14 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     private static final String TAG_CARD = "orbit_card";
     private static final String TAG_SECTION_PREFIX = "orbit_settings_section:";
     static final String EXTRA_SECTION = "settings_section";
+    /**
+     * The control a detail page should scroll to and pulse when it opens, or absent.
+     *
+     * <p>What turns a search result from "took me to Look &amp; Feel" into "took me to AMOLED".
+     * Carried as a control key rather than a position, because positions change every time a
+     * control is added and a stale one would land somebody in the wrong place silently.
+     */
+    static final String EXTRA_FOCUS = "settings_focus";
     private static final String SECTION_ASSISTANT = "assistant";
     static final String SECTION_AI = "ai";
     private static final String SECTION_VOICE = "voice";
@@ -78,6 +86,21 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     private int leloTapCount = 0;
     private long lastLeloTapMs = 0L;
     private String settingsSection = "";
+    /**
+     * Where each searchable control ended up in the tree Orbit just built.
+     *
+     * <p>Rebuilt with the page, so an appearance change that rebuilds Settings in place cannot
+     * leave the map pointing at detached views. Empty on the hub, which has no controls of its own.
+     */
+    private final java.util.Map<String, View> searchTargets = new java.util.HashMap<>();
+    /** The control this page was opened to show, consumed once it has been shown. */
+    private String pendingFocusKey = "";
+    /** The hub's search field and its results, or null on a detail page. */
+    private EditText searchField;
+    private LinearLayout searchResults;
+    private ImageButton searchClear;
+    /** The hub's category cards, put aside while results are showing. */
+    private LinearLayout categoryList;
     private final ChatGptAuth.LoginCallback chatGptLoginCallback = new ChatGptAuth.LoginCallback() {
         @Override public void onSuccess(ChatGptAuth.AccountInfo account) {
             runOnUiThread(() -> {
@@ -105,6 +128,8 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         super.onCreate(savedInstanceState);
         UiKit.syncTheme(this);
         settingsSection = normalizeSection(getIntent() == null ? null : getIntent().getStringExtra(EXTRA_SECTION));
+        String focus = getIntent() == null ? null : getIntent().getStringExtra(EXTRA_FOCUS);
+        pendingFocusKey = focus == null ? "" : focus.trim();
         Window w = getWindow();
         w.setStatusBarColor(UiKit.BG);
         w.setNavigationBarColor(UiKit.BG);
@@ -154,7 +179,16 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     }
 
     private View buildContent() {
-        return settingsSection.isEmpty() ? buildSettingsHub() : buildDetailContent();
+        // Rebuilt with the page, so an in-place appearance rebuild can never leave the search map
+        // pointing at views that are no longer on screen.
+        searchTargets.clear();
+        searchField = null;
+        searchResults = null;
+        searchClear = null;
+        categoryList = null;
+        View content = settingsSection.isEmpty() ? buildSettingsHub() : buildDetailContent();
+        focusPendingControl();
+        return content;
     }
 
     private View buildSettingsHub() {
@@ -185,7 +219,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         page.addView(brand);
 
         TextView intro = UiKit.text(this,
-                "Choose a section. Orbit keeps the everyday controls easy to find while deeper options stay out of the way.",
+                "Search for a control, or choose a section. Orbit keeps the everyday controls easy to find while deeper options stay out of the way.",
                 14, UiKit.MUTED, false);
         intro.setLineSpacing(0, 1.12f);
         LinearLayout.LayoutParams introLp = new LinearLayout.LayoutParams(
@@ -193,27 +227,42 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         introLp.setMargins(UiKit.dp(this, 2), UiKit.dp(this, 18), UiKit.dp(this, 2), UiKit.dp(this, 10));
         page.addView(intro, introLp);
 
-        page.addView(settingsCategoryCard(SECTION_ASSISTANT, "Assistant setup",
+        page.addView(buildSearchField(), searchFieldLp());
+        searchResults = new LinearLayout(this);
+        searchResults.setOrientation(LinearLayout.VERTICAL);
+        searchResults.setVisibility(View.GONE);
+        page.addView(searchResults, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // The category cards live in a container of their own so searching can put them aside in
+        // one move. Hiding eleven cards individually would work and would also mean the next card
+        // added to this screen quietly failing to disappear.
+        LinearLayout categories = new LinearLayout(this);
+        categories.setOrientation(LinearLayout.VERTICAL);
+        categoryList = categories;
+        page.addView(categories, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        categories.addView(settingsCategoryCard(SECTION_ASSISTANT, "Assistant setup",
                 "Default assistant, Side button and Quick Settings access"), categoryLp());
-        page.addView(settingsCategoryCard(SECTION_AI, "AI & account",
+        categories.addView(settingsCategoryCard(SECTION_AI, "AI & account",
                 "AI Providers, ChatGPT sign-in and intelligence modes"), categoryLp());
-        page.addView(settingsCategoryCard(SECTION_VOICE, "Voice, context & permissions",
+        categories.addView(settingsCategoryCard(SECTION_VOICE, "Voice, context & permissions",
                 "Voice Beta, screen context and capabilities"), categoryLp());
-        page.addView(settingsCategoryCard(SECTION_DATA, "Personalization & data",
+        categories.addView(settingsCategoryCard(SECTION_DATA, "Personalization & data",
                 "Weather, Gallery, reminders, saved places, Memory and backup"), categoryLp());
-        page.addView(settingsCategoryCard(SECTION_ROUTINES, "Routines",
+        categories.addView(settingsCategoryCard(SECTION_ROUTINES, "Routines",
                 "Create, edit and run saved Action Engine chains"), categoryLp());
-        page.addView(settingsCategoryCard(SECTION_EXTENSIONS, "Extensions",
+        categories.addView(settingsCategoryCard(SECTION_EXTENSIONS, "Extensions",
                 "Add integrations and new actions to Orbit"), categoryLp());
-        page.addView(settingsCategoryCard(SECTION_DECK, "Orbit Deck",
+        categories.addView(settingsCategoryCard(SECTION_DECK, "Orbit Deck",
                 "Customize your personal Orbit shortcuts"), categoryLp());
-        page.addView(settingsCategoryCard(SECTION_CONVERSATIONS, "Conversations",
+        categories.addView(settingsCategoryCard(SECTION_CONVERSATIONS, "Conversations",
                 "History, chat behavior and background notifications"), categoryLp());
-        page.addView(settingsCategoryCard(SECTION_APPEARANCE, "Look & Feel",
+        categories.addView(settingsCategoryCard(SECTION_APPEARANCE, "Look & Feel",
                 "Theme Studio, font, chat text size and haptics"), categoryLp());
-        page.addView(settingsCategoryCard(SECTION_UPDATES, "About & updates",
+        categories.addView(settingsCategoryCard(SECTION_UPDATES, "About & updates",
                 "Current version and verified official Orbit releases"), categoryLp());
-        page.addView(settingsCategoryCard(SECTION_ADVANCED, "Advanced",
+        categories.addView(settingsCategoryCard(SECTION_ADVANCED, "Advanced",
                 "Diagnostics and developer tools"), categoryLp());
 
         TextView footer = UiKit.text(this, "Orbit " + BuildConfig.VERSION_NAME + " • Power Assistant", 12, UiKit.MUTED, false);
@@ -228,6 +277,161 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         footerLp.setMargins(0, UiKit.dp(this, 24), 0, 0);
         page.addView(footer, footerLp);
         return scroll;
+    }
+
+    /**
+     * The Settings search field.
+     *
+     * <p>One compact row rather than another card. Search is a way through the page, not a section
+     * of it, and giving it a full card with a heading would make the screen longer for everybody in
+     * order to make it shorter for the person who types in it.
+     */
+    private View buildSearchField() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(UiKit.dp(this, 14), 0, UiKit.dp(this, 8), 0);
+        row.setBackground(UiKit.outlined(UiKit.SURFACE_2,
+                UiKit.withAlpha(UiKit.accent(this), 62), 16, this));
+
+        ImageButton icon = new ImageButton(this);
+        icon.setImageResource(R.drawable.ic_search);
+        icon.setBackground(null);
+        icon.setColorFilter(UiKit.MUTED);
+        icon.setPadding(0, 0, UiKit.dp(this, 10), 0);
+        // Decoration beside a labelled field: a screen reader reads the field, not the picture.
+        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        icon.setClickable(false);
+        icon.setFocusable(false);
+        row.addView(icon, new LinearLayout.LayoutParams(UiKit.dp(this, 30), UiKit.dp(this, 22)));
+
+        // Orbit's own field, with its surface removed: the row around it is already the outlined
+        // box, and a second one inside it would read as a field inside a field.
+        EditText field = UiKit.input(this, "Search settings", false);
+        field.setBackground(null);
+        field.setPadding(0, 0, 0, 0);
+        field.setMinHeight(0);
+        field.setSingleLine(true);
+        field.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        field.setContentDescription("Search settings");
+        field.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(android.text.Editable s) {
+                showSearchResults(s == null ? "" : s.toString());
+            }
+        });
+        searchField = field;
+        row.addView(field, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        ImageButton clear = new ImageButton(this);
+        clear.setImageResource(R.drawable.ic_close);
+        clear.setBackground(UiKit.ripple(Color.TRANSPARENT, UiKit.accent(this), 18, this));
+        clear.setColorFilter(UiKit.MUTED);
+        clear.setContentDescription("Clear settings search");
+        clear.setVisibility(View.GONE);
+        clear.setOnClickListener(v -> {
+            field.setText("");
+            UiKit.haptic(v, HapticFeedbackConstants.CLOCK_TICK);
+        });
+        searchClear = clear;
+        row.addView(clear, new LinearLayout.LayoutParams(UiKit.dp(this, 36), UiKit.dp(this, 36)));
+        return row;
+    }
+
+    private LinearLayout.LayoutParams searchFieldLp() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 50));
+        lp.setMargins(0, UiKit.dp(this, 2), 0, UiKit.dp(this, 12));
+        return lp;
+    }
+
+    /**
+     * Draws the results for what has been typed, and puts the category cards aside while it does.
+     *
+     * <p>Results replace the categories rather than sitting above them. Leaving eleven cards below
+     * a list of three answers would mean the person who searched still has to scroll past
+     * everything they were trying to skip, which is the problem search exists to solve.
+     *
+     * <p>Entirely local and synchronous. The index is forty entries in memory, so this runs on
+     * every keystroke without a debounce, a thread, or a request to anything.
+     */
+    private void showSearchResults(String query) {
+        if (searchResults == null || categoryList == null) return;
+        String text = query == null ? "" : query.trim();
+        if (searchClear != null) {
+            searchClear.setVisibility(text.isEmpty() ? View.GONE : View.VISIBLE);
+        }
+        searchResults.removeAllViews();
+        if (text.isEmpty()) {
+            searchResults.setVisibility(View.GONE);
+            categoryList.setVisibility(View.VISIBLE);
+            return;
+        }
+        categoryList.setVisibility(View.GONE);
+        searchResults.setVisibility(View.VISIBLE);
+
+        List<SettingsSearchIndex.Entry> matches = SettingsSearchIndex.search(text);
+        if (matches.isEmpty()) {
+            LinearLayout empty = card();
+            empty.addView(UiKit.text(this, "No settings found", 16, UiKit.TEXT, true));
+            TextView hint = UiKit.text(this,
+                    "Try a shorter word, or the name of the thing you want to change.",
+                    13, UiKit.MUTED, false);
+            hint.setPadding(0, UiKit.dp(this, 6), 0, 0);
+            empty.addView(hint);
+            searchResults.addView(empty, categoryLp());
+            return;
+        }
+        for (SettingsSearchIndex.Entry entry : matches) {
+            searchResults.addView(searchResultRow(entry), categoryLp());
+        }
+    }
+
+    /** One result: the control's own words, and which part of Settings it lives in. */
+    private View searchResultRow(SettingsSearchIndex.Entry entry) {
+        LinearLayout row = card();
+        row.setPadding(UiKit.dp(this, 16), UiKit.dp(this, 13), UiKit.dp(this, 16), UiKit.dp(this, 13));
+        row.setBackground(UiKit.rippleOutlined(UiKit.SURFACE,
+                UiKit.withAlpha(UiKit.accent(this), 38), UiKit.accent(this), 20, this));
+        row.addView(UiKit.text(this, entry.title, 15, UiKit.TEXT, true));
+        TextView where = UiKit.text(this, entry.subtitle(), 12, UiKit.MUTED, false);
+        where.setPadding(0, UiKit.dp(this, 4), 0, 0);
+        row.addView(where);
+        if (!entry.description.isEmpty()) {
+            TextView what = UiKit.text(this, entry.description, 12, UiKit.MUTED, false);
+            what.setLineSpacing(0, 1.1f);
+            what.setPadding(0, UiKit.dp(this, 4), 0, 0);
+            row.addView(what);
+        }
+        row.setContentDescription(entry.title + ", in " + entry.subtitle());
+        row.setOnClickListener(v -> {
+            UiKit.haptic(v, HapticFeedbackConstants.CLOCK_TICK);
+            openSearchResult(entry);
+        });
+        UiKit.pressScale(row);
+        return row;
+    }
+
+    /**
+     * Takes the user to the control they picked.
+     *
+     * <p>Through the same {@link #openSettingsSection} every category card uses, plus the control
+     * key when there is one. A result whose setting lives on a screen of its own - Routines,
+     * Extensions, updates - opens that screen, which is exactly where the user was heading; there
+     * is no row to pulse because there is no row.
+     */
+    private void openSearchResult(SettingsSearchIndex.Entry entry) {
+        if (entry == null) return;
+        if (searchField != null) {
+            // Cleared before leaving, so coming back with Back shows the settings page rather than
+            // a stale result list for a control the user has already reached.
+            searchField.setText("");
+            searchField.clearFocus();
+        }
+        openSettingsSection(entry.section, entry.controlKey);
     }
 
     private LinearLayout settingsCategoryCard(String section, String title, String subtitle) {
@@ -266,6 +470,10 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     }
 
     private void openSettingsSection(String section) {
+        openSettingsSection(section, "");
+    }
+
+    private void openSettingsSection(String section, String focusKey) {
         if (SECTION_ROUTINES.equals(section)) {
             startActivity(new Intent(this, RoutinesActivity.class));
             return;
@@ -280,6 +488,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         }
         Intent intent = new Intent(this, SettingsActivity.class);
         intent.putExtra(EXTRA_SECTION, section);
+        if (focusKey != null && !focusKey.isEmpty()) intent.putExtra(EXTRA_FOCUS, focusKey);
         startActivity(intent);
     }
 
@@ -288,6 +497,50 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
 
     /** Opens a section exactly as tapping its card does. For tests. */
     void openSectionForTest(String section) { openSettingsSection(section); }
+
+    /** For tests: the results currently drawn for a query, without touching the field. */
+    java.util.List<String> searchResultTitlesForTest(String query) {
+        java.util.List<String> titles = new java.util.ArrayList<>();
+        for (SettingsSearchIndex.Entry entry : SettingsSearchIndex.search(query)) {
+            titles.add(entry.title);
+        }
+        return titles;
+    }
+
+    /** For tests: type into the hub's search field exactly as a person would. */
+    void typeSearchForTest(String query) {
+        if (searchField != null) searchField.setText(query == null ? "" : query);
+    }
+
+    /** For tests: how many result rows are on screen. */
+    int searchResultCountForTest() {
+        return searchResults == null || searchResults.getVisibility() != View.VISIBLE
+                ? 0 : searchResults.getChildCount();
+    }
+
+    /** For tests: the result rows themselves, so one can be chosen the way a person would. */
+    java.util.List<View> searchResultsForTest() {
+        java.util.List<View> rows = new java.util.ArrayList<>();
+        if (searchResults == null) return rows;
+        for (int i = 0; i < searchResults.getChildCount(); i++) {
+            rows.add(searchResults.getChildAt(i));
+        }
+        return rows;
+    }
+
+    /** For tests: whether the category cards are currently put aside. */
+    boolean categoriesHiddenForTest() {
+        return categoryList != null && categoryList.getVisibility() != View.VISIBLE;
+    }
+
+    /** For tests: whether a detail page found and settled on the control it was opened for. */
+    boolean focusedControlForTest(String key) {
+        View target = searchTargets.get(key);
+        return target != null && target.isAttachedToWindow();
+    }
+
+    /** For tests: which control keys this page registered. */
+    java.util.Set<String> searchTargetKeysForTest() { return searchTargets.keySet(); }
 
     private String normalizeSection(String section) {
         if (SECTION_ASSISTANT.equals(section) || SECTION_AI.equals(section) ||
@@ -392,7 +645,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44));
         rerunLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
         setupCard.addView(rerunSetup, rerunLp);
-        page.addView(setupCard);
+        page.addView(target(SettingsSearchIndex.KEY_DEFAULT_ASSISTANT, setupCard));
 
         page.addView(sectionTitle("QUICK ACCESS", "setup"));
         LinearLayout quickCard = card();
@@ -433,7 +686,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         quickCard.addView(chooseRoutine, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44)));
         refreshQuickRoutineSelection();
-        page.addView(quickCard);
+        page.addView(target(SettingsSearchIndex.KEY_QUICK_TILES, quickCard));
 
         page.addView(sectionTitle("HOME-SCREEN WIDGETS", "setup"));
         LinearLayout widgetCard = card();
@@ -474,7 +727,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44));
         pinQuickWidgetLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
         widgetCard.addView(pinQuickWidget, pinQuickWidgetLp);
-        page.addView(widgetCard);
+        page.addView(target(SettingsSearchIndex.KEY_WIDGETS, widgetCard));
 
         TextView remindersSection = sectionTitle("REMINDERS", "data");
         LinearLayout remindersCard = card();
@@ -501,6 +754,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
 
         Button managePlaces = secondaryButton("Manage saved places");
         managePlaces.setOnClickListener(v -> startActivity(new Intent(this, SavedPlacesActivity.class)));
+        target(SettingsSearchIndex.KEY_PLACES, managePlaces);
         personalDataCard.addView(managePlaces, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48)));
 
@@ -509,21 +763,21 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         LinearLayout.LayoutParams manageMemoryLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
         manageMemoryLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
-        personalDataCard.addView(manageMemory, manageMemoryLp);
+        personalDataCard.addView(target(SettingsSearchIndex.KEY_MEMORY, manageMemory), manageMemoryLp);
 
         Button manageApps = secondaryButton("Manage app profiles");
         manageApps.setOnClickListener(v -> startActivity(new Intent(this, AppsActivity.class)));
         LinearLayout.LayoutParams manageAppsLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
         manageAppsLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
-        personalDataCard.addView(manageApps, manageAppsLp);
+        personalDataCard.addView(target(SettingsSearchIndex.KEY_APP_PROFILES, manageApps), manageAppsLp);
 
         Button manageNotifications = secondaryButton("Manage notification intelligence");
         manageNotifications.setOnClickListener(v -> startActivity(new Intent(this, NotificationsActivity.class)));
         LinearLayout.LayoutParams manageNotificationsLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
         manageNotificationsLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
-        personalDataCard.addView(manageNotifications, manageNotificationsLp);
+        personalDataCard.addView(target(SettingsSearchIndex.KEY_NOTIFICATIONS, manageNotifications), manageNotificationsLp);
         // Added with the other Personalization & data sections below.
 
         // Orbit Vault gets its own small section rather than a row inside Personalization, because
@@ -602,7 +856,10 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         providerDetails.setPadding(0, UiKit.dp(this, 13), 0, 0);
         populateProviderDetails(providerDetails);
         accountCard.addView(providerDetails);
-        page.addView(accountCard);
+        page.addView(target(SettingsSearchIndex.KEY_PROVIDER, accountCard));
+        // The provider block and the ChatGPT sign-in inside it are two things people look for
+        // separately, so both are reachable; the second lands inside the first, which is correct.
+        if (providerDetails != null) target(SettingsSearchIndex.KEY_CHATGPT_ACCOUNT, providerDetails);
 
         page.addView(sectionTitle("VOICE & CONTEXT", "voice"));
         LinearLayout voiceCard = card();
@@ -620,33 +877,43 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         LinearLayout.LayoutParams cameraLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
         cameraLp.setMargins(0, UiKit.dp(this, 8), 0, 0);
         voiceCard.addView(cameraPermission, cameraLp);
-        voiceCard.addView(toggle("Allow Orbit to read current-screen text", Prefs.SCREEN_CONTEXT, true));
-        voiceCard.addView(toggle("Allow Orbit to receive screenshots",
+        voiceCard.addView(target(SettingsSearchIndex.KEY_SCREEN_TEXT,
+                toggle("Allow Orbit to read current-screen text", Prefs.SCREEN_CONTEXT, true)));
+        voiceCard.addView(target(SettingsSearchIndex.KEY_SCREENSHOTS,
+                toggle("Allow Orbit to receive screenshots",
                 "Visual context, previews, and screen-region selection.",
-                Prefs.SCREENSHOT, true));
-        voiceCard.addView(toggle("Attach current screen by default", Prefs.ATTACH_SCREEN_BY_DEFAULT, false));
-        voiceCard.addView(toggle("Show contextual screen-action chips when attached", Prefs.CONTEXT_CHIPS, true));
-        voiceCard.addView(toggle("Speak replies to voice requests", Prefs.SPEAK, true));
-        voiceCard.addView(toggle("Allow longer pauses while speaking",
+                Prefs.SCREENSHOT, true)));
+        voiceCard.addView(target(SettingsSearchIndex.KEY_ATTACH_SCREEN,
+                toggle("Attach current screen by default", Prefs.ATTACH_SCREEN_BY_DEFAULT, false)));
+        voiceCard.addView(target(SettingsSearchIndex.KEY_CONTEXT_CHIPS,
+                toggle("Show contextual screen-action chips when attached", Prefs.CONTEXT_CHIPS, true)));
+        voiceCard.addView(target(SettingsSearchIndex.KEY_SPEAK,
+                toggle("Speak replies to voice requests", Prefs.SPEAK, true)));
+        voiceCard.addView(target(SettingsSearchIndex.KEY_VOICE_PAUSE,
+                toggle("Allow longer pauses while speaking",
                 "Voice Beta gives you more time to pause and think before Orbit decides you are finished. Tap the mic again if you want to finish sooner.",
-                Prefs.VOICE_PAUSE_FRIENDLY, true));
-        voiceCard.addView(toggle("Start listening when overlay opens",
+                Prefs.VOICE_PAUSE_FRIENDLY, true)));
+        voiceCard.addView(target(SettingsSearchIndex.KEY_AUTO_LISTEN,
+                toggle("Start listening when overlay opens",
                 "Automatically activate the microphone when the assistant overlay appears.",
-                Prefs.AUTO_LISTEN_ON_OPEN, false));
-        voiceCard.addView(toggle("Hands-free voice follow-ups",
+                Prefs.AUTO_LISTEN_ON_OPEN, false)));
+        voiceCard.addView(target(SettingsSearchIndex.KEY_FOLLOW_UPS,
+                toggle("Hands-free voice follow-ups",
                 "Reopen the microphone after Orbit speaks.",
-                Prefs.AUTO_LISTEN, false));
-        voiceCard.addView(toggle("Smart follow-ups",
+                Prefs.AUTO_LISTEN, false)));
+        voiceCard.addView(target(SettingsSearchIndex.KEY_SMART_FOLLOW_UPS,
+                toggle("Smart follow-ups",
                 "Only reopen the microphone when Orbit is waiting for your answer.",
-                Prefs.SMART_FOLLOW_UPS, true));
-        voiceCard.addView(toggle("Keyboard-aware assistant invocation", Prefs.KEYBOARD_AWARE_ASSISTANT, true));
+                Prefs.SMART_FOLLOW_UPS, true)));
+        voiceCard.addView(target(SettingsSearchIndex.KEY_KEYBOARD_AWARE,
+                toggle("Keyboard-aware assistant invocation", Prefs.KEYBOARD_AWARE_ASSISTANT, true)));
 
         Button capabilities = secondaryButton("Permissions & capabilities");
         capabilities.setOnClickListener(v -> startActivity(new Intent(this, CapabilitiesActivity.class)));
         LinearLayout.LayoutParams capabilitiesLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
         capabilitiesLp.setMargins(0, UiKit.dp(this, 12), 0, 0);
-        voiceCard.addView(capabilities, capabilitiesLp);
+        voiceCard.addView(target(SettingsSearchIndex.KEY_PERMISSIONS, capabilities), capabilitiesLp);
         page.addView(voiceCard);
 
         TextView weatherSection = sectionTitle("WEATHER", "data");
@@ -688,22 +955,22 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         galleryCard.addView(galleryHelp);
 
         page.addView(weatherSection);
-        page.addView(weatherCard);
+        page.addView(target(SettingsSearchIndex.KEY_WEATHER, weatherCard));
         page.addView(gallerySection);
-        page.addView(galleryCard);
+        page.addView(target(SettingsSearchIndex.KEY_GALLERY, galleryCard));
         page.addView(personalizationSection);
         page.addView(personalDataCard);
         page.addView(vaultSection);
-        page.addView(vaultCard);
+        page.addView(target(SettingsSearchIndex.KEY_VAULT, vaultCard));
         page.addView(remindersSection);
-        page.addView(remindersCard);
+        page.addView(target(SettingsSearchIndex.KEY_REMINDERS, remindersCard));
         page.addView(backupSection);
-        page.addView(backupCard);
+        page.addView(target(SettingsSearchIndex.KEY_BACKUP, backupCard));
 
         page.addView(sectionTitle("INTELLIGENCE", "intelligence"));
         LinearLayout aiCard = card();
         tagSectionCard(aiCard, "intelligence");
-        aiCard.addView(label("Default mode for new chats"));
+        TextView modeLabel = label("Default mode for new chats");
         String[] modeLabels = {"Auto", "Fast", "Balanced", "Deep", "Custom"};
         String modeValue = Prefs.intelligenceMode(this);
         int modePos = Prefs.MODE_AUTO.equals(modeValue) ? 0 : Prefs.MODE_FAST.equals(modeValue) ? 1 :
@@ -713,26 +980,40 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
                     pos == 3 ? Prefs.MODE_DEEP : pos == 4 ? Prefs.MODE_CUSTOM : Prefs.MODE_BALANCED;
             Prefs.get(this).edit().putString(Prefs.INTELLIGENCE_MODE, value).apply();
         });
-        aiCard.addView(mode, selectorLp());
+        aiCard.addView(controlGroup(SettingsSearchIndex.KEY_MODE, modeLabel, mode, selectorLp()));
         TextView modeHelp = UiKit.text(this,
                 "Fast favors Luna, Balanced favors Terra, and Deep favors Sol. Auto chooses per request. This is the default for new chats; changing the mode inside a conversation now stays with that chat.",
                 12, UiKit.MUTED, false);
         modeHelp.setPadding(0, 0, 0, UiKit.dp(this, 10));
         aiCard.addView(modeHelp);
 
-        aiCard.addView(label("Custom model"));
-        String[] modelLabels = {"gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"};
+        TextView modelLabelView = label("Custom model");
+        // Which models are offered follows the active provider, because a picker entry is a promise
+        // that choosing it works. Astra has been validated against the account-backed ChatGPT path
+        // and nowhere else, so only that provider offers it.
+        String[] modelLabels = OrbitModelCatalog.modelsFor(Prefs.provider(this));
         int modelPos = indexOf(modelLabels, Prefs.model(this));
         LinearLayout model = menuSelector(modelLabels, modelPos,
                 (pos, selectedLabel) -> Prefs.get(this).edit().putString(Prefs.MODEL, selectedLabel).apply());
-        aiCard.addView(model, selectorLp());
+        aiCard.addView(controlGroup(SettingsSearchIndex.KEY_MODEL, modelLabelView, model, selectorLp()));
+        if (OrbitModelCatalog.supports(Prefs.provider(this), OrbitModelCatalog.ASTRA)) {
+            TextView astraNote = UiKit.text(this,
+                    OrbitModelCatalog.settingsLabel(OrbitModelCatalog.ASTRA)
+                            + ": most capable. Availability depends on your ChatGPT/Codex account, "
+                            + "and Astra uses its allowance faster. Auto, Fast, Balanced and Deep "
+                            + "are unchanged and never route to Astra on their own.",
+                    12, UiKit.MUTED, false);
+            astraNote.setLineSpacing(0, 1.12f);
+            astraNote.setPadding(0, UiKit.dp(this, 7), 0, UiKit.dp(this, 4));
+            aiCard.addView(astraNote);
+        }
 
-        aiCard.addView(label("Custom reasoning"));
+        TextView reasoningLabel = label("Custom reasoning");
         String[] reasoningLabels = {"none", "low", "medium", "high", "xhigh", "max"};
         int rPos = indexOf(reasoningLabels, Prefs.reasoning(this));
         LinearLayout reasoning = menuSelector(reasoningLabels, rPos,
                 (pos, selectedLabel) -> Prefs.get(this).edit().putString(Prefs.REASONING, selectedLabel).apply());
-        aiCard.addView(reasoning, selectorLp());
+        aiCard.addView(controlGroup(SettingsSearchIndex.KEY_REASONING, reasoningLabel, reasoning, selectorLp()));
         TextView cost = UiKit.text(this, "ChatGPT-account mode uses your account-backed allowance. Orbit never silently switches to the separately metered API-relay fallback.", 12, UiKit.MUTED, false);
         cost.setPadding(0, UiKit.dp(this, 8), 0, 0);
         aiCard.addView(cost);
@@ -740,10 +1021,20 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         // takes effect on the next request with no restart and no extra setup step.
         // On unless the user says otherwise, and the switch stays so they always can. The default
         // comes from Prefs rather than a literal here, so the two cannot drift apart.
-        aiCard.addView(toggle("Thinking updates",
+        aiCard.addView(target(SettingsSearchIndex.KEY_THINKING_UPDATES,
+                toggle("Thinking updates",
                 "Show brief updates about what Orbit is working on while it prepares an answer. "
                         + "Never shows private chain-of-thought.",
-                Prefs.THINKING_UPDATES, Prefs.THINKING_UPDATES_DEFAULT));
+                Prefs.THINKING_UPDATES, Prefs.THINKING_UPDATES_DEFAULT)));
+        // Sits with Intelligence because it is about what an answer contains. The copy names the
+        // one thing somebody would want to know before leaving it on: which addresses Orbit
+        // contacts, and that it is only the pages the answer already used.
+        aiCard.addView(target(SettingsSearchIndex.KEY_RICH_ANSWERS,
+                toggle("Sourced images in answers",
+                "Show a useful picture inside an answer when one genuinely helps. Orbit only reads "
+                        + "the preview image a page it already cited declares about itself, and "
+                        + "never sends your chat, prompt or Vault anywhere to do it.",
+                Prefs.RICH_ANSWERS, Prefs.RICH_ANSWERS_DEFAULT)));
         page.addView(aiCard);
 
         page.addView(sectionTitle("DIAGNOSTICS", "diagnostics"));
@@ -759,7 +1050,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         diagnosticsCard.addView(diagnostics, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48)));
         diagnostics.setOnClickListener(v -> startActivity(new Intent(this, DiagnosticsActivity.class)));
-        page.addView(diagnosticsCard);
+        page.addView(target(SettingsSearchIndex.KEY_DIAGNOSTICS, diagnosticsCard));
 
         page.addView(sectionTitle("ORBIT DECK", "deck"));
         LinearLayout deckCard = card();
@@ -782,17 +1073,21 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         deckCard.addView(openDeck, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48)));
         openDeck.setOnClickListener(v -> startActivity(new Intent(this, DeckActivity.class)));
-        page.addView(deckCard);
+        page.addView(target(SettingsSearchIndex.KEY_DECK, deckCard));
 
         page.addView(sectionTitle("CONVERSATIONS", "conversations"));
         LinearLayout conversationCard = card();
         tagSectionCard(conversationCard, "conversations");
-        conversationCard.addView(toggle("Start a new chat each time Orbit opens", Prefs.NEW_CHAT_ON_OPEN, true));
-        conversationCard.addView(toggle("Save recent chats on this device", Prefs.HISTORY_ENABLED, true));
-        conversationCard.addView(toggle("Save screen attachment thumbnails in chat history", Prefs.SAVE_SCREEN_THUMBNAILS, false));
-        conversationCard.addView(toggle("Show Stop button while replying",
+        conversationCard.addView(target(SettingsSearchIndex.KEY_NEW_CHAT,
+                toggle("Start a new chat each time Orbit opens", Prefs.NEW_CHAT_ON_OPEN, true)));
+        conversationCard.addView(target(SettingsSearchIndex.KEY_HISTORY,
+                toggle("Save recent chats on this device", Prefs.HISTORY_ENABLED, true)));
+        conversationCard.addView(target(SettingsSearchIndex.KEY_THUMBNAILS,
+                toggle("Save screen attachment thumbnails in chat history", Prefs.SAVE_SCREEN_THUMBNAILS, false)));
+        conversationCard.addView(target(SettingsSearchIndex.KEY_STOP_BUTTON,
+                toggle("Show Stop button while replying",
                 "Replace Send with Stop while Orbit is generating a reply.",
-                Prefs.SHOW_STOP_BUTTON, true));
+                Prefs.SHOW_STOP_BUTTON, true)));
         conversationCard.addView(notificationToggle());
         TextView conversationNote = UiKit.text(this,
                 "Orbit keeps up to 100 recent chats locally when history is enabled. The full Orbit app can search, rename, reopen, and delete them. Screen thumbnails are stored only in Orbit's private app storage when that option is enabled.",
@@ -800,7 +1095,8 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         conversationNote.setPadding(0, UiKit.dp(this, 7), 0, UiKit.dp(this, 10));
         conversationCard.addView(conversationNote);
         Button clearHistory = secondaryButton("Clear Orbit conversation history");
-        conversationCard.addView(clearHistory, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48)));
+        conversationCard.addView(target(SettingsSearchIndex.KEY_CLEAR_HISTORY, clearHistory),
+                new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48)));
         clearHistory.setOnClickListener(v -> {
             AlertDialog dialog = new AlertDialog.Builder(this)
                     .setTitle("Clear Orbit history?")
@@ -826,7 +1122,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         LinearLayout studioCard = card();
         tagSectionCard(studioCard, "appearance");
         studioCard.addView(themeStudioRow());
-        page.addView(studioCard);
+        page.addView(target(SettingsSearchIndex.KEY_THEME_STUDIO, studioCard));
 
         // A heading of its own rather than a bare second card. It says what the card below is for,
         // and it carries the same spacing every other section break on this page has, which is what
@@ -835,8 +1131,8 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         LinearLayout styleCard = card();
         tagSectionCard(styleCard, "appearance");
 
-        styleCard.addView(label("App font"));
-        styleCard.addView(fontSelector());
+        styleCard.addView(controlGroup(SettingsSearchIndex.KEY_FONT,
+                label("App font"), fontSelector(), null));
         TextView fontNote = UiKit.text(this,
                 "Orbit Default is the current app font. Times New Roman uses Android's built-in serif family for a similar classic look without adding a font file to Orbit.",
                 12, UiKit.MUTED, false);
@@ -845,8 +1141,8 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
 
         TextView chatSizeLabel = label("Chat text size");
         chatSizeLabel.setPadding(UiKit.dp(this, 2), UiKit.dp(this, 12), 0, UiKit.dp(this, 6));
-        styleCard.addView(chatSizeLabel);
-        styleCard.addView(chatTextSizeSelector());
+        styleCard.addView(controlGroup(SettingsSearchIndex.KEY_CHAT_TEXT_SIZE,
+                chatSizeLabel, chatTextSizeSelector(), null));
         TextView chatSizeNote = UiKit.text(this,
                 "Changes conversation content only, including rich Markdown in full chat and the Side-button assistant.",
                 12, UiKit.MUTED, false);
@@ -855,7 +1151,8 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
 
         // Haptics stays here on purpose. It is not a color, it is not saved in a theme, and
         // applying a Theme Studio preset must never silently change how the phone feels.
-        styleCard.addView(toggle("Haptic feedback", Prefs.HAPTICS, true));
+        styleCard.addView(target(SettingsSearchIndex.KEY_HAPTICS,
+                toggle("Haptic feedback", Prefs.HAPTICS, true)));
         TextView hapticNote = UiKit.text(this,
                 "Uses light tactile ticks for Orbit controls and Settings interactions. Turn this off to disable those haptics.",
                 12, UiKit.MUTED, false);
@@ -865,8 +1162,8 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         TextView advancedLabel = label("Advanced");
         advancedLabel.setPadding(UiKit.dp(this, 2), UiKit.dp(this, 20), 0, UiKit.dp(this, 6));
         styleCard.addView(advancedLabel);
-        styleCard.addView(label("Page transitions"));
-        styleCard.addView(pageTransitionSelector());
+        styleCard.addView(controlGroup(SettingsSearchIndex.KEY_PAGE_TRANSITIONS,
+                label("Page transitions"), pageTransitionSelector(), null));
         TextView transitionNote = UiKit.text(this,
                 "How full-screen Orbit pages move when you open and leave them. Slide brings a page in from the right and sends it back out on the way back. Fade & settle uses a short fade with a small upward settle. None changes pages immediately. Android's own animation settings still apply.",
                 12, UiKit.MUTED, false);
@@ -878,18 +1175,20 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         page.addView(sectionTitle("GESTURES", "appearance"));
         LinearLayout gestureCard = card();
         tagSectionCard(gestureCard, "appearance");
-        gestureCard.addView(toggle("Swipe to go back",
+        gestureCard.addView(target(SettingsSearchIndex.KEY_SWIPE_BACK,
+                toggle("Swipe to go back",
                 "Use Orbit's interactive edge gesture when returning to the previous screen. The "
                         + "page follows your finger and the screen you came from appears behind it, "
                         + "across conversations, Settings and Orbit's other pages. Turn this off to "
                         + "use Orbit's page transition instead. Back itself always works either "
                         + "way, from the gesture, the navigation buttons, and every Back control.",
-                Prefs.ENHANCED_CHAT_BACK, true));
-        gestureCard.addView(toggle("Chat swipe actions",
+                Prefs.ENHANCED_CHAT_BACK, true)));
+        gestureCard.addView(target(SettingsSearchIndex.KEY_CHAT_SWIPE,
+                toggle("Chat swipe actions",
                 "Swipe a chat left to delete it, or right to pin and unpin it. Deleting always "
                         + "offers Undo. With this off, chats scroll and open as normal and both "
                         + "actions stay on the chat's own menu.",
-                Prefs.CHAT_SWIPE_ACTIONS, true));
+                Prefs.CHAT_SWIPE_ACTIONS, true)));
         page.addView(gestureCard);
 
         TextView footer = UiKit.text(this, "Orbit " + BuildConfig.VERSION_NAME + " • Power Assistant", 12, UiKit.MUTED, false);
@@ -1356,6 +1655,99 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
 
     private void tagSectionCard(View view, String key) {
         if (view != null) view.setTag(TAG_CARD + ":" + key);
+    }
+
+    /**
+     * Registers one view as the thing a search result for {@code key} should land on.
+     *
+     * <p>Returns the view so it can be wrapped around an {@code addView} argument at the point the
+     * control is created, which is the only place that knows which control it is. Keeping the map
+     * beside the tree rather than inside it means a lookup is a hash rather than a walk, and a
+     * rebuild starts from an empty map rather than from stale entries.
+     */
+    private View target(String key, View view) {
+        if (view != null && key != null && !key.isEmpty()) searchTargets.put(key, view);
+        return view;
+    }
+
+    /**
+     * Groups a label and its control so a search result lands on both.
+     *
+     * <p>Several Orbit settings are a caption above a selector, and neither half is the setting on
+     * its own: scrolling to "Custom model" alone puts the control it names just below the fold, and
+     * scrolling to the selector alone hides the words that say what it is. One container is the
+     * whole setting, so that is what a result targets and what pulses.
+     */
+    private View controlGroup(String key, View labelView, View control,
+                              LinearLayout.LayoutParams controlLp) {
+        LinearLayout group = new LinearLayout(this);
+        group.setOrientation(LinearLayout.VERTICAL);
+        if (labelView != null) group.addView(labelView);
+        // A null lp means the control already carries the layout it wants, which is true of the
+        // selectors that build their own; passing null to addView would throw rather than default.
+        if (control != null) {
+            if (controlLp == null) group.addView(control);
+            else group.addView(control, controlLp);
+        }
+        target(key, group);
+        return group;
+    }
+
+    /**
+     * Scrolls to the control this page was opened for and pulses it, once.
+     *
+     * <p>Posted rather than run inline, because the page has just been built and nothing has been
+     * laid out yet - a scroll computed against zero heights lands at the top, which is exactly the
+     * "took me to the section" outcome this feature exists to replace. The key is consumed on the
+     * first successful settle, so a rotation or an appearance rebuild does not re-pulse a control
+     * the user has already been shown.
+     */
+    private void focusPendingControl() {
+        if (pendingFocusKey.isEmpty() || settingsScroll == null) return;
+        View target = searchTargets.get(pendingFocusKey);
+        if (target == null) { pendingFocusKey = ""; return; }
+        final ScrollView scroll = settingsScroll;
+        scroll.post(() -> {
+            int top = 0;
+            View walk = target;
+            while (walk != null && walk != scroll && walk.getParent() instanceof View) {
+                top += walk.getTop();
+                walk = (View) walk.getParent();
+            }
+            // A little above the control rather than exactly at it: a row flush against the top
+            // edge of the viewport reads as the page having scrolled past it.
+            scroll.smoothScrollTo(0, Math.max(0, top - UiKit.dp(this, 72)));
+            UiKit.enterContent(target);
+            pulse(target);
+        });
+        pendingFocusKey = "";
+    }
+
+    /**
+     * A brief accent wash over one control, so the eye lands where the scroll did.
+     *
+     * <p>Drawn as the view's foreground and animated by alpha, so nothing is resized, no text
+     * reflows and no neighbouring control moves. It respects the system animation scale through
+     * {@link UiKit#animationsEnabled()}: a device set to reduced motion gets the scroll and no
+     * flashing, which is still an answer to "where is it".
+     */
+    private void pulse(View target) {
+        if (target == null) return;
+        if (!UiKit.animationsEnabled()) return;
+        final android.graphics.drawable.GradientDrawable wash =
+                UiKit.rounded(UiKit.withAlpha(UiKit.accent(this), 90), 18, this);
+        target.setForeground(wash);
+        wash.setAlpha(0);
+        android.animation.ValueAnimator animator =
+                android.animation.ValueAnimator.ofInt(0, 255, 0, 200, 0);
+        animator.setDuration(900L);
+        animator.addUpdateListener(a -> wash.setAlpha((Integer) a.getAnimatedValue()));
+        animator.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator animation) {
+                target.setForeground(null);
+            }
+        });
+        animator.start();
     }
 
     private void applySettingsSectionFilter(LinearLayout page, String section) {

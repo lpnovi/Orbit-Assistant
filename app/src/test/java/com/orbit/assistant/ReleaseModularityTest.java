@@ -185,16 +185,18 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * Orbit Vault passed its six-Beta release line and is now Stable.
+     * Rich Answers opens a new Beta line after the Stable Vault release.
      *
-     * <p>The complete suite proves the machine-checkable save, restore, backup, attachment,
-     * organization, swipe, Undo, onboarding and floating-glass contracts. The tested Beta 6 product
-     * behaviour is unchanged here, so this guard now prevents prerelease metadata from returning.
+     * <p>Beta 1 adds sourced web images inside answers, Settings search, and optional GPT-6 Astra.
+     * All three want real-device testing before any of them is called finished, so this ships as a
+     * prerelease and the guard runs in the Beta direction: prerelease metadata must be present, and
+     * the changelog entry the release workflow builds its notes from must already exist.
      */
-    @Test public void thisReleaseIsOrbitVaultStable() {
-        assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
-                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.installedIsBeta());
+    @Test public void thisReleaseIsRichAnswersBetaOne() {
+        assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
+                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+        assertTrue(OrbitVersion.installedIsBeta());
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
     }
 

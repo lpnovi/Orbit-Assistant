@@ -51,18 +51,34 @@ public final class OrbitRichResponseRenderer {
     }
 
     public static View render(Context context, String rawText, int bubbleFill, boolean compact) {
+        return render(context, rawText, bubbleFill, compact, null);
+    }
+
+    /**
+     * A finished answer, with any sourced pictures drawn in their places inside it.
+     *
+     * <p>The pictures are an argument rather than something read out of the text, which is what
+     * keeps the answer the answer: {@code rawText} is exactly what the model said and exactly what
+     * the user copies, and nothing about a picture is encoded into it. A null or empty list is the
+     * ordinary case and produces precisely the tree this method produced before Rich Answers
+     * existed.
+     */
+    public static View render(Context context, String rawText, int bubbleFill, boolean compact,
+                              java.util.List<RichAnswerImage> richImages) {
         LinearLayout bubble = new LinearLayout(context);
         applyBubbleChrome(bubble, bubbleFill, compact);
 
         String source = rawText == null ? "" : rawText.replace("\r", "");
-        try { renderBlocks(context, bubble, source, bubbleFill, compact); }
+        try { renderBlocks(context, bubble, source, bubbleFill, compact, richImages); }
         catch (Throwable ignored) {
             bubble.removeAllViews();
             bubble.addView(text(context, source, chatSize(context, compact ? 14 : 15),
                     UiKit.onBubble(bubbleFill), false));
         }
         trimTrailingBlockSpacing(bubble);
-        if (!prefersWideLayout(source)) {
+        // A picture needs the full bubble width to be worth showing, so an answer carrying one is
+        // wide even when its text alone would not have been.
+        if (!prefersWideLayout(source) && !RichAnswerPlacement.hasAnyImage(richImages)) {
             for (int i = 0; i < bubble.getChildCount(); i++) {
                 View child = bubble.getChildAt(i);
                 ViewGroup.LayoutParams lp = child.getLayoutParams();
@@ -75,14 +91,23 @@ public final class OrbitRichResponseRenderer {
     }
 
     private static void renderBlocks(Context c, LinearLayout out, String source,
-                                     int fill, boolean compact) {
+                                     int fill, boolean compact,
+                                     java.util.List<RichAnswerImage> richImages) {
         int foreground = UiKit.onBubble(fill);
         int images = 0;
-        for (ResponseBlocks.Block block : ResponseBlocks.parse(source)) {
+        java.util.List<ResponseBlocks.Block> blocks = ResponseBlocks.parse(source);
+        boolean anyRich = RichAnswerPlacement.hasAnyImage(richImages);
+        for (int i = 0; i < blocks.size(); i++) {
+            ResponseBlocks.Block block = blocks.get(i);
             boolean asImage = block.kind == ResponseBlocks.Kind.IMAGE && images < MAX_IMAGES;
             if (block.kind == ResponseBlocks.Kind.IMAGE) images++;
             addBlock(out, buildBlock(c, block, fill, compact, asImage), c,
                     spacingFor(block, asImage), topSpacingFor(block));
+            if (!anyRich) continue;
+            for (View card : RichAnswerCardView.viewsFor(c, richImages,
+                    RichAnswerPlacement.imagesAfter(richImages, i, blocks.size()), foreground)) {
+                addBlock(out, card, c, 9, 4);
+            }
         }
         if (out.getChildCount() == 0) out.addView(text(c, source,
                 chatSize(c, compact ? 14 : 15),

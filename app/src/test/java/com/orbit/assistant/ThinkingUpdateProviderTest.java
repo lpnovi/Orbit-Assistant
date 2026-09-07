@@ -157,8 +157,13 @@ public final class ThinkingUpdateProviderTest {
         int at = client.indexOf("if (askForSummary) reasoning.put(\"summary\"");
         assertTrue("the summary must be requested on the existing reasoning object", at > 0);
         String around = client.substring(Math.max(0, at - 700), at);
+        // Still the router's answer, now asked through the model catalog so an effort the chosen
+        // model does not accept is corrected once rather than at each provider. The summary
+        // request is still a separate key on the same object and still changes nothing about it.
         assertTrue("the effort must still come from the router",
-                around.contains("Prefs.effectiveReasoningForMode"));
+                around.contains("Prefs.requestedReasoningForMode"));
+        assertTrue("and the model's own limits are the only thing allowed to adjust it",
+                around.contains("OrbitModelCatalog.reasoningFor"));
         assertFalse("the summary request must not overwrite the effort",
                 client.contains("reasoning.put(\"effort\", \"high\")"));
     }

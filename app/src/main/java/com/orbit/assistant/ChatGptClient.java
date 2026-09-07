@@ -262,7 +262,7 @@ public final class ChatGptClient {
             @Override public void onSuccess(SecureStore.ChatGptTokens tokens) {
                 EXEC.execute(() -> doSend(context, prompt, screenText, images, history,
                         intelligenceMode, explicitAttachment, notificationContext, memoryContext,
-                        trustedTaskContext, thinkingUpdates, tokens, false, cb));
+                        trustedTaskContext, thinkingUpdates, tokens, false, false, cb));
             }
             @Override public void onError(String message) { cb.onError(message); }
         });
@@ -273,15 +273,19 @@ public final class ChatGptClient {
                                boolean explicitAttachment, String notificationContext,
                                String memoryContext, String trustedTaskContext,
                                boolean thinkingUpdates, SecureStore.ChatGptTokens tokens,
-                               boolean alreadyRefreshed, AssistantClient.Callback cb) {
+                               boolean alreadyRefreshed, boolean astraFallback,
+                               AssistantClient.Callback cb) {
         HttpURLConnection conn = null;
+        // The model this attempt actually asks for. Normally what the mode resolves to; on the one
+        // retry after Astra turned out to be unavailable, Sol - and the answer says so.
+        final String model = modelFor(context, intelligenceMode, prompt, astraFallback);
         // Summaries are asked for only when the user wants them and only while the backend has
         // not already refused them on this device.
         final boolean askForSummary = thinkingUpdates && ReasoningSummarySupport.mayRequest(context);
         try {
             JSONObject body = requestBody(context, prompt, screenText, images, history,
                     intelligenceMode, explicitAttachment, notificationContext, memoryContext,
-                    trustedTaskContext, askForSummary);
+                    trustedTaskContext, askForSummary, model);
             conn = (HttpURLConnection) new URL(RESPONSES_URL).openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(15000);
@@ -309,7 +313,7 @@ public final class ChatGptClient {
                     @Override public void onSuccess(SecureStore.ChatGptTokens fresh) {
                         EXEC.execute(() -> doSend(context, prompt, screenText, images, history,
                                 intelligenceMode, explicitAttachment, notificationContext, memoryContext,
-                                trustedTaskContext, thinkingUpdates, fresh, true, cb));
+                                trustedTaskContext, thinkingUpdates, fresh, true, astraFallback, cb));
                     }
                     @Override public void onError(String message) { cb.onError(message); }
                 });
@@ -331,19 +335,43 @@ public final class ChatGptClient {
                     // so the user still sees Orbit's own progress for this turn.
                     doSend(context, prompt, screenText, images, history, intelligenceMode,
                             explicitAttachment, notificationContext, memoryContext,
-                            trustedTaskContext, thinkingUpdates, tokens, alreadyRefreshed, cb);
+                            trustedTaskContext, thinkingUpdates, tokens, alreadyRefreshed,
+                            astraFallback, cb);
                     return;
                 }
-                cb.onError(friendlyHttpError(code, err, Prefs.effectiveModelForMode(context, intelligenceMode, prompt)));
+                String friendly = friendlyHttpError(code, err, model);
+                // Astra is the one model whose availability follows the user's own account rather
+                // than anything Orbit controls, so a refusal aimed at it gets a truthful answer
+                // instead of a backend error code. Exactly one retry, on Sol, and the answer says
+                // so: the alternative is Orbit quietly serving a different model under the name
+                // the user chose, which is the thing this whole path exists to avoid.
+                if (!astraFallback && OrbitModelCatalog.looksUnavailable(model, friendly)) {
+                    DiagnosticStore.recordModelFallback(context, model, OrbitModelCatalog.SOL);
+                    conn.disconnect();
+                    conn = null;
+                    doSend(context, prompt, screenText, images, history, intelligenceMode,
+                            explicitAttachment, notificationContext, memoryContext,
+                            trustedTaskContext, thinkingUpdates, tokens, alreadyRefreshed, true, cb);
+                    return;
+                }
+                if (astraFallback) {
+                    // The retry failed too. The user asked for Astra, so what they are told is
+                    // about Astra rather than about the model Orbit tried on their behalf.
+                    cb.onError(OrbitModelCatalog.unavailableMessage());
+                    return;
+                }
+                cb.onError(friendly);
                 return;
             }
 
             boolean hostedSearchAvailable = shouldOfferHostedWebSearch(prompt);
+            DiagnosticStore.recordEffectiveModel(context,
+                    Prefs.effectiveModelForMode(context, intelligenceMode, prompt), model);
             if (thinkingUpdates) {
                 // True and known before a single token arrives: this request went to this model at
-                // this effort. It is replaced the moment the backend has something better to say.
-                cb.onThinking(ThinkingUpdate.modelReasoning(
-                        Prefs.effectiveModelForMode(context, intelligenceMode, prompt)));
+                // this effort. Named from the model actually being sent, so a request that fell
+                // back to Sol says Sol rather than the Astra the user selected.
+                cb.onThinking(ThinkingUpdate.modelReasoning(model));
             }
             SseResult stream = readSse(conn.getInputStream(), cb, thinkingUpdates);
             if (askForSummary) ReasoningSummarySupport.record(context, stream.sawReasoningSummary);
@@ -353,7 +381,19 @@ public final class ChatGptClient {
                 return;
             }
             AssistantReply reply = parseReply(output, hostedSearchAvailable, stream.sourceUrl);
-            cb.onSuccess(reply);
+            // Said in the answer itself, not in a log or a diagnostics screen. The user chose
+            // Astra; a different model answered; that is a fact about the reply they are reading
+            // and belongs where they are reading it.
+            if (astraFallback) {
+                reply = new AssistantReply(
+                        OrbitModelCatalog.fallbackNotice() + "\n\n" + reply.text,
+                        reply.actions, reply.memoryUsage, reply.suggestedMemoryText,
+                        reply.suggestedMemoryCategory, reply.sourceUrls);
+            }
+            // Provenance is attached to the finished reply rather than folded into its text: the
+            // answer the user reads is unchanged, and what Rich Answers needs is the list of pages
+            // rather than a sentence about one of them.
+            cb.onSuccess(reply.withSourceUrls(stream.sourceUrls));
         } catch (Exception e) {
             cb.onError("ChatGPT request failed: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
         } finally {
@@ -361,13 +401,26 @@ public final class ChatGptClient {
         }
     }
 
+    /**
+     * The model this attempt asks the backend for.
+     *
+     * <p>Almost always whatever the mode resolves to. The one exception is the single retry after
+     * the backend has said it will not serve Astra to this account, which goes to Sol - and every
+     * surface that reports which model answered is told Sol, because Sol is what answered.
+     */
+    static String modelFor(Context context, String intelligenceMode, String prompt,
+                           boolean astraFallback) {
+        return astraFallback ? OrbitModelCatalog.SOL
+                : Prefs.effectiveModelForMode(context, intelligenceMode, prompt);
+    }
+
     private static JSONObject requestBody(Context context, String prompt, String screenText, List<Bitmap> images,
                                           List<AssistantClient.History> history, String intelligenceMode,
                                           boolean explicitAttachment, String notificationContext,
                                           String memoryContext, String trustedTaskContext,
-                                          boolean askForSummary) throws Exception {
+                                          boolean askForSummary, String model) throws Exception {
         JSONObject root = new JSONObject();
-        root.put("model", Prefs.effectiveModelForMode(context, intelligenceMode, prompt));
+        root.put("model", model);
         String memory = memoryContext == null ? "" : memoryContext.trim();
         String notificationInstruction =
                 notificationContext == null || notificationContext.trim().isEmpty()
@@ -393,7 +446,10 @@ public final class ChatGptClient {
             root.put("tool_choice", "auto");
         }
 
-        String effort = Prefs.effectiveReasoningForMode(context, intelligenceMode, prompt);
+        // Asked of the catalog for the model actually being sent, which is what keeps an
+        // unsupported "none" out of an Astra request without touching Luna, Terra or Sol.
+        String effort = OrbitModelCatalog.reasoningFor(model,
+                Prefs.requestedReasoningForMode(context, intelligenceMode, prompt));
         if (effort != null && !effort.isEmpty() && !"none".equals(effort)) {
             JSONObject reasoning = new JSONObject().put("effort", effort);
             // The effort is untouched by Thinking updates: this asks the backend to also write a
@@ -497,11 +553,25 @@ public final class ChatGptClient {
     private static final class SseResult {
         final String output;
         final String sourceUrl;
+        /**
+         * Every page this stream's hosted search reported consulting, first seen first.
+         *
+         * <p>Orbit already read one URL out of these events, to put a source chip under the answer.
+         * That was enough while a source was one line of attribution and is not enough for a
+         * picture, which has to belong to a page the answer actually used. So the whole list is
+         * collected rather than the first match, and it is collected from the events themselves -
+         * never from the answer's prose, and never from a field this build has not seen.
+         */
+        final java.util.List<String> sourceUrls;
         /** True if the backend actually published a user-facing reasoning summary on this stream. */
         final boolean sawReasoningSummary;
-        SseResult(String output, String sourceUrl, boolean sawReasoningSummary) {
+        SseResult(String output, String sourceUrl, java.util.List<String> sourceUrls,
+                  boolean sawReasoningSummary) {
             this.output = output == null ? "" : output;
             this.sourceUrl = sourceUrl == null ? "" : sourceUrl;
+            this.sourceUrls = sourceUrls == null
+                    ? java.util.Collections.emptyList()
+                    : java.util.Collections.unmodifiableList(new java.util.ArrayList<>(sourceUrls));
             this.sawReasoningSummary = sawReasoningSummary;
         }
     }
@@ -524,6 +594,10 @@ public final class ChatGptClient {
         StringBuilder raw = new StringBuilder();
         String completedFallback = "";
         String discoveredSource = "";
+        // Insertion-ordered and de-duplicated: a search tool reports the same page across its
+        // in-progress, searching and completed events, and a list of one page written six times is
+        // not a list of six sources.
+        java.util.LinkedHashSet<String> discoveredSources = new java.util.LinkedHashSet<>();
         String lastVisible = "";
         boolean sawSummary = false;
         boolean answerStarted = false;
@@ -564,6 +638,7 @@ public final class ChatGptClient {
                     if (!phrase.isEmpty()) cb.onThinking(ThinkingUpdate.providerSummary(phrase));
                 } else if (type.toLowerCase(java.util.Locale.US).contains("web_search")) {
                     if (discoveredSource.isEmpty()) discoveredSource = extractSourceUrl(event);
+                    collectSourceUrls(event, discoveredSources);
                     if (thinkingUpdates && !answerStarted) {
                         // Orbit's own words for something it has genuinely watched happen: the
                         // hosted search tool reporting that it began, and then that it finished.
@@ -577,7 +652,66 @@ public final class ChatGptClient {
             }
         }
         return new SseResult(raw.length() > 0 ? raw.toString() : completedFallback,
-                discoveredSource, sawSummary);
+                discoveredSource, new java.util.ArrayList<>(discoveredSources), sawSummary);
+    }
+
+    /**
+     * Every page one hosted-search event names, added in the order they appear.
+     *
+     * <p>Written against what the account-backed Codex path actually emits rather than against a
+     * published schema. That backend's {@code web_search_call} events do not always carry the
+     * {@code results} or {@code action.sources} arrays the public Responses documentation
+     * describes, and shipping a reader that only understood those shapes would mean a feature that
+     * worked against one backend and silently did nothing against the one Orbit uses. So the
+     * preferred shapes are read first when they are present, and the event is otherwise walked for
+     * URL-shaped values - the same tolerant approach {@link #extractSourceUrl} already took for one
+     * URL, widened to the whole list.
+     *
+     * <p>Bounded on the way in, and every candidate is validated: a citation field is untrusted
+     * text like any other, and a scheme Orbit will not open never becomes a source.
+     */
+    static void collectSourceUrls(JSONObject event, java.util.Set<String> into) {
+        if (event == null || into == null) return;
+        try {
+            JSONObject call = event.optJSONObject("item");
+            Object preferred = null;
+            if (call != null) {
+                preferred = call.opt("results");
+                if (preferred == null) {
+                    JSONObject action = call.optJSONObject("action");
+                    if (action != null) preferred = action.opt("sources");
+                }
+            }
+            if (preferred != null) collectUrls(preferred, into);
+            if (into.size() < AssistantReply.MAX_SOURCE_URLS) collectUrls(event, into);
+        } catch (Exception ignored) {}
+    }
+
+    /** Walks any JSON value adding the http/https addresses it finds, up to the reply's ceiling. */
+    private static void collectUrls(Object value, java.util.Set<String> into) {
+        if (value == null || value == JSONObject.NULL) return;
+        if (into.size() >= AssistantReply.MAX_SOURCE_URLS) return;
+        try {
+            if (value instanceof JSONObject) {
+                JSONObject o = (JSONObject) value;
+                for (String key : new String[]{"url", "link", "source_url", "sourceUrl"}) {
+                    String candidate = o.optString(key, "");
+                    if (RichAnswerUrlPolicy.isOpenableWebUrl(candidate)) into.add(candidate);
+                }
+                java.util.Iterator<String> it = o.keys();
+                while (it.hasNext() && into.size() < AssistantReply.MAX_SOURCE_URLS) {
+                    collectUrls(o.opt(it.next()), into);
+                }
+            } else if (value instanceof JSONArray) {
+                JSONArray a = (JSONArray) value;
+                for (int i = 0; i < a.length() && into.size() < AssistantReply.MAX_SOURCE_URLS; i++) {
+                    collectUrls(a.opt(i), into);
+                }
+            } else if (value instanceof String) {
+                String s = ((String) value).trim();
+                if (RichAnswerUrlPolicy.isOpenableWebUrl(s)) into.add(s);
+            }
+        } catch (Exception ignored) {}
     }
 
     /**

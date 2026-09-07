@@ -35,6 +35,14 @@ public final class AttachmentViewerStore {
     public static final String SOURCE_COMPOSER = "composer";
     /** A turn that has already been sent. Stored files, read-only. */
     public static final String SOURCE_HISTORY = "history";
+    /**
+     * Sourced pictures inside an assistant answer. Cached web images, read-only.
+     *
+     * <p>A third source rather than a third viewer. The pictures are already decoded in the same
+     * bounded cache the answer drew them from, so the session holds the records and asks the loader
+     * for the bitmap, exactly as a history session asks the attachment store for a file.
+     */
+    public static final String SOURCE_RICH = "rich_answer";
 
     /** How many viewer sessions may exist at once. In practice one; two survives a fast reopen. */
     private static final int MAX_SESSIONS = 2;
@@ -64,6 +72,14 @@ public final class AttachmentViewerStore {
         private final ComposerAttachments composer;
         /** Stored images most recently decoded for a history session, oldest first. */
         private final Map<String, Bitmap> decoded = new LinkedHashMap<>();
+        /**
+         * The sourced pictures this viewer is showing, by id, for a {@link #SOURCE_RICH} session.
+         *
+         * <p>Held here so the viewer can answer "where did this come from" without going back to
+         * the conversation. A picture the user opened is a picture whose source, caption and Save
+         * to Vault action must all still work if the chat behind it is closed.
+         */
+        private final Map<String, RichAnswerImage> richImages = new LinkedHashMap<>();
         final long createdAt = System.currentTimeMillis();
 
         Session(String source, AttachmentViewerModel model, ComposerAttachments composer) {
@@ -71,6 +87,15 @@ public final class AttachmentViewerStore {
             this.model = model;
             this.composer = composer;
         }
+
+        /** The sourced picture at a position, or null when this is not a rich-answer viewer. */
+        public RichAnswerImage richImageAt(int position) {
+            AttachmentViewerModel.Item item = model.at(position);
+            return item == null ? null : richImages.get(item.id);
+        }
+
+        /** True when this viewer is looking at pictures that came from an answer. */
+        public boolean isRichAnswer() { return SOURCE_RICH.equals(source); }
 
         /** True when this viewer is allowed to remove what it is showing. */
         public boolean removable() {
@@ -92,6 +117,14 @@ public final class AttachmentViewerStore {
                     if (attachment != null && attachment.id.equals(item.id)) return attachment.image;
                 }
                 return null;
+            }
+            if (isRichAnswer()) {
+                RichAnswerImage image = richImages.get(item.id);
+                // Memory only. The viewer opens from a tap on a picture that is already on screen,
+                // so the bitmap is in the loader's cache; a miss means it has been evicted, and the
+                // honest answer is the viewer's own "no longer available" line rather than a fetch
+                // started from a screen the user is already looking at.
+                return image == null ? null : RemoteImageLoader.memoryCached(image.imageUrl);
             }
             return decodeStored(item.id);
         }
@@ -208,6 +241,42 @@ public final class AttachmentViewerStore {
         return put(new Session(SOURCE_HISTORY, new AttachmentViewerModel(items, position, false),
                 null));
     }
+
+    /**
+     * Opens a read-only viewer over the sourced pictures inside one assistant answer.
+     *
+     * <p>Every picture of the answer enters the list even though one was tapped, so left and right
+     * page between them exactly as they do between the photos of a message. The opening position
+     * comes from the tapped picture's id rather than its place on screen.
+     *
+     * @return a private token, or empty when there is nothing usable to show.
+     */
+    public static synchronized String openRichAnswer(List<RichAnswerImage> images, String tappedId) {
+        if (images == null || images.isEmpty()) return "";
+        List<AttachmentViewerModel.Item> items = new ArrayList<>();
+        Map<String, RichAnswerImage> byId = new LinkedHashMap<>();
+        for (RichAnswerImage image : images) {
+            if (image == null || !image.isUsable()) continue;
+            items.add(new AttachmentViewerModel.Item(image.id, RICH_KIND, image.attributionLine()));
+            byId.put(image.id, image);
+        }
+        if (items.isEmpty()) return "";
+        AttachmentViewerModel model = new AttachmentViewerModel(items, 0, false);
+        int at = model.indexOf(tappedId);
+        model.moveTo(at < 0 ? 0 : at);
+        Session session = new Session(SOURCE_RICH, model, null);
+        session.richImages.putAll(byId);
+        return put(session);
+    }
+
+    /**
+     * Orbit's attachment category for a sourced answer picture.
+     *
+     * <p>A category of its own rather than reusing "image", because the viewer's behaviour genuinely
+     * differs: this one has a source page, a caption written by somebody else, and a Save to Vault
+     * that copies from a cache rather than from a file Orbit already owns.
+     */
+    public static final String RICH_KIND = "rich_answer_image";
 
     /** The session a token names, or null. Repeatable: a rotation must not lose the viewer. */
     public static synchronized Session peek(String token) {

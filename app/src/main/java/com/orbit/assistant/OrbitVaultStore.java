@@ -238,6 +238,38 @@ public final class OrbitVaultStore {
     }
 
     /**
+     * Keeps a sourced picture Orbit showed inside an answer.
+     *
+     * <p>An ordinary {@link OrbitVaultItem#TYPE_IMAGE}, deliberately. Type answers "what is this",
+     * and this is a picture; where it came from is a different question, answered by the canonical
+     * {@link OrbitVaultSource#RICH_ANSWER} source and by the page address kept beside it. Inventing
+     * a rich-answer type would mean a second kind of image that every filter, every picker and
+     * every backup path then had to learn about, for a distinction that is provenance rather than
+     * content.
+     *
+     * <p>The bitmap is copied into the Vault's own storage before the row is written. What Orbit
+     * showed in the answer lives in a bounded cache that is trimmed by age and size, so an item
+     * pointing at a cache file would be a thumbnail that worked until the cache turned over. A
+     * saved picture is the Vault's, and deleting the item deletes it.
+     */
+    public static synchronized OrbitVaultItem saveRichAnswerImage(Context c, Bitmap bitmap,
+                                                                  RichAnswerImage image) {
+        if (c == null || bitmap == null || image == null || !enabled(c)) return null;
+        String path = OrbitVaultMedia.save(c, bitmap);
+        if (path.isEmpty()) return null;
+        long now = System.currentTimeMillis();
+        OrbitVaultItem item = new OrbitVaultItem(UUID.randomUUID().toString(),
+                OrbitVaultItem.TYPE_IMAGE, image.vaultTitle(), "",
+                OrbitVaultSource.RICH_ANSWER, "", path, "", 0, 0, false,
+                // A generated picture has no page, and RichAnswerImage already guarantees its
+                // source is empty, so this carries provenance without ever inventing any.
+                image.sourceUrl, now, now);
+        OrbitVaultItem saved = insert(c, item);
+        if (saved == null) OrbitVaultMedia.delete(c, path);
+        return saved;
+    }
+
+    /**
      * Saves exactly the reply the user was looking at.
      *
      * <p>Only the visible text: no hidden provider metadata, no reasoning, no tool internals, no

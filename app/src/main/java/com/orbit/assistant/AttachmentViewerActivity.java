@@ -60,6 +60,10 @@ public final class AttachmentViewerActivity extends Activity {
     private ImageButton remove;
     private ImageButton previous;
     private ImageButton next;
+    /** The attribution line under a sourced picture, or null for an ordinary attachment viewer. */
+    private TextView sourceLine;
+    private android.widget.Button openSource;
+    private android.widget.Button saveToVault;
     private boolean chromeVisible = true;
 
     /** One page: the image, and the line shown instead when it can no longer be produced. */
@@ -94,6 +98,20 @@ public final class AttachmentViewerActivity extends Activity {
         if (host == null) return;
         String token = AttachmentViewerStore.openHistory(paths, kind, label, position);
         start(host, token);
+    }
+
+    /**
+     * Opens this same viewer over the sourced pictures inside an assistant answer.
+     *
+     * <p>Deliberately a third entry point into one screen rather than a second screen. Everything a
+     * user expects of a picture full screen - pinch, double tap, pan, swipe between, the accessible
+     * previous and next controls, the chrome that gets out of the way - already exists here and is
+     * already tested. What a sourced picture adds is a line saying where it came from and two
+     * things to do about it, which is a bottom bar, not an architecture.
+     */
+    public static void openRichAnswer(Activity host, List<RichAnswerImage> images, String tappedId) {
+        if (host == null) return;
+        start(host, AttachmentViewerStore.openRichAnswer(images, tappedId));
     }
 
     private static void start(Activity host, String token) {
@@ -278,10 +296,124 @@ public final class AttachmentViewerActivity extends Activity {
         nextLp.gravity = Gravity.END | Gravity.CENTER_VERTICAL;
         host.addView(next, nextLp);
 
+        View sourceBar = buildSourceBar();
+        if (sourceBar != null) {
+            FrameLayout.LayoutParams sourceLp = new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            sourceLp.gravity = Gravity.BOTTOM;
+            host.addView(sourceBar, sourceLp);
+        }
+
         // The chrome floats above the image and must never eat a pinch or a swipe aimed at it.
         host.setClickable(false);
         host.setFocusable(false);
         return host;
+    }
+
+    /**
+     * The bottom bar a sourced picture gets: where it came from, and what can be done about it.
+     *
+     * <p>Built only for a rich-answer session, so an ordinary attachment viewer is byte-for-byte
+     * the screen it was before. It is deliberately quiet - one line of attribution and two text
+     * buttons - because the picture is what the user opened this screen to look at, and a
+     * full-width action bar under it would be competing with the thing it describes.
+     */
+    private View buildSourceBar() {
+        if (session == null || !session.isRichAnswer()) return null;
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.VERTICAL);
+        bar.setBackground(UiKit.rounded(UiKit.withAlpha(Color.BLACK, 175), 18, this));
+        bar.setPadding(UiKit.dp(this, 14), UiKit.dp(this, 12),
+                UiKit.dp(this, 14), UiKit.dp(this, 12));
+
+        sourceLine = UiKit.text(this, "", 13, UiKit.TEXT, false);
+        sourceLine.setLineSpacing(0, 1.12f);
+        sourceLine.setMaxLines(3);
+        bar.addView(sourceLine);
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams actionsLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        actionsLp.topMargin = UiKit.dp(this, 8);
+        bar.addView(actions, actionsLp);
+
+        openSource = textAction("Open source", "Open the page this image came from");
+        openSource.setOnClickListener(v -> openCurrentSource());
+        actions.addView(openSource, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 40)));
+
+        saveToVault = textAction("Save to Vault", "Save this image to Orbit Vault");
+        saveToVault.setOnClickListener(v -> saveCurrentToVault());
+        LinearLayout.LayoutParams saveLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 40));
+        saveLp.leftMargin = UiKit.dp(this, 6);
+        actions.addView(saveToVault, saveLp);
+        return bar;
+    }
+
+    /** A flat accent text control, in the same shape the viewer's icon buttons already use. */
+    private android.widget.Button textAction(String label, String description) {
+        android.widget.Button button = new android.widget.Button(this);
+        button.setText(label);
+        button.setAllCaps(false);
+        button.setTextSize(13);
+        button.setTextColor(UiKit.accent(this));
+        button.setStateListAnimator(null);
+        button.setMinWidth(0);
+        button.setMinimumWidth(0);
+        button.setPadding(UiKit.dp(this, 12), 0, UiKit.dp(this, 12), 0);
+        button.setBackground(UiKit.ripple(UiKit.withAlpha(Color.BLACK, 90),
+                UiKit.withAlpha(UiKit.accent(this), 80), 14, this));
+        button.setContentDescription(description);
+        UiKit.pressScale(button);
+        return button;
+    }
+
+    /**
+     * Opens the page a sourced picture came from, in the browser.
+     *
+     * <p>The page rather than the raw image file, because the page is what the answer actually
+     * used and what a person can read. The address is validated again immediately before the
+     * launch: it has been sitting in a store since the answer arrived, and a check performed at
+     * save time is not a check performed now.
+     */
+    private void openCurrentSource() {
+        RichAnswerImage image = session == null ? null : session.richImageAt(model.index());
+        if (image == null || !RichAnswerUrlPolicy.isOpenableWebUrl(image.sourceUrl)) return;
+        UiKit.haptic(openSource, HapticFeedbackConstants.CLOCK_TICK);
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(image.sourceUrl))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (Exception ignored) {
+            android.widget.Toast.makeText(this, "Could not open this source",
+                    android.widget.Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * Copies the picture on screen into Orbit Vault.
+     *
+     * <p>Through the Vault's own media path, so what is kept is a file the Vault owns rather than
+     * a pointer into a cache that is trimmed by size and will be gone next week. The saved item is
+     * an ordinary image with an ordinary note field; what marks it out is its source, which is
+     * Orbit's own canonical {@link OrbitVaultSource#RICH_ANSWER}, and the page address kept beside
+     * it so the item can still say where it came from.
+     */
+    private void saveCurrentToVault() {
+        RichAnswerImage image = session == null ? null : session.richImageAt(model.index());
+        if (image == null) return;
+        Bitmap bitmap = session.imageAt(model.index());
+        if (bitmap == null) {
+            android.widget.Toast.makeText(this, "This image is no longer available",
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        UiKit.haptic(saveToVault, HapticFeedbackConstants.CLOCK_TICK);
+        OrbitVaultItem saved = OrbitVaultStore.saveRichAnswerImage(this, bitmap, image);
+        android.widget.Toast.makeText(this,
+                saved == null ? "Orbit could not save this image" : "Saved to Vault",
+                android.widget.Toast.LENGTH_SHORT).show();
     }
 
     /**
@@ -378,6 +510,26 @@ public final class AttachmentViewerActivity extends Activity {
         }
         for (int i = 0; i < pages.size(); i++) {
             pages.get(i).container.setContentDescription(model.descriptionAt(i));
+        }
+        updateSourceBar();
+    }
+
+    /** Keeps the attribution and its actions pointed at whichever picture is on screen. */
+    private void updateSourceBar() {
+        if (sourceLine == null) return;
+        RichAnswerImage image = session == null ? null : session.richImageAt(model.index());
+        String line = image == null ? "" : image.attributionLine();
+        sourceLine.setText(line);
+        sourceLine.setVisibility(line.isEmpty() ? View.GONE : View.VISIBLE);
+        if (openSource != null) {
+            // Offered only when there is genuinely a page to open. A generated picture has no
+            // source, and a control that opened nothing would be Orbit implying one exists.
+            boolean openable = image != null && RichAnswerUrlPolicy.isOpenableWebUrl(image.sourceUrl);
+            openSource.setVisibility(openable ? View.VISIBLE : View.GONE);
+        }
+        if (saveToVault != null) {
+            saveToVault.setVisibility(image != null && OrbitVaultStore.enabled(this)
+                    ? View.VISIBLE : View.GONE);
         }
     }
 

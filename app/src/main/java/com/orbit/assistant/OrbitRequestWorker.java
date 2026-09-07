@@ -202,6 +202,11 @@ public final class OrbitRequestWorker extends Worker {
             RequestTrace.lifecycle(id, "completed");
             AttachmentStore.deleteAll(item.screenshotPaths);
             OrbitRequestManager.dispatchSuccess(id, reply);
+            // Started here and nowhere else, which is what subordinates a picture to the request
+            // that earned it: this runs only for a completion that won the claim, so a stopped or
+            // superseded execution never begins a lookup, and a picture can never arrive for an
+            // answer that was not written. It returns immediately; the answer is already delivered.
+            RichAnswerCoordinator.discover(c, item.conversationId, id, item.prompt, reply);
             if (Prefs.backgroundNotifications(c) && !UiPresence.isVisible()) {
                 NotificationHelper.notifyResponseComplete(c, item.conversationId, item.prompt, notificationText);
             }

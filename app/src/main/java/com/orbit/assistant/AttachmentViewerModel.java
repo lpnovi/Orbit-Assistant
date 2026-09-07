@@ -63,7 +63,11 @@ public final class AttachmentViewerModel {
                 // {@link #isViewable} still requires one to actually be there - so a saved note or
                 // address, which carries no image, remains unopenable rather than opening an empty
                 // viewer.
-                || OrbitVaultAttachment.KIND.equals(value);
+                || OrbitVaultAttachment.KIND.equals(value)
+                // A sourced picture inside an answer is a picture like any other as far as this
+                // screen is concerned. What it adds is a caption and a source page, which is chrome
+                // around the same image rather than a different kind of content.
+                || AttachmentViewerStore.RICH_KIND.equals(value);
     }
 
     /** True when this composer attachment can be opened full screen. */

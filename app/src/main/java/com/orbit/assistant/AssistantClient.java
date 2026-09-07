@@ -70,6 +70,22 @@ public final class AssistantClient {
          * with another's. Turns are never identified by comparing prompt text.
          */
         public final String stoppedRequestId;
+        /**
+         * Sourced pictures that belong to this assistant answer, or empty.
+         *
+         * <p>A companion field on the message rather than markup inside it. Writing an image into
+         * the answer's own text would mean the thing the user copies, the thing Orbit speaks aloud
+         * and the thing a model reads back as history all contain a URL that is not part of what
+         * was said - and it would put a fetchable address inside content Orbit treats as prose.
+         * Keeping it beside the text means the answer is exactly the answer, and the pictures are
+         * exactly the pictures.
+         *
+         * <p>Absent from every message written before v0.7.8.5, and that is the whole migration: a
+         * stored message with no {@code richImages} key reads as one with no pictures, which is
+         * what every older message is. A malformed entry is dropped on the way in and the answer
+         * loads normally, because losing a picture must never cost somebody their conversation.
+         */
+        public final List<RichAnswerImage> richImages;
 
         public History(String role, String content) {
             this(role, content, false, "", "", "", "", "", "", "");
@@ -132,7 +148,28 @@ public final class AssistantClient {
                        String memoryUsage, String memorySuggestionText,
                        String memorySuggestionCategory, String stoppedRequestId,
                        List<DocumentReference> documents) {
+            this(role, content, attached, attachmentPaths, attachmentKind, attachmentLabel,
+                    attachmentText, memoryUsage, memorySuggestionText, memorySuggestionCategory,
+                    stoppedRequestId, documents, java.util.Collections.emptyList());
+        }
+
+        /** The full constructor: a turn that may also carry sourced pictures of its own. */
+        public History(String role, String content, boolean attached, List<String> attachmentPaths,
+                       String attachmentKind, String attachmentLabel, String attachmentText,
+                       String memoryUsage, String memorySuggestionText,
+                       String memorySuggestionCategory, String stoppedRequestId,
+                       List<DocumentReference> documents, List<RichAnswerImage> richImages) {
             this.stoppedRequestId = stoppedRequestId == null ? "" : stoppedRequestId.trim();
+            List<RichAnswerImage> pictures = new java.util.ArrayList<>();
+            if (richImages != null) {
+                for (RichAnswerImage image : richImages) {
+                    if (pictures.size() >= RichAnswerImage.MAX_PER_MESSAGE) break;
+                    // Bounded and checked here, so no store, backup or provider can put more
+                    // pictures under one answer than Orbit is willing to draw.
+                    if (image != null && image.isUsable()) pictures.add(image);
+                }
+            }
+            this.richImages = java.util.Collections.unmodifiableList(pictures);
             this.role = role;
             this.content = content;
             this.screenAttached = attached;
@@ -166,8 +203,25 @@ public final class AssistantClient {
         public History withStoppedRequestId(String requestId) {
             return new History(role, content, screenAttached, attachmentPaths, attachmentKind,
                     attachmentLabel, attachmentText, memoryUsage, memorySuggestionText,
-                    memorySuggestionCategory, requestId, documents);
+                    memorySuggestionCategory, requestId, documents, richImages);
         }
+
+        /**
+         * A copy of this message carrying sourced pictures, everything else untouched.
+         *
+         * <p>Written this way rather than by rebuilding the message at the call site, because the
+         * fields an attach must not disturb are the ones nobody thinks about: a turn's attachments,
+         * its memory snapshot and its stopped anchor all have to survive a picture arriving three
+         * seconds after the answer did.
+         */
+        public History withRichImages(List<RichAnswerImage> images) {
+            return new History(role, content, screenAttached, attachmentPaths, attachmentKind,
+                    attachmentLabel, attachmentText, memoryUsage, memorySuggestionText,
+                    memorySuggestionCategory, stoppedRequestId, documents, images);
+        }
+
+        /** Whether this message has a picture to draw. */
+        public boolean hasRichImages() { return !richImages.isEmpty(); }
 
         /** How many stored images this turn carries. */
         public int attachmentCount() { return attachmentPaths.size(); }
@@ -452,8 +506,10 @@ public final class AssistantClient {
                             usage, suggestedText, suggestedCategory));
                     return;
                 }
+                // The cited pages travel with the reply the same way its actions do: this wrapper
+                // adds memory metadata and must not quietly drop provenance on the way past.
                 downstream.onSuccess(new AssistantReply(reply.text, reply.actions,
-                        usage, suggestedText, suggestedCategory));
+                        usage, suggestedText, suggestedCategory, reply.sourceUrls));
             }
 
             @Override public void onError(String message) {

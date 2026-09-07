@@ -205,13 +205,15 @@ public final class ThinkingUpdate {
         return name.isEmpty() ? null : progress(Stage.MODEL_REASONING, "Reasoning with " + name + "…");
     }
 
-    /** Luna, Terra, or Sol, or "" for a model Orbit has no name for. Never invents one. */
+    /**
+     * Luna, Terra, Sol or Astra, or "" for a model Orbit has no name for. Never invents one.
+     *
+     * <p>Delegated to {@link OrbitModelCatalog} rather than kept as a second list. A status line
+     * saying "Reasoning with Sol" while the request went to Astra would be Orbit misreporting its
+     * own work, and two copies of this mapping is exactly how that happens.
+     */
     static String modelDisplayName(String modelId) {
-        String id = modelId == null ? "" : modelId.toLowerCase(Locale.US);
-        if (id.contains("luna")) return "Luna";
-        if (id.contains("terra")) return "Terra";
-        if (id.contains("sol")) return "Sol";
-        return "";
+        return OrbitModelCatalog.displayName(modelId);
     }
 
     @Override public String toString() {

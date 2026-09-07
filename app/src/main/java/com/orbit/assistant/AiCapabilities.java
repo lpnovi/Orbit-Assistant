@@ -44,6 +44,20 @@ public final class AiCapabilities {
      * instead. Nothing in Orbit reads private reasoning either way.
      */
     public final boolean reasoningSummaries;
+    /**
+     * The provider reports which web pages an answer actually consulted, in structured form.
+     *
+     * <p>The capability Rich Answers is gated on, and deliberately narrower than
+     * {@link #hostedWebSearch}. Searching the web is one thing; telling Orbit <em>which pages the
+     * answer used</em> is another, and only the second is enough to put a picture under an answer
+     * and say where it came from. A provider that can browse but cannot report its sources must
+     * declare false here, and its answers stay text - which is a complete answer, not a degraded
+     * one.
+     *
+     * <p>Nothing may claim this to obtain the feature. A picture attributed to a page the answer
+     * did not read would be Orbit stating something it does not know.
+     */
+    public final boolean richWebMedia;
 
     private AiCapabilities(Builder b) {
         this.streaming = b.streaming;
@@ -56,6 +70,9 @@ public final class AiCapabilities {
         this.hostedWebSearch = b.hostedWebSearch;
         this.routinePlanning = b.routinePlanning;
         this.reasoningSummaries = b.reasoningSummaries;
+        // A provider cannot report the sources of a search it cannot run, so the two are bound
+        // together here rather than trusted to agree at each declaration site.
+        this.richWebMedia = b.richWebMedia && b.hostedWebSearch;
     }
 
     public static Builder builder() { return new Builder(); }
@@ -71,6 +88,7 @@ public final class AiCapabilities {
         private boolean hostedWebSearch;
         private boolean routinePlanning;
         private boolean reasoningSummaries;
+        private boolean richWebMedia;
 
         public Builder streaming(boolean v) { streaming = v; return this; }
         public Builder deviceActions(boolean v) { deviceActions = v; return this; }
@@ -82,6 +100,7 @@ public final class AiCapabilities {
         public Builder hostedWebSearch(boolean v) { hostedWebSearch = v; return this; }
         public Builder routinePlanning(boolean v) { routinePlanning = v; return this; }
         public Builder reasoningSummaries(boolean v) { reasoningSummaries = v; return this; }
+        public Builder richWebMedia(boolean v) { richWebMedia = v; return this; }
         public AiCapabilities build() { return new AiCapabilities(this); }
     }
 }

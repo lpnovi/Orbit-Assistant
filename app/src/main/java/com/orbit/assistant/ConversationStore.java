@@ -96,7 +96,10 @@ public final class ConversationStore {
                     // anchor is added here, because losing it would move a mark off its turn.
                     "", "", "",
                     h.stoppedRequestId,
-                    h.documents));
+                    h.documents,
+                    // Carried through the clip for the same reason the stopped anchor is: a
+                    // lifecycle save must not be able to rub a picture off an answer that has one.
+                    h.richImages));
         }
         // A background response may be appended to disk after the assistant sheet
         // is hidden, while that old sheet still holds a shorter in-memory copy.
@@ -112,6 +115,10 @@ public final class ConversationStore {
         // copy must not quietly rub the mark out, so stored anchors are carried back onto the
         // messages they belong to.
         if (existing != null) carryStoppedMarks(clipped, existing.messages);
+        // A picture resolves seconds after the answer it belongs to and is written straight to
+        // disk, so the same race applies to it. Carried back by the same alignment for the same
+        // reason: a screen holding a copy from before the picture arrived must not erase it.
+        if (existing != null) carryRichImages(clipped, existing.messages);
 
         String computedTitle = titleFor(clipped);
         String finalTitle = existing != null && existing.title != null && !existing.title.trim().isEmpty()
@@ -180,6 +187,52 @@ public final class ConversationStore {
                 : new ArrayList<>(existing.messages);
         messages.add(message);
         save(c, id, messages);
+    }
+
+    /**
+     * Attaches sourced pictures to the assistant message that produced them.
+     *
+     * <p>A picture resolves after its answer has already been written, spoken and drawn, which
+     * means the message it belongs to has to be found again rather than held onto. It is found by
+     * <em>what was said</em>: the last assistant message whose text is exactly the answer the
+     * discovery started from. That is the property that keeps a late arrival off the wrong turn -
+     * if the conversation has moved on, or a regeneration replaced the answer, or the user asked
+     * something else and got a different reply, no message matches and nothing is written.
+     *
+     * <p>Deliberately refuses a message that already has pictures. Discovery runs once per
+     * completed request, and a second write onto the same answer could only come from a request
+     * that no longer owns it.
+     *
+     * @return true when this call is what attached them.
+     */
+    public static synchronized boolean attachRichImages(Context c, String id, String answerText,
+                                                        List<RichAnswerImage> images) {
+        if (c == null || id == null || id.isEmpty() || images == null || images.isEmpty()) return false;
+        String wanted = answerText == null ? "" : answerText.trim();
+        if (wanted.isEmpty()) return false;
+        List<Conversation> all = readAll(c);
+        for (int x = 0; x < all.size(); x++) {
+            Conversation existing = all.get(x);
+            if (!id.equals(existing.id)) continue;
+            List<AssistantClient.History> messages = new ArrayList<>(existing.messages);
+            for (int i = messages.size() - 1; i >= 0; i--) {
+                AssistantClient.History message = messages.get(i);
+                if (message == null || !"assistant".equalsIgnoreCase(message.role)) continue;
+                if (!wanted.equals(safe(message.content).trim())) continue;
+                if (message.hasRichImages()) return false;
+                AssistantClient.History attached = message.withRichImages(images);
+                if (!attached.hasRichImages()) return false;
+                messages.set(i, attached);
+                // updatedAt is carried across untouched: a picture arriving is not the user doing
+                // something, and reordering Chats because one resolved would be wrong.
+                all.set(x, new Conversation(existing.id, existing.title, existing.updatedAt,
+                        messages, existing.intelligenceMode, existing.pinned));
+                writeAll(c, all);
+                return true;
+            }
+            return false;
+        }
+        return false;
     }
 
     /**
@@ -403,6 +456,66 @@ public final class ConversationStore {
         for (AssistantClient.History h : stored) if (h != null && h.isStopped()) { anyStored = true; break; }
         if (!anyStored) return;
 
+        int bestShift = alignmentShift(incoming, stored);
+        if (bestShift == NO_ALIGNMENT) return;
+
+        for (int i = 0; i < stored.size(); i++) {
+            AssistantClient.History from = stored.get(i);
+            if (from == null || !from.isStopped()) continue;
+            int j = i + bestShift;
+            if (j < 0 || j >= incoming.size()) continue;
+            AssistantClient.History to = incoming.get(j);
+            if (to == null || to.isStopped()) continue;
+            incoming.set(j, to.withStoppedRequestId(from.stoppedRequestId));
+        }
+    }
+
+    /**
+     * Restores sourced pictures from the stored copy onto the messages being saved.
+     *
+     * <p>The same problem the stopped anchor has, arriving from the other direction. A picture is
+     * discovered after the answer is already on screen and is written straight to disk; a surface
+     * holding the conversation from a moment earlier then saves it back, and without this the
+     * picture would exist for three seconds and then quietly vanish on the next lifecycle save.
+     *
+     * <p>Uses the same alignment and the same rule: copied only onto a message that genuinely
+     * agrees with the one that carried it, and never over pictures the incoming copy already has.
+     */
+    private static void carryRichImages(List<AssistantClient.History> incoming,
+                                        List<AssistantClient.History> stored) {
+        if (incoming == null || stored == null || incoming.isEmpty() || stored.isEmpty()) return;
+        boolean anyStored = false;
+        for (AssistantClient.History h : stored) if (h != null && h.hasRichImages()) { anyStored = true; break; }
+        if (!anyStored) return;
+
+        int shift = alignmentShift(incoming, stored);
+        if (shift == NO_ALIGNMENT) return;
+
+        for (int i = 0; i < stored.size(); i++) {
+            AssistantClient.History from = stored.get(i);
+            if (from == null || !from.hasRichImages()) continue;
+            int j = i + shift;
+            if (j < 0 || j >= incoming.size()) continue;
+            AssistantClient.History to = incoming.get(j);
+            if (to == null || to.hasRichImages()) continue;
+            incoming.set(j, to.withRichImages(from.richImages));
+        }
+    }
+
+    /** No shift aligns the two windows well enough to move anything between them. */
+    private static final int NO_ALIGNMENT = Integer.MIN_VALUE;
+
+    /**
+     * How far the stored window sits from the incoming one, or {@link #NO_ALIGNMENT}.
+     *
+     * <p>Orbit conversations are append-only and clipped from the front, so the two lists are
+     * windows onto one sequence and differ by a shift. The longest fully agreeing shift wins.
+     * One matching message is a coincidence rather than an alignment - with the same question asked
+     * twice it is the coincidence that would move a mark, or a picture, onto the wrong occurrence -
+     * so a single-message agreement between two real conversations is refused.
+     */
+    private static int alignmentShift(List<AssistantClient.History> incoming,
+                                      List<AssistantClient.History> stored) {
         int bestShift = 0;
         int bestOverlap = 0;
         for (int shift = -(stored.size() - 1); shift < incoming.size(); shift++) {
@@ -416,20 +529,9 @@ public final class ConversationStore {
             }
             if (agrees && overlap > bestOverlap) { bestOverlap = overlap; bestShift = shift; }
         }
-        if (bestOverlap == 0) return;
-        // One matching message is not an alignment, it is a coincidence — and with a question
-        // asked twice it is a coincidence that would put the mark on the wrong occurrence.
-        if (bestOverlap < 2 && incoming.size() > 1 && stored.size() > 1) return;
-
-        for (int i = 0; i < stored.size(); i++) {
-            AssistantClient.History from = stored.get(i);
-            if (from == null || !from.isStopped()) continue;
-            int j = i + bestShift;
-            if (j < 0 || j >= incoming.size()) continue;
-            AssistantClient.History to = incoming.get(j);
-            if (to == null || to.isStopped()) continue;
-            incoming.set(j, to.withStoppedRequestId(from.stoppedRequestId));
-        }
+        if (bestOverlap == 0) return NO_ALIGNMENT;
+        if (bestOverlap < 2 && incoming.size() > 1 && stored.size() > 1) return NO_ALIGNMENT;
+        return bestShift;
     }
 
     /** Same place in the conversation, for alignment purposes: same speaker, same words. */
@@ -514,7 +616,11 @@ public final class ConversationStore {
                                 m.optString("memorySuggestionText", ""),
                                 m.optString("memorySuggestionCategory", ""),
                                 m.optString("stoppedRequestId", ""),
-                                readDocuments(m)));
+                                readDocuments(m),
+                                // Absent from every message written before v0.7.8.5, and absent
+                                // from every answer that never had a picture. Missing means none,
+                                // which is what none already means, so nothing is migrated.
+                                readRichImages(m)));
                     }
                 }
                 // A chat stored before pinning existed simply has no "pinned" key, and false is
@@ -564,6 +670,14 @@ public final class ConversationStore {
                         }
                         message.put("documents", documents);
                     }
+                    // Written only for an answer that has one, so a conversation of ordinary text
+                    // is byte-for-byte the document v0.7.8.4 wrote and an older build reading the
+                    // same store finds nothing new in it.
+                    if (!h.richImages.isEmpty()) {
+                        JSONArray pictures = new JSONArray();
+                        for (RichAnswerImage image : h.richImages) pictures.put(image.toJson());
+                        message.put("richImages", pictures);
+                    }
                     msgs.put(message
                             .put("role", h.role)
                             .put("content", h.content)
@@ -605,6 +719,27 @@ public final class ConversationStore {
             if (legacy != null && !legacy.trim().isEmpty()) paths.add(legacy);
         }
         return paths;
+    }
+
+    /**
+     * The sourced pictures a stored message carries, dropping anything damaged.
+     *
+     * <p>A malformed entry is skipped rather than allowed to fail the read, and a message whose
+     * whole picture array is unreadable simply loads as text. Losing a picture is a small thing;
+     * losing a conversation because a picture was written badly is not, and this is the boundary
+     * where that choice is made.
+     */
+    private static List<RichAnswerImage> readRichImages(JSONObject message) {
+        List<RichAnswerImage> images = new ArrayList<>();
+        JSONArray stored = message.optJSONArray("richImages");
+        if (stored == null) return images;
+        for (int i = 0; i < stored.length(); i++) {
+            JSONObject item = stored.optJSONObject(i);
+            if (item == null) continue;
+            RichAnswerImage image = RichAnswerImage.fromJson(item);
+            if (image != null) images.add(image);
+        }
+        return images;
     }
 
     private static List<DocumentReference> readDocuments(JSONObject message) {

@@ -311,6 +311,7 @@ public final class AiProvidersActivity extends Activity {
         if (caps.deviceActions) chips.add("Device actions");
         if (caps.images) chips.add("Screens & images");
         if (caps.hostedWebSearch) chips.add("Web search");
+        if (caps.richWebMedia) chips.add("Sourced images");
         if (caps.offline) chips.add("Works offline");
         if (!caps.needsCredentials) chips.add("No account");
         return chips;

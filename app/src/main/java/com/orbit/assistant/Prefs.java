@@ -50,6 +50,7 @@ public final class Prefs {
      */
     public static final String SHOW_STOP_BUTTON = "show_stop_button";
     public static final String THINKING_UPDATES = "thinking_updates";
+    public static final String RICH_ANSWERS = "rich_answers";
     public static final String USER_BUBBLE_COLOR = "user_bubble_color";
     public static final String ASSISTANT_BUBBLE_COLOR = "assistant_bubble_color";
     public static final String CHAT_TEXT_SIZE = "chat_text_size";
@@ -210,7 +211,7 @@ public final class Prefs {
             SPEAK, HAPTICS, AUTO_LISTEN, AUTO_LISTEN_ON_OPEN, SMART_FOLLOW_UPS,
             VOICE_PAUSE_FRIENDLY, NEW_CHAT_ON_OPEN,
             HISTORY_ENABLED, SAVE_SCREEN_THUMBNAILS, KEYBOARD_AWARE_ASSISTANT, SHOW_STOP_BUTTON,
-            THINKING_UPDATES,
+            THINKING_UPDATES, RICH_ANSWERS,
             LELO_MODE, BACKGROUND_NOTIFICATIONS, WEATHER_USE_DEVICE_LOCATION,
             MEMORY_ENABLED, MEMORY_USAGE_INDICATOR, MEMORY_SUGGESTIONS,
             NOTIFICATION_AI_ENABLED, AMOLED_MODE, UPDATE_NOTIFICATIONS,
@@ -267,7 +268,17 @@ public final class Prefs {
         return e.commit();
     }
 
-    public static String model(Context c) { return get(c).getString(MODEL, "gpt-5.6-terra"); }
+    /**
+     * The Custom model, as stored.
+     *
+     * <p>Not filtered by provider here on purpose. A user who chose Astra on ChatGPT and then tried
+     * the relay for an afternoon should find Astra still selected when they come back, rather than
+     * silently reset to Terra by a screen they never opened. What a provider will actually accept
+     * is a question the picker answers, in {@link OrbitModelCatalog#modelsFor}.
+     */
+    public static String model(Context c) {
+        return get(c).getString(MODEL, OrbitModelCatalog.TERRA);
+    }
     public static String reasoning(Context c) { return get(c).getString(REASONING, "low"); }
     public static String intelligenceMode(Context c) { return get(c).getString(INTELLIGENCE_MODE, MODE_BALANCED); }
     public static String provider(Context c) {
@@ -381,6 +392,21 @@ public final class Prefs {
     public static boolean thinkingUpdates(Context c) {
         return get(c).getBoolean(THINKING_UPDATES, THINKING_UPDATES_DEFAULT);
     }
+
+    /** Rich Answers ship on: a sourced picture is part of the answer, not an extra. */
+    public static final boolean RICH_ANSWERS_DEFAULT = true;
+
+    /**
+     * Whether Orbit may show sourced web pictures inside answers.
+     *
+     * <p>Read at the moment a completed answer is examined rather than cached with the request, so
+     * turning it off stops the very next answer from looking anything up. Off means Orbit contacts
+     * no page and no image host at all; answers already carrying a picture keep it, because it is
+     * part of what Orbit said and this switch is about future lookups rather than past ones.
+     */
+    public static boolean richAnswers(Context c) {
+        return get(c).getBoolean(RICH_ANSWERS, RICH_ANSWERS_DEFAULT);
+    }
     public static String userBubbleColor(Context c) { return get(c).getString(USER_BUBBLE_COLOR, "classic"); }
     public static String assistantBubbleColor(Context c) { return get(c).getString(ASSISTANT_BUBBLE_COLOR, "classic"); }
     public static String chatTextSize(Context c) {
@@ -475,20 +501,43 @@ public final class Prefs {
         return effectiveModelForMode(c, intelligenceMode(c), prompt);
     }
 
+    /**
+     * The model one request goes to.
+     *
+     * <p>Astra appears here in exactly one branch: Custom, where the user picked it themselves.
+     * Fast, Balanced, Deep and Auto are untouched by its existence, which is deliberate - Astra
+     * spends an account allowance faster than Sol does, and routing somebody into it because their
+     * question looked difficult would be Orbit spending something of theirs without being asked.
+     */
     public static String effectiveModelForMode(Context c, String mode, String prompt) {
         String chosen = normalizeMode(mode);
-        if (MODE_FAST.equals(chosen)) return "gpt-5.6-luna";
-        if (MODE_BALANCED.equals(chosen)) return "gpt-5.6-terra";
-        if (MODE_DEEP.equals(chosen)) return "gpt-5.6-sol";
+        if (MODE_FAST.equals(chosen)) return OrbitModelCatalog.LUNA;
+        if (MODE_BALANCED.equals(chosen)) return OrbitModelCatalog.TERRA;
+        if (MODE_DEEP.equals(chosen)) return OrbitModelCatalog.SOL;
         if (MODE_CUSTOM.equals(chosen)) return model(c);
-        return autoIsDeep(prompt) ? "gpt-5.6-sol" : autoIsQuick(prompt) ? "gpt-5.6-luna" : "gpt-5.6-terra";
+        return autoIsDeep(prompt) ? OrbitModelCatalog.SOL
+                : autoIsQuick(prompt) ? OrbitModelCatalog.LUNA : OrbitModelCatalog.TERRA;
     }
 
     public static String effectiveReasoning(Context c, String prompt) {
         return effectiveReasoningForMode(c, intelligenceMode(c), prompt);
     }
 
+    /**
+     * The reasoning effort one request carries, after the chosen model has had its say.
+     *
+     * <p>The model is consulted rather than ignored because effort is not universal: Astra has no
+     * {@code none}, and a user who set Custom to {@code none} before choosing it would otherwise
+     * have every request refused for a reason nothing on screen explained. The substitution happens
+     * once, here, so no provider has to remember to make it.
+     */
     public static String effectiveReasoningForMode(Context c, String mode, String prompt) {
+        return OrbitModelCatalog.reasoningFor(effectiveModelForMode(c, mode, prompt),
+                requestedReasoningForMode(c, mode, prompt));
+    }
+
+    /** What the mode asks for, before the model's own limits are applied. */
+    static String requestedReasoningForMode(Context c, String mode, String prompt) {
         String chosen = normalizeMode(mode);
         if (MODE_FAST.equals(chosen)) return "low";
         if (MODE_BALANCED.equals(chosen)) return "medium";

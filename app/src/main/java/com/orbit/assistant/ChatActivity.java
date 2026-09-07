@@ -234,10 +234,26 @@ public class ChatActivity extends Activity {
         }
     }
 
+    /**
+     * Redraws this conversation when one of its answers gains a sourced picture.
+     *
+     * <p>A picture resolves a second or two after the answer it belongs to, by which time the user
+     * is reading it. Waiting for the next lifecycle event would mean the picture appearing when
+     * they came back to the chat rather than when it arrived, which is the difference between a
+     * feature and a curiosity. The listener carries no content: it names the conversation, and this
+     * screen redraws itself from storage exactly as it does after any other change.
+     */
+    private final RichAnswerCoordinator.Listener richImageListener = chat -> runOnUiThread(() -> {
+        if (chat == null || !chat.equals(conversationId)) return;
+        if (isFinishing() || isDestroyed()) return;
+        reloadConversation();
+    });
+
     @Override protected void onResume() {
         super.onResume();
         ComposerTrace.event("chat.onResume");
         UiPresence.enter(this);
+        RichAnswerCoordinator.addListener(richImageListener);
         if (modeChip != null) modeChip.setText(modeChipText());
         reloadConversation();
         attachToPending();
@@ -437,6 +453,7 @@ public class ChatActivity extends Activity {
 
     @Override protected void onPause() {
         UiPresence.leave(this);
+        RichAnswerCoordinator.removeListener(richImageListener);
         detachListeners();
         if (voiceController != null) voiceController.stop(false);
         // Navigating away ends listening, so the microphone must not be left animating.
@@ -696,9 +713,10 @@ public class ChatActivity extends Activity {
             MessageActions.bindUser(bubble, rawVisible, () -> beginEditResend(rawVisible), null);
             messages.addView(bubble, bubbleLp(Gravity.END, UiKit.dp(this, 310)));
         } else {
-            View bubble = OrbitRichResponseRenderer.render(this, visible, fill, false);
+            View bubble = OrbitRichResponseRenderer.render(this, visible, fill, false, h.richImages);
             LinearLayout.LayoutParams richLp = new LinearLayout.LayoutParams(
                     OrbitRichResponseRenderer.prefersWideLayout(visible)
+                            || RichAnswerPlacement.hasAnyImage(h.richImages)
                             ? ViewGroup.LayoutParams.MATCH_PARENT
                             : ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT);

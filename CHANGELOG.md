@@ -772,3 +772,9 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Open Vault and Quick Capture directly from Orbit Deck.
   - Swipe Vault items to pin or delete them like Chats, with safe Undo for deletion.
   - First-run Theme Studio setup now covers presets, AMOLED, fonts and chat text size, while Chats and Vault share refined floating glass.
+- **v0.7.8.5-beta.1**: Answers are getting more visual, and Settings is easier to navigate.
+  - Orbit can now show a useful sourced web image inside an answer when a picture genuinely helps.
+  - Tap a rich image to open it in Orbit's existing image viewer, view its source page, or save it to Vault.
+  - Saved rich images keep their caption and source page, and appear under a new Rich answer source.
+  - Search Orbit Settings to jump straight to the exact control you want.
+  - Added optional GPT-6 Astra for eligible ChatGPT accounts, without changing Orbit's Auto routing.

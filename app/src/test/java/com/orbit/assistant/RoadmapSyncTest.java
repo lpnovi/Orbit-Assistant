@@ -98,33 +98,40 @@ public final class RoadmapSyncTest {
     }
 
     /**
-     * Settings search is planned work for 0.7.8.5, and only planned work.
+     * Settings search belongs to the 0.7.8.5 release, and now genuinely exists.
      *
-     * <p>It is on both roadmaps because the Settings page has genuinely grown past the point of
-     * being browsable, and it is asserted to be <em>under</em> Rich Answers because it is the
-     * smaller half of that release. The failure this prevents is the entry being read as shipped:
-     * nothing in Orbit builds a Settings search field yet, so a changelog line or an in-app page
-     * that implied one would be a promise the app cannot keep.
+     * <p>The inverse of what this asserted before Beta 1. While it was planned work the failure
+     * worth preventing was the roadmap implying a field the app did not have; now that the field
+     * exists, the failure worth preventing is the opposite one - a roadmap that still reads as a
+     * promise about something already shipped. Both directions are the same rule: the two roadmaps
+     * and the app have to agree about what is true today.
+     *
+     * <p>The claims themselves are still pinned, because they are the ones somebody would water
+     * down first: local and provider-free, and landing on the control rather than its section.
      */
-    @Test public void settingsSearchIsPlannedForTheRichAnswersReleaseAndNotYetBuilt() {
+    @Test public void settingsSearchShippedWithTheRichAnswersRelease() {
         String file = markdown();
-        int at = file.indexOf(OrbitRoadmap.ALONGSIDE);
-        assertTrue(OrbitRoadmap.ALONGSIDE + " must be in ROADMAP.md", at >= 0);
-        String section = file.substring(at, Math.min(file.length(), at + 1200));
+        // Anchored on the heading rather than on the first mention: Beta 1's shipped list names
+        // Settings search before the section that describes it, and reading the section means
+        // starting where the section starts.
+        int at = file.indexOf("In the same release: " + OrbitRoadmap.ALONGSIDE);
+        assertTrue(OrbitRoadmap.ALONGSIDE + " must have its own section in ROADMAP.md", at >= 0);
+        String section = file.substring(at, Math.min(file.length(), at + 1600));
         assertTrue("it belongs to the 0.7.8.5 release", file.substring(0, at).contains("0.7.8.5"));
         assertTrue("and finding a setting must not need a provider", section.contains("No AI"));
         assertTrue("choosing a result goes to the control itself",
                 section.contains("straight to that control"));
         assertTrue("Rich Answers is still the primary work of that release",
-                section.contains("remains the primary work"));
+                file.contains("remains the primary work"));
 
-        assertFalse("Settings search has not shipped, so the changelog must not claim it",
-                ComponentUninstallTest.readRepositoryFile("CHANGELOG.md")
-                        .contains("- **v" + BuildConfig.VERSION_NAME + "**: " + "Settings search"));
-        assertFalse("and no Settings screen may already offer it",
-                ComponentUninstallTest.readRepositoryFile(
-                        "app/src/main/java/com/orbit/assistant/SettingsActivity.java")
-                        .contains("Search settings"));
+        String settings = ComponentUninstallTest.readRepositoryFile(
+                "app/src/main/java/com/orbit/assistant/SettingsActivity.java");
+        assertTrue("the Settings screen must actually offer the search field",
+                settings.contains("Search settings"));
+        assertTrue("and it must be driven by the structured index rather than by scraped views",
+                settings.contains("SettingsSearchIndex.search"));
+        assertFalse("searching for a setting must never reach a provider",
+                settings.contains("AssistantClient.send"));
     }
 
     /**

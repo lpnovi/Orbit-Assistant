@@ -23,6 +23,10 @@ final class ChatGptProvider implements AiProvider {
             .needsCredentials(true)
             .reasoningLevels(true)
             .hostedWebSearch(true)
+            // The account-backed Codex path publishes its hosted-search calls as stream events
+            // carrying the pages it consulted, which is what a sourced picture has to be able to
+            // point at. Orbit reads those events; it does not infer sources from answer text.
+            .richWebMedia(true)
             .routinePlanning(true)
             // The ChatGPT path speaks a Responses-shaped event stream, which defines
             // user-facing reasoning-summary events. Whether the account backend behind it

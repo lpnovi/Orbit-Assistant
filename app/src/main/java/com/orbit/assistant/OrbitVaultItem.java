@@ -144,6 +144,24 @@ public final class OrbitVaultItem {
      * stating something untrue about their own collection.
      */
     public final boolean pinned;
+    /**
+     * The web page this item came from, or empty. Metadata, never the {@link #source}.
+     *
+     * <p>Added for pictures saved out of a Rich Answer, which are the first Vault items that have a
+     * real address behind them. A saved picture without it is a picture nobody can go back to; a
+     * saved picture that put the hostname into {@code source} would be putting a third party's word
+     * into Orbit's own closed provenance vocabulary. So they are separate fields answering separate
+     * questions: {@code source} is which door of Orbit this arrived through, and this is where on
+     * the web the thing itself lives.
+     *
+     * <p>Absent from every item written before v0.7.8.5, and absent from every item that has no
+     * page behind it. Missing reads as empty, which is what "no source page" already means, so
+     * nothing is migrated and an older build reading the same store finds nothing new.
+     *
+     * <p>Only ever an ordinary http or https address. Anything else is dropped on the way in, so
+     * nothing that reads this field back can be handed a scheme that launches something.
+     */
+    public final String sourceUrl;
     public final long createdAt;
     public final long modifiedAt;
 
@@ -167,9 +185,22 @@ public final class OrbitVaultItem {
                 false, createdAt, modifiedAt);
     }
 
+    /** One item with no web page behind it, which is every item saved before v0.7.8.5. */
     public OrbitVaultItem(String id, String type, String title, String body, String source,
                           String note, String mediaPath, String documentName, int pageIndex,
                           int pageCount, boolean pinned, long createdAt, long modifiedAt) {
+        this(id, type, title, body, source, note, mediaPath, documentName, pageIndex, pageCount,
+                pinned, "", createdAt, modifiedAt);
+    }
+
+    public OrbitVaultItem(String id, String type, String title, String body, String source,
+                          String note, String mediaPath, String documentName, int pageIndex,
+                          int pageCount, boolean pinned, String sourceUrl, long createdAt,
+                          long modifiedAt) {
+        // Validated here rather than at each save site, so a hand-edited store or a restored
+        // backup cannot put an intent: or file: address into a field a screen offers to open.
+        this.sourceUrl = RichAnswerUrlPolicy.isOpenableWebUrl(sourceUrl)
+                ? sourceUrl.trim() : "";
         this.id = trim(id);
         this.type = normalizeType(type);
         this.title = bound(collapse(title), MAX_TITLE_CHARS);
@@ -214,7 +245,7 @@ public final class OrbitVaultItem {
      */
     OrbitVaultItem copyWith(String newTitle, String newBody, String newNote, long modifiedNow) {
         return new OrbitVaultItem(id, type, newTitle, newBody, source, newNote, mediaPath,
-                documentName, pageIndex, pageCount, pinned, createdAt, modifiedNow);
+                documentName, pageIndex, pageCount, pinned, sourceUrl, createdAt, modifiedNow);
     }
 
     /**
@@ -227,7 +258,7 @@ public final class OrbitVaultItem {
      */
     OrbitVaultItem copyPinned(boolean nowPinned) {
         return new OrbitVaultItem(id, type, title, body, source, note, mediaPath,
-                documentName, pageIndex, pageCount, nowPinned, createdAt, modifiedAt);
+                documentName, pageIndex, pageCount, nowPinned, sourceUrl, createdAt, modifiedAt);
     }
 
     // ---- what a screen may ask ------------------------------------------------------------------
@@ -315,6 +346,17 @@ public final class OrbitVaultItem {
         return hostOf(body);
     }
 
+    /** Whether this item remembers a web page it came from. */
+    public boolean hasSourceUrl() { return !sourceUrl.isEmpty(); }
+
+    /**
+     * The host of {@link #sourceUrl}, for display under a saved picture, or empty.
+     *
+     * <p>Parsed locally and never resolved, exactly as {@link #hostLabel()} is: showing somebody
+     * where a thing came from must never become a reason to contact it.
+     */
+    public String sourceHostLabel() { return hostOf(sourceUrl); }
+
     /** A short one-line preview of the content, for a card. Never the whole body. */
     public String preview() {
         String flat = collapse(body);
@@ -340,8 +382,11 @@ public final class OrbitVaultItem {
      * idea", which they typed themselves, is exactly what they will type again.
      */
     String searchHaystack() {
+        // The source host is in here because "that picture from wikipedia" is exactly how somebody
+        // looks for a saved picture. The full address is not: a query string is not something
+        // anyone searches for, and it would drown the words that matter.
         return (title + "\n" + body + "\n" + note + "\n" + source + "\n" + documentName
-                + "\n" + pageLabel() + "\n" + typeLabel())
+                + "\n" + pageLabel() + "\n" + typeLabel() + "\n" + sourceHostLabel())
                 .toLowerCase(Locale.US);
     }
 
@@ -361,6 +406,8 @@ public final class OrbitVaultItem {
         // Written only when it is true, so a Vault nobody has pinned anything in is byte-for-byte
         // the document Beta 3 wrote and an older build reading it finds nothing new.
         if (pinned) out.put("pinned", true);
+        // Same rule for the page behind a saved picture: written only when there is one.
+        if (!sourceUrl.isEmpty()) out.put("sourceUrl", sourceUrl);
         // Written only for the type that has them, so a Vault of notes and links is byte-for-byte
         // the document Beta 2 wrote and an older build reading it finds nothing new.
         if (isDocumentPage()) {
@@ -392,6 +439,10 @@ public final class OrbitVaultItem {
                 // Absent in every document written before Beta 4, and absent from every item
                 // nobody has pinned. Missing means unpinned, which is what unpinned already means.
                 o.optBoolean("pinned", false),
+                // Absent from every document written before v0.7.8.5, and absent from every item
+                // with no page behind it. Missing means none, and the constructor drops anything
+                // that is not an ordinary web address.
+                o.optString("sourceUrl", ""),
                 o.optLong("createdAt", 0L),
                 o.optLong("modifiedAt", 0L));
         return isStorable(item) ? item : null;

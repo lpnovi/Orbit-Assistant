@@ -100,11 +100,14 @@ public final class RoadmapActivity extends Activity {
         addGroup(page, "NOW - 0.7.8.5", new String[][]{
                 {OrbitRoadmap.CURRENT, "Useful, clearly sourced images inside web answers, opening in "
                         + "Orbit's own image viewer with Save to Vault, and never shown when they "
-                        + "add nothing."},
+                        + "add nothing. The first Beta is in your hands; richer layouts, better "
+                        + "placement and generated images are still ahead."},
                 {OrbitRoadmap.ALONGSIDE, "Type what you want to change and go straight to it. "
-                        + "Settings has grown enough that hunting for one control takes longer "
-                        + "than changing it. A 0.7.8.5 UX enhancement that stays local and instant, "
-                        + "with no AI involved."}
+                        + "Settings had grown enough that hunting for one control took longer "
+                        + "than changing it. Local and instant, with no AI involved."},
+                {"GPT-6 Astra", "Optional access to Orbit's most capable model for ChatGPT accounts "
+                        + "that can reach it. Chosen by hand in Custom, never routed to on your "
+                        + "behalf, and always honest about which model answered."}
         });
         addGroup(page, "AFTER - 0.7.8.6", new String[][]{
                 {OrbitRoadmap.AFTER, "Making saved things easier to find and understand, with "

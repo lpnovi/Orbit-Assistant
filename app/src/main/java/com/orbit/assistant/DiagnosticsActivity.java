@@ -502,14 +502,44 @@ public final class DiagnosticsActivity extends Activity {
 
     private String autoRouting(SharedPreferences d) {
         long autoUpdatedMs = d.getLong("auto_updated", 0L);
-        if (autoUpdatedMs == 0) return "\n  No Auto request recorded yet";
+        if (autoUpdatedMs == 0) return "\n  No Auto request recorded yet" + modelReport(d);
         return "\n  Last Auto decision: "
                         + Prefs.modeLabel(d.getString("auto_mode", Prefs.MODE_BALANCED)) +
                 "\n  Confidence: " + d.getInt("auto_confidence", 0) + "%" +
                 "\n  Reason: " + d.getString("auto_reason", "") +
                 "\n  Model: " + d.getString("auto_model", "") +
                 "\n  Reasoning: " + d.getString("auto_reasoning", "") +
-                "\n  Routed at: " + DateFormat.getDateTimeInstance().format(new Date(autoUpdatedMs));
+                "\n  Routed at: " + DateFormat.getDateTimeInstance().format(new Date(autoUpdatedMs)) +
+                modelReport(d);
+    }
+
+    /**
+     * Which model the last request asked for and which one answered it.
+     *
+     * <p>Reported separately from the Auto decision because it is true of every request, Custom
+     * included, and because the pair is the only honest way to describe an Astra request: the model
+     * a user selected and the model that actually ran are different questions, and a screen that
+     * only showed the first would claim Astra for a turn Sol answered.
+     */
+    private String modelReport(SharedPreferences d) {
+        long updated = d.getLong("model_updated", 0L);
+        if (updated == 0L) return "";
+        String requested = d.getString("model_requested", "");
+        String effective = d.getString("model_effective", "");
+        StringBuilder out = new StringBuilder()
+                .append("\n  Requested model: ").append(orNone(requested))
+                .append("\n  Effective model: ").append(orNone(effective));
+        if (!requested.isEmpty() && !requested.equals(effective)) {
+            out.append(" (Orbit did not use the requested model)");
+        }
+        long fallback = d.getLong("model_fallback_updated", 0L);
+        if (fallback > 0L) {
+            out.append("\n  Last model fallback: ")
+               .append(orNone(d.getString("model_fallback_from", "")))
+               .append(" to ").append(orNone(d.getString("model_fallback_to", "")))
+               .append(" at ").append(DateFormat.getDateTimeInstance().format(new Date(fallback)));
+        }
+        return out.toString();
     }
 
     private String screenContext(SharedPreferences d) {

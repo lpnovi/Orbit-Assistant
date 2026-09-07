@@ -131,7 +131,7 @@ public final class ActionNarration {
         String corrected = withoutExecutionClaims(reply.text, numbers.get(0));
         if (corrected.equals(reply.text == null ? "" : reply.text)) return reply;
         return new AssistantReply(corrected, reply.actions, reply.memoryUsage,
-                reply.suggestedMemoryText, reply.suggestedMemoryCategory);
+                reply.suggestedMemoryText, reply.suggestedMemoryCategory, reply.sourceUrls);
     }
 
     /** The protected numbers this reply is about to ask the user to confirm, in order. */

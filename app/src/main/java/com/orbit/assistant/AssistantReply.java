@@ -6,6 +6,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class AssistantReply {
+    /** How many cited pages one reply carries forward. Beyond this, a citation list is noise. */
+    public static final int MAX_SOURCE_URLS = 6;
+
     public final String text;
     public final List<Action> actions;
     /** Human-readable snapshot of the memories supplied to the AI for this turn. */
@@ -13,6 +16,21 @@ public final class AssistantReply {
     /** Optional local suggestion. Orbit never saves this without confirmation. */
     public final String suggestedMemoryText;
     public final String suggestedMemoryCategory;
+    /**
+     * The pages this answer's hosted web search actually consulted, in the order they appeared.
+     *
+     * <p>Structured provenance rather than text scraped back out of the answer. Orbit already
+     * showed one source chip under a web answer by pulling a URL out of the reply's own prose,
+     * which works for the one address the model chose to write down and knows nothing about the
+     * rest. Rich Answers needs the real list: a picture is only worth showing when it belongs to a
+     * page the answer genuinely used, and "genuinely used" is a fact the provider reports rather
+     * than something a regular expression can infer.
+     *
+     * <p>Empty for every provider without hosted search, and empty for an answer that did not use
+     * it. Nothing downstream may treat empty as a failure; it means this answer came from the model
+     * rather than from the web, which is an ordinary thing for an answer to be.
+     */
+    public final List<String> sourceUrls;
 
     public AssistantReply(String text) {
         this(text, new ArrayList<>(), "", "", "");
@@ -24,11 +42,35 @@ public final class AssistantReply {
 
     public AssistantReply(String text, List<Action> actions, String memoryUsage,
                           String suggestedMemoryText, String suggestedMemoryCategory) {
+        this(text, actions, memoryUsage, suggestedMemoryText, suggestedMemoryCategory, null);
+    }
+
+    public AssistantReply(String text, List<Action> actions, String memoryUsage,
+                          String suggestedMemoryText, String suggestedMemoryCategory,
+                          List<String> sourceUrls) {
         this.text = text == null ? "" : text;
         this.actions = actions == null ? new ArrayList<>() : actions;
         this.memoryUsage = memoryUsage == null ? "" : memoryUsage.trim();
         this.suggestedMemoryText = suggestedMemoryText == null ? "" : suggestedMemoryText.trim();
         this.suggestedMemoryCategory = suggestedMemoryCategory == null ? "" : suggestedMemoryCategory.trim();
+        List<String> sources = new ArrayList<>();
+        if (sourceUrls != null) {
+            for (String url : sourceUrls) {
+                if (sources.size() >= MAX_SOURCE_URLS) break;
+                // Bounded and validated here rather than at each reader, so nothing downstream has
+                // to defend itself against a scheme a provider put in a citation field.
+                if (url == null || !RichAnswerUrlPolicy.isOpenableWebUrl(url.trim())) continue;
+                String clean = url.trim();
+                if (!sources.contains(clean)) sources.add(clean);
+            }
+        }
+        this.sourceUrls = java.util.Collections.unmodifiableList(sources);
+    }
+
+    /** The same reply carrying the pages its search consulted. Text and actions are untouched. */
+    public AssistantReply withSourceUrls(List<String> urls) {
+        return new AssistantReply(text, actions, memoryUsage, suggestedMemoryText,
+                suggestedMemoryCategory, urls);
     }
 
     public static AssistantReply fromJson(JSONObject obj) {
