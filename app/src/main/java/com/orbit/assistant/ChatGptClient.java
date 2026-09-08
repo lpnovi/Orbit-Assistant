@@ -613,6 +613,7 @@ public final class ChatGptClient {
                 try { event = new JSONObject(data); }
                 catch (Exception ignored) { continue; }
                 String type = event.optString("type", "");
+                collectHostedProvenance(event, discoveredSources);
                 if ("response.output_text.delta".equals(type)) {
                     raw.append(event.optString("delta", ""));
                     String visible = removeEmDashes(extractPartialText(raw.toString()));
@@ -637,8 +638,6 @@ public final class ChatGptClient {
                             : summary.accept(event.optString("delta", ""), System.currentTimeMillis());
                     if (!phrase.isEmpty()) cb.onThinking(ThinkingUpdate.providerSummary(phrase));
                 } else if (type.toLowerCase(java.util.Locale.US).contains("web_search")) {
-                    if (discoveredSource.isEmpty()) discoveredSource = extractSourceUrl(event);
-                    collectSourceUrls(event, discoveredSources);
                     if (thinkingUpdates && !answerStarted) {
                         // Orbit's own words for something it has genuinely watched happen: the
                         // hosted search tool reporting that it began, and then that it finished.
@@ -651,40 +650,79 @@ public final class ChatGptClient {
                 }
             }
         }
+        if (!discoveredSources.isEmpty()) discoveredSource = discoveredSources.iterator().next();
         return new SseResult(raw.length() > 0 ? raw.toString() : completedFallback,
                 discoveredSource, new java.util.ArrayList<>(discoveredSources), sawSummary);
     }
 
-    /**
-     * Every page one hosted-search event names, added in the order they appear.
-     *
-     * <p>Written against what the account-backed Codex path actually emits rather than against a
-     * published schema. That backend's {@code web_search_call} events do not always carry the
-     * {@code results} or {@code action.sources} arrays the public Responses documentation
-     * describes, and shipping a reader that only understood those shapes would mean a feature that
-     * worked against one backend and silently did nothing against the one Orbit uses. So the
-     * preferred shapes are read first when they are present, and the event is otherwise walked for
-     * URL-shaped values - the same tolerant approach {@link #extractSourceUrl} already took for one
-     * URL, widened to the whole list.
-     *
-     * <p>Bounded on the way in, and every candidate is validated: a citation field is untrusted
-     * text like any other, and a scheme Orbit will not open never becomes a source.
-     */
+    /** Sources and results reported by a hosted-search tool, excluding query/prose fields. */
     static void collectSourceUrls(JSONObject event, java.util.Set<String> into) {
         if (event == null || into == null) return;
-        try {
-            JSONObject call = event.optJSONObject("item");
-            Object preferred = null;
-            if (call != null) {
-                preferred = call.opt("results");
-                if (preferred == null) {
-                    JSONObject action = call.optJSONObject("action");
-                    if (action != null) preferred = action.opt("sources");
-                }
+        collectSearchSourceFields(event, into);
+        JSONObject item = event.optJSONObject("item");
+        if (item != null) collectSearchSourceFields(item, into);
+    }
+
+    private static void collectSearchSourceFields(JSONObject call, java.util.Set<String> into) {
+        for (String key : new String[]{"results", "sources", "citations", "url", "link", "source_url", "sourceUrl"}) {
+            collectUrls(call.opt(key), into);
+        }
+        JSONObject action = call.optJSONObject("action");
+        if (action != null) {
+            collectUrls(action.opt("sources"), into);
+            collectUrls(action.opt("results"), into);
+            if ("open_page".equals(action.optString("type"))) collectUrls(action.opt("url"), into);
+        }
+    }
+
+    /** Read provider tool/citation envelopes, never URLs from answer text or action arguments. */
+    static void collectHostedProvenance(JSONObject event, java.util.Set<String> into) {
+        String type = event.optString("type", "");
+        if (type.startsWith("response.web_search_call.")) collectSourceUrls(event, into);
+        if ("response.output_item.added".equals(type) || "response.output_item.done".equals(type)) {
+            collectHostedItem(event.optJSONObject("item"), into);
+        } else if ("response.completed".equals(type)) {
+            JSONObject response = event.optJSONObject("response");
+            JSONArray output = response == null ? null : response.optJSONArray("output");
+            if (output != null) for (int i = 0; i < output.length(); i++) {
+                collectHostedItem(output.optJSONObject(i), into);
             }
-            if (preferred != null) collectUrls(preferred, into);
-            if (into.size() < AssistantReply.MAX_SOURCE_URLS) collectUrls(event, into);
-        } catch (Exception ignored) {}
+        } else if ("response.output_text.annotation.added".equals(type)) {
+            collectCitation(event.optJSONObject("annotation"), into);
+        } else if ("response.content_part.done".equals(type)
+                || "response.content_part.added".equals(type)) {
+            collectAnnotations(event.optJSONObject("part"), into);
+        } else if ("response.output_text.done".equals(type)) {
+            collectAnnotations(event, into);
+        }
+    }
+
+    private static void collectHostedItem(JSONObject item, java.util.Set<String> into) {
+        if (item == null) return;
+        if ("web_search_call".equals(item.optString("type"))) {
+            collectSourceUrls(item, into);
+        } else if ("message".equals(item.optString("type"))) {
+            JSONArray content = item.optJSONArray("content");
+            if (content != null) for (int i = 0; i < content.length(); i++) {
+                collectAnnotations(content.optJSONObject(i), into);
+            }
+        }
+    }
+
+    private static void collectAnnotations(JSONObject part, java.util.Set<String> into) {
+        if (part == null) return;
+        JSONArray annotations = part.optJSONArray("annotations");
+        if (annotations != null) for (int i = 0; i < annotations.length(); i++) {
+            collectCitation(annotations.optJSONObject(i), into);
+        }
+    }
+
+    private static void collectCitation(JSONObject citation, java.util.Set<String> into) {
+        if (citation == null || !"url_citation".equals(citation.optString("type"))) return;
+        String url = citation.optString("url", "").trim();
+        if (into.size() < AssistantReply.MAX_SOURCE_URLS && RichAnswerUrlPolicy.isOpenableWebUrl(url)) {
+            into.add(url);
+        }
     }
 
     /** Walks any JSON value adding the http/https addresses it finds, up to the reply's ceiling. */

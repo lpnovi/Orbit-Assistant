@@ -95,7 +95,7 @@ public final class OrbitRequestWorker extends Worker {
                     ? "I couldn't load the weather right now."
                     : weatherReply.text.trim().replace("—", "-");
             commit(c, item, id, new AssistantClient.History("assistant", text),
-                    new AssistantReply(text, weatherReply.actions), text);
+                    new AssistantReply(text, weatherReply.actions), text, attempt());
             return Result.success();
         }
 
@@ -119,15 +119,7 @@ public final class OrbitRequestWorker extends Worker {
         AssistantReply reply = outcome.reply;
         String error = outcome.error;
         if (reply != null) {
-            String text = reply.text == null || reply.text.trim().isEmpty()
-                    ? "Done."
-                    : reply.text.trim().replace("—", "-");
-            commit(c, item, id,
-                    new AssistantClient.History("assistant", text, false, "", "", "", "",
-                            reply.memoryUsage, reply.suggestedMemoryText, reply.suggestedMemoryCategory),
-                    new AssistantReply(text, reply.actions, reply.memoryUsage,
-                            reply.suggestedMemoryText, reply.suggestedMemoryCategory),
-                    SourceLinkUtil.displayText(text));
+            completeProviderReply(c, item, reply, attempt());
             return Result.success();
         }
 
@@ -192,12 +184,23 @@ public final class OrbitRequestWorker extends Worker {
      * the overlap that produced two replies in the first place, not the right of whichever
      * execution holds one to write it.
      */
-    private void commit(Context c, PendingRequestStore.Item item, String id,
-                        AssistantClient.History message, AssistantReply reply, String notificationText) {
-        RequestTrace.responseReady(id, attempt(), state(PendingRequestStore.load(c, id)));
+    static void completeProviderReply(Context c, PendingRequestStore.Item item,
+                                      AssistantReply reply, WorkerAttempt attempt) {
+        String text = reply.text.trim().isEmpty() ? "Done." : reply.text.trim().replace("—", "-");
+        commit(c, item, item.id,
+                new AssistantClient.History("assistant", text, false, "", "", "", "",
+                        reply.memoryUsage, reply.suggestedMemoryText, reply.suggestedMemoryCategory),
+                reply.withText(text), SourceLinkUtil.displayText(text), attempt);
+    }
+
+    private static void commit(Context c, PendingRequestStore.Item item, String id,
+                        AssistantClient.History message, AssistantReply reply, String notificationText,
+                        WorkerAttempt attempt) {
+        RequestTrace.responseReady(id, attempt, state(PendingRequestStore.load(c, id)));
         OrbitRequestManager.completeIfNotCancelled(c, id, CompletionSource.WORKER_RESPONSE,
-                attempt(), () -> {
-            ConversationStore.appendMessage(c, item.conversationId, message);
+                attempt, () -> {
+            ConversationStore.appendMessage(c, item.conversationId,
+                    message.withReplyProvenance(id, reply.sourceUrls));
             PendingRequestStore.markDone(c, id);
             RequestTrace.lifecycle(id, "completed");
             AttachmentStore.deleteAll(item.screenshotPaths);

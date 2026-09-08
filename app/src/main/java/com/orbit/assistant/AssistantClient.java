@@ -86,6 +86,9 @@ public final class AssistantClient {
          * loads normally, because losing a picture must never cost somebody their conversation.
          */
         public final List<RichAnswerImage> richImages;
+        /** Completed request ownership and hosted-search provenance. Never sent as model history. */
+        public final String replyRequestId;
+        public final List<String> sourceUrls;
 
         public History(String role, String content) {
             this(role, content, false, "", "", "", "", "", "", "");
@@ -159,6 +162,19 @@ public final class AssistantClient {
                        String memoryUsage, String memorySuggestionText,
                        String memorySuggestionCategory, String stoppedRequestId,
                        List<DocumentReference> documents, List<RichAnswerImage> richImages) {
+            this(role, content, attached, attachmentPaths, attachmentKind, attachmentLabel,
+                    attachmentText, memoryUsage, memorySuggestionText, memorySuggestionCategory,
+                    stoppedRequestId, documents, richImages, "", java.util.Collections.emptyList());
+        }
+
+        public History(String role, String content, boolean attached, List<String> attachmentPaths,
+                       String attachmentKind, String attachmentLabel, String attachmentText,
+                       String memoryUsage, String memorySuggestionText,
+                       String memorySuggestionCategory, String stoppedRequestId,
+                       List<DocumentReference> documents, List<RichAnswerImage> richImages,
+                       String replyRequestId, List<String> sourceUrls) {
+            this.replyRequestId = replyRequestId == null ? "" : replyRequestId.trim();
+            this.sourceUrls = new AssistantReply("").withSourceUrls(sourceUrls).sourceUrls;
             this.stoppedRequestId = stoppedRequestId == null ? "" : stoppedRequestId.trim();
             List<RichAnswerImage> pictures = new java.util.ArrayList<>();
             if (richImages != null) {
@@ -203,7 +219,7 @@ public final class AssistantClient {
         public History withStoppedRequestId(String requestId) {
             return new History(role, content, screenAttached, attachmentPaths, attachmentKind,
                     attachmentLabel, attachmentText, memoryUsage, memorySuggestionText,
-                    memorySuggestionCategory, requestId, documents, richImages);
+                    memorySuggestionCategory, requestId, documents, richImages, replyRequestId, sourceUrls);
         }
 
         /**
@@ -217,7 +233,13 @@ public final class AssistantClient {
         public History withRichImages(List<RichAnswerImage> images) {
             return new History(role, content, screenAttached, attachmentPaths, attachmentKind,
                     attachmentLabel, attachmentText, memoryUsage, memorySuggestionText,
-                    memorySuggestionCategory, stoppedRequestId, documents, images);
+                    memorySuggestionCategory, stoppedRequestId, documents, images, replyRequestId, sourceUrls);
+        }
+
+        public History withReplyProvenance(String requestId, List<String> sources) {
+            return new History(role, content, screenAttached, attachmentPaths, attachmentKind,
+                    attachmentLabel, attachmentText, memoryUsage, memorySuggestionText,
+                    memorySuggestionCategory, stoppedRequestId, documents, richImages, requestId, sources);
         }
 
         /** Whether this message has a picture to draw. */

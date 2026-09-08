@@ -645,7 +645,7 @@ public final class RichAnswerPipelineTest {
                         .withSourceUrls(Collections.singletonList("https://example.org/mi")));
         RichAnswerTrace.Attempt recorded = RichAnswerTrace.last(context);
         assertNotNull(recorded);
-        assertEquals(RichAnswerTrace.Outcome.NOT_ELIGIBLE, recorded.outcome);
+        assertEquals(RichAnswerTrace.Outcome.NOT_VISUAL, recorded.outcome);
         assertEquals(RichAnswerTrace.Intent.NONE, recorded.intent);
         assertEquals(1, recorded.sourcesReceived);
         assertTrue("and nothing was fetched to decide it", pages.requested.isEmpty());

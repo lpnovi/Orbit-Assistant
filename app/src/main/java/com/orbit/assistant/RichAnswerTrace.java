@@ -78,6 +78,10 @@ public final class RichAnswerTrace {
         NO_USABLE_IMAGE,
         /** Orbit never looked: rich answers off, no hosted search, no sources, or not a visual question. */
         NOT_ELIGIBLE,
+        DISABLED,
+        PROVIDER_UNSUPPORTED,
+        NOT_VISUAL,
+        NO_SOURCE_URLS_RECEIVED,
         /** Recorded but never finished, which on a healthy device should not appear. */
         INCOMPLETE
     }
@@ -334,7 +338,7 @@ public final class RichAnswerTrace {
         List<Attempt> attempts = attempts(context);
         if (attempts.isEmpty()) {
             return "No Rich Answers attempt recorded on this device yet.\n\n"
-                    + "Rich Answers records an attempt when a web answer cites a source. Ask a "
+                    + "Rich Answers records sourced answers and visual requests, even when sources are missing. Ask a "
                     + "visual question with web search on, then come back here.";
         }
         StringBuilder b = new StringBuilder();
@@ -406,6 +410,10 @@ public final class RichAnswerTrace {
             case IMAGE_FOUND_BUT_REQUEST_CANCELLED: return "Image found, request cancelled";
             case NO_USABLE_IMAGE: return "No usable image";
             case NOT_ELIGIBLE: return "Not eligible";
+            case DISABLED: return "Disabled";
+            case PROVIDER_UNSUPPORTED: return "Provider unsupported";
+            case NOT_VISUAL: return "Not visual";
+            case NO_SOURCE_URLS_RECEIVED: return "No source URLs received";
             default: return "Incomplete";
         }
     }

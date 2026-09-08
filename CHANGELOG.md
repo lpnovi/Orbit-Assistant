@@ -791,3 +791,9 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Images are now chosen by how well they match what you asked about, so photos win over logos and site furniture.
   - Added a Rich Answers section to Orbit Diagnostics, with its own copy action for reporting a missing image.
   - Nothing about Orbit's image safety rules was relaxed to make this work.
+
+- **v0.7.8.5-beta.4**: Fixes Rich Answers source delivery and Diagnostics heading consistency.
+  - Hosted-search sources now survive worker completion and reach Rich Answers image discovery.
+  - Visual requests record an explicit diagnostic when no source URLs arrive.
+  - Regenerate uses its newly returned sources and keeps late images attached to their owning request.
+  - Expanding or collapsing Diagnostics sections preserves the original heading typography.

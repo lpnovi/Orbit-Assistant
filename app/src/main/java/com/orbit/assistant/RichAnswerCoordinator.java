@@ -23,7 +23,7 @@ import java.util.concurrent.Executors;
  *
  * <p><b>Ownership is checked, not assumed.</b> A discovery is started only inside the completion
  * gate, so a stopped or superseded request never begins one. When it finishes, the result is
- * attached by matching the answer's exact text through
+ * attached by matching the completed request id and answer through
  * {@link ConversationStore#attachRichImages}, which is what keeps a late result from a request the
  * user has moved past away from whatever answer is on screen now. A cancelled request is checked
  * again at delivery, because a Stop can land while the fetch is in flight.
@@ -118,7 +118,7 @@ public final class RichAnswerCoordinator {
      * question a picture would not help, or a user who has turned rich answers off - so the caller
      * never has to know any of those rules.
      *
-     * <p>A declined attempt is written to the trace only when the answer actually cited sources.
+     * <p>A declined attempt is written when the answer cited sources or the request is visual.
      * Recording every ordinary chat message would fill a five-slot buffer with answers nobody
      * expected a picture from, and push out the one failure the user is trying to report.
      */
@@ -136,10 +136,12 @@ public final class RichAnswerCoordinator {
         trace.providerEligible = AiProviders.active(app).capabilities().richWebMedia;
         trace.intent = RichAnswerRelevance.intentFor(prompt, answer);
 
-        if (reply.sourceUrls.isEmpty()) return;
-        if (!trace.enabled || !trace.providerEligible
-                || trace.intent == RichAnswerTrace.Intent.NONE) {
-            trace.outcome = RichAnswerTrace.Outcome.NOT_ELIGIBLE;
+        if (reply.sourceUrls.isEmpty() && trace.intent == RichAnswerTrace.Intent.NONE) return;
+        if (!trace.enabled) trace.outcome = RichAnswerTrace.Outcome.DISABLED;
+        else if (!trace.providerEligible) trace.outcome = RichAnswerTrace.Outcome.PROVIDER_UNSUPPORTED;
+        else if (trace.intent == RichAnswerTrace.Intent.NONE) trace.outcome = RichAnswerTrace.Outcome.NOT_VISUAL;
+        else if (reply.sourceUrls.isEmpty()) trace.outcome = RichAnswerTrace.Outcome.NO_SOURCE_URLS_RECEIVED;
+        if (trace.outcome != RichAnswerTrace.Outcome.INCOMPLETE) {
             RichAnswerTrace.record(app, trace);
             return;
         }
@@ -170,7 +172,7 @@ public final class RichAnswerCoordinator {
                     trace.outcome = RichAnswerTrace.Outcome.IMAGE_FOUND_BUT_REQUEST_CANCELLED;
                     return;
                 }
-                if (!ConversationStore.attachRichImages(app, chat, answer, found)) {
+                if (!ConversationStore.attachRichImages(app, chat, owner, answer, found)) {
                     // The picture is fine and the message it belonged to is not there any more.
                     // Recorded as its own outcome because it is a completely different bug from a
                     // failed download, and Beta 2 could not tell them apart.

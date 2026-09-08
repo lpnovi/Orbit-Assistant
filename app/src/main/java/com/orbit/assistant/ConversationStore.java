@@ -99,7 +99,7 @@ public final class ConversationStore {
                     h.documents,
                     // Carried through the clip for the same reason the stopped anchor is: a
                     // lifecycle save must not be able to rub a picture off an answer that has one.
-                    h.richImages));
+                    h.richImages, h.replyRequestId, h.sourceUrls));
         }
         // A background response may be appended to disk after the assistant sheet
         // is hidden, while that old sheet still holds a shorter in-memory copy.
@@ -194,10 +194,8 @@ public final class ConversationStore {
      *
      * <p>A picture resolves after its answer has already been written, spoken and drawn, which
      * means the message it belongs to has to be found again rather than held onto. It is found by
-     * <em>what was said</em>: the last assistant message whose text is exactly the answer the
-     * discovery started from. That is the property that keeps a late arrival off the wrong turn -
-     * if the conversation has moved on, or a regeneration replaced the answer, or the user asked
-     * something else and got a different reply, no message matches and nothing is written.
+     * completed request id as well as its text. Regeneration can return identical words, so
+     * text alone cannot distinguish a removed answer from its replacement.
      *
      * <p>Deliberately refuses a message that already has pictures. Discovery runs once per
      * completed request, and a second write onto the same answer could only come from a request
@@ -207,6 +205,11 @@ public final class ConversationStore {
      */
     public static synchronized boolean attachRichImages(Context c, String id, String answerText,
                                                         List<RichAnswerImage> images) {
+        return attachRichImages(c, id, "", answerText, images);
+    }
+
+    public static synchronized boolean attachRichImages(Context c, String id, String requestId,
+                                                        String answerText, List<RichAnswerImage> images) {
         if (c == null || id == null || id.isEmpty() || images == null || images.isEmpty()) return false;
         String wanted = answerText == null ? "" : answerText.trim();
         if (wanted.isEmpty()) return false;
@@ -218,6 +221,8 @@ public final class ConversationStore {
             for (int i = messages.size() - 1; i >= 0; i--) {
                 AssistantClient.History message = messages.get(i);
                 if (message == null || !"assistant".equalsIgnoreCase(message.role)) continue;
+                // Empty ownership is only for legacy messages; it must never match a new reply.
+                if (!safe(requestId).trim().equals(message.replyRequestId)) continue;
                 if (!wanted.equals(safe(message.content).trim())) continue;
                 if (message.hasRichImages()) return false;
                 AssistantClient.History attached = message.withRichImages(images);
@@ -485,7 +490,8 @@ public final class ConversationStore {
                                         List<AssistantClient.History> stored) {
         if (incoming == null || stored == null || incoming.isEmpty() || stored.isEmpty()) return;
         boolean anyStored = false;
-        for (AssistantClient.History h : stored) if (h != null && h.hasRichImages()) { anyStored = true; break; }
+        for (AssistantClient.History h : stored) if (h != null
+                && (h.hasRichImages() || !h.replyRequestId.isEmpty())) { anyStored = true; break; }
         if (!anyStored) return;
 
         int shift = alignmentShift(incoming, stored);
@@ -493,12 +499,17 @@ public final class ConversationStore {
 
         for (int i = 0; i < stored.size(); i++) {
             AssistantClient.History from = stored.get(i);
-            if (from == null || !from.hasRichImages()) continue;
+            if (from == null) continue;
             int j = i + shift;
             if (j < 0 || j >= incoming.size()) continue;
             AssistantClient.History to = incoming.get(j);
-            if (to == null || to.hasRichImages()) continue;
-            incoming.set(j, to.withRichImages(from.richImages));
+            if (to == null) continue;
+            if (!to.replyRequestId.isEmpty() && !to.replyRequestId.equals(from.replyRequestId)) continue;
+            if (to.replyRequestId.isEmpty() && !from.replyRequestId.isEmpty()) {
+                to = to.withReplyProvenance(from.replyRequestId, from.sourceUrls);
+            }
+            if (!to.hasRichImages() && from.hasRichImages()) to = to.withRichImages(from.richImages);
+            incoming.set(j, to);
         }
     }
 
@@ -537,6 +548,8 @@ public final class ConversationStore {
     /** Same place in the conversation, for alignment purposes: same speaker, same words. */
     private static boolean sameMessage(AssistantClient.History a, AssistantClient.History b) {
         if (a == null || b == null) return a == b;
+        if (!a.replyRequestId.isEmpty() && !b.replyRequestId.isEmpty()
+                && !a.replyRequestId.equals(b.replyRequestId)) return false;
         return safe(a.role).equalsIgnoreCase(safe(b.role)) && safe(a.content).equals(safe(b.content));
     }
 
@@ -549,6 +562,7 @@ public final class ConversationStore {
                 if (a != b) return false;
                 continue;
             }
+            if (!sameMessage(a, b)) return false;
             String ar = a.role == null ? "" : a.role;
             String br = b.role == null ? "" : b.role;
             String ac = a.content == null ? "" : a.content;
@@ -620,7 +634,7 @@ public final class ConversationStore {
                                 // Absent from every message written before v0.7.8.5, and absent
                                 // from every answer that never had a picture. Missing means none,
                                 // which is what none already means, so nothing is migrated.
-                                readRichImages(m)));
+                                readRichImages(m), m.optString("replyRequestId", ""), readSourceUrls(m)));
                     }
                 }
                 // A chat stored before pinning existed simply has no "pinned" key, and false is
@@ -678,6 +692,8 @@ public final class ConversationStore {
                         for (RichAnswerImage image : h.richImages) pictures.put(image.toJson());
                         message.put("richImages", pictures);
                     }
+                    if (!h.replyRequestId.isEmpty()) message.put("replyRequestId", h.replyRequestId);
+                    if (!h.sourceUrls.isEmpty()) message.put("sourceUrls", new JSONArray(h.sourceUrls));
                     msgs.put(message
                             .put("role", h.role)
                             .put("content", h.content)
@@ -719,6 +735,17 @@ public final class ConversationStore {
             if (legacy != null && !legacy.trim().isEmpty()) paths.add(legacy);
         }
         return paths;
+    }
+
+    private static List<String> readSourceUrls(JSONObject message) {
+        List<String> urls = new ArrayList<>();
+        JSONArray stored = message.optJSONArray("sourceUrls");
+        if (stored != null) {
+            for (int i = 0; i < stored.length() && i < AssistantReply.MAX_SOURCE_URLS; i++) {
+                urls.add(stored.optString(i, ""));
+            }
+        }
+        return urls;
     }
 
     /**

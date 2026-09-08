@@ -155,16 +155,16 @@ public final class OrbitVersionTest {
      * changed. A prerelease must carry prerelease metadata, must produce a prerelease tag, and must
      * never be published to the Stable channel by accident.
      */
-    @Test public void thisBuildIsRichAnswersBetaThree() {
+    @Test public void thisBuildIsRichAnswersBetaFour() {
         String version = BuildConfig.VERSION_NAME;
         assertTrue(OrbitVersion.installedIsBeta());
         assertTrue(OrbitVersion.isBeta(version));
         assertFalse(OrbitVersion.isStable(version));
         assertEquals("0.7.8.5", OrbitVersion.baseVersion(version));
 
-        assertEquals("this is the third Beta of the line", 3, OrbitVersion.betaNumber(version));
-        assertEquals("Orbit Assistant v0.7.8.5 Beta 3", OrbitVersion.releaseTitle(version));
-        assertEquals("v0.7.8.5-beta.3", OrbitVersion.tagFor(version));
+        assertEquals("this is the fourth Beta of the line", 4, OrbitVersion.betaNumber(version));
+        assertEquals("Orbit Assistant v0.7.8.5 Beta 4", OrbitVersion.releaseTitle(version));
+        assertEquals("v0.7.8.5-beta.4", OrbitVersion.tagFor(version));
         assertTrue("the release workflow must publish it as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
         assertFalse("and never as Stable",
@@ -180,9 +180,9 @@ public final class OrbitVersionTest {
                 OrbitVersion.compareVersions("0.7.8.5", version) > 0);
     }
 
-    /** Beta 3 must supersede Beta 2, published as versionCode 779. */
+    /** Beta 4 must supersede Beta 3, published as versionCode 780. */
     @Test public void thisBuildOutranksThePublishedBetaItFollows() {
-        assertTrue("Beta 3 must supersede v0.7.8.5-beta.2 published as versionCode 779",
-                BuildConfig.VERSION_CODE > 779);
+        assertEquals("Beta 4 must use the next synchronized version code", 781, BuildConfig.VERSION_CODE);
+        assertTrue(OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.7.8.5-beta.3") > 0);
     }
 }

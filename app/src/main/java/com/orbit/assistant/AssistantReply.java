@@ -27,8 +27,8 @@ public final class AssistantReply {
      * than something a regular expression can infer.
      *
      * <p>Empty for every provider without hosted search, and empty for an answer that did not use
-     * it. Nothing downstream may treat empty as a failure; it means this answer came from the model
-     * rather than from the web, which is an ordinary thing for an answer to be.
+     * it. Empty alone cannot distinguish an ordinary model answer from missing upstream
+     * provenance; strongly visual requests record that distinction in Rich Answers diagnostics.
      */
     public final List<String> sourceUrls;
 
@@ -71,6 +71,12 @@ public final class AssistantReply {
     public AssistantReply withSourceUrls(List<String> urls) {
         return new AssistantReply(text, actions, memoryUsage, suggestedMemoryText,
                 suggestedMemoryCategory, urls);
+    }
+
+    /** Normalize display text without dropping provider provenance or memory metadata. */
+    public AssistantReply withText(String value) {
+        return new AssistantReply(value, actions, memoryUsage, suggestedMemoryText,
+                suggestedMemoryCategory, sourceUrls);
     }
 
     public static AssistantReply fromJson(JSONObject obj) {

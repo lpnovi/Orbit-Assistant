@@ -60,6 +60,8 @@ public final class DiagnosticsActivity extends Activity {
     /** Which sections the user has opened. Deliberately not persisted: the default is clean. */
     private final Set<String> expanded = new LinkedHashSet<>();
     private LinearLayout page;
+    private Button toggleAll;
+    private final List<Runnable> sectionUpdates = new ArrayList<>();
 
     /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
     private OrbitPredictiveBack navigation;
@@ -90,9 +92,10 @@ public final class DiagnosticsActivity extends Activity {
         return scroll;
     }
 
-    /** Rebuilds the page in place, so toggling a section keeps the user where they were. */
+    /** Builds once; disclosure never replaces headings or reapplies their typography. */
     private void populate() {
         page.removeAllViews();
+        sectionUpdates.clear();
 
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
@@ -115,11 +118,12 @@ public final class DiagnosticsActivity extends Activity {
         page.addView(sectionsCaption);
 
         boolean anyOpen = !expanded.isEmpty();
-        Button toggleAll = quietButton(anyOpen ? "Collapse all" : "Expand all");
+        toggleAll = quietButton(anyOpen ? "Collapse all" : "Expand all");
         toggleAll.setOnClickListener(v -> {
             if (expanded.isEmpty()) for (Section s : sections()) expanded.add(s.title);
             else expanded.clear();
-            populate();
+            for (Runnable update : sectionUpdates) update.run();
+            updateToggleAll();
         });
         LinearLayout.LayoutParams toggleLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 40));
@@ -292,19 +296,40 @@ public final class DiagnosticsActivity extends Activity {
         head.addView(chevron);
         head.setOnClickListener(v -> {
             if (!expanded.remove(section.title)) expanded.add(section.title);
-            populate();
+            updateSection(card, head, chevron, section);
+            updateToggleAll();
         });
         card.addView(head, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44)));
 
-        if (open) {
-            TextView body = UiKit.text(this, bodyText(section), 13, UiKit.TEXT, false);
+        sectionUpdates.add(() -> updateSection(card, head, chevron, section));
+        if (open) updateSection(card, head, chevron, section);
+        return card;
+    }
+
+    private void updateToggleAll() {
+        toggleAll.setText(expanded.isEmpty() ? "Expand all" : "Collapse all");
+    }
+
+    private void updateSection(LinearLayout card, View head, TextView chevron, Section section) {
+        boolean open = expanded.contains(section.title);
+        chevron.setText(open ? "▾" : "▸");
+        head.setContentDescription(section.title + (open ? ", expanded" : ", collapsed"));
+        if (open && card.getChildCount() == 1) {
+            TextView body = UiKit.text(this, bodyText(currentSection(section)), 13, UiKit.TEXT, false);
             body.setTextIsSelectable(true);
             body.setLineSpacing(0, 1.18f);
             body.setPadding(0, UiKit.dp(this, 4), 0, 0);
             card.addView(body);
+        } else if (!open && card.getChildCount() > 1) {
+            card.removeViewAt(1);
         }
-        return card;
+    }
+
+    private Section currentSection(Section fallback) {
+        if ("Overview".equals(fallback.title)) return new Section("Overview", overview());
+        for (Section candidate : sections()) if (candidate.title.equals(fallback.title)) return candidate;
+        return fallback;
     }
 
     /**
@@ -344,7 +369,7 @@ public final class DiagnosticsActivity extends Activity {
                 UiKit.withAlpha(UiKit.accent(this), 90), UiKit.accent(this), 14, this));
         copy.setContentDescription("Copy " + section.title + " diagnostics");
         copy.setOnClickListener(v -> copy("Orbit diagnostics — " + section.title,
-                sectionReport(section.title, section.body),
+                sectionReport(section.title, currentSection(section).body),
                 section.title + " diagnostics copied"));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 UiKit.dp(this, 62), UiKit.dp(this, 34));
