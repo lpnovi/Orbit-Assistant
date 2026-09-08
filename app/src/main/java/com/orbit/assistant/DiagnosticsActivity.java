@@ -157,6 +157,14 @@ public final class DiagnosticsActivity extends Activity {
         copyOverlay.setOnClickListener(v -> copy("Orbit overlay launch diagnostics",
                 OverlayLaunchTrace.report(this), "Overlay launch diagnostics copied"));
         page.addView(copyOverlay, buttonLp(10));
+
+        // The Rich Answers trace, which is far too long for the full report and is exactly what
+        // somebody needs after a visual answer came back without a picture. Stage transitions,
+        // hosts, statuses and sizes only - never the question that was asked or the answer given.
+        Button copyRich = button("Copy Rich Answers diagnostics");
+        copyRich.setOnClickListener(v -> copy("Orbit Rich Answers diagnostics",
+                RichAnswerTrace.report(this), "Rich Answers diagnostics copied"));
+        page.addView(copyRich, buttonLp(10));
     }
 
     private void copy(String label, String value, String toast) {
@@ -252,6 +260,7 @@ public final class DiagnosticsActivity extends Activity {
         sections.add(new Section("Screen & app context", screenContext(d)));
         sections.add(new Section("Memory", memory()));
         sections.add(new Section("Calendar", CalendarDiagnostics.body(this)));
+        sections.add(new Section("Rich Answers", RichAnswerTrace.body(this)));
         sections.add(new Section("Orbit Local", orbitLocal(d)));
         sections.add(new Section("Actions & utilities", actionsAndUtilities(d)));
         sections.add(new Section("Routines", routines(d)));
@@ -1018,6 +1027,11 @@ public final class DiagnosticsActivity extends Activity {
                 "\nOrbit Local: " + OrbitLocalComponent.stateLabel(OrbitLocalComponent.state(this)) +
                 "\nCalendar permission: "
                         + (OrbitCalendarStore.hasAccess(this) ? "granted" : "not granted") +
+                // One line, and only when there is one to give. The candidate-by-candidate detail
+                // belongs in the Rich Answers section and its own copy action, not in a summary
+                // somebody is going to paste into a conversation.
+                (RichAnswerTrace.summaryLine(this).isEmpty()
+                        ? "" : "\n" + RichAnswerTrace.summaryLine(this)) +
                 "\n" + healthLine() +
                 // Worth a support reply's attention, but stated for what it is: something that
                 // already ended, never a failure the user is currently having.

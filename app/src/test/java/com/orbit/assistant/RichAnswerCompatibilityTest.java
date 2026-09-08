@@ -336,13 +336,23 @@ public final class RichAnswerCompatibilityTest {
 
     // ---- candidate fallback ---------------------------------------------------------------------------
 
-    private RichAnswerPageMetadata.Preview previewOf(String... imageUrls) {
+    private static final String ROBIN_PAGE = "https://example.org/birds/robin";
+
+    /** A fetched page that declares these preview images and contains nothing else. */
+    private RichAnswerPageFetcher.PageResult pageOf(String... imageUrls) {
         StringBuilder head = new StringBuilder("<head>");
         for (String url : imageUrls) {
             head.append("<meta property=\"og:image\" content=\"").append(url).append("\">");
         }
         head.append("<title>A page about robins</title></head>");
-        return RichAnswerPageMetadata.parse(head.toString(), "https://example.org/birds/robin");
+        return RichAnswerPageFetcher.parse(head.toString(), ROBIN_PAGE, 200, "text/html", 0);
+    }
+
+    /** The best usable picture on a page, with no subject words and nothing seen before. */
+    private RichAnswerImage bestOf(RichAnswerPageFetcher.PageResult page,
+                                   java.util.Set<String> seen) {
+        return RichAnswerCoordinator.bestFrom(context, page, ROBIN_PAGE, 0,
+                java.util.Collections.emptyList(), seen, new RichAnswerTrace.PageRecord());
     }
 
     /**
@@ -358,9 +368,7 @@ public final class RichAnswerCompatibilityTest {
                 new RemoteImageLoader.Response(403, "text/plain", null, 0, null));
         serveImage(second);
 
-        RichAnswerImage image = RichAnswerCoordinator.firstUsableCandidate(context,
-                previewOf(first, second), "https://example.org/birds/robin", "A robin", 0,
-                new LinkedHashSet<>());
+        RichAnswerImage image = bestOf(pageOf(first, second), new LinkedHashSet<>());
         assertNotNull("the page must not lose its picture", image);
         assertEquals(second, image.imageUrl);
     }
@@ -371,9 +379,7 @@ public final class RichAnswerCompatibilityTest {
         String usable = "https://cdn.example.org/photographs/robin-secondary.jpg";
         serveImage(usable);
 
-        RichAnswerImage image = RichAnswerCoordinator.firstUsableCandidate(context,
-                previewOf(unsupported, usable), "https://example.org/birds/robin", "A robin", 0,
-                new LinkedHashSet<>());
+        RichAnswerImage image = bestOf(pageOf(unsupported, usable), new LinkedHashSet<>());
         assertNotNull(image);
         assertEquals(usable, image.imageUrl);
         assertFalse("an unusable format must not cost a request",
@@ -387,8 +393,7 @@ public final class RichAnswerCompatibilityTest {
         fake.responses.put(a, new RemoteImageLoader.Response(403, "text/plain", null, 0, null));
         fake.responses.put(b, new RemoteImageLoader.Response(404, "text/plain", null, 0, null));
 
-        assertNull(RichAnswerCoordinator.firstUsableCandidate(context, previewOf(a, b),
-                "https://example.org/birds/robin", "A robin", 0, new LinkedHashSet<>()));
+        assertNull(bestOf(pageOf(a, b), new LinkedHashSet<>()));
     }
 
     /** Attempts per page are bounded, so a hostile page cannot become a request storm. */
@@ -403,15 +408,16 @@ public final class RichAnswerCompatibilityTest {
                     new RemoteImageLoader.Response(404, "text/plain", null, 0, null));
         }
         head.append("</head>");
-        RichAnswerPageMetadata.Preview preview =
-                RichAnswerPageMetadata.parse(head.toString(), "https://example.org/p");
+        RichAnswerPageFetcher.PageResult page = RichAnswerPageFetcher.parse(
+                head.toString(), "https://example.org/p", 200, "text/html", 0);
 
-        assertNull(RichAnswerCoordinator.firstUsableCandidate(context, preview,
-                "https://example.org/p", "", 0, new LinkedHashSet<>()));
+        assertNull(RichAnswerCoordinator.bestFrom(context, page, "https://example.org/p", 0,
+                java.util.Collections.emptyList(), new LinkedHashSet<>(),
+                new RichAnswerTrace.PageRecord()));
         assertTrue("at most the declared number of attempts",
-                fake.requested.size() <= RichAnswerCoordinator.MAX_CANDIDATES_PER_PAGE);
+                fake.requested.size() <= RichAnswerCoordinator.MAX_FETCHED_CANDIDATES_PER_PAGE);
         assertTrue("and a page cannot declare unbounded candidates anyway",
-                preview.imageUrls.size() <= RichAnswerPageMetadata.MAX_CANDIDATES);
+                page.preview.imageUrls.size() <= RichAnswerPageMetadata.MAX_CANDIDATES);
     }
 
     /** A picture already used earlier in the same answer is not used again. */
@@ -420,20 +426,27 @@ public final class RichAnswerCompatibilityTest {
         serveImage(only);
         LinkedHashSet<String> seen = new LinkedHashSet<>();
         seen.add(only);
-        assertNull(RichAnswerCoordinator.firstUsableCandidate(context, previewOf(only),
-                "https://example.org/birds/robin", "A robin", 0, seen));
+        assertNull(bestOf(pageOf(only), seen));
     }
 
     /** Ranking is by score, and stable when scores tie. */
     @Test public void candidatesAreRankedBestFirstAndStably() {
         String logo = "https://cdn.example.org/logo.png";
         String good = "https://cdn.example.org/photographs/european-robin-in-snow.jpg";
-        List<String> ranked = RichAnswerCoordinator.rankedCandidates(
-                previewOf(logo, good), "https://example.org/birds/robin", new LinkedHashSet<>());
+        List<String> ranked = rankedUrls(logo, good);
         assertFalse("chrome must never be offered", ranked.contains(logo));
         assertEquals(1, ranked.size());
         assertEquals(good, ranked.get(0));
-        assertEquals(ranked, RichAnswerCoordinator.rankedCandidates(
-                previewOf(logo, good), "https://example.org/birds/robin", new LinkedHashSet<>()));
+        assertEquals(ranked, rankedUrls(logo, good));
+    }
+
+    private List<String> rankedUrls(String... declared) {
+        List<String> out = new ArrayList<>();
+        for (RichAnswerCoordinator.Ranked ranked : RichAnswerCoordinator.rank(pageOf(declared),
+                ROBIN_PAGE, java.util.Collections.emptyList(), new LinkedHashSet<>(),
+                new RichAnswerTrace.PageRecord())) {
+            out.add(ranked.candidate.url);
+        }
+        return out;
     }
 }

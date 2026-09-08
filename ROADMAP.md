@@ -147,6 +147,31 @@ none of them the security policy.
 - **Every protection held.** Private and device-local addresses, credentials in URLs, non-web
   schemes, redirect revalidation and the byte and decode ceilings are all unchanged
 
+**Shipped in `0.7.8.5-beta.3` - Rich Answers diagnostics and real-world discovery reliability:**
+
+Beta 2 fixed the transport and the same physical test failed again, for a reason no test could have
+caught: a cited university publication declares no preview image at all, and Orbit only ever read
+the page head. The photographs were twelve lines further down the document Orbit had decided not to
+read. The article-image fallback Beta 2 was meant to have did not ship.
+
+- **Article images.** A cited page now yields the photographs inside it as well as the preview it
+  declares, parsed from bounded static HTML - `img`, `srcset`, `picture`, and the `data-` attributes
+  every lazy loader uses. No JavaScript, no WebView, no CSS, no browser engine
+- **The preview short-circuit is gone.** A page with no `og:image` is no longer abandoned before its
+  article is looked at, which was the whole bug
+- **Ranking knows the subject.** A short list of words from the question, derived on the device and
+  never stored or sent, decides between a photograph of the thing asked about and the publisher logo
+  beside it
+- **Strongly visual questions try harder.** Five source pages rather than three, and a deeper
+  candidate list per page - not a crawl: every byte, page, candidate and dimension ceiling still holds
+- **Rich Answers diagnostics.** A bounded trace of the last five attempts, with a section in Orbit
+  Diagnostics and its own copy action. It records stages, hosts, statuses, MIME types, sizes and
+  rejection reasons, and never the prompt, the answer, page text, or any query string
+- **Structured loader failures.** A download failure now carries its content type, byte count,
+  redirect count and decoded size instead of collapsing to one word
+- **Every protection held.** Private and device-local addresses, credentials in URLs, non-web
+  schemes, redirect revalidation and the byte and decode ceilings are all unchanged
+
 **Still ahead in `0.7.8.5`, depending on real-device testing:**
 
 - Richer multi-image presentation, where a comparison genuinely needs two pictures side by side

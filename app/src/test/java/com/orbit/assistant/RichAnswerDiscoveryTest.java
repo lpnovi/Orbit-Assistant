@@ -155,10 +155,17 @@ public final class RichAnswerDiscoveryTest {
 
     // ---- fetch bounds ------------------------------------------------------------------------------
 
-    /** A metadata read is deliberately tiny, and only ever a GET for markup. */
+    /** A page read is bounded, and only ever a GET for markup. */
     @Test public void theMetadataFetchIsBoundedAndPassive() {
-        assertTrue("a head is kilobytes, not megabytes",
-                RichAnswerPageFetcher.MAX_BYTES <= 128 * 1024);
+        // Raised in Beta 3 from a head-sized ceiling to an article-sized one, because the pictures
+        // this feature exists to find are in the body. Still a hard ceiling rather than a whole
+        // page: the read stops here whether or not the document has ended.
+        assertTrue("an article is hundreds of kilobytes, never unbounded",
+                RichAnswerPageFetcher.MAX_BYTES <= 1024 * 1024);
+        assertTrue("and enough of one to reach the photographs in it",
+                RichAnswerPageFetcher.MAX_BYTES >= 256 * 1024);
+        assertTrue("the head-only read stays small",
+                RichAnswerPageFetcher.MAX_HEAD_BYTES <= 128 * 1024);
         assertTrue(RichAnswerPageFetcher.CONNECT_TIMEOUT_MS > 0
                 && RichAnswerPageFetcher.CONNECT_TIMEOUT_MS <= 10000);
         assertTrue(RichAnswerPageFetcher.READ_TIMEOUT_MS > 0

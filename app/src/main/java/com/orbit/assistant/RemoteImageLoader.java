@@ -84,7 +84,20 @@ public final class RemoteImageLoader {
         public boolean failed() { return this != NONE; }
     }
 
-    /** What one fetch produced: a picture, or a reason there is not one. */
+    /**
+     * What one fetch produced: a picture, or a reason there is not one - plus what was observed on
+     * the way.
+     *
+     * <p><b>Nothing useful is thrown away here any more.</b> Beta 2 reduced every failed download
+     * to a category, which was already a large improvement on Beta 1's single {@code null}, and was
+     * still not enough to explain a real-device failure: "not an image" does not say whether the
+     * server sent a PDF or an HTML error page, and "could not be read" does not say whether four
+     * bytes arrived or four megabytes. The transport knows all of it, so it now keeps all of it.
+     *
+     * <p>The extra fields are for {@link RichAnswerTrace} and for nothing else. No surface shows
+     * them, no message text is built from them, and none of them carries an address, a header or a
+     * server's own words.
+     */
     public static final class Result {
         public final Bitmap bitmap;
         public final Failure failure;
@@ -95,11 +108,31 @@ public final class RemoteImageLoader {
          * real device - one is a host refusing Orbit, the other is an address that is simply wrong.
          */
         public final int status;
+        /** The content type the server declared, base type only, or empty. */
+        public final String contentType;
+        /** How many bytes of body were actually read before this ended. */
+        public final int bytesRead;
+        /** How many redirects were followed and revalidated. */
+        public final int redirects;
+        /** Decoded width, or 0 when nothing decoded. A fact rather than a claim. */
+        public final int decodedWidth;
+        /** Decoded height, or 0. */
+        public final int decodedHeight;
 
-        Result(Bitmap bitmap, Failure failure, int status) {
+        Result(Bitmap bitmap, Failure failure, int status, String contentType, int bytesRead,
+               int redirects) {
             this.bitmap = bitmap;
             this.failure = failure == null ? Failure.NONE : failure;
             this.status = status;
+            this.contentType = contentType == null ? "" : contentType;
+            this.bytesRead = Math.max(0, bytesRead);
+            this.redirects = Math.max(0, redirects);
+            this.decodedWidth = bitmap == null ? 0 : bitmap.getWidth();
+            this.decodedHeight = bitmap == null ? 0 : bitmap.getHeight();
+        }
+
+        Result(Bitmap bitmap, Failure failure, int status) {
+            this(bitmap, failure, status, "", 0, 0);
         }
 
         static Result ok(Bitmap bitmap) { return new Result(bitmap, Failure.NONE, 0); }
@@ -109,6 +142,12 @@ public final class RemoteImageLoader {
         static Result http(int status) { return new Result(null, Failure.HTTP_ERROR, status); }
 
         public boolean loaded() { return bitmap != null && !failure.failed(); }
+
+        /** The same outcome with the transport detail attached. Used by the transport itself. */
+        Result observing(String contentType, int bytesRead, int redirects) {
+            return new Result(bitmap, failure, status, RichAnswerImageFormat.baseType(contentType),
+                    bytesRead, redirects);
+        }
 
         /** The line a surface shows, with the status folded in where there is one. */
         public String describe() {
@@ -169,27 +208,25 @@ public final class RemoteImageLoader {
     /**
      * A picture fetched for a Rich Answer, decoded and measured.
      *
-     * <p>Separate from {@link #load} because the Rich Answer path has a decision to make that the
-     * Markdown path does not: a picture that turns out to be a 48-pixel icon is refused rather than
-     * drawn small, and refusing it needs the decoded bounds. Blocking, and background threads only.
+     * <p>Separate from {@link #load} because the Rich Answer path keeps what it fetched in memory
+     * for the redraw that follows immediately. Blocking, and background threads only.
      *
-     * @return the picture, or the category of what went wrong. A failure is always clean: the
-     *         answer keeps its text, and the caller is free to try another candidate.
+     * <p><b>It no longer judges what arrived.</b> Beta 2 refused a picture here for being too small
+     * and rewrote the result as {@code UNSUPPORTED_FORMAT} - which threw away the decoded bounds
+     * that were the entire reason for the refusal, so Diagnostics could never say "this was a
+     * 60x60 icon". Whether a picture is big enough is a judgement about content, it belongs to
+     * {@link RichAnswerCoordinator} with the other content rules, and it is made there against the
+     * dimensions this now returns intact.
+     *
+     * @return the picture, or the category of what went wrong, in either case carrying the content
+     *         type, byte count, redirect count and decoded size that were observed. A failure is
+     *         always clean: the answer keeps its text, and the caller may try another candidate.
      */
     static Result fetchForRichAnswer(Context context, String url) {
         if (context == null) return Result.failed(Failure.BLOCKED);
         if (!RichAnswerUrlPolicy.isFetchableImageUrl(url)) return Result.failed(Failure.BLOCKED);
         Context app = context.getApplicationContext();
         Result result = fetchPicture(app, url);
-        if (result.loaded() && !RichAnswerRelevance.hasUsefulDimensions(
-                result.bitmap.getWidth(), result.bitmap.getHeight())) {
-            // Not a failure of the transport. The picture arrived and turned out to be an icon or a
-            // banner, which is a judgement about content and belongs with the other content rules.
-            result = Result.failed(Failure.UNSUPPORTED_FORMAT);
-        }
-        // The transport already recorded its own outcome; this records the one case it cannot
-        // know about, which is a picture refused for being too small to be worth drawing.
-        if (!result.loaded()) RichAnswerImageStatus.record(app, result);
         if (result.loaded()) MEMORY.put(url, result.bitmap);
         return result;
     }
@@ -273,7 +310,8 @@ public final class RemoteImageLoader {
         try {
             download = download(url);
         } catch (FetchException e) {
-            return record(app, e.status > 0 ? Result.http(e.status) : Result.failed(e.failure));
+            Result result = e.status > 0 ? Result.http(e.status) : Result.failed(e.failure);
+            return record(app, result.observing(e.contentType, e.bytesRead, e.redirects));
         } catch (java.net.SocketTimeoutException e) {
             return record(app, Result.failed(Failure.TIMEOUT));
         } catch (Exception e) {
@@ -287,7 +325,8 @@ public final class RemoteImageLoader {
         if (bitmap == null) {
             return record(app, Result.failed(
                     RichAnswerImageFormat.isDecodableContentType(download.contentType)
-                            ? Failure.DECODE_FAILED : Failure.UNSUPPORTED_FORMAT));
+                            ? Failure.DECODE_FAILED : Failure.UNSUPPORTED_FORMAT)
+                    .observing(download.contentType, download.bytes.length, download.redirects));
         }
         try {
             if (cache == null) cache = cacheFile(app, url);
@@ -300,7 +339,8 @@ public final class RemoteImageLoader {
             // second fetch and costs this one nothing.
             deleteQuietly(cache);
         }
-        return record(app, Result.ok(bitmap));
+        return record(app, Result.ok(bitmap)
+                .observing(download.contentType, download.bytes.length, download.redirects));
     }
 
     /** Records one outcome for Diagnostics and hands it straight back. */
@@ -320,13 +360,15 @@ public final class RemoteImageLoader {
         return length > 0 && length <= MAX_BYTES;
     }
 
-    /** What a completed fetch returned. */
+    /** What a completed fetch returned, and what was observed getting it. */
     private static final class Download {
         final byte[] bytes;
         final String contentType;
-        Download(byte[] bytes, String contentType) {
+        final int redirects;
+        Download(byte[] bytes, String contentType, int redirects) {
             this.bytes = bytes;
             this.contentType = contentType == null ? "" : contentType;
+            this.redirects = redirects;
         }
     }
 
@@ -432,15 +474,34 @@ public final class RemoteImageLoader {
     /** Whether the real network transport is the one currently installed. */
     static boolean usingNetworkTransport() { return transport == NETWORK; }
 
-    /** A fetch that ended in a category rather than in bytes. */
+    /**
+     * A fetch that ended in a category rather than in bytes, carrying what was seen on the way.
+     *
+     * <p>The observations travel with the failure rather than being discarded at the throw, which
+     * is the difference between Diagnostics reading "not an image" and reading "not an image ·
+     * HTTP 200 · application/pdf · 41 KB · 2 redirects". The first needs a guess; the second does
+     * not.
+     */
     private static final class FetchException extends Exception {
         final Failure failure;
         final int status;
+        String contentType = "";
+        int bytesRead;
+        int redirects;
+
         FetchException(Failure failure) { this(failure, 0); }
+
         FetchException(Failure failure, int status) {
             super(failure.name());
             this.failure = failure;
             this.status = status;
+        }
+
+        FetchException observing(String contentType, int bytesRead, int redirects) {
+            this.contentType = contentType == null ? "" : contentType;
+            this.bytesRead = bytesRead;
+            this.redirects = redirects;
+            return this;
         }
     }
 
@@ -460,24 +521,34 @@ public final class RemoteImageLoader {
             // Revalidated at every hop, never only at the first. A redirect chain that starts on a
             // public host and ends on this device's own network is exactly what one check at the
             // top would let through.
-            if (!transport.allowsHost(current)) throw new FetchException(Failure.BLOCKED);
+            if (!transport.allowsHost(current)) {
+                throw new FetchException(Failure.BLOCKED).observing("", 0, redirect);
+            }
             String request = RichAnswerUrlPolicy.normalizedForRequest(current);
-            if (request.isEmpty()) throw new FetchException(Failure.BLOCKED);
+            if (request.isEmpty()) {
+                throw new FetchException(Failure.BLOCKED).observing("", 0, redirect);
+            }
 
             Response response = transport.open(request);
             InputStream body = response == null ? null : response.body;
             try {
-                if (response == null) throw new FetchException(Failure.NETWORK);
+                if (response == null) {
+                    throw new FetchException(Failure.NETWORK).observing("", 0, redirect);
+                }
                 if (response.status >= 300 && response.status < 400) {
                     // 301, 302, 303, 307 and 308 alike: Orbit follows them itself so that each one
                     // can be checked, which is the whole reason automatic redirects are off.
                     String next = RichAnswerUrlPolicy.redirectTarget(current, response.location);
-                    if (next.isEmpty()) throw new FetchException(Failure.REDIRECT_BLOCKED);
+                    if (next.isEmpty()) {
+                        throw new FetchException(Failure.REDIRECT_BLOCKED)
+                                .observing(response.contentType, 0, redirect);
+                    }
                     current = next;
                     continue;
                 }
                 if (response.status < 200 || response.status >= 300) {
-                    throw new FetchException(Failure.HTTP_ERROR, response.status);
+                    throw new FetchException(Failure.HTTP_ERROR, response.status)
+                            .observing(response.contentType, 0, redirect);
                 }
 
                 String type = response.contentType;
@@ -488,7 +559,8 @@ public final class RemoteImageLoader {
                     // it is the same bounded, policy-checked read Rich Answers already performs -
                     // not a special case for one website.
                     if (pageResolutions >= MAX_PAGE_RESOLUTIONS) {
-                        throw new FetchException(Failure.NOT_AN_IMAGE);
+                        throw new FetchException(Failure.NOT_AN_IMAGE)
+                                .observing(type, 0, redirect);
                     }
                     // The markup is already arriving on this connection, so it is read here rather
                     // than fetched a second time: one request, one transport, and the bounded read
@@ -496,17 +568,24 @@ public final class RemoteImageLoader {
                     String declared = declaredImageOf(readHead(body), current);
                     closeQuietly(body);
                     body = null;
-                    if (declared.isEmpty()) throw new FetchException(Failure.NOT_AN_IMAGE);
+                    if (declared.isEmpty()) {
+                        throw new FetchException(Failure.NOT_AN_IMAGE).observing(type, 0, redirect);
+                    }
                     return download(declared, pageResolutions + 1);
                 }
                 if (!RichAnswerImageFormat.isDecodableContentType(type)) {
                     throw new FetchException(RichAnswerImageFormat.baseType(type).startsWith("image/")
-                            ? Failure.UNSUPPORTED_FORMAT : Failure.NOT_AN_IMAGE);
+                            ? Failure.UNSUPPORTED_FORMAT : Failure.NOT_AN_IMAGE)
+                            .observing(type, 0, redirect);
                 }
 
                 // A declared length that is already past the ceiling saves reading a byte of it.
-                if (response.contentLength > MAX_BYTES) throw new FetchException(Failure.TOO_LARGE);
-                if (body == null) throw new FetchException(Failure.NETWORK);
+                if (response.contentLength > MAX_BYTES) {
+                    throw new FetchException(Failure.TOO_LARGE).observing(type, 0, redirect);
+                }
+                if (body == null) {
+                    throw new FetchException(Failure.NETWORK).observing(type, 0, redirect);
+                }
                 try (ByteArrayOutputStream output = new ByteArrayOutputStream(
                         response.contentLength > 0
                                 ? (int) Math.min(response.contentLength, MAX_BYTES) : 32 * 1024)) {
@@ -517,16 +596,20 @@ public final class RemoteImageLoader {
                         total += read;
                         // A declared length is only a claim. This is the bound that actually holds,
                         // and it is what stops a chunked response streaming without end.
-                        if (total > MAX_BYTES) throw new FetchException(Failure.TOO_LARGE);
+                        if (total > MAX_BYTES) {
+                            throw new FetchException(Failure.TOO_LARGE)
+                                    .observing(type, (int) Math.min(total, Integer.MAX_VALUE), redirect);
+                        }
                         output.write(buffer, 0, read);
                     }
-                    return new Download(output.toByteArray(), type);
+                    return new Download(output.toByteArray(), type, redirect);
                 }
             } finally {
                 closeQuietly(body);
             }
         }
-        throw new FetchException(Failure.TOO_MANY_REDIRECTS);
+        throw new FetchException(Failure.TOO_MANY_REDIRECTS)
+                .observing("", 0, RichAnswerUrlPolicy.MAX_REDIRECTS);
     }
 
     private static void closeQuietly(InputStream stream) {
@@ -560,9 +643,10 @@ public final class RemoteImageLoader {
     /**
      * As much of a document as it takes to find its head, and no more.
      *
-     * <p>The same ceiling and the same early stop the Rich Answer metadata reader uses. A page's
-     * declarations are in the first few kilobytes, so reading a whole article to find one would be
-     * paying an enormous cost for something that arrived in the first packet.
+     * <p>Bounded by {@link RichAnswerPageFetcher#MAX_HEAD_BYTES} and stopping the moment the head
+     * closes. Deliberately the small ceiling rather than the page reader's larger one: this caller
+     * wants a declaration, not an article, and reading half a megabyte to find something that
+     * arrived in the first packet would be paying an enormous cost for nothing.
      */
     private static String readHead(InputStream body) throws Exception {
         if (body == null) return "";
@@ -573,7 +657,7 @@ public final class RemoteImageLoader {
         int read;
         while ((read = reader.read(buffer)) != -1) {
             out.append(buffer, 0, read);
-            if (out.length() >= RichAnswerPageFetcher.MAX_BYTES) break;
+            if (out.length() >= RichAnswerPageFetcher.MAX_HEAD_BYTES) break;
             if (out.indexOf("</head") >= 0 || out.indexOf("</HEAD") >= 0) break;
         }
         return out.toString();

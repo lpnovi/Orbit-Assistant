@@ -2,26 +2,32 @@ package com.orbit.assistant;
 
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * The preview image a web page declares about itself, read out of its own head and nothing else.
  *
- * <p>Orbit does not go looking for pictures on a page. It reads the one the page's author already
- * chose to represent it - {@code og:image}, {@code twitter:image}, or a link-relation image - which
- * is the only image on a page that comes with a claim attached: <em>this</em> is what this page is
- * about. Scraping {@code <img>} tags would find navigation chrome, tracking pixels, advertising and
- * the author's avatar, and Orbit would have no way to tell which was which.
+ * <p>This reads the picture the page's author already chose to represent it - {@code og:image},
+ * {@code twitter:image}, or a link-relation image - which is the only image on a page that comes
+ * with a claim attached: <em>this</em> is what this page is about. It is the strongest single
+ * signal a page offers, and it is the first thing asked for.
+ *
+ * <p><b>It is no longer the only thing asked for.</b> Two betas treated "this page declares no
+ * preview image" as "this page has no picture", which is false on exactly the sources a careful
+ * answer cites - university publications, government fact sheets, field guides - and was the bug
+ * behind two failed acceptance runs. {@link RichAnswerArticleImages} reads the photographs actually
+ * in the document, and the two sets are ranked together. This class stayed narrow on purpose: what
+ * a page declares and what a page contains are different questions with different reliability, and
+ * keeping them apart is what lets the ranking weigh them differently.
  *
  * <p>Pure text work, deliberately. No network, no {@code Context}, no HTML engine and no
  * JavaScript: the fetch that produced these bytes is somewhere else, and what a page declares is a
  * question that can be answered - and tested - with a string. Nothing here executes anything, and
- * the parser stops at {@code </head>} so a megabyte of body never has to be considered.
+ * this parser still stops at {@code </head>}, because a declaration that is not in the head is not
+ * a declaration.
  *
  * <p>Everything that comes out is untrusted display data. A title is a caption candidate and never
  * an instruction; an image URL is a candidate and is put through {@link RichAnswerUrlPolicy} before
@@ -59,15 +65,28 @@ public final class RichAnswerPageMetadata {
     public static final class Preview {
         /** Absolute, de-duplicated image candidates, best first. Never empty when usable. */
         public final List<String> imageUrls;
+        /**
+         * The same declarations as ranking candidates, carrying which declaration each came from.
+         *
+         * <p>Added in Beta 3 so a page's preview images and the photographs inside its article go
+         * into one ranked list rather than being considered in two separate passes where the first
+         * one could end the search. The origin is kept because it is worth a ranking bonus and
+         * because Diagnostics has to be able to say which kind of candidate was tried.
+         */
+        public final List<RichAnswerArticleImages.Candidate> candidates;
         /** The page's own words for itself, or empty. A caption candidate, never a fact. */
         public final String description;
         /** The page's title, or empty. */
         public final String title;
 
-        Preview(List<String> imageUrls, String description, String title) {
+        Preview(List<String> imageUrls, List<RichAnswerArticleImages.Candidate> candidates,
+                String description, String title) {
             this.imageUrls = imageUrls == null
                     ? java.util.Collections.emptyList()
                     : java.util.Collections.unmodifiableList(new ArrayList<>(imageUrls));
+            this.candidates = candidates == null
+                    ? java.util.Collections.emptyList()
+                    : java.util.Collections.unmodifiableList(new ArrayList<>(candidates));
             this.description = description == null ? "" : description;
             this.title = title == null ? "" : title;
         }
@@ -82,7 +101,7 @@ public final class RichAnswerPageMetadata {
 
     /** A page that declared nothing Orbit can use. */
     public static Preview empty() {
-        return new Preview(new ArrayList<>(), "", "");
+        return new Preview(new ArrayList<>(), new ArrayList<>(), "", "");
     }
 
     /**
@@ -100,26 +119,25 @@ public final class RichAnswerPageMetadata {
         // Ordered by the preference list rather than by where they appear, so a page carrying both
         // og:image and twitter:image yields the one that describes the page rather than the one
         // that happened to be written first.
-        Set<String> ordered = new LinkedHashSet<>();
+        java.util.LinkedHashMap<String, RichAnswerArticleImages.Origin> ordered =
+                new java.util.LinkedHashMap<>();
         List<String[]> metas = attributesOf(META.matcher(head));
         for (String key : IMAGE_KEYS) {
             for (String[] meta : metas) {
                 if (!key.equalsIgnoreCase(meta[0])) continue;
                 String absolute = absolute(meta[1], pageUrl);
-                if (!absolute.isEmpty()) ordered.add(absolute);
+                if (absolute.isEmpty() || ordered.containsKey(absolute)) continue;
+                ordered.put(absolute, key.toLowerCase(Locale.US).startsWith("twitter")
+                        ? RichAnswerArticleImages.Origin.TWITTER_IMAGE
+                        : RichAnswerArticleImages.Origin.OG_IMAGE);
             }
         }
         for (String[] link : attributesOf(LINK.matcher(head))) {
             // rel="image_src" is the older declaration of the same idea and still appears.
             if (!"image_src".equalsIgnoreCase(link[0])) continue;
             String absolute = absolute(link[1], pageUrl);
-            if (!absolute.isEmpty()) ordered.add(absolute);
-        }
-
-        List<String> candidates = new ArrayList<>();
-        for (String candidate : ordered) {
-            if (candidates.size() >= MAX_CANDIDATES) break;
-            candidates.add(candidate);
+            if (absolute.isEmpty() || ordered.containsKey(absolute)) continue;
+            ordered.put(absolute, RichAnswerArticleImages.Origin.IMAGE_SRC);
         }
 
         String description = "";
@@ -136,7 +154,18 @@ public final class RichAnswerPageMetadata {
         Matcher titleMatch = TITLE.matcher(head);
         if (titleMatch.find()) title = decode(titleMatch.group(1));
 
-        return new Preview(candidates, description, title);
+        List<String> urls = new ArrayList<>();
+        List<RichAnswerArticleImages.Candidate> candidates = new ArrayList<>();
+        for (java.util.Map.Entry<String, RichAnswerArticleImages.Origin> entry : ordered.entrySet()) {
+            if (urls.size() >= MAX_CANDIDATES) break;
+            urls.add(entry.getKey());
+            // The page's description stands in as this candidate's own words, because a declared
+            // preview image has none of its own. Structure is neutral: a declaration is not in the
+            // document body at all, so neither the article bonus nor the chrome penalty applies.
+            candidates.add(new RichAnswerArticleImages.Candidate(entry.getKey(), entry.getValue(),
+                    description, "", 0, 0, RichAnswerArticleImages.STRUCTURE_NEUTRAL));
+        }
+        return new Preview(urls, candidates, description, title);
     }
 
     /**

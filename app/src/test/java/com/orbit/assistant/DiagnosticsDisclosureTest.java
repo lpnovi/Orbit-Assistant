@@ -627,4 +627,72 @@ public final class DiagnosticsDisclosureTest {
         }
         controller.pause().stop().destroy();
     }
+
+    // ---- Rich Answers -----------------------------------------------------------------------------
+
+    /**
+     * Rich Answers is a section of this screen, not a second diagnostics screen.
+     *
+     * <p>It sits inside the existing collapsible architecture with its own copy control, exactly
+     * like every other section, because a support workflow with two places to look is a support
+     * workflow people get wrong.
+     */
+    @Test public void richAnswersIsOneOfTheOrdinarySections() {
+        ActivityController<DiagnosticsActivity> controller = open();
+        assertTrue("the section header must be on the screen",
+                texts(controller.get()).contains("Rich Answers"));
+        assertTrue("and it is in the full report like the others",
+                controller.get().fullReport().contains("Rich Answers"));
+        controller.pause().stop().destroy();
+    }
+
+    /** The dedicated copy action, which is the whole point of the Beta 3 trace. */
+    @Test public void thereIsADedicatedRichAnswersCopyAction() {
+        ActivityController<DiagnosticsActivity> controller = open();
+        View button = viewWithText(controller.get(), "Copy Rich Answers diagnostics");
+        assertNotNull("a user has to be able to copy the trace after reproducing a failure", button);
+        button.performClick();
+        String copied = clipboard();
+        assertTrue(copied.startsWith("Orbit Rich Answers diagnostics"));
+        assertTrue(copied.contains("No prompt, answer or page text is recorded."));
+        controller.pause().stop().destroy();
+    }
+
+    /** With nothing recorded the section says so rather than looking broken. */
+    @Test public void theRichAnswersSectionIsTruthfulWhenNothingHasHappened() {
+        RichAnswerTrace.clear(context);
+        ActivityController<DiagnosticsActivity> controller = open();
+        assertTrue(controller.get().fullReport()
+                .contains("No Rich Answers attempt recorded on this device yet."));
+        assertFalse("and it contributes no line to the short summary",
+                controller.get().summaryReport().contains("Rich Answers:"));
+        controller.pause().stop().destroy();
+    }
+
+    /** After an attempt the summary gains exactly one line, and the detail stays in the section. */
+    @Test public void theSummaryGainsOneRichAnswersLineAndNoCandidateDetail() {
+        RichAnswerTrace.clear(context);
+        RichAnswerTrace.Attempt attempt = new RichAnswerTrace.Attempt();
+        attempt.enabled = true;
+        attempt.providerEligible = true;
+        attempt.intent = RichAnswerTrace.Intent.STRONG_VISUAL;
+        attempt.pagesAttempted = 3;
+        attempt.outcome = RichAnswerTrace.Outcome.NO_USABLE_IMAGE;
+        RichAnswerTrace.PageRecord page = attempt.page();
+        page.host = "pubs.example.edu";
+        RichAnswerTrace.CandidateRecord candidate = page.candidate();
+        candidate.fetched = true;
+        candidate.httpStatus = 403;
+        candidate.reason = RichAnswerTrace.Reason.HTTP_ERROR;
+        RichAnswerTrace.record(context, attempt);
+
+        ActivityController<DiagnosticsActivity> controller = open();
+        String summary = controller.get().summaryReport();
+        assertTrue(summary.contains("Rich Answers: last attempt No usable image · 3 pages"));
+        assertFalse("candidate detail belongs in the section, never the summary",
+                summary.contains("HTTP 403"));
+        assertTrue("and the section has it", controller.get().fullReport().contains("HTTP 403"));
+        RichAnswerTrace.clear(context);
+        controller.pause().stop().destroy();
+    }
 }

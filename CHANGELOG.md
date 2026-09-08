@@ -785,3 +785,9 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Pictures in formats your Android version cannot display are no longer chosen over ones it can.
   - Damaged cached images are now discarded and fetched again instead of failing every time.
   - An image that still cannot be shown offers Open source, and Diagnostics reports why.
+- **v0.7.8.5-beta.3**: Sourced images now come from the article itself, not just the page preview.
+  - Orbit now looks at the photographs inside a cited article, so pages without a preview image can still illustrate an answer.
+  - Questions that are clearly asking to see something search a little harder before giving up.
+  - Images are now chosen by how well they match what you asked about, so photos win over logos and site furniture.
+  - Added a Rich Answers section to Orbit Diagnostics, with its own copy action for reporting a missing image.
+  - Nothing about Orbit's image safety rules was relaxed to make this work.

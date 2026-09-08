@@ -62,7 +62,29 @@ public final class RichAnswerRelevance {
             "write a", "draft", "rewrite", "rephrase", "summarize", "summary of",
             "translate", "spell", "grammar", "email to", "message to",
             "should i", "advice", "opinion", "explain the concept", "philosophy",
-            "how do i feel", "motivate", "poem", "joke", "story about"};
+            "how do i feel", "motivate", "poem", "joke", "story about",
+            // Added in Beta 3 so the control cases decide here rather than falling through to the
+            // answer-text guess below. A hash map and a state's population are not things a
+            // photograph answers, however the question happens to be phrased.
+            "hash map", "hashmap", "data structure", "linked list", "binary tree", "pointer",
+            "syntax", "code example", "population", "gdp", "interest rate", "stock price",
+            "how many people", "census"};
+
+    /**
+     * Words that mean the user is asking for a picture rather than merely asking about something
+     * that has one.
+     *
+     * <p>This is the line between "a photograph would help" and "a photograph is the answer", and
+     * it is what buys a larger page budget and a deeper candidate search. "Show me pictures of a
+     * black widow" is unanswerable without an image; "how do I care for a fiddle leaf fig" is a
+     * perfectly good text answer that a picture improves.
+     */
+    private static final String[] STRONG_VISUAL_SUBJECTS = {
+            "picture of", "pictures of", "photo of", "photos of", "photograph of", "image of",
+            "images of", "show me", "show a", "show the", "what does", "what do",
+            "look like", "looks like", "looked like", "appearance of", "what it looks",
+            "identify", "identification", "how to tell", "how do i tell", "how can i tell",
+            "tell apart", "diagram of", "map of", "flag of", "picture", "photo"};
 
     /** Domains whose declared preview image is nearly always branding rather than content. */
     private static final String[] BRANDED_PREVIEW_HOSTS = {
@@ -102,6 +124,154 @@ public final class RichAnswerRelevance {
         // The answer may reveal a visual subject the question did not name - "tell me about the
         // Hagia Sophia" is not phrased visually and is obviously a place.
         return containsAny(answer, VISUAL_SUBJECTS) && question.length() <= 160;
+    }
+
+    /**
+     * How visual this question is, on a three-step scale.
+     *
+     * <p>The scale exists because Beta 2 had only two answers - look, or do not look - and so had
+     * to pick one page budget for both "what does a northern black widow look like", where the
+     * picture <em>is</em> the answer, and "what should I plant in June", where it is decoration.
+     * Trying five pages for the second would be five requests nobody asked for; trying three for
+     * the first is what lost the picture. Strong visual means <b>try harder</b>, and nothing else:
+     * a larger page budget and a deeper candidate list, with every safety bound unchanged.
+     */
+    public static RichAnswerTrace.Intent intentFor(String prompt, String answerText) {
+        if (!answerWantsImage(prompt, answerText)) return RichAnswerTrace.Intent.NONE;
+        String question = normalize(prompt);
+        return containsAny(question, STRONG_VISUAL_SUBJECTS)
+                ? RichAnswerTrace.Intent.STRONG_VISUAL
+                : RichAnswerTrace.Intent.VISUAL;
+    }
+
+    /** A score, and - when there is not one - the reason, in the words Diagnostics prints. */
+    public static final class Judgement {
+        public final int score;
+        public final RichAnswerTrace.Reason reason;
+
+        Judgement(int score, RichAnswerTrace.Reason reason) {
+            this.score = score;
+            this.reason = reason;
+        }
+
+        /** Whether this candidate is worth spending a download on. */
+        public boolean acceptable() { return reason == RichAnswerTrace.Reason.NONE; }
+
+        static Judgement no(RichAnswerTrace.Reason reason) { return new Judgement(-1, reason); }
+    }
+
+    /**
+     * Whether one article or preview candidate is worth downloading, and how badly.
+     *
+     * <p>Everything {@link #score} knew, plus the three things it could not: where the image sits
+     * in the document, what the page wrote next to it, and whether any of that has anything to do
+     * with what was asked. That last one is the whole point. On a university publication about a
+     * spider, the institution's logo and the photograph of the spider are separated by almost
+     * nothing in a URL-only score and by a mile once the caption is read against the question.
+     *
+     * @param subjectTokens the local, transient subject words from {@link RichAnswerSubject}. Never
+     *                      persisted and never recorded in diagnostics.
+     */
+    public static Judgement judge(RichAnswerArticleImages.Candidate candidate, String pageUrl,
+                                  String pageTitle, java.util.List<String> subjectTokens,
+                                  boolean cited) {
+        if (candidate == null || candidate.url.isEmpty()) {
+            return Judgement.no(RichAnswerTrace.Reason.UNSAFE_URL);
+        }
+        if (!RichAnswerUrlPolicy.isFetchableImageUrl(candidate.url)) {
+            return Judgement.no(RichAnswerTrace.Reason.UNSAFE_URL);
+        }
+        String lower = candidate.url.toLowerCase(Locale.US);
+        if (endsWithAny(lower, REFUSED_EXTENSIONS)) {
+            return Judgement.no(RichAnswerTrace.Reason.UNSUPPORTED_FORMAT);
+        }
+        if (RichAnswerImageFormat.tierForUrl(candidate.url)
+                == RichAnswerImageFormat.TIER_UNSUPPORTED) {
+            return Judgement.no(RichAnswerTrace.Reason.UNSUPPORTED_FORMAT);
+        }
+
+        String described = normalize(candidate.describedBy());
+        // Chrome is refused on what the page called it as well as on where it put it. A file named
+        // "hero-2.jpg" gives nothing away; an alt attribute reading "Virginia Tech logo" does.
+        if (containsAny(lower, CHROME_MARKERS) || containsAny(described, ALT_CHROME_MARKERS)) {
+            return Judgement.no(RichAnswerTrace.Reason.LOGO_OR_CHROME);
+        }
+        // A size the page itself declares as tiny is an icon, and there is no point paying for the
+        // download to discover that. A declared size is only ever believed in this direction.
+        if (candidate.declaredWidth > 0 && candidate.declaredHeight > 0) {
+            RichAnswerTrace.Reason declared =
+                    judgeDimensions(candidate.declaredWidth, candidate.declaredHeight);
+            if (declared != RichAnswerTrace.Reason.ACCEPTED) return Judgement.no(declared);
+        }
+
+        int score = cited ? 40 : 0;
+        switch (candidate.origin) {
+            case OG_IMAGE: score += 14; break;
+            case TWITTER_IMAGE: score += 10; break;
+            case IMAGE_SRC: score += 6; break;
+            // An image the article actually contains is worth as much as the page's own share card
+            // and often a great deal more, which is the correction Beta 3 exists to make.
+            case ARTICLE_IMG:
+            case PICTURE_SOURCE:
+            case SRCSET: score += 9; break;
+            case LAZY_IMAGE: score += 7; break;
+            default: break;
+        }
+        if (candidate.structure == RichAnswerArticleImages.STRUCTURE_CONTENT) score += 16;
+        if (candidate.structure == RichAnswerArticleImages.STRUCTURE_CHROME) score -= 30;
+
+        // The strongest signal there is, and the one Beta 2 had no way to consult.
+        score += RichAnswerSubject.matchScore(subjectTokens, candidate.describedBy());
+        if (RichAnswerSubject.matchesAny(subjectTokens, pageTitle)) score += 6;
+
+        if (endsWithAny(pathOf(lower), ALLOWED_EXTENSIONS)) score += 10;
+        if (RichAnswerImageFormat.tierForUrl(candidate.url) == RichAnswerImageFormat.TIER_UNIVERSAL) {
+            score += 8;
+        }
+        if (containsAny(RichAnswerImage.hostOf(pageUrl), BRANDED_PREVIEW_HOSTS)) score -= 25;
+        if (!described.isEmpty()) score += Math.min(10, described.length() / 20);
+        if (pathOf(lower).length() > 24) score += 4;
+        // A declared size that is genuinely large is a page telling you this is the photograph
+        // rather than the thumbnail, and it costs nothing to believe in this direction.
+        if (candidate.declaredWidth >= 600) score += 8;
+        else if (candidate.declaredWidth >= 320) score += 4;
+        return new Judgement(score, RichAnswerTrace.Reason.NONE);
+    }
+
+    /**
+     * Words that name chrome when they appear in what a page called an image.
+     *
+     * <p>Separate from {@link #CHROME_MARKERS}, which matches URL fragments. "icon" in a path is a
+     * strong signal; "icon" in a sentence of alt text is often part of a phrase like "iconic
+     * skyline", so this list is the narrower one that survives being read as English.
+     */
+    private static final String[] ALT_CHROME_MARKERS = {
+            "logo", "favicon", "avatar", "site header", "site footer", "navigation",
+            "advertisement", "sponsored", "share on", "follow us", "subscribe",
+            "placeholder", "loading", "tracking pixel", "spacer"};
+
+    /** The narrowest a picture may be and still be a picture. */
+    static final int MIN_WIDTH = 200;
+    /** The shortest a picture may be and still be a picture. */
+    static final int MIN_HEIGHT = 150;
+
+    /**
+     * Why a decoded picture was refused, or {@link RichAnswerTrace.Reason#ACCEPTED}.
+     *
+     * <p>The same rule as {@link #hasUsefulDimensions}, asked in a form that says which half
+     * failed. "Too small" and "wrong shape" are different bugs on a real device - the first is a
+     * page whose photographs are thumbnails, the second is a page whose hero is a letterbox banner
+     * - and collapsing them to one boolean is exactly what left Beta 2 unexplainable.
+     */
+    public static RichAnswerTrace.Reason judgeDimensions(int width, int height) {
+        if (width <= 0 || height <= 0) return RichAnswerTrace.Reason.TOO_SMALL;
+        // Shape is asked first, because it is the more specific answer where both apply. A
+        // 1600x120 image fails the height rule and the ratio rule at once, and calling that "too
+        // small" would send somebody looking for a bigger version of a page banner.
+        float ratio = width / (float) height;
+        if (ratio < 0.3f || ratio > 4.0f) return RichAnswerTrace.Reason.BAD_ASPECT_RATIO;
+        if (width < MIN_WIDTH || height < MIN_HEIGHT) return RichAnswerTrace.Reason.TOO_SMALL;
+        return RichAnswerTrace.Reason.ACCEPTED;
     }
 
     /**
@@ -152,9 +322,7 @@ public final class RichAnswerRelevance {
      * hundred pixels wide and twenty tall is a banner.
      */
     public static boolean hasUsefulDimensions(int width, int height) {
-        if (width < 200 || height < 150) return false;
-        float ratio = width / (float) height;
-        return ratio >= 0.3f && ratio <= 4.0f;
+        return judgeDimensions(width, height) == RichAnswerTrace.Reason.ACCEPTED;
     }
 
     /**
