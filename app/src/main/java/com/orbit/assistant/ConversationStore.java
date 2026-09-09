@@ -210,6 +210,22 @@ public final class ConversationStore {
 
     public static synchronized boolean attachRichImages(Context c, String id, String requestId,
                                                         String answerText, List<RichAnswerImage> images) {
+        return attachRichImages(c, id, requestId, answerText, images, java.util.Collections.emptyList());
+    }
+
+    /**
+     * The same attach, additionally recording where the picture's page came from.
+     *
+     * <p>{@code recoveredSources} is written only onto a message that has no provenance of its own,
+     * and only when discovery had to recover the page from the answer's explicit {@code Source:}
+     * marker because the provider reported no structured sources. Without it, reopening the chat
+     * would show the picture with nothing saying which page it belongs to. A message that already
+     * carries structured provenance is never rewritten, no URL is ever duplicated, the visible
+     * answer text is untouched, and an older stored message that predates the field is unaffected.
+     */
+    public static synchronized boolean attachRichImages(Context c, String id, String requestId,
+                                                        String answerText, List<RichAnswerImage> images,
+                                                        List<String> recoveredSources) {
         if (c == null || id == null || id.isEmpty() || images == null || images.isEmpty()) return false;
         String wanted = answerText == null ? "" : answerText.trim();
         if (wanted.isEmpty()) return false;
@@ -227,6 +243,10 @@ public final class ConversationStore {
                 if (message.hasRichImages()) return false;
                 AssistantClient.History attached = message.withRichImages(images);
                 if (!attached.hasRichImages()) return false;
+                if (attached.sourceUrls.isEmpty() && recoveredSources != null
+                        && !recoveredSources.isEmpty()) {
+                    attached = attached.withReplyProvenance(attached.replyRequestId, recoveredSources);
+                }
                 messages.set(i, attached);
                 // updatedAt is carried across untouched: a picture arriving is not the user doing
                 // something, and reordering Chats because one resolved would be wrong.

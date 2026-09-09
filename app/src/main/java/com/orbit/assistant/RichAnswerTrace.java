@@ -60,6 +60,17 @@ public final class RichAnswerTrace {
     /** How visual Orbit judged the question to be. */
     public enum Intent { NONE, VISUAL, STRONG_VISUAL }
 
+    /**
+     * Which route supplied the pages this attempt read.
+     *
+     * <p>Recorded separately from the outcome because the two answer different questions. The
+     * outcome says how the attempt ended; this says where it got its sources, which is the fact
+     * Beta 4 could not report and the reason a device showing an "Open source" chip alongside
+     * "Sources received: 0" was so hard to explain. It mirrors
+     * {@link RichAnswerProvenance.Route} exactly.
+     */
+    public enum Provenance { NONE, STRUCTURED_HOSTED_SEARCH, EXPLICIT_SOURCE_MARKER }
+
     /** How one whole attempt ended. */
     public enum Outcome {
         /** A picture was found and is on the message. */
@@ -183,6 +194,7 @@ public final class RichAnswerTrace {
         public boolean enabled;
         public boolean providerEligible;
         public Intent intent = Intent.NONE;
+        public Provenance provenance = Provenance.NONE;
         public int requestedImages;
         public int sourcesReceived;
         public int pagesAttempted;
@@ -369,6 +381,7 @@ public final class RichAnswerTrace {
         b.append("Rich Answers enabled: ").append(attempt.enabled ? "yes" : "no").append('\n');
         b.append("Provider eligible: ").append(attempt.providerEligible ? "yes" : "no").append('\n');
         b.append("Images requested: ").append(attempt.requestedImages).append('\n');
+        b.append("Source provenance: ").append(readable(attempt.provenance)).append('\n');
         b.append("Sources received: ").append(attempt.sourcesReceived).append('\n');
         b.append("Page budget: ").append(attempt.pageBudget).append('\n');
         b.append("Pages attempted: ").append(attempt.pagesAttempted).append('\n');
@@ -418,6 +431,14 @@ public final class RichAnswerTrace {
         }
     }
 
+    static String readable(Provenance provenance) {
+        switch (provenance) {
+            case STRUCTURED_HOSTED_SEARCH: return "Structured hosted search";
+            case EXPLICIT_SOURCE_MARKER: return "Explicit source marker fallback";
+            default: return "None";
+        }
+    }
+
     static String readable(Intent intent) {
         switch (intent) {
             case STRONG_VISUAL: return "Strong visual";
@@ -447,6 +468,7 @@ public final class RichAnswerTrace {
         o.put("on", attempt.enabled);
         o.put("prov", attempt.providerEligible);
         o.put("intent", attempt.intent.name());
+        o.put("prov_route", attempt.provenance.name());
         o.put("want", attempt.requestedImages);
         o.put("src", attempt.sourcesReceived);
         o.put("tried", attempt.pagesAttempted);
@@ -497,6 +519,7 @@ public final class RichAnswerTrace {
         attempt.enabled = o.optBoolean("on", false);
         attempt.providerEligible = o.optBoolean("prov", false);
         attempt.intent = intent(o.optString("intent", "NONE"));
+        attempt.provenance = provenance(o.optString("prov_route", "NONE"));
         attempt.requestedImages = o.optInt("want", 0);
         attempt.sourcesReceived = o.optInt("src", 0);
         attempt.pagesAttempted = o.optInt("tried", 0);
@@ -545,6 +568,10 @@ public final class RichAnswerTrace {
 
     private static Intent intent(String name) {
         try { return Intent.valueOf(name); } catch (Exception ignored) { return Intent.NONE; }
+    }
+
+    private static Provenance provenance(String name) {
+        try { return Provenance.valueOf(name); } catch (Exception ignored) { return Provenance.NONE; }
     }
 
     private static Outcome outcome(String name) {

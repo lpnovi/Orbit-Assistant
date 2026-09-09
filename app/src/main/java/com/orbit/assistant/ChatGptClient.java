@@ -374,6 +374,8 @@ public final class ChatGptClient {
                 cb.onThinking(ThinkingUpdate.modelReasoning(model));
             }
             SseResult stream = readSse(conn.getInputStream(), cb, thinkingUpdates);
+            // Written only for a response that actually searched, and only ever names and counts.
+            HostedSearchSchemaTrace.record(context, stream.schema);
             if (askForSummary) ReasoningSummarySupport.record(context, stream.sawReasoningSummary);
             String output = stream.output;
             if (output.trim().isEmpty()) {
@@ -565,14 +567,23 @@ public final class ChatGptClient {
         final java.util.List<String> sourceUrls;
         /** True if the backend actually published a user-facing reasoning summary on this stream. */
         final boolean sawReasoningSummary;
+        /**
+         * The shape this stream arrived in, for Diagnostics. Names and counts only.
+         *
+         * <p>Carried out of the reader rather than written from inside it, because the reader has
+         * no Context and must not acquire one: it is on the response path and everything it touches
+         * has to stay cheap and failure-proof.
+         */
+        final HostedSearchSchemaTrace.Snapshot schema;
         SseResult(String output, String sourceUrl, java.util.List<String> sourceUrls,
-                  boolean sawReasoningSummary) {
+                  boolean sawReasoningSummary, HostedSearchSchemaTrace.Snapshot schema) {
             this.output = output == null ? "" : output;
             this.sourceUrl = sourceUrl == null ? "" : sourceUrl;
             this.sourceUrls = sourceUrls == null
                     ? java.util.Collections.emptyList()
                     : java.util.Collections.unmodifiableList(new java.util.ArrayList<>(sourceUrls));
             this.sawReasoningSummary = sawReasoningSummary;
+            this.schema = schema == null ? new HostedSearchSchemaTrace.Snapshot() : schema;
         }
     }
 
@@ -598,6 +609,7 @@ public final class ChatGptClient {
         // in-progress, searching and completed events, and a list of one page written six times is
         // not a list of six sources.
         java.util.LinkedHashSet<String> discoveredSources = new java.util.LinkedHashSet<>();
+        HostedSearchSchemaTrace.Snapshot schema = new HostedSearchSchemaTrace.Snapshot();
         String lastVisible = "";
         boolean sawSummary = false;
         boolean answerStarted = false;
@@ -613,7 +625,18 @@ public final class ChatGptClient {
                 try { event = new JSONObject(data); }
                 catch (Exception ignored) { continue; }
                 String type = event.optString("type", "");
+                // Shape first, then content. The schema of an envelope Orbit fails to understand is
+                // exactly the envelope worth describing, so it is described before the parser gets
+                // its chance rather than after it succeeds.
+                HostedSearchSchemaTrace.observe(schema, event);
+                int known = discoveredSources.size();
                 collectHostedProvenance(event, discoveredSources);
+                if (discoveredSources.size() > known) {
+                    int seen = 0;
+                    for (String url : discoveredSources) {
+                        if (seen++ >= known) HostedSearchSchemaTrace.recognized(schema, url);
+                    }
+                }
                 if ("response.output_text.delta".equals(type)) {
                     raw.append(event.optString("delta", ""));
                     String visible = removeEmDashes(extractPartialText(raw.toString()));
@@ -652,7 +675,7 @@ public final class ChatGptClient {
         }
         if (!discoveredSources.isEmpty()) discoveredSource = discoveredSources.iterator().next();
         return new SseResult(raw.length() > 0 ? raw.toString() : completedFallback,
-                discoveredSource, new java.util.ArrayList<>(discoveredSources), sawSummary);
+                discoveredSource, new java.util.ArrayList<>(discoveredSources), sawSummary, schema);
     }
 
     /** Sources and results reported by a hosted-search tool, excluding query/prose fields. */
@@ -671,24 +694,50 @@ public final class ChatGptClient {
         if (action != null) {
             collectUrls(action.opt("sources"), into);
             collectUrls(action.opt("results"), into);
-            if ("open_page".equals(action.optString("type"))) collectUrls(action.opt("url"), into);
+            collectUrls(action.opt("citations"), into);
+            // A page the search actually opened is a consulted source; a query it typed is not.
+            // Only the actions that name a page are read, and "search" is deliberately not one of
+            // them even though its query field routinely contains a URL-looking string.
+            String kind = action.optString("type");
+            if (PAGE_ACTIONS.contains(kind)) collectUrls(action.opt("url"), into);
         }
+        // Some builds wrap the payload one level deeper instead of inlining it on the call.
+        JSONObject nested = call.optJSONObject("web_search_call");
+        if (nested != null) collectSearchSourceFields(nested, into);
     }
 
-    /** Read provider tool/citation envelopes, never URLs from answer text or action arguments. */
+    /** Hosted-search action types that name a page rather than describe a query. */
+    private static final java.util.Set<String> PAGE_ACTIONS = new java.util.HashSet<>(
+            java.util.Arrays.asList("open_page", "find_in_page", "open_url", "fetch"));
+
+    /**
+     * Read provider tool/citation envelopes, never URLs from answer text or action arguments.
+     *
+     * <p>Deliberately a list of known structural positions rather than a walk of the whole event.
+     * Every address accepted here is one the provider placed somewhere that means "this page was
+     * consulted": inside a hosted-search call's results or sources, on an action that opened a
+     * page, or in a citation attached to the output text. A URL sitting in a function call's
+     * arguments, in a search query, or in the answer's own prose is none of those and is refused,
+     * which is what stops a model mentioning a website from becoming Orbit fetching it.
+     */
     static void collectHostedProvenance(JSONObject event, java.util.Set<String> into) {
         String type = event.optString("type", "");
-        if (type.startsWith("response.web_search_call.")) collectSourceUrls(event, into);
+        // Widened from response.web_search_call. because the family name is not stable across
+        // backends: the same envelope has arrived as response.web_search.completed.
+        if (type.startsWith("response.web_search")) collectSourceUrls(event, into);
         if ("response.output_item.added".equals(type) || "response.output_item.done".equals(type)) {
             collectHostedItem(event.optJSONObject("item"), into);
-        } else if ("response.completed".equals(type)) {
+        } else if ("response.completed".equals(type) || "response.incomplete".equals(type)) {
             JSONObject response = event.optJSONObject("response");
             JSONArray output = response == null ? null : response.optJSONArray("output");
             if (output != null) for (int i = 0; i < output.length(); i++) {
                 collectHostedItem(output.optJSONObject(i), into);
             }
         } else if ("response.output_text.annotation.added".equals(type)) {
-            collectCitation(event.optJSONObject("annotation"), into);
+            JSONObject annotation = event.optJSONObject("annotation");
+            // One event, one annotation: when it is inlined rather than nested, the event itself is
+            // the citation object and its own url field is that citation's address.
+            collectCitation(annotation == null ? event : annotation, into);
         } else if ("response.content_part.done".equals(type)
                 || "response.content_part.added".equals(type)) {
             collectAnnotations(event.optJSONObject("part"), into);
@@ -711,15 +760,33 @@ public final class ChatGptClient {
 
     private static void collectAnnotations(JSONObject part, java.util.Set<String> into) {
         if (part == null) return;
-        JSONArray annotations = part.optJSONArray("annotations");
-        if (annotations != null) for (int i = 0; i < annotations.length(); i++) {
-            collectCitation(annotations.optJSONObject(i), into);
+        // "citations" is the same list under a different name on some builds. Both are lists of
+        // citation objects attached to output text, which is a structural position, not prose.
+        for (String key : new String[]{"annotations", "citations"}) {
+            JSONArray annotations = part.optJSONArray(key);
+            if (annotations != null) for (int i = 0; i < annotations.length(); i++) {
+                collectCitation(annotations.optJSONObject(i), into);
+            }
         }
     }
 
+    /**
+     * One citation object, in any of the shapes a backend has used for it.
+     *
+     * <p>{@code {"type":"url_citation","url":...}} is the Responses shape,
+     * {@code {"type":"url_citation","url_citation":{"url":...}}} the Chat Completions one, and an
+     * untyped entry inside an annotations array is still an annotation on the answer's text. What
+     * is refused is anything typed as something other than a URL citation, so a file citation or a
+     * future annotation kind cannot become a page Orbit fetches.
+     */
     private static void collectCitation(JSONObject citation, java.util.Set<String> into) {
-        if (citation == null || !"url_citation".equals(citation.optString("type"))) return;
-        String url = citation.optString("url", "").trim();
+        if (citation == null) return;
+        JSONObject nested = citation.optJSONObject("url_citation");
+        String type = citation.optString("type", "");
+        boolean cited = "url_citation".equals(type) || nested != null
+                || type.isEmpty() || "response.output_text.annotation.added".equals(type);
+        if (!cited) return;
+        String url = (nested == null ? citation : nested).optString("url", "").trim();
         if (into.size() < AssistantReply.MAX_SOURCE_URLS && RichAnswerUrlPolicy.isOpenableWebUrl(url)) {
             into.add(url);
         }

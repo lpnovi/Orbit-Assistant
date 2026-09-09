@@ -167,7 +167,9 @@ public final class DiagnosticsActivity extends Activity {
         // hosts, statuses and sizes only - never the question that was asked or the answer given.
         Button copyRich = button("Copy Rich Answers diagnostics");
         copyRich.setOnClickListener(v -> copy("Orbit Rich Answers diagnostics",
-                RichAnswerTrace.report(this), "Rich Answers diagnostics copied"));
+                RichAnswerTrace.report(this) + "\n\nHosted search schema\n"
+                        + HostedSearchSchemaTrace.body(this),
+                "Rich Answers diagnostics copied"));
         page.addView(copyRich, buttonLp(10));
     }
 
@@ -265,6 +267,7 @@ public final class DiagnosticsActivity extends Activity {
         sections.add(new Section("Memory", memory()));
         sections.add(new Section("Calendar", CalendarDiagnostics.body(this)));
         sections.add(new Section("Rich Answers", RichAnswerTrace.body(this)));
+        sections.add(new Section("Hosted search schema", HostedSearchSchemaTrace.body(this)));
         sections.add(new Section("Orbit Local", orbitLocal(d)));
         sections.add(new Section("Actions & utilities", actionsAndUtilities(d)));
         sections.add(new Section("Routines", routines(d)));
@@ -1057,6 +1060,8 @@ public final class DiagnosticsActivity extends Activity {
                 // somebody is going to paste into a conversation.
                 (RichAnswerTrace.summaryLine(this).isEmpty()
                         ? "" : "\n" + RichAnswerTrace.summaryLine(this)) +
+                (HostedSearchSchemaTrace.summaryLine(this).isEmpty()
+                        ? "" : "\n" + HostedSearchSchemaTrace.summaryLine(this)) +
                 "\n" + healthLine() +
                 // Worth a support reply's attention, but stated for what it is: something that
                 // already ended, never a failure the user is currently having.

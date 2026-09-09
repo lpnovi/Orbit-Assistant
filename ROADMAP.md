@@ -172,6 +172,27 @@ read. The article-image fallback Beta 2 was meant to have did not ship.
 - **Every protection held.** Private and device-local addresses, credentials in URLs, non-web
   schemes, redirect revalidation and the byte and decode ceilings are all unchanged
 
+**Shipped in `0.7.8.5-beta.5` - Rich Answers provenance reliability:**
+
+Repeated physical testing isolated the failure to a point earlier than any of the above. A searched
+answer would show Orbit's own "Open source" control while Rich Answers diagnostics reported zero
+sources received, so page and image discovery never began. Both statements were true: the control is
+drawn from the explicit `Source:` line at the end of a searched answer, and discovery only accepted
+pages reported by the provider's hosted-search events.
+
+- **Structured provenance is still primary.** The parser was hardened around the real range of
+  hosted-search envelopes rather than the synthetic shapes the tests had been passing on
+- **An explicit source marker can now start discovery.** Only Orbit's own trailing `Source:` marker,
+  only when the structured list is empty, and only for a request that already qualified
+- **Ordinary links stay out.** Markdown links, bare URLs in prose, search queries and device-action
+  arguments are still refused, so a model mentioning a website never causes a fetch
+- **Diagnostics say which route was used**, and record the real image and page budgets before
+  provenance is resolved rather than reporting zeros for fields never evaluated
+- **Sanitized schema diagnostics.** The shape of a searched response - event names, field names,
+  action types, counts - can now be read on the device. No prompt, answer, query or payload
+- **Every protection held.** A recovered source passes exactly the same URL policy as a structured
+  one, so this changed which sources are available and nothing about which are trusted
+
 **Still ahead in `0.7.8.5`, depending on real-device testing:**
 
 - Richer multi-image presentation, where a comparison genuinely needs two pictures side by side

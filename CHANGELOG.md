@@ -797,3 +797,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Visual requests record an explicit diagnostic when no source URLs arrive.
   - Regenerate uses its newly returned sources and keeps late images attached to their owning request.
   - Expanding or collapsing Diagnostics sections preserves the original heading typography.
+- **v0.7.8.5-beta.5**: Rich Answers can finally use the source Orbit already shows you.
+  - Fixes a real-device gap where a web answer showed an Open source control while image discovery received no sources at all.
+  - Rich Answers now falls back to that explicit source when the provider reports no structured search results.
+  - Ordinary links written inside an answer are still never treated as sources, so nothing new is fetched.
+  - Diagnostics now names which source route was used and shows real budgets even when no source was found.
+  - Diagnostics can also record the shape of a search response, using field names and counts only.
+  - A recovered source is saved with the answer, so reopening a chat still shows where its picture came from.

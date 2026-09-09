@@ -157,9 +157,17 @@ public class RichAnswerProvenanceTest {
         assertEquals(Collections.singletonList(NEW), streamed(NEW, "item").sourceUrls);
     }
 
+    /**
+     * A visual answer with no provenance of any kind still records why it stopped.
+     *
+     * <p>The fixture deliberately carries no {@code Source:} marker. Since Beta 5 a marker is a
+     * usable fallback, so an answer with one is a different case entirely and has its own tests in
+     * {@link RichAnswerSourceFallbackTest}. What is being pinned here is the case where Orbit
+     * genuinely knows no source: it must say so rather than stay silent.
+     */
     @Test public void visualAnswerWithoutProvenanceRecordsAnExplicitPrivateTrace() {
         RichAnswerCoordinator.discover(context, "chat", "request", PROMPT,
-                new AssistantReply(ANSWER + "\nSource: " + OLD));
+                new AssistantReply(ANSWER));
         RichAnswerTrace.Attempt trace = RichAnswerTrace.last(context);
         assertNotNull(trace);
         assertEquals(0, trace.sourcesReceived);

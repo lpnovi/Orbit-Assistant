@@ -41,6 +41,15 @@ import java.util.concurrent.Executors;
  * page now yields both what it declares and what it actually contains, the two are ranked together
  * against what the user asked about, and every stage of it is written to {@link RichAnswerTrace} so
  * a failure on real hardware can be explained instead of guessed at.
+ *
+ * <p><b>What Beta 5 changed.</b> None of the above ever ran on the device, because it was never
+ * given a source. A searched answer would show Orbit's own "Open source · commons.wikimedia.org"
+ * control while this class recorded "Sources received: 0", which is not a contradiction: the chip
+ * is drawn from the explicit {@code Source:} line at the end of the answer, and discovery only
+ * accepted pages reported by the hosted-search events. When the backend produced no envelope Orbit
+ * recognised, the two disagreed and the picture was never looked for. {@link RichAnswerProvenance}
+ * now resolves both, structured provenance first, and discovery starts whenever Orbit legitimately
+ * knows a source at all. Which route it used is written into the trace.
  */
 public final class RichAnswerCoordinator {
 
@@ -131,16 +140,38 @@ public final class RichAnswerCoordinator {
 
         Context app = context.getApplicationContext();
         RichAnswerTrace.Attempt trace = new RichAnswerTrace.Attempt();
-        trace.sourcesReceived = reply.sourceUrls.size();
         trace.enabled = enabled(app);
         trace.providerEligible = AiProviders.active(app).capabilities().richWebMedia;
         trace.intent = RichAnswerRelevance.intentFor(prompt, answer);
+        boolean strong = trace.intent == RichAnswerTrace.Intent.STRONG_VISUAL;
 
-        if (reply.sourceUrls.isEmpty() && trace.intent == RichAnswerTrace.Intent.NONE) return;
+        // Filled in before provenance is resolved, and that ordering is the point. Beta 4 computed
+        // these after the zero-source return, so a failed strongly visual attempt reported "Images
+        // requested: 0, Page budget: 0" - three fields that had never been evaluated reading like
+        // three findings. What Orbit would have done is knowable without a single source, so it is
+        // recorded without one.
+        int wanted = 0;
+        if (trace.intent != RichAnswerTrace.Intent.NONE) {
+            wanted = RichAnswerRelevance.maxImagesFor(prompt);
+            trace.requestedImages = wanted;
+            trace.pageBudget = strong ? MAX_PAGES_EXAMINED_STRONG : MAX_PAGES_EXAMINED;
+        }
+
+        // The fallback is offered only to an answer that would genuinely have gone on to discovery.
+        // A trailing Source marker under an ordinary chat answer, on a provider without hosted web
+        // media, or with Rich Answers switched off, must not start a page fetch.
+        boolean fallbackAllowed = trace.enabled && trace.providerEligible
+                && trace.intent != RichAnswerTrace.Intent.NONE;
+        RichAnswerProvenance.Resolved provenance =
+                RichAnswerProvenance.resolve(reply, fallbackAllowed);
+        trace.provenance = route(provenance.route);
+        trace.sourcesReceived = provenance.urls.size();
+
+        if (!provenance.hasSources() && trace.intent == RichAnswerTrace.Intent.NONE) return;
         if (!trace.enabled) trace.outcome = RichAnswerTrace.Outcome.DISABLED;
         else if (!trace.providerEligible) trace.outcome = RichAnswerTrace.Outcome.PROVIDER_UNSUPPORTED;
         else if (trace.intent == RichAnswerTrace.Intent.NONE) trace.outcome = RichAnswerTrace.Outcome.NOT_VISUAL;
-        else if (reply.sourceUrls.isEmpty()) trace.outcome = RichAnswerTrace.Outcome.NO_SOURCE_URLS_RECEIVED;
+        else if (!provenance.hasSources()) trace.outcome = RichAnswerTrace.Outcome.NO_SOURCE_URLS_RECEIVED;
         if (trace.outcome != RichAnswerTrace.Outcome.INCOMPLETE) {
             RichAnswerTrace.record(app, trace);
             return;
@@ -148,19 +179,21 @@ public final class RichAnswerCoordinator {
 
         String chat = conversationId.trim();
         String owner = requestId == null ? "" : requestId.trim();
-        List<String> pages = new ArrayList<>(reply.sourceUrls);
-        boolean strong = trace.intent == RichAnswerTrace.Intent.STRONG_VISUAL;
-        int wanted = RichAnswerRelevance.maxImagesFor(prompt);
+        List<String> pages = new ArrayList<>(provenance.urls);
         int anchor = RichAnswerPlacement.placementFor(answer);
-        trace.requestedImages = wanted;
-        trace.pageBudget = strong ? MAX_PAGES_EXAMINED_STRONG : MAX_PAGES_EXAMINED;
+        // Written back onto the stored message only when the fallback supplied it, so reopening the
+        // chat still knows which page the picture came from. An answer that already carries
+        // structured provenance is left exactly as it is.
+        List<String> recovered = provenance.route == RichAnswerProvenance.Route.EXPLICIT_SOURCE_MARKER
+                ? pages : new ArrayList<>();
+        int images = wanted;
         // Derived here, on this thread, and handed straight to ranking. Never stored, never sent,
         // and deliberately never written into the trace.
         List<String> subject = RichAnswerSubject.tokensOf(prompt);
 
         EXECUTOR.execute(() -> {
             try {
-                List<RichAnswerImage> found = resolve(app, pages, wanted, anchor, subject, trace);
+                List<RichAnswerImage> found = resolve(app, pages, images, anchor, subject, trace);
                 if (found.isEmpty()) {
                     trace.outcome = RichAnswerTrace.Outcome.NO_USABLE_IMAGE;
                     return;
@@ -172,7 +205,7 @@ public final class RichAnswerCoordinator {
                     trace.outcome = RichAnswerTrace.Outcome.IMAGE_FOUND_BUT_REQUEST_CANCELLED;
                     return;
                 }
-                if (!ConversationStore.attachRichImages(app, chat, owner, answer, found)) {
+                if (!ConversationStore.attachRichImages(app, chat, owner, answer, found, recovered)) {
                     // The picture is fine and the message it belonged to is not there any more.
                     // Recorded as its own outcome because it is a completely different bug from a
                     // failed download, and Beta 2 could not tell them apart.
@@ -189,6 +222,17 @@ public final class RichAnswerCoordinator {
                 RichAnswerTrace.record(app, trace);
             }
         });
+    }
+
+    /** The resolver's route in the trace's own vocabulary. One enum per layer, mapped once. */
+    static RichAnswerTrace.Provenance route(RichAnswerProvenance.Route route) {
+        if (route == RichAnswerProvenance.Route.STRUCTURED_HOSTED_SEARCH) {
+            return RichAnswerTrace.Provenance.STRUCTURED_HOSTED_SEARCH;
+        }
+        if (route == RichAnswerProvenance.Route.EXPLICIT_SOURCE_MARKER) {
+            return RichAnswerTrace.Provenance.EXPLICIT_SOURCE_MARKER;
+        }
+        return RichAnswerTrace.Provenance.NONE;
     }
 
     /**
