@@ -167,8 +167,7 @@ public final class DiagnosticsActivity extends Activity {
         // hosts, statuses and sizes only - never the question that was asked or the answer given.
         Button copyRich = button("Copy Rich Answers diagnostics");
         copyRich.setOnClickListener(v -> copy("Orbit Rich Answers diagnostics",
-                RichAnswerTrace.report(this) + "\n\nHosted search schema\n"
-                        + HostedSearchSchemaTrace.body(this),
+                RichAnswerTrace.report(this) + "\n\nHosted search\n" + hostedSearch(),
                 "Rich Answers diagnostics copied"));
         page.addView(copyRich, buttonLp(10));
     }
@@ -267,7 +266,7 @@ public final class DiagnosticsActivity extends Activity {
         sections.add(new Section("Memory", memory()));
         sections.add(new Section("Calendar", CalendarDiagnostics.body(this)));
         sections.add(new Section("Rich Answers", RichAnswerTrace.body(this)));
-        sections.add(new Section("Hosted search schema", HostedSearchSchemaTrace.body(this)));
+        sections.add(new Section("Hosted search", hostedSearch()));
         sections.add(new Section("Orbit Local", orbitLocal(d)));
         sections.add(new Section("Actions & utilities", actionsAndUtilities(d)));
         sections.add(new Section("Routines", routines(d)));
@@ -535,6 +534,17 @@ public final class DiagnosticsActivity extends Activity {
                         : DateFormat.getDateTimeInstance().format(new Date(lastAt))) +
                 "\n  Last status handed over to an answer: "
                         + (ReasoningSummarySupport.lastRequestReachedAnswer(this) ? "yes" : "no");
+    }
+
+    /**
+     * What Orbit asked the provider to search for, and what shape the search came back in.
+     *
+     * <p>Two halves of one question and useless apart. The schema half explains a search Orbit
+     * could not read; this half explains the case that defeated every earlier Rich Answers fix,
+     * where there was no search to read because the model answered a picture question from memory.
+     */
+    private String hostedSearch() {
+        return HostedSearchPolicy.body(this) + "\n\n" + HostedSearchSchemaTrace.body(this);
     }
 
     private String autoRouting(SharedPreferences d) {
@@ -1062,6 +1072,8 @@ public final class DiagnosticsActivity extends Activity {
                         ? "" : "\n" + RichAnswerTrace.summaryLine(this)) +
                 (HostedSearchSchemaTrace.summaryLine(this).isEmpty()
                         ? "" : "\n" + HostedSearchSchemaTrace.summaryLine(this)) +
+                (HostedSearchPolicy.summaryLine(this).isEmpty()
+                        ? "" : "\n" + HostedSearchPolicy.summaryLine(this)) +
                 "\n" + healthLine() +
                 // Worth a support reply's attention, but stated for what it is: something that
                 // already ended, never a failure the user is currently having.

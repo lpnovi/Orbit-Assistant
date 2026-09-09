@@ -124,6 +124,39 @@ public final class ChatGptClient {
     }
 
     /**
+     * The extra instruction carried by a request whose hosted search is required rather than
+     * offered.
+     *
+     * <p>The {@code tool_choice} field is what actually makes the search happen; this is what makes
+     * the search <em>useful</em>. A model that has searched still has to write the trailing
+     * {@code Source:} marker, because that marker is Orbit's second route to provenance and the one
+     * that saves the answer when the backend's search envelope arrives in a shape Orbit cannot
+     * read. Sent only on the turns that force a search, so no ordinary answer is nagged about a
+     * tool it was never going to use.
+     */
+    private static final String FORCED_SEARCH_SYSTEM =
+            " This question is about what something looks like, so the hosted web search tool is required for it rather than optional. Search real public pages before answering, base the answer on pages you actually opened, and never answer this one from memory alone. End with the mandatory Source: line naming the best page you consulted.";
+
+    /** The search instruction this request carries, which is nothing unless it forces a search. */
+    static String searchPolicy(boolean forceSearch) {
+        return forceSearch ? FORCED_SEARCH_SYSTEM : "";
+    }
+
+    /**
+     * Attaches the hosted search tool, and says how strongly this turn wants it used.
+     *
+     * <p>One place, so the offered case and the required case cannot drift apart. Every request
+     * that was offered the tool before is still offered it on exactly the same terms; the only
+     * difference a forced turn makes is the value of {@code tool_choice}.
+     */
+    static void applyHostedSearch(JSONObject root, Context context, String prompt,
+                                  boolean forceSearch) throws Exception {
+        if (!shouldOfferHostedWebSearch(prompt)) return;
+        root.put("tools", new JSONArray().put(new JSONObject().put("type", "web_search")));
+        root.put("tool_choice", forceSearch ? HostedSearchPolicy.toolChoice(context) : "auto");
+    }
+
+    /**
      * Planning instructions. Deliberately not {@link #SYSTEM}: the chat instructions require the
      * {@code {"text","actions"}} envelope, which is a different schema from the one the planning
      * prompt asks for. Sending both told the model to satisfy two incompatible shapes at once.
@@ -325,10 +358,15 @@ public final class ChatGptClient {
         // Summaries are asked for only when the user wants them and only while the backend has
         // not already refused them on this device.
         final boolean askForSummary = thinkingUpdates && ReasoningSummarySupport.mayRequest(context);
+        // Whether this turn requires the hosted search rather than merely offering it. Read here
+        // and used twice: once to build the request, once to recognise a backend that refused the
+        // form it was asked in. A turn carrying a picture never forces a search.
+        final boolean forceSearch = HostedSearchPolicy.shouldForce(context, prompt,
+                images != null && !images.isEmpty());
         try {
             JSONObject body = requestBody(context, prompt, screenText, images, history,
                     intelligenceMode, explicitAttachment, notificationContext, memoryContext,
-                    trustedTaskContext, askForSummary, model);
+                    trustedTaskContext, askForSummary, forceSearch, model);
             conn = (HttpURLConnection) new URL(RESPONSES_URL).openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(15000);
@@ -382,6 +420,21 @@ public final class ChatGptClient {
                             astraFallback, cb);
                     return;
                 }
+                // A backend that will not be told which tool to use must cost the user nothing
+                // either. The request was rejected before anything was generated, so Orbit steps
+                // down one rung - the hosted-tool object, then the generic requirement, then off -
+                // and asks the same question again. The rung is committed before the retry reads
+                // it, which is what makes this a short ladder rather than a loop.
+                if (forceSearch && HostedSearchPolicy.looksLikeForcedSearchRefusal(code, err)) {
+                    HostedSearchPolicy.degrade(context);
+                    conn.disconnect();
+                    conn = null;
+                    doSend(context, prompt, screenText, images, history, intelligenceMode,
+                            explicitAttachment, notificationContext, memoryContext,
+                            trustedTaskContext, thinkingUpdates, tokens, alreadyRefreshed,
+                            astraFallback, cb);
+                    return;
+                }
                 String friendly = friendlyHttpError(code, err, model);
                 // Astra is the one model whose availability follows the user's own account rather
                 // than anything Orbit controls, so a refusal aimed at it gets a truthful answer
@@ -419,6 +472,9 @@ public final class ChatGptClient {
             SseResult stream = readSse(conn.getInputStream(), cb, thinkingUpdates);
             // Written only for a response that actually searched, and only ever names and counts.
             HostedSearchSchemaTrace.record(context, stream.schema);
+            // Whether requiring the search actually produced one. A forced request that reports no
+            // search at all is the finding, and without this it would be invisible.
+            if (forceSearch) HostedSearchPolicy.recordForcedRequest(context, stream.schema.searchSeen);
             if (askForSummary) ReasoningSummarySupport.record(context, stream.sawReasoningSummary);
             String output = stream.output;
             if (output.trim().isEmpty()) {
@@ -463,7 +519,8 @@ public final class ChatGptClient {
                                           List<AssistantClient.History> history, String intelligenceMode,
                                           boolean explicitAttachment, String notificationContext,
                                           String memoryContext, String trustedTaskContext,
-                                          boolean askForSummary, String model) throws Exception {
+                                          boolean askForSummary, boolean forceSearch,
+                                          String model) throws Exception {
         JSONObject root = new JSONObject();
         root.put("model", model);
         String memory = memoryContext == null ? "" : memoryContext.trim();
@@ -478,7 +535,7 @@ public final class ChatGptClient {
                 "\n\nTrusted Orbit task state derived from the user's direct corrections (not from screen content):\n" + task;
         // Read at request time rather than cached, so turning Rich Answers off changes the next
         // answer rather than the one after it - the same rule the discovery side follows.
-        root.put("instructions", SYSTEM + imagePolicy(context)
+        root.put("instructions", SYSTEM + imagePolicy(context) + searchPolicy(forceSearch)
                 + (Prefs.leloMode(context) ? LELO_SYSTEM : "") +
                 (memory.isEmpty() ? "" : "\n\n" + memory) +
                 trustedTaskInstruction +
@@ -489,10 +546,7 @@ public final class ChatGptClient {
         root.put("store", false);
         root.put("stream", true);
         root.put("parallel_tool_calls", false);
-        if (shouldOfferHostedWebSearch(prompt)) {
-            root.put("tools", new JSONArray().put(new JSONObject().put("type", "web_search")));
-            root.put("tool_choice", "auto");
-        }
+        applyHostedSearch(root, context, prompt, forceSearch);
 
         // Asked of the catalog for the model actually being sent, which is what keeps an
         // unsupported "none" out of an Astra request without touching Luna, Terra or Sol.

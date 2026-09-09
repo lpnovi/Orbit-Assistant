@@ -235,6 +235,25 @@ plural Mallard request produced the same duck several times over in one answer.
 - **Diagnostics name the duplicates.** A visual-duplicate reason, a rejection count and a short
   non-reversible visual identity per candidate. No bitmap data is recorded
 
+**Shipped in `0.7.8.5-beta.8` - Rich Answers source provenance for visual requests:**
+
+Every Beta from 3 onward fixed a stage that only runs once a page is known, and physical testing
+kept landing on the stage before all of them. "Show me pictures of a mallard duck" is exactly the
+question a model answers from memory: no search, no cited page, no source line, and therefore no
+picture, on a build where the whole picture pipeline is working.
+
+- **The search is required rather than offered** for the narrow set of questions whose answer is a
+  picture. Everything else keeps the arrangement it has always had, where the tool is available and
+  the model decides
+- **The provider is told to answer from pages it opened**, and to keep the trailing source line that
+  is Orbit's second route to provenance when a search envelope arrives unreadable
+- **Never on a turn carrying a picture.** A question about an image the user attached is answered by
+  that image, and a user who has turned Rich Answers off is never made to wait for a search
+- **It degrades instead of failing.** An account that will not accept a required tool choice is
+  asked in the general form, then left alone, and the turn is retried at no cost to the user
+- **Diagnostics report how many picture questions required a search** and how many of those actually
+  produced one. Counts only, never a question, an answer or a query
+
 **Still ahead in `0.7.8.5`, depending on real-device testing:**
 
 - Richer multi-image presentation, where a comparison genuinely needs two pictures side by side

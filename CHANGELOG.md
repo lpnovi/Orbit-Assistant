@@ -818,3 +818,9 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Orbit's own sourced pictures are now the only images shown, so a duplicate written into the answer text never appears.
   - Answers no longer claim how many pictures will appear or that they are different from each other.
   - Diagnostics now reports how many duplicates were rejected and gives each picture a short visual identity.
+- **v0.7.8.5-beta.8**: Asking to see something now actually sends Orbit to look for it.
+  - Questions whose answer is a picture now require a real web search instead of being answered from memory.
+  - Those answers come back with genuine sources, which is what lets Orbit attach pictures at all.
+  - Every other question is unchanged, and a question about a picture you attached never searches the web.
+  - If your account will not accept a required search, Orbit quietly goes back to asking and never shows an error.
+  - Diagnostics now reports how many picture questions required a search and how many actually searched.
