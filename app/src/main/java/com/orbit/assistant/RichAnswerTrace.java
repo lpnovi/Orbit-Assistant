@@ -114,6 +114,15 @@ public final class RichAnswerTrace {
         BAD_ASPECT_RATIO,
         LOW_SCORE,
         DUPLICATE,
+        /**
+         * The same photograph as one already accepted, proven from the decoded picture.
+         *
+         * <p>Deliberately not {@link #DUPLICATE}, which means two addresses were shown to name one
+         * asset. This one means two unrelated addresses turned out to be one photograph, which is
+         * the failure the device produced and the reason Beta 7 exists. Telling them apart in a
+         * report is what says whether the cheap layer or the real one caught it.
+         */
+        VISUAL_DUPLICATE,
         LOGO_OR_CHROME,
         NO_CANDIDATES,
         PAGE_FETCH_FAILED,
@@ -140,6 +149,15 @@ public final class RichAnswerTrace {
         public int redirects;
         public int decodedWidth;
         public int decodedHeight;
+        /**
+         * A short label for what the picture actually looked like, or empty.
+         *
+         * <p>Four hex characters of a perceptual hash, never a bitmap and never anything that could
+         * be turned back into one. It is here because two rows reading {@code 7A31…} are the whole
+         * explanation for an answer that showed one picture when two were asked for, and Beta 6's
+         * report could not say that at all. A picture too flat to fingerprint has no token.
+         */
+        public String visualId = "";
         public Reason reason = Reason.NONE;
 
         /** One compact human line, e.g. {@code ARTICLE_IMG jpg · 800x600 · accepted}. */
@@ -161,6 +179,7 @@ public final class RichAnswerTrace {
             if (decodedWidth > 0 && decodedHeight > 0) {
                 b.append(" · ").append(decodedWidth).append('x').append(decodedHeight);
             }
+            if (!visualId.isEmpty()) b.append(" · Visual ID ").append(visualId);
             b.append(" · ").append(reason == Reason.ACCEPTED ? "accepted" : reason.name());
             return b.toString();
         }
@@ -213,6 +232,15 @@ public final class RichAnswerTrace {
          * gap between them is the finding.
          */
         public int attachedImages;
+        /**
+         * How many downloaded pictures were refused for being a photograph the answer already had.
+         *
+         * <p>The number that makes Beta 7's behaviour legible. "Requested 2, fetched 4, visual
+         * duplicates 2, attached 2" is a search that worked; "requested 2, visual duplicates 3,
+         * attached 1" is a subject the web only has one photograph of, which is a correct answer
+         * and used to be indistinguishable from a broken one.
+         */
+        public int visualDuplicates;
         public int sourcesReceived;
         public int pagesAttempted;
         public int pageBudget;
@@ -414,12 +442,18 @@ public final class RichAnswerTrace {
         }
         b.append("Candidates considered: ").append(attempt.candidatesConsidered()).append('\n');
         b.append("Images fetched: ").append(attempt.imagesFetched()).append('\n');
+        b.append("Visual duplicates rejected: ").append(attempt.visualDuplicates).append('\n');
         b.append("Result: ").append(readable(attempt.outcome));
         // The one line that explains a plural request answered with a single picture. Deliberately
         // here and nowhere else: showing one good photograph is the right outcome, so the shortfall
         // belongs in a report somebody opened on purpose rather than in the chat.
         if (attempt.requestedImages > 1 && attempt.attachedImages == 1) {
-            b.append("\nSecond image unavailable");
+            // Two shapes of the same shortfall, and they mean different things. One says the web
+            // only offered one photograph of this subject, which is correct behaviour; the other
+            // says nothing else on the pages was usable at all.
+            b.append(attempt.visualDuplicates > 0
+                    ? "\nSecond image unavailable: every other candidate was the same photograph"
+                    : "\nSecond image unavailable");
         }
         for (PageRecord page : attempt.pages) {
             b.append("\n\n").append(page.host.isEmpty() ? "(unknown host)" : page.host);
@@ -505,6 +539,7 @@ public final class RichAnswerTrace {
         o.put("prov_route", attempt.provenance.name());
         o.put("want", attempt.requestedImages);
         o.put("got", attempt.attachedImages);
+        o.put("vdup", attempt.visualDuplicates);
         o.put("src", attempt.sourcesReceived);
         o.put("tried", attempt.pagesAttempted);
         o.put("budget", attempt.pageBudget);
@@ -541,6 +576,7 @@ public final class RichAnswerTrace {
                 c.put("r", candidate.redirects);
                 c.put("w", candidate.decodedWidth);
                 c.put("ht", candidate.decodedHeight);
+                c.put("vid", candidate.visualId);
                 c.put("why", candidate.reason.name());
                 candidates.put(c);
             }
@@ -560,6 +596,7 @@ public final class RichAnswerTrace {
         attempt.provenance = provenance(o.optString("prov_route", "NONE"));
         attempt.requestedImages = o.optInt("want", 0);
         attempt.attachedImages = o.optInt("got", 0);
+        attempt.visualDuplicates = o.optInt("vdup", 0);
         attempt.sourcesReceived = o.optInt("src", 0);
         attempt.pagesAttempted = o.optInt("tried", 0);
         attempt.pageBudget = o.optInt("budget", 0);
@@ -602,6 +639,7 @@ public final class RichAnswerTrace {
                 candidate.redirects = c.optInt("r", 0);
                 candidate.decodedWidth = c.optInt("w", 0);
                 candidate.decodedHeight = c.optInt("ht", 0);
+                candidate.visualId = c.optString("vid", "");
                 candidate.reason = reason(c.optString("why", "NONE"));
             }
         }

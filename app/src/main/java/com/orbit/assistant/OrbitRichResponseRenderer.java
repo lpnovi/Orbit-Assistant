@@ -99,12 +99,11 @@ public final class OrbitRichResponseRenderer {
         boolean anyRich = RichAnswerPlacement.hasAnyImage(richImages);
         for (int i = 0; i < blocks.size(); i++) {
             ResponseBlocks.Block block = blocks.get(i);
-            // A model that wrote the same picture Orbit already attached as a structured one must
-            // not produce two of it. The Markdown block is skipped rather than the answer being
-            // rewritten: what is stored, copied, spoken and sent back as history is untouched, and
-            // only this one drawing of it is suppressed.
-            if (block.kind == ResponseBlocks.Kind.IMAGE
-                    && duplicatesRichImage(block, richImages)) continue;
+            // Structured Rich Answers are Orbit's canonical visual response, so when this message
+            // has any, they are the only remote pictures in it. The Markdown block is skipped
+            // rather than the answer being rewritten: what is stored, copied, spoken and sent back
+            // as history is untouched, and only this one drawing of it is suppressed.
+            if (suppressesMarkdownImage(block, richImages)) continue;
             boolean asImage = block.kind == ResponseBlocks.Kind.IMAGE && images < MAX_IMAGES;
             if (block.kind == ResponseBlocks.Kind.IMAGE) images++;
             addBlock(out, buildBlock(c, block, fill, compact, asImage), c,
@@ -118,6 +117,49 @@ public final class OrbitRichResponseRenderer {
         if (out.getChildCount() == 0) out.addView(text(c, source,
                 chatSize(c, compact ? 14 : 15),
                 foreground, false));
+    }
+
+    /**
+     * Whether this block is a model-written remote picture that must not be drawn.
+     *
+     * <p><b>The rule Beta 7 settles.</b> Orbit had two remote-image systems competing inside one
+     * response: the structured Rich Answer, which Orbit discovered, validated, attributed and can
+     * open, save to the Vault and re-fetch through its own viewer, and a Markdown {@code ![](…)}
+     * the model typed from memory. On the device that produced four Mallards in one answer, two of
+     * them came from each side. Suppressing only the ones whose <em>addresses</em> matched, which
+     * is all Beta 6 could do, leaves exactly that failure in place: the model's URL and Orbit's URL
+     * were different addresses for the same duck.
+     *
+     * <p>So when a message carries any structured picture at all, structured wins and every remote
+     * Markdown image in it is skipped. Not the matching ones - all of them. The structured pictures
+     * have provenance, a source page, a canonical viewer, Vault support and a real fetch behind
+     * them; a model-written URL has none of those and is a 404 more often than not.
+     *
+     * <p>When there are no structured pictures, nothing changes: the address-level rule below still
+     * applies, and an ordinary answer with a Markdown image renders exactly as it always has.
+     *
+     * <p>Rendering only. The answer's own text keeps every character the model wrote, and copy,
+     * speech, storage and the history sent back to a model are untouched.
+     */
+    static boolean suppressesMarkdownImage(ResponseBlocks.Block block,
+                                           java.util.List<RichAnswerImage> richImages) {
+        if (block == null || block.kind != ResponseBlocks.Kind.IMAGE) return false;
+        if (duplicatesRichImage(block, richImages)) return true;
+        return RichAnswerPlacement.hasAnyImage(richImages) && isRemoteImageBlock(block);
+    }
+
+    /**
+     * Whether an image block points somewhere on the web rather than at something on this device.
+     *
+     * <p>Only a remote picture competes with a structured Rich Answer. A local or inline address is
+     * left alone, because suppressing one would be this rule reaching past what it is for.
+     */
+    static boolean isRemoteImageBlock(ResponseBlocks.Block block) {
+        if (block == null) return false;
+        Matcher image = ResponseBlocks.IMAGE.matcher(block.displaySource().trim());
+        if (!image.matches()) return false;
+        String url = image.group(2) == null ? "" : image.group(2).trim().toLowerCase(java.util.Locale.US);
+        return !url.startsWith("content://") && !url.startsWith("file://") && !url.startsWith("data:");
     }
 
     /**

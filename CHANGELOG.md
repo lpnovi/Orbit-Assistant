@@ -811,3 +811,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - When only one trusted source exists, Orbit may follow a small number of image links in the answer to find a second picture.
   - A broken image address written into an answer now fails as one quiet line instead of a large error card.
   - Answers no longer promise a number of photos, and Diagnostics reports how many were requested and how many arrived.
+- **v0.7.8.5-beta.7**: When Orbit shows two pictures, they are now two different pictures.
+  - Orbit compares the pictures it downloads, not just their web addresses, so one photo is never shown twice.
+  - The same photograph found on another site, at another size, or under another name is now recognised and skipped.
+  - If only one genuinely different picture can be found, Orbit shows one rather than repeating it.
+  - Orbit's own sourced pictures are now the only images shown, so a duplicate written into the answer text never appears.
+  - Answers no longer claim how many pictures will appear or that they are different from each other.
+  - Diagnostics now reports how many duplicates were rejected and gives each picture a short visual identity.

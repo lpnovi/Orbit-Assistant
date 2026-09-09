@@ -27,6 +27,75 @@ final class TestPng {
 
     /** A solid mid-grey RGB PNG of exactly these dimensions. */
     static byte[] rgb(int width, int height) {
+        return encode(width, height, flat(width, height));
+    }
+
+    /**
+     * A picture with actual structure in it: the same "photograph" at any size.
+     *
+     * <p>Needed by everything that tests {@link RichAnswerVisualIdentity}, because
+     * {@link #rgb} is a solid colour and a solid colour has no gradient to fingerprint. The pattern
+     * is defined in normalised coordinates and is deliberately low-frequency, so one seed rendered
+     * at 1920 wide and at 640 wide really is one photograph at two sizes rather than two pictures
+     * that happen to share a formula - which is exactly the thing under test.
+     *
+     * <p>Different seeds are different photographs. They are built to look alike in the ways that
+     * must not fool a fingerprint - the same palette, the same brightness range, the same smooth
+     * composition - and to differ in structure, which is the only thing the hash reads.
+     */
+    static byte[] photo(int width, int height, int seed) {
+        return encode(width, height, pattern(width, height, seed, 0));
+    }
+
+    /**
+     * The same photograph, degraded the way a re-encode degrades one.
+     *
+     * <p>A genuine JPEG round trip is not available here: {@code Bitmap.compress} produces nothing
+     * real under Robolectric, and {@code javax.imageio} is off the Android compile classpath. What
+     * a re-encode does to a picture perceptually is nudge every pixel by a few levels, so that is
+     * what this does, deterministically and by a bounded amount.
+     */
+    static byte[] recompressed(int width, int height, int seed, int amplitude) {
+        return encode(width, height, pattern(width, height, seed, amplitude));
+    }
+
+    private static byte[] flat(int width, int height) {
+        byte[] raw = new byte[height * (1 + width * 3)];
+        for (int y = 0; y < height; y++) {
+            int row = y * (1 + width * 3);
+            raw[row] = 0;   // filter type: none
+            for (int x = 0; x < width * 3; x++) raw[row + 1 + x] = (byte) 0x80;
+        }
+        return raw;
+    }
+
+    private static byte[] pattern(int width, int height, int seed, int amplitude) {
+        byte[] raw = new byte[height * (1 + width * 3)];
+        double fx = 1 + Math.abs(seed) % 3;
+        double fy = 1 + (Math.abs(seed) / 3) % 3;
+        double phaseX = (Math.abs(seed) % 7) / 7.0;
+        double phaseY = (Math.abs(seed) % 5) / 5.0;
+        for (int y = 0; y < height; y++) {
+            int row = y * (1 + width * 3);
+            raw[row] = 0;
+            double v = (y + 0.5) / height;
+            for (int x = 0; x < width; x++) {
+                double u = (x + 0.5) / width;
+                double a = Math.sin(2 * Math.PI * (fx * u + phaseX))
+                        * Math.cos(2 * Math.PI * (fy * v + phaseY));
+                double b = Math.sin(2 * Math.PI * ((fx + fy) * (u * 0.5 + v * 0.5) + phaseX * phaseY));
+                double value = 128 + 70 * a + 40 * b;
+                if (amplitude > 0) value += ((x * 7 + y * 13) % (2 * amplitude + 1)) - amplitude;
+                int level = (int) Math.round(Math.max(0, Math.min(255, value)));
+                raw[row + 1 + x * 3] = (byte) level;
+                raw[row + 1 + x * 3 + 1] = (byte) level;
+                raw[row + 1 + x * 3 + 2] = (byte) level;
+            }
+        }
+        return raw;
+    }
+
+    private static byte[] encode(int width, int height, byte[] raw) {
         if (width <= 0 || height <= 0) throw new IllegalArgumentException("bad size");
         try {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -42,13 +111,6 @@ final class TestPng {
             header.write(0);    // interlace: none
             writeChunk(out, "IHDR", header.toByteArray());
 
-            // One filter byte per scanline, then three bytes per pixel.
-            byte[] raw = new byte[height * (1 + width * 3)];
-            for (int y = 0; y < height; y++) {
-                int row = y * (1 + width * 3);
-                raw[row] = 0;   // filter type: none
-                for (int x = 0; x < width * 3; x++) raw[row + 1 + x] = (byte) 0x80;
-            }
             writeChunk(out, "IDAT", deflate(raw));
             writeChunk(out, "IEND", new byte[0]);
             return out.toByteArray();

@@ -61,6 +61,16 @@ import java.util.concurrent.Executors;
  * request that still comes up short may follow a small number of image-oriented links out of the
  * answer itself - as {@link RichAnswerDiscoveryHint}s, which are where a picture is and never a
  * citation for anything the answer said.
+ *
+ * <p><b>What Beta 7 changed.</b> Beta 6 could tell one photograph from another by reading their
+ * addresses, and the device found the case where that is not enough: a photograph rehosted on an
+ * unrelated CDN under an unrelated name, shown beside the original as though there were two of
+ * them. There are now two identity layers rather than one. {@link RichAnswerAssetIdentity} still
+ * goes first and still refuses the obvious renditions for free; and once a candidate has actually
+ * downloaded and decoded, {@link RichAnswerVisualIdentity} fingerprints the picture and compares it
+ * with every picture this answer has already accepted, from any page and any host. Two image slots
+ * now mean two photographs. When Orbit cannot find a second photograph it shows one, which is the
+ * right answer and is written into the trace rather than papered over with a repeat.
  */
 public final class RichAnswerCoordinator {
 
@@ -307,13 +317,16 @@ public final class RichAnswerCoordinator {
         int limit = Math.max(1, Math.min(wanted, RichAnswerImage.MAX_PER_MESSAGE));
         int budget = trace != null && trace.pageBudget > 0 ? trace.pageBudget : MAX_PAGES_EXAMINED;
         Set<String> seenAssets = new LinkedHashSet<>();
+        // One set for the whole attempt, which is what makes the second layer work across pages and
+        // across hosts rather than only inside the page that happened to be read first.
+        Visuals visuals = new Visuals(trace);
         int[] examined = {0};
 
         if (pages != null) {
             for (String page : pages) {
                 if (found.size() >= limit || examined[0] >= budget) break;
                 readPage(context, page, false, found, limit, examined, anchor, subject,
-                        seenAssets, trace);
+                        seenAssets, visuals, trace);
             }
         }
         // The first picture is never thrown away because the page could not supply a second, so
@@ -323,20 +336,57 @@ public final class RichAnswerCoordinator {
                 if (found.size() >= limit || examined[0] >= budget) break;
                 if (trace != null) trace.discoveryHintsUsed++;
                 if (hint.isImage()) {
-                    readDirectImage(context, hint.url, found, examined, anchor, seenAssets, trace);
+                    readDirectImage(context, hint.url, found, examined, anchor, seenAssets,
+                            visuals, trace);
                 } else {
                     readPage(context, hint.url, true, found, limit, examined, anchor, subject,
-                            seenAssets, trace);
+                            seenAssets, visuals, trace);
                 }
             }
         }
         return found;
     }
 
+    /**
+     * The pictures this answer has already accepted, as pictures rather than as addresses.
+     *
+     * <p><b>The second of the two identity layers, and the one Beta 7 adds.</b>
+     * {@link RichAnswerAssetIdentity} reads a URL and is free, so it goes first and refuses the
+     * obvious renditions before a byte is spent. It cannot go any further than that: two addresses
+     * that share no structure can still be one photograph, and the device proved it by showing the
+     * same Mallard twice from two unrelated CDN paths. Once a candidate has downloaded and decoded,
+     * {@link RichAnswerVisualIdentity} asks the only question that settles it.
+     *
+     * <p>Owned by one {@link #resolve} call and never shared between answers, so the comparison is
+     * always "is this the same as something <em>this answer</em> is already showing".
+     */
+    static final class Visuals {
+        private final List<RichAnswerVisualIdentity.Fingerprint> accepted = new ArrayList<>();
+        private final RichAnswerTrace.Attempt trace;
+
+        Visuals(RichAnswerTrace.Attempt trace) { this.trace = trace; }
+
+        /** Whether this picture is one the answer already carries. Counts the refusal. */
+        boolean isDuplicate(RichAnswerVisualIdentity.Fingerprint print) {
+            for (RichAnswerVisualIdentity.Fingerprint each : accepted) {
+                if (RichAnswerVisualIdentity.sameImage(each, print)) {
+                    if (trace != null) trace.visualDuplicates++;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /** Remembers a picture that is going on the answer. */
+        void accept(RichAnswerVisualIdentity.Fingerprint print) {
+            if (print != null && print.isStrong()) accepted.add(print);
+        }
+    }
+
     /** One page read, ranked and mined for as many distinct pictures as are still wanted. */
     private static void readPage(Context context, String page, boolean hint,
                                  List<RichAnswerImage> found, int limit, int[] examined, int anchor,
-                                 List<String> subject, Set<String> seenAssets,
+                                 List<String> subject, Set<String> seenAssets, Visuals visuals,
                                  RichAnswerTrace.Attempt trace) {
         RichAnswerTrace.PageRecord record = trace == null ? new RichAnswerTrace.PageRecord()
                 : trace.page();
@@ -370,8 +420,8 @@ public final class RichAnswerCoordinator {
         if (!result.fetched) return;
 
         String pageUrl = result.finalUrl.isEmpty() ? page : result.finalUrl;
-        found.addAll(bestFromPage(context, result, pageUrl, anchor, subject, seenAssets, record,
-                limit - found.size()));
+        found.addAll(bestFromPage(context, result, pageUrl, anchor, subject, seenAssets, visuals,
+                record, limit - found.size()));
     }
 
     /**
@@ -384,7 +434,7 @@ public final class RichAnswerCoordinator {
      */
     private static void readDirectImage(Context context, String url, List<RichAnswerImage> found,
                                         int[] examined, int anchor, Set<String> seenAssets,
-                                        RichAnswerTrace.Attempt trace) {
+                                        Visuals visuals, RichAnswerTrace.Attempt trace) {
         RichAnswerTrace.PageRecord record = trace == null ? new RichAnswerTrace.PageRecord()
                 : trace.page();
         record.discoveryHint = true;
@@ -429,12 +479,24 @@ public final class RichAnswerCoordinator {
             record.reason = dimensions;
             return;
         }
+        // A hint is the path most likely to arrive at a copy of a picture the pages already
+        // supplied, because it is the same photograph rehosted somewhere else. It gets the same
+        // check as everything else, from the same set.
+        RichAnswerVisualIdentity.Fingerprint print =
+                RichAnswerVisualIdentity.fingerprint(fetch.bitmap);
+        entry.visualId = print.token();
+        if (visuals.isDuplicate(print)) {
+            entry.reason = RichAnswerTrace.Reason.VISUAL_DUPLICATE;
+            record.reason = RichAnswerTrace.Reason.VISUAL_DUPLICATE;
+            return;
+        }
         RichAnswerImage image = RichAnswerImage.webSource(url, url, "", "", anchor);
         if (!image.isUsable()) {
             entry.reason = RichAnswerTrace.Reason.UNSAFE_URL;
             return;
         }
         seenAssets.add(asset);
+        visuals.accept(print);
         entry.reason = RichAnswerTrace.Reason.ACCEPTED;
         record.reason = RichAnswerTrace.Reason.ACCEPTED;
         found.add(image);
@@ -450,7 +512,7 @@ public final class RichAnswerCoordinator {
                                     String pageUrl, int anchor, List<String> subject,
                                     Set<String> seenAssets, RichAnswerTrace.PageRecord record) {
         List<RichAnswerImage> found = bestFromPage(context, result, pageUrl, anchor, subject,
-                seenAssets, record, 1);
+                seenAssets, new Visuals(null), record, 1);
         return found.isEmpty() ? null : found.get(0);
     }
 
@@ -469,14 +531,22 @@ public final class RichAnswerCoordinator {
      * presented as two pictures of a duck. A candidate that <em>failed</em> never blocks anything,
      * so a 403 on the largest rendition still leaves the smaller one available to save the picture.
      *
+     * <p><b>And then the picture itself.</b> Beta 6 stopped there, and the device found the case
+     * that leaves behind: two addresses with nothing in common that turn out to be one photograph.
+     * A candidate that has downloaded and decoded is fingerprinted by
+     * {@link RichAnswerVisualIdentity} and compared against everything this answer has already
+     * accepted, from any page and any host. A visual duplicate is refused with its own reason and
+     * the search carries on looking for a genuinely different picture; if there is not one, the
+     * answer shows one picture. Two image slots mean two photographs or they mean one.
+     *
      * <p>Strictly bounded, and by the same numbers as before: {@link #MAX_RANKED_CANDIDATES_PER_PAGE}
      * ranked and {@link #MAX_FETCHED_CANDIDATES_PER_PAGE} downloaded, whether one picture is wanted
      * or two.
      */
     static List<RichAnswerImage> bestFromPage(Context context, RichAnswerPageFetcher.PageResult result,
                                               String pageUrl, int anchor, List<String> subject,
-                                              Set<String> seenAssets, RichAnswerTrace.PageRecord record,
-                                              int wanted) {
+                                              Set<String> seenAssets, Visuals visuals,
+                                              RichAnswerTrace.PageRecord record, int wanted) {
         List<RichAnswerImage> out = new ArrayList<>();
         int remaining = Math.max(0, wanted);
         if (remaining == 0) return out;
@@ -522,6 +592,17 @@ public final class RichAnswerCoordinator {
                 continue;
             }
 
+            // The second identity layer, and the last thing asked before a picture is committed
+            // to. Everything above this line is a statement about an address; this is the only
+            // statement about the photograph.
+            RichAnswerVisualIdentity.Fingerprint print =
+                    RichAnswerVisualIdentity.fingerprint(fetch.bitmap);
+            entry.visualId = print.token();
+            if (visuals.isDuplicate(print)) {
+                entry.reason = RichAnswerTrace.Reason.VISUAL_DUPLICATE;
+                continue;
+            }
+
             String caption = captionFor(candidate.candidate, result.preview);
             RichAnswerImage image = RichAnswerImage.webSource(
                     candidate.candidate.url, pageUrl, caption, caption, anchor);
@@ -530,6 +611,7 @@ public final class RichAnswerCoordinator {
                 continue;
             }
             seenAssets.add(asset);
+            visuals.accept(print);
             entry.reason = RichAnswerTrace.Reason.ACCEPTED;
             out.add(image);
         }
@@ -537,11 +619,14 @@ public final class RichAnswerCoordinator {
     }
 
     /**
-     * How one picture is told apart from another.
+     * How one address is told apart from another. The cheap first layer, and only the first.
      *
      * <p>The canonical asset where the address yields one, and the address itself where it does
      * not, so an unparseable or unusual URL is compared with something rather than colliding with
-     * every other empty key.
+     * every other empty key. It answers before a request is made, which is exactly what it is for
+     * and exactly what limits it: whether two <em>different-looking</em> addresses are one
+     * photograph is a question only {@link RichAnswerVisualIdentity} can answer, and it is asked
+     * after the download rather than instead of this.
      */
     static String assetKey(String url) {
         String canonical = RichAnswerAssetIdentity.canonical(url);

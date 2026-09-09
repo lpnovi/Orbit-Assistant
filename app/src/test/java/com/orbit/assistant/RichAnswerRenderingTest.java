@@ -124,7 +124,7 @@ public final class RichAnswerRenderingTest {
     @Test public void theAnswerTextIsNeverRewritten() {
         String renderer = ComponentUninstallTest.readRepositoryFile(
                 "app/src/main/java/com/orbit/assistant/OrbitRichResponseRenderer.java");
-        int at = renderer.indexOf("duplicatesRichImage(block, richImages)) continue;");
+        int at = renderer.indexOf("suppressesMarkdownImage(block, richImages)) continue;");
         assertTrue("suppression must be a skipped draw", at > 0);
         for (String rewrite : new String[]{
                 "source = source.replace", "rawText.replace(\"![\"", "stripMarkdownImages"}) {

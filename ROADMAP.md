@@ -214,6 +214,27 @@ photograph. Two separate rules were doing it, and both are now gone.
 - **Every protection held.** Page budgets, per-page download budgets, URL policy, redirect
   revalidation, byte ceilings and decode bounds are all unchanged
 
+**Shipped in `0.7.8.5-beta.7` - Rich Answers visual deduplication and rendering canonicalization:**
+
+Beta 6's asset identity reads addresses, and physical testing found the case addresses cannot
+settle: one photograph rehosted under an unrelated name still counted as a second picture, and a
+plural Mallard request produced the same duck several times over in one answer.
+
+- **Two identity layers instead of one.** The address check stays and still refuses obvious
+  renditions before a byte is spent. Once a picture has downloaded, a small local perceptual
+  fingerprint of the decoded image decides whether it is one Orbit is already showing
+- **The comparison covers the whole answer.** Cross-page, cross-host and discovery-hint copies of a
+  photograph are all refused, not just the ones found on the same page
+- **Two image slots mean two photographs, or one.** A plural request that can only find one unique
+  photograph attaches one rather than repeating it
+- **Structured Rich Answers are the canonical visual response.** When a message carries any sourced
+  picture, model-written remote images are no longer drawn in it. Rendering only: the stored answer,
+  copy, speech and model history are unchanged
+- **The provider is told not to write images** when Orbit is supplying them, and not to claim how
+  many pictures will appear or that they differ. Ordinary links are untouched
+- **Diagnostics name the duplicates.** A visual-duplicate reason, a rejection count and a short
+  non-reversible visual identity per candidate. No bitmap data is recorded
+
 **Still ahead in `0.7.8.5`, depending on real-device testing:**
 
 - Richer multi-image presentation, where a comparison genuinely needs two pictures side by side

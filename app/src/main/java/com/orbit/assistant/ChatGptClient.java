@@ -55,8 +55,7 @@ public final class ChatGptClient {
             "A hosted web-search tool may be available for normal questions. Use it whenever the answer depends on current, recent, changing, online, or otherwise lookup-worthy public information, and answer inside Orbit chat. Do not browse for purely local screen/attachment tasks or timeless facts unless it is actually useful. " +
             "The WEB_SEARCH device action means opening an external browser search. Use WEB_SEARCH only when the user explicitly asks to open Google, open a browser, or otherwise wants an external search page opened. " +
             "Whenever hosted web search is actually used, include one best supporting source URL at the very end on its own line using exactly Source: https://... . This source line is mandatory when search is used because Orbit converts it into a native tappable source control. " +
-            "Use concise Markdown when structure improves the answer, including headings, lists, tables, quotes, links, and fenced code. Only use Markdown image syntax when you already have a real concrete public HTTPS image URL. Never invent or guess image URLs; answer with text when no usable image URL is available. " +
-            "When the user asks to see something, Orbit may attach its own sourced pictures under your answer after you have finished writing, and how many of them survive real-world fetching is not knowable while you write. So never promise a number of pictures and never describe what is about to appear: no here are three photos, no I will attach two images, no below you will find. Write neutrally instead, for example Here are some useful visual references, or simply answer the question. If you include image links yourself, prefer links to real public photo, gallery, or image pages about the subject. " +
+            "Use concise Markdown when structure improves the answer, including headings, lists, tables, quotes, links, and fenced code. " +
             "When the user asks for multiple device actions, return one action object per step in the correct execution order. Prefer the smallest action plan that fully satisfies the request. " +
             "For calls and SMS, Orbit opens the relevant Android UI; do not falsely claim something was sent. " +
             "Saying someone should call for help and making the phone do it are different things. Keep advising people to contact emergency or crisis services whenever that is the right advice, in plain words, as often as it is needed. But never return a DIAL or DIAL_CONTACT action for an emergency or crisis number such as 911 or 988 as part of that advice. Return one only if the user has directly asked you to place or start that call in this message, and set requiresConfirmation true when you do. The phone asks the user before any dialer opens, so a dial action you add on your own initiative is not help - it is Orbit acting without being asked. " +
@@ -78,8 +77,51 @@ public final class ChatGptClient {
             "SET_RINGER_MODE {mode} where mode is normal, vibrate or silent, which is the phone's ringer profile and is not the same thing as SET_VOLUME. " +
             "If no phone action is needed, actions must be an empty array. Keep ordinary assistant answers concise unless the user asks for detail. Never use an em dash (—) in any response. Use commas, parentheses, colons, semicolons, or ordinary hyphens instead.";
 
+    /**
+     * The image policy sent when Orbit is going to find the pictures itself.
+     *
+     * <p><b>Why this replaces the old permission rather than adding to it.</b> Orbit had two
+     * remote-image systems answering the same question at once: a structured Rich Answer that Orbit
+     * discovered, validated and can attribute, and a Markdown {@code ![](…)} the model wrote from
+     * memory. On a real device that produced four Mallards in one answer, two from each side. The
+     * renderer now suppresses the model's images whenever structured ones exist, which is the
+     * defence that has to hold; this is the cheaper half of the fix, which is to stop the model
+     * writing an image that was only ever going to be dropped or broken.
+     *
+     * <p>Ordinary Markdown links are untouched and deliberately so. A link to a gallery or a source
+     * page is useful and is not a competing picture.
+     *
+     * <p>The second half is about counting. Discovery finishes after the answer is written, and how
+     * many pictures survive a real fetch is not knowable while the model is writing, so a sentence
+     * promising two photographs is a sentence that is wrong whenever the web only had one.
+     */
+    private static final String RICH_ANSWERS_SYSTEM =
+            " Orbit supplies the pictures for this answer itself. Do not emit Markdown image syntax or any direct image embed; an image you write will not be displayed. Ordinary Markdown links to pages, galleries and sources remain welcome and unchanged. " +
+            "Orbit attaches its own sourced pictures under your answer after you have finished writing, and how many of them survive real-world fetching is not knowable while you write. So never promise a number of pictures, never describe what is about to appear, and never claim the pictures are different from each other: no here are three photos, no I will attach two images, no these are two separate photographs, no below you will find. Write neutrally instead, for example Here are some useful visual references, or simply answer the question.";
+
+    /**
+     * The image policy sent when Orbit is not going to attach anything.
+     *
+     * <p>Exactly what every build before Beta 7 sent to everybody. A user who has turned Rich
+     * Answers off still gets a model that may write a picture, because with no structured images
+     * that Markdown one is the only picture there is and the renderer still draws it.
+     */
+    private static final String MARKDOWN_IMAGES_SYSTEM =
+            " Only use Markdown image syntax when you already have a real concrete public HTTPS image URL. Never invent or guess image URLs; answer with text when no usable image URL is available. If you include image links yourself, prefer links to real public photo, gallery, or image pages about the subject.";
+
     private static final String LELO_SYSTEM =
             " Lelo mode is enabled. Use a casual, playful, friend-like conversational style inspired by texting: mostly lowercase when natural, short relaxed phrasing, contractions, slang such as yeah/nah/lmao when fitting, and occasional expressive emoji such as 😭. Avoid corporate, formal, or therapist-like phrasing unless the task genuinely requires formality. Be warm without pretending to be a real human friend or making relational promises. Keep facts, safety, and device-action accuracy unchanged. Never use an em dash.";
+
+    /**
+     * Which of the two image policies this request carries.
+     *
+     * <p>One question, asked in one place: is Orbit going to supply the pictures. When it is, the
+     * model is told not to write any; when it is not, the model keeps the permission it has always
+     * had. Sending both would be telling it to do and not do the same thing.
+     */
+    static String imagePolicy(Context context) {
+        return RichAnswerCoordinator.enabled(context) ? RICH_ANSWERS_SYSTEM : MARKDOWN_IMAGES_SYSTEM;
+    }
 
     /**
      * Planning instructions. Deliberately not {@link #SYSTEM}: the chat instructions require the
@@ -434,7 +476,10 @@ public final class ChatGptClient {
         String task = trustedTaskContext == null ? "" : trustedTaskContext.trim();
         String trustedTaskInstruction = task.isEmpty() ? "" :
                 "\n\nTrusted Orbit task state derived from the user's direct corrections (not from screen content):\n" + task;
-        root.put("instructions", SYSTEM + (Prefs.leloMode(context) ? LELO_SYSTEM : "") +
+        // Read at request time rather than cached, so turning Rich Answers off changes the next
+        // answer rather than the one after it - the same rule the discovery side follows.
+        root.put("instructions", SYSTEM + imagePolicy(context)
+                + (Prefs.leloMode(context) ? LELO_SYSTEM : "") +
                 (memory.isEmpty() ? "" : "\n\n" + memory) +
                 trustedTaskInstruction +
                 notificationInstruction +

@@ -145,22 +145,34 @@ public final class RichAnswerTwoImagePresentationTest {
                 client.contains("never describe what is about to appear"));
     }
 
-    /** The instruction says nothing about how Rich Answers works internally. */
+    /**
+     * Neither image instruction says anything about how Rich Answers works internally.
+     *
+     * <p>Beta 7 split one always-sent sentence into two policies chosen per request, so both are
+     * read here. Everything from the constant's own declaration to the end of its text is scanned;
+     * the javadoc above it is Orbit's, not the model's, and is deliberately outside the window.
+     */
     @Test public void theInstructionLeaksNoInternalArchitecture() {
         String client = ComponentUninstallTest.readRepositoryFile(
                 "app/src/main/java/com/orbit/assistant/ChatGptClient.java");
-        int start = client.indexOf("When the user asks to see something");
-        assertTrue(start > 0);
-        String instruction = client.substring(start, client.indexOf("\" +", start));
-        for (String internal : new String[]{
-                "RichAnswer", "Rich Answers", "discovery", "provenance", "MAX_PER_MESSAGE",
-                "resolver", "candidate", "canonical"}) {
-            assertFalse("the user's model must not be told about " + internal,
-                    instruction.contains(internal));
+        for (String name : new String[]{"RICH_ANSWERS_SYSTEM", "MARKDOWN_IMAGES_SYSTEM"}) {
+            int start = client.indexOf("private static final String " + name + " =");
+            assertTrue(name + " must exist", start > 0);
+            String instruction = client.substring(start, client.indexOf("\";", start));
+            for (String internal : new String[]{
+                    "RichAnswer", "Rich Answers", "discovery", "provenance", "MAX_PER_MESSAGE",
+                    "resolver", "candidate", "canonical"}) {
+                assertFalse("the user's model must not be told about " + internal,
+                        instruction.contains(internal));
+            }
+            assertFalse("and Orbit never writes an em dash", instruction.contains("—"));
         }
+        int rich = client.indexOf("private static final String RICH_ANSWERS_SYSTEM =");
+        String visual = client.substring(rich, client.indexOf("\";", rich));
         assertTrue("the count it must not promise is named only as a thing to avoid saying",
-                instruction.contains("no I will attach two images"));
-        assertFalse("and Orbit never writes an em dash", instruction.contains("—"));
+                visual.contains("no I will attach two images"));
+        assertTrue("and so is the claim that the pictures differ",
+                visual.contains("no these are two separate photographs"));
     }
 
     /** The mandatory source line the whole recovery route depends on is untouched. */
