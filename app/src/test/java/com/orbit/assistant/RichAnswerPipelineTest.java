@@ -115,8 +115,23 @@ public final class RichAnswerPipelineTest {
         serveImage(url, 800, 600);
     }
 
+    /** One seed per address, handed out in order so no two fixtures are the same photograph. */
+    private final Map<String, Integer> seeds = new LinkedHashMap<>();
+
+    /**
+     * A real photograph rather than a flat rectangle.
+     *
+     * <p>Beta 9 refuses a featureless image when the question asked for photographs, and a solid
+     * grey fixture is featureless by construction, so every picture served here now carries actual
+     * structure. Seeded per address so two fixtures are two photographs.
+     */
     private void serveImage(String url, int width, int height) {
-        byte[] bytes = TestPng.rgb(width, height);
+        Integer seed = seeds.get(url);
+        if (seed == null) {
+            seed = seeds.size() + 1;
+            seeds.put(url, seed);
+        }
+        byte[] bytes = TestPng.photo(width, height, seed);
         images.responses.put(url, new RemoteImageLoader.Response(
                 200, "image/jpeg", null, bytes.length, new ByteArrayInputStream(bytes)));
     }
@@ -139,7 +154,7 @@ public final class RichAnswerPipelineTest {
     private List<RichAnswerImage> resolve(List<String> sources, RichAnswerTrace.Attempt attempt,
                                           String prompt) {
         return RichAnswerCoordinator.resolve(context, sources, 1, 0,
-                RichAnswerSubject.tokensOf(prompt), attempt);
+                RichAnswerCandidateQuality.Demand.of(prompt), attempt);
     }
 
     /** The page shape that failed Beta 1 and Beta 2 twice on real hardware. */
@@ -386,7 +401,7 @@ public final class RichAnswerPipelineTest {
         RichAnswerTrace.Attempt trace = attempt(RichAnswerTrace.Intent.STRONG_VISUAL);
         List<RichAnswerImage> found = RichAnswerCoordinator.resolve(context,
                 Arrays.asList("https://example.org/a", "https://example.org/b"), 2, 0,
-                RichAnswerSubject.tokensOf("compare these two European robin photos"), trace);
+                RichAnswerCandidateQuality.Demand.of("compare these two European robin photos"), trace);
         assertEquals(2, found.size());
         assertEquals(shared, found.get(0).imageUrl);
         assertEquals(other, found.get(1).imageUrl);

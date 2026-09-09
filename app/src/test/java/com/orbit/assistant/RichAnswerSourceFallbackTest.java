@@ -62,7 +62,7 @@ public class RichAnswerSourceFallbackTest {
         previousImages = RemoteImageLoader.installTransportForTest(new RemoteImageLoader.Transport() {
             public boolean allowsHost(String url) { return true; }
             public RemoteImageLoader.Response open(String url) {
-                byte[] png = TestPng.rgb(800, 600);
+                byte[] png = TestPng.photo(800, 600, Math.abs(url.hashCode() % 7) + 1);
                 return new RemoteImageLoader.Response(200, "image/png", null, png.length,
                         new ByteArrayInputStream(png));
             }

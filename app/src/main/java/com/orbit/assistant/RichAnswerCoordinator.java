@@ -209,8 +209,11 @@ public final class RichAnswerCoordinator {
                 ? pages : new ArrayList<>();
         int images = wanted;
         // Derived here, on this thread, and handed straight to ranking. Never stored, never sent,
-        // and deliberately never written into the trace.
-        List<String> subject = RichAnswerSubject.tokensOf(prompt);
+        // and deliberately never written into the trace. Beta 9 carries the kind of picture that
+        // was asked for alongside the subject, because "show me pics of a mallard duck" and "show
+        // me the flag of Ireland" want opposite things from a decoded bitmap.
+        RichAnswerCandidateQuality.Demand demand = RichAnswerCandidateQuality.Demand.of(prompt);
+        List<String> subject = demand.subject;
 
         // The secondary path, gated on every condition at once and collected up front so the
         // executor never reads the answer again. Strong visual intent is not enough on its own:
@@ -226,7 +229,7 @@ public final class RichAnswerCoordinator {
         EXECUTOR.execute(() -> {
             try {
                 List<RichAnswerImage> found = resolve(app, pages, discoveryHints, images, anchor,
-                        subject, trace);
+                        demand, trace);
                 if (found.isEmpty()) {
                     trace.outcome = RichAnswerTrace.Outcome.NO_USABLE_IMAGE;
                     return;
@@ -285,8 +288,9 @@ public final class RichAnswerCoordinator {
      * <p>Blocking. Kept for the single-picture path and for callers that have no fallback to offer.
      */
     static List<RichAnswerImage> resolve(Context context, List<String> pages, int wanted, int anchor,
-                                         List<String> subject, RichAnswerTrace.Attempt trace) {
-        return resolve(context, pages, Collections.emptyList(), wanted, anchor, subject, trace);
+                                         RichAnswerCandidateQuality.Demand demand,
+                                         RichAnswerTrace.Attempt trace) {
+        return resolve(context, pages, Collections.emptyList(), wanted, anchor, demand, trace);
     }
 
     /**
@@ -312,7 +316,8 @@ public final class RichAnswerCoordinator {
      */
     static List<RichAnswerImage> resolve(Context context, List<String> pages,
                                          List<RichAnswerDiscoveryHint> hints, int wanted, int anchor,
-                                         List<String> subject, RichAnswerTrace.Attempt trace) {
+                                         RichAnswerCandidateQuality.Demand demand,
+                                         RichAnswerTrace.Attempt trace) {
         List<RichAnswerImage> found = new ArrayList<>();
         int limit = Math.max(1, Math.min(wanted, RichAnswerImage.MAX_PER_MESSAGE));
         int budget = trace != null && trace.pageBudget > 0 ? trace.pageBudget : MAX_PAGES_EXAMINED;
@@ -325,7 +330,7 @@ public final class RichAnswerCoordinator {
         if (pages != null) {
             for (String page : pages) {
                 if (found.size() >= limit || examined[0] >= budget) break;
-                readPage(context, page, false, found, limit, examined, anchor, subject,
+                readPage(context, page, false, found, limit, examined, anchor, demand,
                         seenAssets, visuals, trace);
             }
         }
@@ -336,10 +341,10 @@ public final class RichAnswerCoordinator {
                 if (found.size() >= limit || examined[0] >= budget) break;
                 if (trace != null) trace.discoveryHintsUsed++;
                 if (hint.isImage()) {
-                    readDirectImage(context, hint.url, found, examined, anchor, seenAssets,
+                    readDirectImage(context, hint.url, found, examined, anchor, demand, seenAssets,
                             visuals, trace);
                 } else {
-                    readPage(context, hint.url, true, found, limit, examined, anchor, subject,
+                    readPage(context, hint.url, true, found, limit, examined, anchor, demand,
                             seenAssets, visuals, trace);
                 }
             }
@@ -386,8 +391,8 @@ public final class RichAnswerCoordinator {
     /** One page read, ranked and mined for as many distinct pictures as are still wanted. */
     private static void readPage(Context context, String page, boolean hint,
                                  List<RichAnswerImage> found, int limit, int[] examined, int anchor,
-                                 List<String> subject, Set<String> seenAssets, Visuals visuals,
-                                 RichAnswerTrace.Attempt trace) {
+                                 RichAnswerCandidateQuality.Demand demand, Set<String> seenAssets,
+                                 Visuals visuals, RichAnswerTrace.Attempt trace) {
         RichAnswerTrace.PageRecord record = trace == null ? new RichAnswerTrace.PageRecord()
                 : trace.page();
         record.discoveryHint = hint;
@@ -420,8 +425,10 @@ public final class RichAnswerCoordinator {
         if (!result.fetched) return;
 
         String pageUrl = result.finalUrl.isEmpty() ? page : result.finalUrl;
-        found.addAll(bestFromPage(context, result, pageUrl, anchor, subject, seenAssets, visuals,
-                record, limit - found.size()));
+        // The count already accepted is passed down, not just the count still wanted, because the
+        // bar a candidate has to clear depends on whether the answer already has a picture.
+        found.addAll(bestFromPage(context, result, pageUrl, anchor, demand, seenAssets, visuals,
+                record, limit - found.size(), found.size()));
     }
 
     /**
@@ -433,8 +440,10 @@ public final class RichAnswerCoordinator {
      * about where the picture is and makes no claim about what the answer cited.
      */
     private static void readDirectImage(Context context, String url, List<RichAnswerImage> found,
-                                        int[] examined, int anchor, Set<String> seenAssets,
-                                        Visuals visuals, RichAnswerTrace.Attempt trace) {
+                                        int[] examined, int anchor,
+                                        RichAnswerCandidateQuality.Demand demand,
+                                        Set<String> seenAssets, Visuals visuals,
+                                        RichAnswerTrace.Attempt trace) {
         RichAnswerTrace.PageRecord record = trace == null ? new RichAnswerTrace.PageRecord()
                 : trace.page();
         record.discoveryHint = true;
@@ -479,6 +488,15 @@ public final class RichAnswerCoordinator {
             record.reason = dimensions;
             return;
         }
+        // A hint carries no markup, so there is nothing candidate-specific to read: its label
+        // already had to name the subject before it became a hint at all. What can still be asked
+        // of it is the picture itself, and a request for photographs does ask.
+        if (demand != null && demand.photographic
+                && !RichAnswerVisualQuality.isPhotographLike(fetch.bitmap)) {
+            entry.reason = RichAnswerTrace.Reason.GRAPHIC_OR_PLACEHOLDER;
+            record.reason = RichAnswerTrace.Reason.GRAPHIC_OR_PLACEHOLDER;
+            return;
+        }
         // A hint is the path most likely to arrive at a copy of a picture the pages already
         // supplied, because it is the same photograph rehosted somewhere else. It gets the same
         // check as everything else, from the same set.
@@ -509,10 +527,11 @@ public final class RichAnswerCoordinator {
      * every singular request still does.
      */
     static RichAnswerImage bestFrom(Context context, RichAnswerPageFetcher.PageResult result,
-                                    String pageUrl, int anchor, List<String> subject,
+                                    String pageUrl, int anchor,
+                                    RichAnswerCandidateQuality.Demand demand,
                                     Set<String> seenAssets, RichAnswerTrace.PageRecord record) {
-        List<RichAnswerImage> found = bestFromPage(context, result, pageUrl, anchor, subject,
-                seenAssets, new Visuals(null), record, 1);
+        List<RichAnswerImage> found = bestFromPage(context, result, pageUrl, anchor, demand,
+                seenAssets, new Visuals(null), record, 1, 0);
         return found.isEmpty() ? null : found.get(0);
     }
 
@@ -539,18 +558,37 @@ public final class RichAnswerCoordinator {
      * the search carries on looking for a genuinely different picture; if there is not one, the
      * answer shows one picture. Two image slots mean two photographs or they mean one.
      *
+     * <p><b>And then whether it belongs here at all.</b> Beta 8 stopped at "distinct", and the
+     * device produced the consequence: a real Mallard photograph beside a large blank card carrying
+     * a small blue cube, captioned with the Mallard page's title. Every check above passed on the
+     * cube. It was a different picture, it was big enough, it decoded, and it had nothing to do
+     * with the question - the only thing tying it to a duck was the document it sat in.
+     * {@link RichAnswerCandidateQuality} asks what the page said about <em>this image</em> rather
+     * than about itself, and {@link RichAnswerVisualQuality} asks whether the decoded bitmap is a
+     * photograph when a photograph is what was wanted. A candidate with nothing of its own is
+     * refused before it costs a request, and the second slot is refused outright rather than filled
+     * with whatever came next. <b>One good photograph is a complete answer to a request for two.</b>
+     *
      * <p>Strictly bounded, and by the same numbers as before: {@link #MAX_RANKED_CANDIDATES_PER_PAGE}
      * ranked and {@link #MAX_FETCHED_CANDIDATES_PER_PAGE} downloaded, whether one picture is wanted
      * or two.
+     *
+     * @param accepted how many pictures this answer already carries, from this page or any earlier
+     *                 one. It is the slot number the next acceptance would take, and the bar rises
+     *                 with it.
      */
     static List<RichAnswerImage> bestFromPage(Context context, RichAnswerPageFetcher.PageResult result,
-                                              String pageUrl, int anchor, List<String> subject,
+                                              String pageUrl, int anchor,
+                                              RichAnswerCandidateQuality.Demand demand,
                                               Set<String> seenAssets, Visuals visuals,
-                                              RichAnswerTrace.PageRecord record, int wanted) {
+                                              RichAnswerTrace.PageRecord record, int wanted,
+                                              int accepted) {
         List<RichAnswerImage> out = new ArrayList<>();
         int remaining = Math.max(0, wanted);
         if (remaining == 0) return out;
-        List<Ranked> ranked = rank(result, pageUrl, subject, seenAssets, record);
+        RichAnswerCandidateQuality.Demand wants =
+                demand == null ? RichAnswerCandidateQuality.Demand.NONE : demand;
+        List<Ranked> ranked = rank(result, pageUrl, wants, seenAssets, record);
         int fetched = 0;
         for (Ranked candidate : ranked) {
             if (out.size() >= remaining) break;
@@ -562,6 +600,16 @@ public final class RichAnswerCoordinator {
             // ranking pass, run before any of them, could not have known about.
             if (seenAssets.contains(asset)) {
                 entry.reason = RichAnswerTrace.Reason.DUPLICATE;
+                continue;
+            }
+            // Which slot this candidate is competing for, counted across the whole answer. Asked
+            // before the download, so a candidate the page never tied to anything never costs a
+            // request - and refused with a reason that says which slot it failed.
+            int slot = accepted + out.size();
+            RichAnswerTrace.Reason relevance =
+                    RichAnswerCandidateQuality.judgeSlot(candidate.evidence, slot);
+            if (relevance != RichAnswerTrace.Reason.NONE) {
+                entry.reason = relevance;
                 continue;
             }
             fetched++;
@@ -592,14 +640,34 @@ public final class RichAnswerCoordinator {
                 continue;
             }
 
-            // The second identity layer, and the last thing asked before a picture is committed
-            // to. Everything above this line is a statement about an address; this is the only
-            // statement about the photograph.
+            // Is this a photograph, or is it graphic design. Only asked when photographs are what
+            // the question wanted, so a diagram, a map, a flag or a logo is never refused for
+            // failing to look like a photograph of something.
+            boolean photographLike = RichAnswerVisualQuality.isPhotographLike(fetch.bitmap);
+            if (wants.photographic && !photographLike) {
+                entry.reason = RichAnswerTrace.Reason.GRAPHIC_OR_PLACEHOLDER;
+                continue;
+            }
+
+            // The second identity layer. Everything above this line is a statement about an
+            // address; this is the only statement about the photograph.
             RichAnswerVisualIdentity.Fingerprint print =
                     RichAnswerVisualIdentity.fingerprint(fetch.bitmap);
             entry.visualId = print.token();
             if (visuals.isDuplicate(print)) {
                 entry.reason = RichAnswerTrace.Reason.VISUAL_DUPLICATE;
+                continue;
+            }
+
+            // The last question, and the one the second slot turns on. A candidate the page named
+            // as the subject is already in; one that is only structurally promising has to be
+            // article content the page described, a real photograph, and the size of a photograph
+            // before it may sit beside a picture the answer already has.
+            if (!RichAnswerCandidateQuality.confirms(candidate.evidence, wants, slot,
+                    fetch.decodedWidth, fetch.decodedHeight, photographLike)) {
+                entry.reason = slot <= 0
+                        ? RichAnswerTrace.Reason.INSUFFICIENT_SUBJECT_RELEVANCE
+                        : RichAnswerTrace.Reason.SECOND_SLOT_LOW_RELEVANCE;
                 continue;
             }
 
@@ -641,6 +709,8 @@ public final class RichAnswerCoordinator {
         /** Why this one was refused, or {@link RichAnswerTrace.Reason#NONE} while it is still in. */
         RichAnswerTrace.Reason reason = RichAnswerTrace.Reason.NONE;
         RichAnswerTrace.CandidateRecord record;
+        /** What the page said about this image in particular, worked out once during ranking. */
+        RichAnswerCandidateQuality.Evidence evidence = RichAnswerCandidateQuality.Evidence.NONE;
 
         Ranked(RichAnswerArticleImages.Candidate candidate, int score, int order) {
             this.candidate = candidate;
@@ -657,8 +727,11 @@ public final class RichAnswerCoordinator {
      * candidates at all" look identical from the outside and mean completely different things.
      */
     static List<Ranked> rank(RichAnswerPageFetcher.PageResult result, String pageUrl,
-                             List<String> subject, Set<String> seenAssets,
+                             RichAnswerCandidateQuality.Demand demand, Set<String> seenAssets,
                              RichAnswerTrace.PageRecord record) {
+        RichAnswerCandidateQuality.Demand wants =
+                demand == null ? RichAnswerCandidateQuality.Demand.NONE : demand;
+        List<String> subject = wants.subject;
         List<RichAnswerArticleImages.Candidate> all = new ArrayList<>(result.preview.candidates);
         all.addAll(result.articleImages);
 
@@ -675,16 +748,21 @@ public final class RichAnswerCoordinator {
             // and dropping the second at ranking time would throw the spare away before it was
             // needed. Whether they may both be *shown* is decided at acceptance instead.
             if (seenAssets != null && seenAssets.contains(assetKey(candidate.url))) {
-                rejected.add(reject(candidate, position, RichAnswerTrace.Reason.DUPLICATE));
+                rejected.add(reject(candidate, position, RichAnswerTrace.Reason.DUPLICATE,
+                        RichAnswerCandidateQuality.evaluate(candidate, wants)));
                 continue;
             }
             RichAnswerRelevance.Judgement judgement = RichAnswerRelevance.judge(
                     candidate, pageUrl, result.preview.title, subject, true);
+            RichAnswerCandidateQuality.Evidence evidence =
+                    RichAnswerCandidateQuality.evaluate(candidate, wants);
             if (!judgement.acceptable()) {
-                rejected.add(reject(candidate, position, judgement.reason));
+                rejected.add(reject(candidate, position, judgement.reason, evidence));
                 continue;
             }
-            scored.add(new Ranked(candidate, judgement.score, position));
+            Ranked entry = new Ranked(candidate, judgement.score, position);
+            entry.evidence = evidence;
+            scored.add(entry);
         }
 
         // Descending by score, and by document order when they tie, so a page's own first choice
@@ -695,16 +773,17 @@ public final class RichAnswerCoordinator {
         List<Ranked> out = new ArrayList<>();
         for (Ranked candidate : scored) {
             if (out.size() >= MAX_RANKED_CANDIDATES_PER_PAGE) {
-                rejected.add(reject(candidate.candidate, candidate.order, RichAnswerTrace.Reason.LOW_SCORE));
+                rejected.add(reject(candidate.candidate, candidate.order,
+                        RichAnswerTrace.Reason.LOW_SCORE, candidate.evidence));
                 continue;
             }
             out.add(candidate);
         }
         if (record != null) {
             for (Ranked candidate : out) candidate.record = describe(record, candidate.candidate,
-                    candidate.score, RichAnswerTrace.Reason.NONE);
+                    candidate.score, RichAnswerTrace.Reason.NONE, candidate.evidence);
             for (Ranked candidate : rejected) describe(record, candidate.candidate,
-                    candidate.score, candidate.reason);
+                    candidate.score, candidate.reason, candidate.evidence);
         } else {
             for (Ranked candidate : out) candidate.record = new RichAnswerTrace.CandidateRecord();
         }
@@ -712,16 +791,19 @@ public final class RichAnswerCoordinator {
     }
 
     private static Ranked reject(RichAnswerArticleImages.Candidate candidate, int order,
-                                 RichAnswerTrace.Reason reason) {
+                                 RichAnswerTrace.Reason reason,
+                                 RichAnswerCandidateQuality.Evidence evidence) {
         Ranked ranked = new Ranked(candidate, -1, order);
         ranked.reason = reason;
+        ranked.evidence = evidence == null ? RichAnswerCandidateQuality.Evidence.NONE : evidence;
         return ranked;
     }
 
     private static RichAnswerTrace.CandidateRecord describe(RichAnswerTrace.PageRecord page,
                                                             RichAnswerArticleImages.Candidate candidate,
                                                             int score,
-                                                            RichAnswerTrace.Reason reason) {
+                                                            RichAnswerTrace.Reason reason,
+                                                            RichAnswerCandidateQuality.Evidence evidence) {
         RichAnswerTrace.CandidateRecord entry = page.candidate();
         entry.origin = candidate.origin;
         entry.host = RichAnswerTrace.hostOf(candidate.url);
@@ -729,6 +811,14 @@ public final class RichAnswerCoordinator {
         entry.score = score;
         entry.declaredWidth = candidate.declaredWidth;
         entry.declaredHeight = candidate.declaredHeight;
+        entry.structure = candidate.structure;
+        // The candidate's own subject match, recorded beside the overall score precisely because
+        // the two disagreeing is the finding. No subject word is ever written down, only how many
+        // of them this image's own words matched.
+        if (evidence != null) {
+            entry.subjectScore = evidence.subjectScore;
+            entry.standing = evidence.standing;
+        }
         entry.reason = reason;
         return entry;
     }
@@ -760,11 +850,23 @@ public final class RichAnswerCoordinator {
      *
      * <p>The image's own caption is preferred over the page's, because a figcaption describes the
      * photograph while a page description describes the article. Beta 2 only had the second.
+     *
+     * <p><b>And the page's words are not borrowed by every image on it.</b> That fallback is honest
+     * for a page's declared preview image, which the page is asserting represents it. It is a lie
+     * for an arbitrary image found inside the document, and the device printed the lie: a small blue
+     * cube captioned {@code File:Anas platyrhynchos-male-in water.jpg}, which reads as a promise
+     * that the reader is looking at a Mallard. An article image with nothing of its own now carries
+     * nothing of its own, and {@link RichAnswerImage#attributionLine()} shows the source domain by
+     * itself - true, useful, and never a claim about what is in the picture.
      */
     static String captionFor(RichAnswerArticleImages.Candidate candidate,
                              RichAnswerPageMetadata.Preview preview) {
         String own = candidate == null ? "" : candidate.describedBy();
         if (!own.trim().isEmpty()) return trimCaption(own);
+        if (candidate != null && !candidate.origin.isPreview()
+                && candidate.origin != RichAnswerArticleImages.Origin.HOSTED_SEARCH) {
+            return "";
+        }
         return captionFor(preview);
     }
 

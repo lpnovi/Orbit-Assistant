@@ -59,6 +59,43 @@ final class TestPng {
         return encode(width, height, pattern(width, height, seed, amplitude));
     }
 
+    /**
+     * The blue cube: a small solid shape centred on a large flat field.
+     *
+     * <p>The fixture for Beta 9. What the device produced beside a real Mallard photograph was
+     * exactly this shape - a large, valid, technically-large-enough raster that is a piece of
+     * interface graphic rather than a picture of anything. It has to be genuinely distinct from the
+     * photograph it sits beside, or the perceptual duplicate check would refuse it for the wrong
+     * reason and prove nothing.
+     *
+     * @param coverage how much of each axis the shape occupies, 0 to 1. A cube is about an eighth.
+     */
+    static byte[] graphic(int width, int height, double coverage) {
+        return encode(width, height, shapeOnFlatField(width, height, coverage));
+    }
+
+    private static byte[] shapeOnFlatField(int width, int height, double coverage) {
+        byte[] raw = new byte[height * (1 + width * 3)];
+        double half = Math.max(0.01, Math.min(0.9, coverage)) / 2.0;
+        int left = (int) ((0.5 - half) * width);
+        int right = (int) ((0.5 + half) * width);
+        int top = (int) ((0.5 - half) * height);
+        int bottom = (int) ((0.5 + half) * height);
+        for (int y = 0; y < height; y++) {
+            int row = y * (1 + width * 3);
+            raw[row] = 0;
+            boolean insideY = y >= top && y < bottom;
+            for (int x = 0; x < width; x++) {
+                boolean shape = insideY && x >= left && x < right;
+                // A near-black card carrying one saturated blue block, which is what the phone drew.
+                raw[row + 1 + x * 3] = (byte) (shape ? 40 : 22);
+                raw[row + 1 + x * 3 + 1] = (byte) (shape ? 96 : 22);
+                raw[row + 1 + x * 3 + 2] = (byte) (shape ? 220 : 28);
+            }
+        }
+        return raw;
+    }
+
     private static byte[] flat(int width, int height) {
         byte[] raw = new byte[height * (1 + width * 3)];
         for (int y = 0; y < height; y++) {

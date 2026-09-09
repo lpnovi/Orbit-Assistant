@@ -128,7 +128,7 @@ public final class RichAnswerVisualDedupeTest {
                                           RichAnswerTrace.Attempt trace) {
         trace.requestedImages = wanted;
         return RichAnswerCoordinator.resolve(context, sources, wanted, 0,
-                RichAnswerSubject.tokensOf(prompt), trace);
+                RichAnswerCandidateQuality.Demand.of(prompt), trace);
     }
 
     private List<RichAnswerImage> resolve(List<String> sources,
@@ -137,7 +137,7 @@ public final class RichAnswerVisualDedupeTest {
         trace.requestedImages = wanted;
         trace.discoveryHintsConsidered = hints.size();
         return RichAnswerCoordinator.resolve(context, sources, hints, wanted, 0,
-                RichAnswerSubject.tokensOf(prompt), trace);
+                RichAnswerCandidateQuality.Demand.of(prompt), trace);
     }
 
     /** One image-shaped discovery hint, built the way the answer parser builds one. */

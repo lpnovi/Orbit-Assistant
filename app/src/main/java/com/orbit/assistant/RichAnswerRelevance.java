@@ -88,6 +88,38 @@ public final class RichAnswerRelevance {
             "identify", "identification", "how to tell", "how do i tell", "how can i tell",
             "tell apart", "diagram of", "map of", "flag of", "picture", "photo"};
 
+    /**
+     * Words that name a picture that is not a photograph.
+     *
+     * <p>Checked first and allowed to overrule everything, because the decoded-bitmap graphic check
+     * is exactly wrong for these. A flag is two or three flat colours; a diagram is line work on
+     * white; a logo is a shape on a field. Every one of them would fail a photograph test and every
+     * one of them is the correct answer to the question that asked for it.
+     */
+    private static final String[] NON_PHOTOGRAPHIC_SUBJECTS = {
+            "diagram", "diagrams", "map", "maps", "flag", "flags", "logo", "logos",
+            "chart", "charts", "graph", "graphs", "illustration", "illustrations",
+            "drawing", "drawings", "painting", "paintings", "artwork", "sketch", "sketches",
+            "screenshot", "screenshots", "icon", "icons", "infographic", "infographics",
+            "blueprint", "blueprints", "schematic", "schematics", "emblem", "emblems",
+            "crest", "seal", "comic", "comics", "cartoon", "cartoons", "meme", "memes",
+            "poster", "posters", "typeface", "font", "wireframe", "mockup"};
+
+    /** The same idea where it is written as a phrase rather than as one word. */
+    private static final String[] NON_PHOTOGRAPHIC_PHRASES = {
+            "coat of arms", "line art", "clip art", "vector art", "concept art",
+            "colour palette", "color palette", "font sample", "family tree"};
+
+    /**
+     * Words that mean the user wants a photograph rather than a picture in general.
+     *
+     * <p>Matched as whole words for the same reason every other picture word is: "photosynthesis"
+     * is not a request to see anything.
+     */
+    private static final String[] PHOTOGRAPH_WORDS = {
+            "photo", "photos", "photograph", "photographs", "photography",
+            "picture", "pictures", "pic", "pics", "snapshot", "snapshots"};
+
     /** Domains whose declared preview image is nearly always branding rather than content. */
     private static final String[] BRANDED_PREVIEW_HOSTS = {
             "twitter.com", "x.com", "facebook.com", "instagram.com", "linkedin.com",
@@ -151,6 +183,32 @@ public final class RichAnswerRelevance {
         return containsAny(question, STRONG_VISUAL_SUBJECTS)
                 ? RichAnswerTrace.Intent.STRONG_VISUAL
                 : RichAnswerTrace.Intent.VISUAL;
+    }
+
+    /**
+     * Whether this question wants photographs, as opposed to pictures of any kind.
+     *
+     * <p><b>The switch that keeps Beta 9's graphic check off the things it would ruin.</b>
+     * {@link RichAnswerVisualQuality} refuses a large flat field with a small shape on it, which is
+     * a correct description of a blue cube and an equally correct description of the flag of
+     * Ireland, a circuit diagram and the Nike logo. Applying it to those would replace one bug with
+     * a worse one, so a question that names the kind of picture it wants is answered with that kind
+     * and the check never runs.
+     *
+     * <p>Two rules, in order. A question that names a non-photographic thing is not asking for
+     * photographs, whatever else it says. Otherwise a photograph word, or plain visual phrasing
+     * about a real-world subject, means a photograph is what a good answer carries: "show me pics
+     * of a mallard duck" and "what does a mallard duck look like" both want the bird, not a
+     * rendering of one.
+     */
+    public static boolean wantsPhotographs(String prompt) {
+        String question = normalize(prompt);
+        if (question.isEmpty()) return false;
+        List<String> words = words(question);
+        if (hasAny(words, NON_PHOTOGRAPHIC_SUBJECTS)) return false;
+        if (containsAny(question, NON_PHOTOGRAPHIC_PHRASES)) return false;
+        if (hasAny(words, PHOTOGRAPH_WORDS)) return true;
+        return mentionsImageWord(words) || containsAny(question, STRONG_VISUAL_SUBJECTS);
     }
 
     /** A score, and - when there is not one - the reason, in the words Diagnostics prints. */

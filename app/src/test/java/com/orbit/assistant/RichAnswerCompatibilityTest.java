@@ -352,7 +352,7 @@ public final class RichAnswerCompatibilityTest {
     private RichAnswerImage bestOf(RichAnswerPageFetcher.PageResult page,
                                    java.util.Set<String> seen) {
         return RichAnswerCoordinator.bestFrom(context, page, ROBIN_PAGE, 0,
-                java.util.Collections.emptyList(), seen, new RichAnswerTrace.PageRecord());
+                RichAnswerCandidateQuality.Demand.NONE, seen, new RichAnswerTrace.PageRecord());
     }
 
     /**
@@ -412,7 +412,7 @@ public final class RichAnswerCompatibilityTest {
                 head.toString(), "https://example.org/p", 200, "text/html", 0);
 
         assertNull(RichAnswerCoordinator.bestFrom(context, page, "https://example.org/p", 0,
-                java.util.Collections.emptyList(), new LinkedHashSet<>(),
+                RichAnswerCandidateQuality.Demand.NONE, new LinkedHashSet<>(),
                 new RichAnswerTrace.PageRecord()));
         assertTrue("at most the declared number of attempts",
                 fake.requested.size() <= RichAnswerCoordinator.MAX_FETCHED_CANDIDATES_PER_PAGE);
@@ -460,7 +460,7 @@ public final class RichAnswerCompatibilityTest {
     private List<String> rankedUrls(String... declared) {
         List<String> out = new ArrayList<>();
         for (RichAnswerCoordinator.Ranked ranked : RichAnswerCoordinator.rank(pageOf(declared),
-                ROBIN_PAGE, java.util.Collections.emptyList(), new LinkedHashSet<>(),
+                ROBIN_PAGE, RichAnswerCandidateQuality.Demand.NONE, new LinkedHashSet<>(),
                 new RichAnswerTrace.PageRecord())) {
             out.add(ranked.candidate.url);
         }

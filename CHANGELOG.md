@@ -824,3 +824,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Every other question is unchanged, and a question about a picture you attached never searches the web.
   - If your account will not accept a required search, Orbit quietly goes back to asking and never shows an error.
   - Diagnostics now reports how many picture questions required a search and how many actually searched.
+- **v0.7.8.5-beta.9**: A second picture now has to be worth showing, or Orbit shows one.
+  - Each picture must relate to what you asked about on its own, not merely sit on a relevant page.
+  - Requests for photos now reject obvious graphics, icons and blank placeholders instead of showing them.
+  - Asking for several pictures can now return one excellent photo when no second one qualifies.
+  - Captions no longer borrow a page title for an image the page never described, so nothing is mislabelled.
+  - Diagrams, maps, flags, logos and illustrations are unaffected and still appear as before.
+  - Diagnostics now reports each picture's own subject match and why a second one was refused.

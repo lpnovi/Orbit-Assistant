@@ -124,6 +124,30 @@ public final class RichAnswerTrace {
          */
         VISUAL_DUPLICATE,
         LOGO_OR_CHROME,
+        /**
+         * Nothing the page said about this image tied it to what was asked about.
+         *
+         * <p>Deliberately not {@link #LOGO_OR_CHROME}, which means the image named itself as
+         * furniture. This one means the page never said anything about it at all, and the only
+         * thing connecting it to the subject was the document it happened to sit in.
+         */
+        INSUFFICIENT_SUBJECT_RELEVANCE,
+        /**
+         * The picture downloaded and turned out to be a graphic rather than a photograph.
+         *
+         * <p>The blue cube. Recorded separately from {@link #TOO_SMALL} and {@link #LOGO_OR_CHROME}
+         * because it was neither: large enough, not named as chrome, and still not a photograph of
+         * anything.
+         */
+        GRAPHIC_OR_PLACEHOLDER,
+        /**
+         * Good enough to lead an answer, not good enough to be the second picture in one.
+         *
+         * <p>A request for two pictures is a request for up to two useful pictures. When a picture
+         * is already in hand, a candidate with no evidence of its own is refused and the answer
+         * shows one - which is the correct outcome and used to look identical to a failure.
+         */
+        SECOND_SLOT_LOW_RELEVANCE,
         NO_CANDIDATES,
         PAGE_FETCH_FAILED,
         TIMEOUT,
@@ -158,6 +182,21 @@ public final class RichAnswerTrace {
          * report could not say that at all. A picture too flat to fingerprint has no token.
          */
         public String visualId = "";
+        /**
+         * How well this image's <em>own</em> words and filename matched the subject.
+         *
+         * <p>Separate from {@link #score}, and that separation is the finding Beta 9 makes
+         * legible. A candidate can rank well on structure, size and the page it belongs to while
+         * having nothing candidate-specific about it at all, which is exactly how a page graphic
+         * became the second picture in a Mallard answer. A row reading {@code subject 0} beside a
+         * healthy score is that failure, written down. The words themselves are never recorded.
+         */
+        public int subjectScore;
+        /** Where the page put this image: 1 content, 0 neutral, -1 chrome. */
+        public int structure;
+        /** How firmly the page tied this image to the subject, as a name rather than a number. */
+        public RichAnswerCandidateQuality.Standing standing =
+                RichAnswerCandidateQuality.Standing.PROVISIONAL;
         public Reason reason = Reason.NONE;
 
         /** One compact human line, e.g. {@code ARTICLE_IMG jpg · 800x600 · accepted}. */
@@ -165,6 +204,9 @@ public final class RichAnswerTrace {
             StringBuilder b = new StringBuilder(origin.name());
             if (!path.isEmpty()) b.append(' ').append(path);
             b.append(" · score ").append(score);
+            b.append(" · subject ").append(subjectScore);
+            b.append(" · ").append(structureName());
+            b.append(" · ").append(standing.name().toLowerCase(Locale.US));
             if (declaredWidth > 0 && declaredHeight > 0) {
                 b.append(" · declared ").append(declaredWidth).append('x').append(declaredHeight);
             }
@@ -182,6 +224,13 @@ public final class RichAnswerTrace {
             if (!visualId.isEmpty()) b.append(" · Visual ID ").append(visualId);
             b.append(" · ").append(reason == Reason.ACCEPTED ? "accepted" : reason.name());
             return b.toString();
+        }
+
+        /** Where the page put this image, in a word. */
+        private String structureName() {
+            if (structure == RichAnswerArticleImages.STRUCTURE_CONTENT) return "content";
+            if (structure == RichAnswerArticleImages.STRUCTURE_CHROME) return "chrome";
+            return "neutral";
         }
     }
 
@@ -268,6 +317,17 @@ public final class RichAnswerTrace {
             int total = 0;
             for (PageRecord page : pages) {
                 for (CandidateRecord candidate : page.candidates) if (candidate.fetched) total++;
+            }
+            return total;
+        }
+
+        /** How many candidates were refused for one particular reason. */
+        public int rejections(Reason reason) {
+            int total = 0;
+            for (PageRecord page : pages) {
+                for (CandidateRecord candidate : page.candidates) {
+                    if (candidate.reason == reason) total++;
+                }
             }
             return total;
         }
@@ -443,17 +503,31 @@ public final class RichAnswerTrace {
         b.append("Candidates considered: ").append(attempt.candidatesConsidered()).append('\n');
         b.append("Images fetched: ").append(attempt.imagesFetched()).append('\n');
         b.append("Visual duplicates rejected: ").append(attempt.visualDuplicates).append('\n');
+        // Beta 9's two new refusals, counted here so a plural request answered with one picture
+        // says which of the three completely different reasons it was.
+        b.append("Irrelevant candidates rejected: ")
+                .append(attempt.rejections(Reason.INSUFFICIENT_SUBJECT_RELEVANCE)
+                        + attempt.rejections(Reason.SECOND_SLOT_LOW_RELEVANCE)).append('\n');
+        b.append("Graphics and placeholders rejected: ")
+                .append(attempt.rejections(Reason.GRAPHIC_OR_PLACEHOLDER)).append('\n');
         b.append("Result: ").append(readable(attempt.outcome));
         // The one line that explains a plural request answered with a single picture. Deliberately
         // here and nowhere else: showing one good photograph is the right outcome, so the shortfall
         // belongs in a report somebody opened on purpose rather than in the chat.
         if (attempt.requestedImages > 1 && attempt.attachedImages == 1) {
-            // Two shapes of the same shortfall, and they mean different things. One says the web
-            // only offered one photograph of this subject, which is correct behaviour; the other
-            // says nothing else on the pages was usable at all.
-            b.append(attempt.visualDuplicates > 0
-                    ? "\nSecond image unavailable: every other candidate was the same photograph"
-                    : "\nSecond image unavailable");
+            // Four shapes of the same shortfall, and they mean completely different things. Two of
+            // them are Orbit working correctly: the web only had one photograph of this subject, or
+            // the only other thing on offer was a graphic. Showing one good picture is the right
+            // answer in both, and a report that could not say which is which is what sent a blue
+            // cube to a physical device.
+            b.append("\nSecond image unavailable");
+            if (attempt.rejections(Reason.GRAPHIC_OR_PLACEHOLDER) > 0) {
+                b.append(": the remaining candidates were graphics rather than photographs");
+            } else if (attempt.rejections(Reason.SECOND_SLOT_LOW_RELEVANCE) > 0) {
+                b.append(": no other image on the pages was described as the subject");
+            } else if (attempt.visualDuplicates > 0) {
+                b.append(": every other candidate was the same photograph");
+            }
         }
         for (PageRecord page : attempt.pages) {
             b.append("\n\n").append(page.host.isEmpty() ? "(unknown host)" : page.host);
@@ -577,6 +651,9 @@ public final class RichAnswerTrace {
                 c.put("w", candidate.decodedWidth);
                 c.put("ht", candidate.decodedHeight);
                 c.put("vid", candidate.visualId);
+                c.put("ss", candidate.subjectScore);
+                c.put("st", candidate.structure);
+                c.put("sd", candidate.standing.name());
                 c.put("why", candidate.reason.name());
                 candidates.put(c);
             }
@@ -640,6 +717,9 @@ public final class RichAnswerTrace {
                 candidate.decodedWidth = c.optInt("w", 0);
                 candidate.decodedHeight = c.optInt("ht", 0);
                 candidate.visualId = c.optString("vid", "");
+                candidate.subjectScore = c.optInt("ss", 0);
+                candidate.structure = c.optInt("st", 0);
+                candidate.standing = standing(c.optString("sd", "PROVISIONAL"));
                 candidate.reason = reason(c.optString("why", "NONE"));
             }
         }
@@ -660,6 +740,14 @@ public final class RichAnswerTrace {
 
     private static Reason reason(String name) {
         try { return Reason.valueOf(name); } catch (Exception ignored) { return Reason.NONE; }
+    }
+
+    private static RichAnswerCandidateQuality.Standing standing(String name) {
+        try {
+            return RichAnswerCandidateQuality.Standing.valueOf(name);
+        } catch (Exception ignored) {
+            return RichAnswerCandidateQuality.Standing.PROVISIONAL;
+        }
     }
 
     private static RichAnswerArticleImages.Origin origin(String name) {

@@ -108,11 +108,29 @@ public final class RichAnswerMultiImageTest {
 
     private void serveImage(String url) { serveImage(url, 900, 700); }
 
+    /**
+     * A real photograph, one per underlying asset.
+     *
+     * <p>Seeded on the canonical asset rather than on the address, so three widths of one Mallard
+     * really are one photograph and two different files really are two - which is what the
+     * assertions here are about. Patterned rather than flat because Beta 9 refuses a flat image for
+     * a photograph request, and a fixture that is a solid grey rectangle would be testing that
+     * refusal instead of the thing under test.
+     */
     private void serveImage(String url, int width, int height) {
-        byte[] bytes = TestPng.rgb(width, height);
+        String asset = RichAnswerAssetIdentity.canonical(url);
+        Integer seed = seeds.get(asset);
+        if (seed == null) {
+            seed = seeds.size() + 1;
+            seeds.put(asset, seed);
+        }
+        byte[] bytes = TestPng.photo(width, height, seed);
         images.responses.put(url, new RemoteImageLoader.Response(
                 200, "image/jpeg", null, bytes.length, new ByteArrayInputStream(bytes)));
     }
+
+    /** One seed per underlying asset, handed out in order so no two fixtures collide. */
+    private final Map<String, Integer> seeds = new LinkedHashMap<>();
 
     private RichAnswerTrace.Attempt attempt() {
         RichAnswerTrace.Attempt attempt = new RichAnswerTrace.Attempt();
@@ -127,7 +145,7 @@ public final class RichAnswerMultiImageTest {
                                           RichAnswerTrace.Attempt trace) {
         trace.requestedImages = wanted;
         return RichAnswerCoordinator.resolve(context, sources, wanted, 0,
-                RichAnswerSubject.tokensOf(prompt), trace);
+                RichAnswerCandidateQuality.Demand.of(prompt), trace);
     }
 
     private List<RichAnswerImage> resolve(List<String> sources,
@@ -136,7 +154,7 @@ public final class RichAnswerMultiImageTest {
         trace.requestedImages = wanted;
         trace.discoveryHintsConsidered = hints.size();
         return RichAnswerCoordinator.resolve(context, sources, hints, wanted, 0,
-                RichAnswerSubject.tokensOf(prompt), trace);
+                RichAnswerCandidateQuality.Demand.of(prompt), trace);
     }
 
     private static List<String> urlsOf(List<RichAnswerImage> found) {

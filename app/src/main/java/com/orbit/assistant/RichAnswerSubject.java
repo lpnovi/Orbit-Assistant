@@ -65,6 +65,11 @@ public final class RichAnswerSubject {
             "describe", "description", "explain", "tell", "show", "showing", "shown", "display",
             "answer", "answers", "response", "reply", "orbit", "assistant",
             "picture", "pictures", "photo", "photos", "photograph", "photographs",
+            // Beta 9. "Show me pics of a mallard duck" used to make "pic" a subject word, so any
+            // candidate whose path contained it scored as a subject match - which is precisely the
+            // evidence the new candidate gate leans on. A word for a picture is never the subject.
+            "pic", "pics", "snapshot", "snapshots", "shot", "shots", "graphic", "graphics",
+            "visual", "visuals", "different", "difference", "differences", "between",
             "image", "images", "inline", "sourced", "source", "sources", "caption", "captions",
             "look", "looks", "looking", "appearance", "including", "include", "included",
             "important", "useful", "good", "best", "trustworthy", "preferably", "features",

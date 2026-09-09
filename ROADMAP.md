@@ -254,6 +254,32 @@ picture, on a build where the whole picture pipeline is working.
 - **Diagnostics report how many picture questions required a search** and how many of those actually
   produced one. Counts only, never a question, an answer or a query
 
+**Shipped in `0.7.8.5-beta.9` - Rich Answers candidate quality and caption correctness:**
+
+Beta 8's search worked, and physical testing found what the pipeline still could not tell apart. A
+plural Mallard request returned one genuine photograph and, beside it, a large blank card carrying a
+small blue cube - a different image, large enough, decoding cleanly, and a picture of nothing. Every
+check the resolver had was about whether a candidate was distinct, and none of them was about
+whether it was useful.
+
+- **Page relevance and image relevance are separated.** A page titled for the subject still ranks
+  well as a page. It is no longer evidence about an individual image on it, which now needs its own
+  alt text, caption, filename or article placement to qualify
+- **The second slot has to be earned.** Once one good picture is in hand, a candidate with nothing
+  candidate-specific about it is refused rather than used to reach the requested count. A request for
+  two pictures is a request for up to two useful pictures
+- **Photograph requests reject graphics.** A small local check on the decoded bitmap refuses a shape
+  on a flat field, a blank placeholder or interface artwork. No model, no dependency, and no attempt
+  to recognise a subject
+- **Diagrams, maps, flags, logos, illustrations, screenshots and artwork are untouched.** A question
+  that names the kind of picture it wants never has the photograph rules applied to it
+- **Captions stopped borrowing page titles.** An article image the page never described carries no
+  caption and is attributed by source domain, so nothing is labelled as depicting a subject it does
+  not
+- **Diagnostics name the refusal.** Each candidate records its own subject match, its structural
+  placement and its standing, and a plural request answered with one picture says which of the three
+  reasons it was
+
 **Still ahead in `0.7.8.5`, depending on real-device testing:**
 
 - Richer multi-image presentation, where a comparison genuinely needs two pictures side by side
