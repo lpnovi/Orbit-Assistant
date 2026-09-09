@@ -193,6 +193,27 @@ pages reported by the provider's hosted-search events.
 - **Every protection held.** A recovered source passes exactly the same URL policy as a structured
   one, so this changed which sources are available and nothing about which are trusted
 
+**Shipped in `0.7.8.5-beta.6` - Rich Answers multi-image and reliability refinement:**
+
+Physical testing confirmed the Beta 5 provenance fix works, and then showed the next problem: "show
+me pics of a mallard duck" recovered its source, ranked seventeen candidates and came back with one
+photograph. Two separate rules were doing it, and both are now gone.
+
+- **How many pictures is its own question.** Whether a picture helps and how many were asked for are
+  decided separately, so a plural request asks for two while "what does a mallard look like" still
+  asks for one. Written numbers are respected up to Orbit's unchanged limit of two
+- **One page may supply both pictures.** The one-per-page rule made sense when two pictures meant a
+  comparison; it guaranteed a single-source answer could never satisfy a plural request
+- **Two widths are not two photographs.** Resized copies, Wikimedia thumbnail paths and query-based
+  resizes now resolve to one asset identity, so the same duck is never shown twice
+- **A bounded secondary image search.** An explicitly plural request that runs out of trusted sources
+  may follow a few image-oriented links from the answer. These are where a picture is, never a
+  citation, and never merged into the answer's sources
+- **Broken written image links fail quietly.** One muted line instead of a large HTTP error card
+- **Diagnostics report requested against attached**, plus bounded discovery-hint counts
+- **Every protection held.** Page budgets, per-page download budgets, URL policy, redirect
+  revalidation, byte ceilings and decode bounds are all unchanged
+
 **Still ahead in `0.7.8.5`, depending on real-device testing:**
 
 - Richer multi-image presentation, where a comparison genuinely needs two pictures side by side

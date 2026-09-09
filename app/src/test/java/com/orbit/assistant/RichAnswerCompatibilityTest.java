@@ -420,13 +420,30 @@ public final class RichAnswerCompatibilityTest {
                 page.preview.imageUrls.size() <= RichAnswerPageMetadata.MAX_CANDIDATES);
     }
 
-    /** A picture already used earlier in the same answer is not used again. */
+    /**
+     * A picture already used earlier in the same answer is not used again.
+     *
+     * <p>The set tracks assets rather than addresses from Beta 6 onwards, which is what lets a
+     * resized copy of an accepted photograph be recognised as the same picture.
+     */
     @Test public void anAlreadyUsedPictureIsNotRepeated() {
         String only = "https://cdn.example.org/photographs/robin.jpg";
         serveImage(only);
         LinkedHashSet<String> seen = new LinkedHashSet<>();
-        seen.add(only);
+        seen.add(RichAnswerCoordinator.assetKey(only));
         assertNull(bestOf(pageOf(only), seen));
+    }
+
+    /** And a different width of that same photograph is the same picture, not a second one. */
+    @Test public void aResizedCopyOfAnAlreadyUsedPictureIsAlsoRefused() {
+        String used = "https://cdn.example.org/photographs/robin-1920x1080.jpg";
+        String resized = "https://cdn.example.org/photographs/robin-640x360.jpg";
+        serveImage(resized);
+        LinkedHashSet<String> seen = new LinkedHashSet<>();
+        seen.add(RichAnswerCoordinator.assetKey(used));
+        assertNull(bestOf(pageOf(resized), seen));
+        assertFalse("and a known duplicate must not cost a request",
+                fake.requested.contains(resized));
     }
 
     /** Ranking is by score, and stable when scores tie. */

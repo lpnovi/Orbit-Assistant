@@ -178,6 +178,62 @@ public final class RichAnswerPersistenceTest {
         assertFalse(stored.messages.get(1).hasRichImages());
     }
 
+    /**
+     * A two-picture result from a superseded request cannot land on the request that replaced it.
+     *
+     * <p>Beta 6 makes the discovery window longer: a plural request may read a second page, or
+     * follow a discovery hint, after the first picture is already in hand. A user who sends
+     * something else during that window must not receive the first request's photographs, and
+     * neither picture may leak across on its own.
+     */
+    @Test public void aLateTwoPictureResultCannotAttachToTheRequestThatSupersededIt() {
+        String id = ConversationStore.newId();
+        String first = "req-a";
+        String second = "req-b";
+        AssistantClient.History answerA =
+                assistant("A mallard drake has a green head.").withReplyProvenance(first,
+                        Collections.<String>emptyList());
+        AssistantClient.History answerB =
+                assistant("A bluebird is smaller than a robin.").withReplyProvenance(second,
+                        Collections.<String>emptyList());
+        ConversationStore.save(context, id, Arrays.asList(
+                user("show me pics of a mallard duck"), answerA,
+                user("and a bluebird"), answerB));
+
+        List<RichAnswerImage> both = Arrays.asList(picture("mallard"), picture("mallard-hen"));
+        assertFalse("the superseded request owns neither answer that is on screen now",
+                ConversationStore.attachRichImages(context, id, first,
+                        "A bluebird is smaller than a robin.", both));
+        assertFalse("and cannot borrow the newer request's ownership either",
+                ConversationStore.attachRichImages(context, id, second,
+                        "A mallard drake has a green head.", both));
+
+        ConversationStore.Conversation stored = ConversationStore.load(context, id);
+        assertFalse(stored.messages.get(1).hasRichImages());
+        assertFalse(stored.messages.get(3).hasRichImages());
+
+        assertTrue("while its own answer still accepts both of its pictures",
+                ConversationStore.attachRichImages(context, id, first,
+                        "A mallard drake has a green head.", both));
+        ConversationStore.Conversation after = ConversationStore.load(context, id);
+        assertEquals(2, after.messages.get(1).richImages.size());
+        assertFalse("and nothing reached the newer answer",
+                after.messages.get(3).hasRichImages());
+    }
+
+    /** An answer that ends up with one picture is a complete answer, not a failed one. */
+    @Test public void aPluralRequestThatFoundOnePictureStillAttachesIt() {
+        String id = ConversationStore.newId();
+        ConversationStore.save(context, id, Arrays.asList(
+                user("show me pics of a mallard duck"),
+                assistant("Here are some useful mallard references.")));
+
+        assertTrue(ConversationStore.attachRichImages(context, id,
+                "Here are some useful mallard references.",
+                Collections.singletonList(picture("mallard"))));
+        assertEquals(1, ConversationStore.load(context, id).messages.get(1).richImages.size());
+    }
+
     /** And a second attach onto an answer that already has pictures is refused. */
     @Test public void anAnswerIsOnlyDecoratedOnce() {
         String id = ConversationStore.newId();

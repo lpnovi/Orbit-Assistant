@@ -190,6 +190,105 @@ public final class RichAnswerRenderingTest {
         assertFalse(RichAnswerPlacement.hasAnyImage(Collections.<RichAnswerImage>emptyList()));
     }
 
+    // ---- Beta 6: renditions and quiet failures ----------------------------------------------------
+
+    private static final String COMMONS_UPLOAD =
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Mallard-Duck.jpg/";
+
+    /**
+     * A model writing a different width of the picture Orbit attached is writing the same picture.
+     *
+     * <p>The shape the device produced: the structured image resolved to the 1920 rendition while
+     * the model's own Markdown named the 1280. Two addresses, one photograph, and drawing both
+     * would put the same duck on screen twice.
+     */
+    @Test public void aMarkdownImageAtADifferentResolutionIsSuppressed() {
+        RichAnswerImage rich = attached(COMMONS_UPLOAD + "1920px-Mallard-Duck.jpg",
+                "https://commons.wikimedia.org/wiki/File:Mallard-Duck.jpg");
+        assertTrue(OrbitRichResponseRenderer.duplicatesRichImage(
+                imageBlock("![A mallard](" + COMMONS_UPLOAD + "1280px-Mallard-Duck.jpg)"),
+                Collections.singletonList(rich)));
+    }
+
+    /** A genuinely different photograph on the same host is still drawn. */
+    @Test public void aDifferentPhotographIsNotSuppressedByTheRenditionRule() {
+        RichAnswerImage rich = attached(COMMONS_UPLOAD + "1920px-Mallard-Duck.jpg",
+                "https://commons.wikimedia.org/wiki/File:Mallard-Duck.jpg");
+        assertFalse(OrbitRichResponseRenderer.duplicatesRichImage(
+                imageBlock("![A mallard hen](https://upload.wikimedia.org/wikipedia/commons/"
+                        + "thumb/2/2a/Mallard-Female.jpg/1280px-Mallard-Female.jpg)"),
+                Collections.singletonList(rich)));
+    }
+
+    /**
+     * A model-written image that will not load collapses to one quiet line.
+     *
+     * <p>The physical failure this replaces was a reserved 150dp box, a heavy card and the words
+     * <i>HTTP 404</i> sitting in the middle of an otherwise correct answer. The answer looked
+     * broken when only a decoration was.
+     */
+    @Test public void aFailedMarkdownImageCollapsesToOneQuietLine() {
+        android.content.Context context = org.robolectric.RuntimeEnvironment.getApplication();
+        android.widget.FrameLayout frame = new android.widget.FrameLayout(context);
+        frame.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(context, 150)));
+        frame.addView(new android.widget.ProgressBar(context));
+
+        OrbitRichResponseRenderer.showImageFailure(context, frame, "A mallard duck",
+                "https://cdn.example.org/photos/mallard.jpg", "HTTP 404", android.graphics.Color.BLACK);
+
+        assertEquals("the reserved picture area must be released",
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                frame.getLayoutParams().height);
+        String text = textOf(frame);
+        assertTrue("it still says what happened", text.contains("Image unavailable"));
+        assertFalse("but never in the transport's words", text.contains("404"));
+        assertFalse(text.contains("could not be loaded"));
+        assertTrue("and opening the original is still offered", text.contains("Open image"));
+    }
+
+    /** An address Orbit refused for safety is never offered for opening. */
+    @Test public void aBlockedMarkdownImageOffersNothingToOpen() {
+        android.content.Context context = org.robolectric.RuntimeEnvironment.getApplication();
+        android.widget.FrameLayout frame = new android.widget.FrameLayout(context);
+        frame.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(context, 150)));
+
+        OrbitRichResponseRenderer.showImageFailure(context, frame, "", "https://127.0.0.1/a.jpg",
+                "Orbit blocked this private or unsafe image address", android.graphics.Color.BLACK);
+
+        String text = textOf(frame);
+        assertTrue(text.contains("Image unavailable"));
+        assertFalse("a refused address is not somewhere to send anybody",
+                text.contains("Open image"));
+    }
+
+    /** No failure path may reserve a picture-sized hole in the answer. */
+    @Test public void noFailurePathReservesAPictureSizedArea() {
+        String renderer = ComponentUninstallTest.readRepositoryFile(
+                "app/src/main/java/com/orbit/assistant/OrbitRichResponseRenderer.java");
+        int failure = renderer.indexOf("static void showImageFailure");
+        int end = renderer.indexOf("\n    private static View linkedFallback", failure);
+        String body = renderer.substring(failure, end);
+        assertTrue("the reserved height is released before anything is drawn",
+                body.contains("ViewGroup.LayoutParams.WRAP_CONTENT"));
+        assertFalse("and the transport category never reaches the chat",
+                body.contains("error == null || error.isEmpty()"));
+        assertFalse("no button-sized failure panel", body.contains("new Button(c)"));
+    }
+
+    private static String textOf(android.view.View view) {
+        if (view instanceof android.widget.TextView) {
+            return ((android.widget.TextView) view).getText().toString() + " ";
+        }
+        StringBuilder out = new StringBuilder();
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) out.append(textOf(group.getChildAt(i)));
+        }
+        return out.toString();
+    }
+
     /** Two different attached pictures both survive the duplicate check. */
     @Test public void twoDistinctAttachedPicturesAreBothKept() {
         List<RichAnswerImage> attached = Arrays.asList(

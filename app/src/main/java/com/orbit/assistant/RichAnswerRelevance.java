@@ -1,5 +1,7 @@
 package com.orbit.assistant;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -120,6 +122,10 @@ public final class RichAnswerRelevance {
         // holding. Adding a stranger's photograph of a different bird would be actively confusing.
         String answer = normalize(answerText);
         if (containsAny(question, NON_VISUAL_SUBJECTS)) return false;
+        // Asked as whole words before the phrase list, so "mallard duck photos" and "I want
+        // pictures of a mallard duck" - neither of which contains any of the phrases below - are
+        // recognised as somebody asking to see something, while "photosynthesis" is not.
+        if (mentionsImageWord(words(question))) return true;
         if (containsAny(question, VISUAL_SUBJECTS)) return true;
         // The answer may reveal a visual subject the question did not name - "tell me about the
         // Hagia Sophia" is not phrased visually and is obviously a place.
@@ -139,6 +145,9 @@ public final class RichAnswerRelevance {
     public static RichAnswerTrace.Intent intentFor(String prompt, String answerText) {
         if (!answerWantsImage(prompt, answerText)) return RichAnswerTrace.Intent.NONE;
         String question = normalize(prompt);
+        // Naming a picture at all is the strongest form this question takes: "mallard duck photos"
+        // is a request to see a mallard, however few of the phrases below it happens to contain.
+        if (mentionsImageWord(words(question))) return RichAnswerTrace.Intent.STRONG_VISUAL;
         return containsAny(question, STRONG_VISUAL_SUBJECTS)
                 ? RichAnswerTrace.Intent.STRONG_VISUAL
                 : RichAnswerTrace.Intent.VISUAL;
@@ -328,14 +337,150 @@ public final class RichAnswerRelevance {
     /**
      * How many pictures this answer may carry.
      *
-     * <p>One by default. Two only where the question is explicitly a comparison, because that is
-     * the one shape where a second picture answers something the first cannot.
+     * <p><b>Two questions, not one.</b> {@link #intentFor} decides whether Rich Answers runs at
+     * all; this decides how many pictures it should try to bring back, and Beta 5 conflated them
+     * badly enough to be the release's headline bug. "Show me pics of a mallard duck" was strongly
+     * visual, found its source, found seventeen article candidates - and asked for exactly one
+     * picture, because the only thing that had ever earned a second was a comparison. The user
+     * wrote a plural noun and got a singular answer.
+     *
+     * <p>Four rules, in order, and all of them local, deterministic and free:
+     * <ol>
+     *   <li>A number written next to a picture word wins, clamped into what Orbit will ever show -
+     *       "five pictures" is two, "one photo" is one.</li>
+     *   <li>A plural picture word means two. This is the whole fix: pictures, pics, photos,
+     *       images, photographs.</li>
+     *   <li>A comparison means two, unchanged from Beta 5.</li>
+     *   <li>Everything else means one.</li>
+     * </ol>
+     *
+     * <p>{@link RichAnswerImage#MAX_PER_MESSAGE} is the ceiling and Beta 6 does not raise it. Two
+     * pictures is a deliberate design limit rather than a budget, and a request for ten is a
+     * request Orbit answers well with two.
      */
     public static int maxImagesFor(String prompt) {
         String question = normalize(prompt);
-        boolean comparison = containsAny(question,
-                "difference between", "compare", "versus", " vs ", "which one", "side by side");
-        return comparison ? RichAnswerImage.MAX_PER_MESSAGE : 1;
+        if (question.isEmpty()) return 1;
+        List<String> words = words(question);
+        int explicit = explicitImageCount(words);
+        if (explicit > 0) return clampImages(explicit);
+        if (hasPluralImageWord(words)) return RichAnswerImage.MAX_PER_MESSAGE;
+        if (isComparison(question)) return RichAnswerImage.MAX_PER_MESSAGE;
+        return 1;
+    }
+
+    /**
+     * Whether the user asked, in words, for more than one picture.
+     *
+     * <p>Narrower than {@code maxImagesFor(prompt) > 1} on purpose, and the difference is what
+     * gates secondary image discovery. A comparison earns a second picture because the question
+     * has two subjects, not because the user asked to see several pictures, so it must not unlock
+     * a fallback that goes looking at pages the answer never cited.
+     */
+    public static boolean requestsMultipleImages(String prompt) {
+        String question = normalize(prompt);
+        if (question.isEmpty()) return false;
+        List<String> words = words(question);
+        int explicit = explicitImageCount(words);
+        if (explicit > 0) return explicit > 1;
+        return hasPluralImageWord(words);
+    }
+
+    /** Whether the question is a comparison, which is answered by two pictures rather than one. */
+    static boolean isComparison(String question) {
+        return containsAny(question, "difference between", "differences between", "compare",
+                "comparison", "versus", " vs ", "which one", "side by side", "side-by-side");
+    }
+
+    /** Whatever Orbit is willing to draw, whatever number was asked for. */
+    private static int clampImages(int requested) {
+        return Math.max(1, Math.min(requested, RichAnswerImage.MAX_PER_MESSAGE));
+    }
+
+    /**
+     * Singular words for a picture, matched as whole words.
+     *
+     * <p>Whole words rather than substrings, which is not fussiness: "photosynthesis" contains
+     * "photos" and "imagery" contains "image", and a substring rule would read both of those as
+     * somebody asking to see something.
+     */
+    private static final String[] SINGULAR_IMAGE_WORDS = {
+            "picture", "pic", "photo", "photograph", "image", "snapshot", "shot"};
+
+    /** The plural of each, which is the signal that two pictures were asked for. */
+    private static final String[] PLURAL_IMAGE_WORDS = {
+            "pictures", "pics", "photos", "photographs", "images", "snapshots", "shots"};
+
+    /** Numbers a person writes in front of a picture word. */
+    private static final String[] NUMBER_WORDS = {
+            "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"};
+
+    /** Whether any picture word at all appears, in either number. */
+    static boolean mentionsImageWord(List<String> words) {
+        return hasAny(words, SINGULAR_IMAGE_WORDS) || hasAny(words, PLURAL_IMAGE_WORDS);
+    }
+
+    /** Whether a plural picture word appears. */
+    static boolean hasPluralImageWord(List<String> words) {
+        return hasAny(words, PLURAL_IMAGE_WORDS);
+    }
+
+    /**
+     * The number the user wrote next to a picture word, or 0 when they did not write one.
+     *
+     * <p>"Next to" is a two-word window, so "two pictures" and "three good photos" both count and
+     * a number sitting somewhere else in the sentence does not. Digits and written numbers are
+     * treated the same, because "show me 3 photos" and "show me three photos" are the same request.
+     */
+    static int explicitImageCount(List<String> words) {
+        if (words == null) return 0;
+        for (int i = 0; i < words.size(); i++) {
+            int value = numberValue(words.get(i));
+            if (value < 0) continue;
+            for (int j = i + 1; j <= i + 2 && j < words.size(); j++) {
+                String word = words.get(j);
+                if (matches(word, SINGULAR_IMAGE_WORDS) || matches(word, PLURAL_IMAGE_WORDS)) {
+                    return value;
+                }
+            }
+        }
+        return 0;
+    }
+
+    /** The value of a number word or a small run of digits, or -1 when this is not a number. */
+    private static int numberValue(String word) {
+        if (word == null || word.isEmpty()) return -1;
+        for (int i = 0; i < NUMBER_WORDS.length; i++) if (NUMBER_WORDS[i].equals(word)) return i;
+        if (word.length() > 3) return -1;
+        for (int i = 0; i < word.length(); i++) {
+            if (!Character.isDigit(word.charAt(i))) return -1;
+        }
+        try {
+            return Integer.parseInt(word);
+        } catch (Exception ignored) {
+            return -1;
+        }
+    }
+
+    /** A normalized question split into whole words, so nothing matches inside another word. */
+    static List<String> words(String question) {
+        List<String> words = new ArrayList<>();
+        if (question == null || question.isEmpty()) return words;
+        for (String word : question.split("[^\\p{L}\\p{N}]+")) {
+            if (!word.isEmpty()) words.add(word);
+        }
+        return words;
+    }
+
+    private static boolean hasAny(List<String> words, String[] needles) {
+        if (words == null) return false;
+        for (String word : words) if (matches(word, needles)) return true;
+        return false;
+    }
+
+    private static boolean matches(String word, String[] needles) {
+        for (String needle : needles) if (needle.equals(word)) return true;
+        return false;
     }
 
     // ---- helpers ---------------------------------------------------------------------------------

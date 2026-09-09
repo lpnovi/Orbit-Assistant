@@ -123,11 +123,15 @@ public final class OrbitRichResponseRenderer {
     /**
      * Whether a Markdown image block draws the same picture a structured one already has.
      *
-     * <p>Deliberately an exact address match after normalisation, and nothing cleverer. The
-     * temptation is to match on "the same subject" or "the same host", and both would eventually
-     * hide a second picture that was genuinely different - which is a worse outcome than showing
-     * one twice. Exact equality is a fact rather than a guess, so it can only ever suppress a real
-     * duplicate.
+     * <p>Three ways of being the same picture, and no fourth. The exact address; the source page,
+     * because a model that writes a Commons {@code File:} URL inside image syntax is pointing at
+     * the page Orbit already drew properly; and a rendition of the same underlying asset, since
+     * {@code .../1280px-Mallard-Duck.jpg} written in the answer and
+     * {@code .../1920px-Mallard-Duck.jpg} attached as a structured image are one photograph.
+     *
+     * <p>Everything cleverer is deliberately refused. Matching on "the same subject" or "the same
+     * host" would eventually hide a picture that was genuinely different, which is worse than
+     * showing one twice, so this stays a set of facts about addresses rather than a guess.
      *
      * <p>The answer's own text is never touched by this. Copy, speech, storage and the history sent
      * back to a model all still contain exactly what the model wrote.
@@ -137,15 +141,15 @@ public final class OrbitRichResponseRenderer {
         if (block == null || richImages == null || richImages.isEmpty()) return false;
         Matcher image = ResponseBlocks.IMAGE.matcher(block.displaySource().trim());
         if (!image.matches()) return false;
-        String written = RichAnswerUrlPolicy.normalizedForRequest(image.group(2));
+        String raw = image.group(2);
+        String written = RichAnswerUrlPolicy.normalizedForRequest(raw);
         if (written.isEmpty()) return false;
         for (RichAnswerImage rich : richImages) {
             if (rich == null) continue;
             if (written.equals(RichAnswerUrlPolicy.normalizedForRequest(rich.imageUrl))) return true;
-            // The other real duplicate: the model wrote the source page as though it were the
-            // picture, which is exactly the Commons "File:" shape that produced the failed card
-            // this release exists to fix. Orbit already draws that page's picture properly.
             if (written.equals(RichAnswerUrlPolicy.normalizedForRequest(rich.sourceUrl))) return true;
+            if (RichAnswerAssetIdentity.sameAsset(raw, rich.imageUrl)) return true;
+            if (RichAnswerAssetIdentity.sameAsset(raw, rich.sourceUrl)) return true;
         }
         return false;
     }
@@ -509,32 +513,56 @@ public final class OrbitRichResponseRenderer {
         return card;
     }
 
-    private static void showImageFailure(Context c, FrameLayout frame, String alt, String url,
+    /**
+     * What a model-written image that would not load collapses into.
+     *
+     * <p><b>Small, and that is the whole change.</b> A model writes a Markdown image URL from
+     * memory and the address turns out to be a 404 more often than anybody would like. Until Beta 6
+     * that produced the worst thing in the response: a reserved 150dp box, a heavy card, the words
+     * <i>HTTP 404</i> in the middle of an otherwise correct answer and a button offering to open the
+     * broken link. The answer looked broken when only a decoration was.
+     *
+     * <p>So the reserved area is released and the whole thing becomes one quiet muted line. The
+     * transport category is not printed - it is a fact about somebody's web server, it belongs in
+     * Diagnostics where {@link RichAnswerImageStatus} already records it, and it means nothing to
+     * the person reading. <b>Open image</b> survives only when the address is one Orbit would be
+     * willing to fetch, because offering to open something that was refused for safety is worse
+     * than offering nothing.
+     */
+    static void showImageFailure(Context c, FrameLayout frame, String alt, String url,
                                          String error, int foreground) {
         frame.removeAllViews();
+        // Released before anything is added, so the failed picture takes the height of one line
+        // rather than the height a picture was going to need.
+        ViewGroup.LayoutParams lp = frame.getLayoutParams();
+        if (lp != null) {
+            lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+            frame.setLayoutParams(lp);
+        }
+        frame.setBackground(null);
+
         LinearLayout failure = new LinearLayout(c);
-        failure.setOrientation(LinearLayout.VERTICAL);
-        failure.setGravity(Gravity.CENTER);
-        failure.setPadding(UiKit.dp(c, 12), UiKit.dp(c, 12), UiKit.dp(c, 12), UiKit.dp(c, 12));
-        String label = alt.isEmpty() ? "Image unavailable" : alt;
-        failure.addView(UiKit.text(c, label, chatSize(c, 12), foreground, true));
-        failure.addView(UiKit.text(c, error == null || error.isEmpty()
-                ? "Image could not be loaded" : error, chatSize(c, 11), UiKit.MUTED, false));
-        if (RemoteImageLoader.hasSafeHttpsSyntax(url) &&
-                (error == null || !error.startsWith("Orbit blocked"))) {
-            Button open = new Button(c);
-            open.setText("Open image");
-            open.setAllCaps(false);
-            open.setTextSize(11);
-            open.setTextColor(UiKit.accent(c));
+        failure.setOrientation(LinearLayout.HORIZONTAL);
+        failure.setGravity(Gravity.CENTER_VERTICAL);
+        failure.setPadding(UiKit.dp(c, 10), UiKit.dp(c, 7), UiKit.dp(c, 10), UiKit.dp(c, 7));
+        TextView label = UiKit.text(c, "Image unavailable", chatSize(c, 11.5f), UiKit.MUTED, false);
+        label.setContentDescription(alt == null || alt.trim().isEmpty()
+                ? "Image unavailable" : "Image unavailable: " + alt.trim());
+        failure.addView(label);
+
+        boolean openable = RemoteImageLoader.hasSafeHttpsSyntax(url)
+                && (error == null || !error.startsWith("Orbit blocked"));
+        if (openable) {
+            TextView open = UiKit.text(c, "Open image", chatSize(c, 11.5f), UiKit.accent(c), false);
             open.setContentDescription("Open original image in browser");
-            open.setBackground(UiKit.ripple(Color.TRANSPARENT, UiKit.accent(c), 12, c));
             open.setOnClickListener(v -> openUrl(c, url));
-            failure.addView(open, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(c, 38)));
+            LinearLayout.LayoutParams openLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            openLp.leftMargin = UiKit.dp(c, 10);
+            failure.addView(open, openLp);
         }
         frame.addView(failure, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
     }
 
     private static View linkedFallback(Context c, String alt, String url, int foreground,

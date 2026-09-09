@@ -50,6 +50,17 @@ import java.util.concurrent.Executors;
  * recognised, the two disagreed and the picture was never looked for. {@link RichAnswerProvenance}
  * now resolves both, structured provenance first, and discovery starts whenever Orbit legitimately
  * knows a source at all. Which route it used is written into the trace.
+ *
+ * <p><b>What Beta 6 changed.</b> Beta 5's fix worked, and then answered "show me pics of a mallard
+ * duck" with one picture. Two separate rules were doing it: the count policy asked for a second
+ * image only for comparisons, and the resolver took at most one picture from each page while the
+ * recovered-source route routinely supplies exactly one page. Both are gone.
+ * {@link RichAnswerRelevance#maxImagesFor} now reads plural picture words and written numbers, a
+ * page may contribute two pictures when two are wanted, {@link RichAnswerAssetIdentity} makes sure
+ * those are two photographs rather than one photograph at two widths, and an explicitly plural
+ * request that still comes up short may follow a small number of image-oriented links out of the
+ * answer itself - as {@link RichAnswerDiscoveryHint}s, which are where a picture is and never a
+ * citation for anything the answer said.
  */
 public final class RichAnswerCoordinator {
 
@@ -191,9 +202,21 @@ public final class RichAnswerCoordinator {
         // and deliberately never written into the trace.
         List<String> subject = RichAnswerSubject.tokensOf(prompt);
 
+        // The secondary path, gated on every condition at once and collected up front so the
+        // executor never reads the answer again. Strong visual intent is not enough on its own:
+        // the user has to have asked, in words, for more than one picture, because a comparison
+        // that wants two subjects must not send Orbit off to pages the answer never cited.
+        List<RichAnswerDiscoveryHint> hints = Collections.emptyList();
+        if (images > 1 && strong && RichAnswerRelevance.requestsMultipleImages(prompt)) {
+            hints = RichAnswerDiscoveryHint.from(answer, subject, pages);
+            trace.discoveryHintsConsidered = hints.size();
+        }
+        List<RichAnswerDiscoveryHint> discoveryHints = hints;
+
         EXECUTOR.execute(() -> {
             try {
-                List<RichAnswerImage> found = resolve(app, pages, images, anchor, subject, trace);
+                List<RichAnswerImage> found = resolve(app, pages, discoveryHints, images, anchor,
+                        subject, trace);
                 if (found.isEmpty()) {
                     trace.outcome = RichAnswerTrace.Outcome.NO_USABLE_IMAGE;
                     return;
@@ -213,6 +236,7 @@ public final class RichAnswerCoordinator {
                     return;
                 }
                 trace.outcome = RichAnswerTrace.Outcome.IMAGE_FOUND_AND_ATTACHED;
+                trace.attachedImages = found.size();
                 for (Listener listener : LISTENERS) {
                     try { listener.onRichImagesAttached(chat); } catch (Exception ignored) {}
                 }
@@ -248,80 +272,229 @@ public final class RichAnswerCoordinator {
     /**
      * The best pictures the cited pages offer, in the order they should be drawn.
      *
-     * <p>Blocking. Each page contributes at most one picture, so two images always means two
-     * different sources rather than two crops of the same hero graphic. A page that refuses the
-     * fetch, turns out to be a PDF, or carries nothing usable simply contributes nothing - and says
-     * which of those it was in {@code trace}.
+     * <p>Blocking. Kept for the single-picture path and for callers that have no fallback to offer.
      */
     static List<RichAnswerImage> resolve(Context context, List<String> pages, int wanted, int anchor,
                                          List<String> subject, RichAnswerTrace.Attempt trace) {
+        return resolve(context, pages, Collections.emptyList(), wanted, anchor, subject, trace);
+    }
+
+    /**
+     * The best pictures the cited pages offer, with a bounded fallback when they come up short.
+     *
+     * <p><b>What Beta 6 changed.</b> Every page used to contribute at most one picture, on the
+     * reasoning that two pictures meant a comparison and a comparison wants two sources. That was
+     * right for comparisons and wrong for the request that actually broke: "show me pics of a
+     * mallard duck" reaches this method with one recovered source page and seventeen article
+     * candidates on it, and a one-per-page rule guarantees it comes back with a single photograph
+     * however many the page carries. A page may now contribute a second picture, and the thing that
+     * stops that becoming the same duck twice is {@link RichAnswerAssetIdentity} rather than an
+     * arbitrary limit.
+     *
+     * <p><b>Restraint is unchanged.</b> The page budget is the same and is shared with the
+     * fallback, the per-page download budget is the same and is not doubled because two pictures
+     * were asked for, and every fetch goes through the same policy, redirect limit, byte ceiling
+     * and decode bound it did before. Wanting two pictures buys ordering, not bandwidth.
+     *
+     * @param hints image-oriented links from the answer itself, tried only after the trusted pages
+     *              and only when the caller established that the user explicitly asked for several
+     *              pictures. Never citations, and never treated as any.
+     */
+    static List<RichAnswerImage> resolve(Context context, List<String> pages,
+                                         List<RichAnswerDiscoveryHint> hints, int wanted, int anchor,
+                                         List<String> subject, RichAnswerTrace.Attempt trace) {
         List<RichAnswerImage> found = new ArrayList<>();
-        if (pages == null || pages.isEmpty()) return found;
         int limit = Math.max(1, Math.min(wanted, RichAnswerImage.MAX_PER_MESSAGE));
         int budget = trace != null && trace.pageBudget > 0 ? trace.pageBudget : MAX_PAGES_EXAMINED;
-        Set<String> seenImages = new LinkedHashSet<>();
-        int examined = 0;
+        Set<String> seenAssets = new LinkedHashSet<>();
+        int[] examined = {0};
 
-        for (String page : pages) {
-            if (found.size() >= limit || examined >= budget) break;
-            RichAnswerTrace.PageRecord record = trace == null ? new RichAnswerTrace.PageRecord()
-                    : trace.page();
-            record.host = RichAnswerTrace.hostOf(page);
-            record.path = RichAnswerTrace.pathOf(page);
-            if (!RichAnswerUrlPolicy.isFetchablePageUrl(page)) {
-                // Not counted against the budget: refusing an address costs no request, so it must
-                // not consume one of the chances a later, usable source was going to get.
-                record.fetchAllowed = false;
-                record.reason = RichAnswerTrace.Reason.UNSAFE_URL;
-                continue;
+        if (pages != null) {
+            for (String page : pages) {
+                if (found.size() >= limit || examined[0] >= budget) break;
+                readPage(context, page, false, found, limit, examined, anchor, subject,
+                        seenAssets, trace);
             }
-            examined++;
-            if (trace != null) trace.pagesAttempted = examined;
-
-            RichAnswerPageFetcher.PageResult result = RichAnswerPageFetcher.fetchPage(page);
-            record.host = RichAnswerTrace.hostOf(result.finalUrl.isEmpty() ? page : result.finalUrl);
-            record.path = RichAnswerTrace.pathOf(result.finalUrl.isEmpty() ? page : result.finalUrl);
-            record.fetchAllowed = result.reason != RichAnswerTrace.Reason.UNSAFE_URL
-                    && result.reason != RichAnswerTrace.Reason.PRIVATE_HOST;
-            record.httpStatus = result.status;
-            record.contentType = RichAnswerImageFormat.baseType(result.contentType);
-            record.bytesRead = result.bytesRead;
-            record.redirects = result.redirects;
-            record.previewCandidates = result.preview.imageUrls.size();
-            record.articleCandidates = result.articleImages.size();
-            record.reason = result.reason;
-            if (!result.fetched) continue;
-
-            String pageUrl = result.finalUrl.isEmpty() ? page : result.finalUrl;
-            RichAnswerImage image = bestFrom(context, result, pageUrl, anchor, subject,
-                    seenImages, record);
-            if (image != null) found.add(image);
+        }
+        // The first picture is never thrown away because the page could not supply a second, so
+        // "one from source A, one from a hint" and "both from source A" are equally valid answers.
+        if (found.size() < limit && hints != null && !hints.isEmpty()) {
+            for (RichAnswerDiscoveryHint hint : hints) {
+                if (found.size() >= limit || examined[0] >= budget) break;
+                if (trace != null) trace.discoveryHintsUsed++;
+                if (hint.isImage()) {
+                    readDirectImage(context, hint.url, found, examined, anchor, seenAssets, trace);
+                } else {
+                    readPage(context, hint.url, true, found, limit, examined, anchor, subject,
+                            seenAssets, trace);
+                }
+            }
         }
         return found;
     }
 
+    /** One page read, ranked and mined for as many distinct pictures as are still wanted. */
+    private static void readPage(Context context, String page, boolean hint,
+                                 List<RichAnswerImage> found, int limit, int[] examined, int anchor,
+                                 List<String> subject, Set<String> seenAssets,
+                                 RichAnswerTrace.Attempt trace) {
+        RichAnswerTrace.PageRecord record = trace == null ? new RichAnswerTrace.PageRecord()
+                : trace.page();
+        record.discoveryHint = hint;
+        record.host = RichAnswerTrace.hostOf(page);
+        record.path = RichAnswerTrace.pathOf(page);
+        if (!RichAnswerUrlPolicy.isFetchablePageUrl(page)) {
+            // Not counted against the budget: refusing an address costs no request, so it must
+            // not consume one of the chances a later, usable source was going to get.
+            record.fetchAllowed = false;
+            record.reason = RichAnswerTrace.Reason.UNSAFE_URL;
+            return;
+        }
+        examined[0]++;
+        if (trace != null) trace.pagesAttempted = examined[0];
+
+        RichAnswerPageFetcher.PageResult result = RichAnswerPageFetcher.fetchPage(page);
+        record.host = RichAnswerTrace.hostOf(result.finalUrl.isEmpty() ? page : result.finalUrl);
+        record.path = RichAnswerTrace.pathOf(result.finalUrl.isEmpty() ? page : result.finalUrl);
+        record.fetchAllowed = result.reason != RichAnswerTrace.Reason.UNSAFE_URL
+                && result.reason != RichAnswerTrace.Reason.PRIVATE_HOST;
+        record.httpStatus = result.status;
+        record.contentType = RichAnswerImageFormat.baseType(result.contentType);
+        record.bytesRead = result.bytesRead;
+        record.redirects = result.redirects;
+        record.previewCandidates = result.preview.imageUrls.size();
+        record.articleCandidates = result.articleImages.size();
+        record.reason = result.reason;
+        // A 403 or a 404 on a cited page is ordinary public-web messiness rather than the end of
+        // the search: the loop above moves on to the next source, and then to the hints.
+        if (!result.fetched) return;
+
+        String pageUrl = result.finalUrl.isEmpty() ? page : result.finalUrl;
+        found.addAll(bestFromPage(context, result, pageUrl, anchor, subject, seenAssets, record,
+                limit - found.size()));
+    }
+
     /**
-     * The first candidate from one page that genuinely fetches, decodes and is worth drawing.
+     * A hint that was written as the picture itself, fetched and judged as one.
      *
-     * <p>Preview images and article images are ranked in one list rather than in two passes. That
-     * ordering is the fix: a page's share card is a candidate like any other and wins on its origin
-     * bonus when nothing better exists, but it no longer gets to be the only thing considered, and
-     * a photograph inside the article that actually matches the question outranks it.
+     * <p>No markup is read, because there is none to read: this is an address ending in an image,
+     * so it goes straight through the same transport, MIME check, decode bound and dimension rules
+     * every other candidate does. Its source is the address it came from, which is a true statement
+     * about where the picture is and makes no claim about what the answer cited.
+     */
+    private static void readDirectImage(Context context, String url, List<RichAnswerImage> found,
+                                        int[] examined, int anchor, Set<String> seenAssets,
+                                        RichAnswerTrace.Attempt trace) {
+        RichAnswerTrace.PageRecord record = trace == null ? new RichAnswerTrace.PageRecord()
+                : trace.page();
+        record.discoveryHint = true;
+        record.host = RichAnswerTrace.hostOf(url);
+        record.path = RichAnswerTrace.pathOf(url);
+        RichAnswerTrace.CandidateRecord entry = record.candidate();
+        entry.origin = RichAnswerArticleImages.Origin.ARTICLE_IMG;
+        entry.host = record.host;
+        entry.path = record.path;
+        if (!RichAnswerUrlPolicy.isFetchableImageUrl(url)) {
+            record.fetchAllowed = false;
+            record.reason = RichAnswerTrace.Reason.UNSAFE_URL;
+            entry.reason = RichAnswerTrace.Reason.UNSAFE_URL;
+            return;
+        }
+        String asset = assetKey(url);
+        if (seenAssets.contains(asset)) {
+            entry.reason = RichAnswerTrace.Reason.DUPLICATE;
+            return;
+        }
+        examined[0]++;
+        if (trace != null) trace.pagesAttempted = examined[0];
+
+        entry.fetched = true;
+        RemoteImageLoader.Result fetch = RemoteImageLoader.fetchForRichAnswer(context, url);
+        entry.httpStatus = fetch.status;
+        entry.mime = fetch.contentType;
+        entry.bytesRead = fetch.bytesRead;
+        entry.redirects = fetch.redirects;
+        entry.decodedWidth = fetch.decodedWidth;
+        entry.decodedHeight = fetch.decodedHeight;
+        record.httpStatus = fetch.status;
+        if (!fetch.loaded()) {
+            entry.reason = reasonFor(fetch.failure);
+            record.reason = entry.reason;
+            return;
+        }
+        RichAnswerTrace.Reason dimensions =
+                RichAnswerRelevance.judgeDimensions(fetch.decodedWidth, fetch.decodedHeight);
+        if (dimensions != RichAnswerTrace.Reason.ACCEPTED) {
+            entry.reason = dimensions;
+            record.reason = dimensions;
+            return;
+        }
+        RichAnswerImage image = RichAnswerImage.webSource(url, url, "", "", anchor);
+        if (!image.isUsable()) {
+            entry.reason = RichAnswerTrace.Reason.UNSAFE_URL;
+            return;
+        }
+        seenAssets.add(asset);
+        entry.reason = RichAnswerTrace.Reason.ACCEPTED;
+        record.reason = RichAnswerTrace.Reason.ACCEPTED;
+        found.add(image);
+    }
+
+    /**
+     * The single best picture one page offers, or null.
      *
-     * <p>Strictly bounded. {@link #MAX_RANKED_CANDIDATES_PER_PAGE} ranked,
-     * {@link #MAX_FETCHED_CANDIDATES_PER_PAGE} downloaded, each one going through exactly the same
-     * URL policy, redirect limit, byte ceiling and decode bound as the first, and no candidate that
-     * has already failed is ever retried.
+     * <p>{@link #bestFromPage} asked for one, which is what every page did before Beta 6 and what
+     * every singular request still does.
      */
     static RichAnswerImage bestFrom(Context context, RichAnswerPageFetcher.PageResult result,
                                     String pageUrl, int anchor, List<String> subject,
-                                    Set<String> seenImages, RichAnswerTrace.PageRecord record) {
-        List<Ranked> ranked = rank(result, pageUrl, subject, seenImages, record);
+                                    Set<String> seenAssets, RichAnswerTrace.PageRecord record) {
+        List<RichAnswerImage> found = bestFromPage(context, result, pageUrl, anchor, subject,
+                seenAssets, record, 1);
+        return found.isEmpty() ? null : found.get(0);
+    }
+
+    /**
+     * The candidates from one page that genuinely fetch, decode and are worth drawing.
+     *
+     * <p>Preview images and article images are ranked in one list rather than in two passes. That
+     * ordering is the fix Beta 3 made: a page's share card is a candidate like any other and wins
+     * on its origin bonus when nothing better exists, but it no longer gets to be the only thing
+     * considered, and a photograph inside the article that actually matches the question outranks
+     * it.
+     *
+     * <p><b>Distinct, not merely different.</b> Once a picture is accepted, every later candidate
+     * that resolves to the same underlying asset is refused before a byte is spent on it. That is
+     * what stops the real Mallard page - one photograph offered at 1920, 1280 and 960 - from being
+     * presented as two pictures of a duck. A candidate that <em>failed</em> never blocks anything,
+     * so a 403 on the largest rendition still leaves the smaller one available to save the picture.
+     *
+     * <p>Strictly bounded, and by the same numbers as before: {@link #MAX_RANKED_CANDIDATES_PER_PAGE}
+     * ranked and {@link #MAX_FETCHED_CANDIDATES_PER_PAGE} downloaded, whether one picture is wanted
+     * or two.
+     */
+    static List<RichAnswerImage> bestFromPage(Context context, RichAnswerPageFetcher.PageResult result,
+                                              String pageUrl, int anchor, List<String> subject,
+                                              Set<String> seenAssets, RichAnswerTrace.PageRecord record,
+                                              int wanted) {
+        List<RichAnswerImage> out = new ArrayList<>();
+        int remaining = Math.max(0, wanted);
+        if (remaining == 0) return out;
+        List<Ranked> ranked = rank(result, pageUrl, subject, seenAssets, record);
         int fetched = 0;
         for (Ranked candidate : ranked) {
+            if (out.size() >= remaining) break;
             if (fetched >= MAX_FETCHED_CANDIDATES_PER_PAGE) break;
-            fetched++;
             RichAnswerTrace.CandidateRecord entry = candidate.record;
+            String asset = assetKey(candidate.candidate.url);
+            // Checked here as well as in ranking, because the set grows as this loop accepts
+            // pictures: a resize variant of the photograph just accepted is a duplicate that the
+            // ranking pass, run before any of them, could not have known about.
+            if (seenAssets.contains(asset)) {
+                entry.reason = RichAnswerTrace.Reason.DUPLICATE;
+                continue;
+            }
+            fetched++;
             entry.fetched = true;
 
             // Fetched before it is committed to, because a declared image can be a 40-pixel logo, a
@@ -349,7 +522,6 @@ public final class RichAnswerCoordinator {
                 continue;
             }
 
-            seenImages.add(candidate.candidate.url);
             String caption = captionFor(candidate.candidate, result.preview);
             RichAnswerImage image = RichAnswerImage.webSource(
                     candidate.candidate.url, pageUrl, caption, caption, anchor);
@@ -357,10 +529,23 @@ public final class RichAnswerCoordinator {
                 entry.reason = RichAnswerTrace.Reason.UNSAFE_URL;
                 continue;
             }
+            seenAssets.add(asset);
             entry.reason = RichAnswerTrace.Reason.ACCEPTED;
-            return image;
+            out.add(image);
         }
-        return null;
+        return out;
+    }
+
+    /**
+     * How one picture is told apart from another.
+     *
+     * <p>The canonical asset where the address yields one, and the address itself where it does
+     * not, so an unparseable or unusual URL is compared with something rather than colliding with
+     * every other empty key.
+     */
+    static String assetKey(String url) {
+        String canonical = RichAnswerAssetIdentity.canonical(url);
+        return canonical.isEmpty() ? (url == null ? "" : url) : canonical;
     }
 
     /** One candidate with its score and its diagnostic row. */
@@ -387,7 +572,7 @@ public final class RichAnswerCoordinator {
      * candidates at all" look identical from the outside and mean completely different things.
      */
     static List<Ranked> rank(RichAnswerPageFetcher.PageResult result, String pageUrl,
-                             List<String> subject, Set<String> seenImages,
+                             List<String> subject, Set<String> seenAssets,
                              RichAnswerTrace.PageRecord record) {
         List<RichAnswerArticleImages.Candidate> all = new ArrayList<>(result.preview.candidates);
         all.addAll(result.articleImages);
@@ -400,7 +585,11 @@ public final class RichAnswerCoordinator {
             int position = order++;
             if (candidate == null || candidate.url.isEmpty()) continue;
             if (!seenHere.add(candidate.url)) continue;
-            if (seenImages != null && seenImages.contains(candidate.url)) {
+            // Renditions of the same photograph stay in the list rather than being collapsed here,
+            // deliberately. A 1920 that 403s and a 960 that loads are two chances at one picture,
+            // and dropping the second at ranking time would throw the spare away before it was
+            // needed. Whether they may both be *shown* is decided at acceptance instead.
+            if (seenAssets != null && seenAssets.contains(assetKey(candidate.url))) {
                 rejected.add(reject(candidate, position, RichAnswerTrace.Reason.DUPLICATE));
                 continue;
             }

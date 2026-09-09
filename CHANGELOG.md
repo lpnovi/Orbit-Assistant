@@ -804,3 +804,10 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Diagnostics now names which source route was used and shows real budgets even when no source was found.
   - Diagnostics can also record the shape of a search response, using field names and counts only.
   - A recovered source is saved with the answer, so reopening a chat still shows where its picture came from.
+- **v0.7.8.5-beta.6**: Asking to see pictures now actually brings back pictures.
+  - An explicit request for pictures, pics, photos, or images now asks for two, and a written number is respected up to two.
+  - A single article or gallery page can now supply both pictures instead of only ever one.
+  - Two sizes of the same photograph are recognised as one photograph, so the same picture is never shown twice.
+  - When only one trusted source exists, Orbit may follow a small number of image links in the answer to find a second picture.
+  - A broken image address written into an answer now fails as one quiet line instead of a large error card.
+  - Answers no longer promise a number of photos, and Diagnostics reports how many were requested and how many arrived.

@@ -170,6 +170,14 @@ public final class RichAnswerTrace {
     public static final class PageRecord {
         public String host = "";
         public String path = "";
+        /**
+         * Whether this page came from a secondary image-discovery hint rather than from provenance.
+         *
+         * <p>Recorded because the two are different claims and a report that could not tell them
+         * apart would be misleading in exactly the direction that matters: a hint page is where a
+         * picture was found, never a page the answer cited for anything it said.
+         */
+        public boolean discoveryHint;
         public boolean fetchAllowed = true;
         public int httpStatus;
         public String contentType = "";
@@ -196,9 +204,22 @@ public final class RichAnswerTrace {
         public Intent intent = Intent.NONE;
         public Provenance provenance = Provenance.NONE;
         public int requestedImages;
+        /**
+         * How many pictures actually ended up on the message.
+         *
+         * <p>Beta 5 reported only what was asked for, so "Images requested: 1" was the whole story
+         * and a plural request that came back with one picture looked identical to a singular
+         * request that worked perfectly. Requested and attached are printed together now, and the
+         * gap between them is the finding.
+         */
+        public int attachedImages;
         public int sourcesReceived;
         public int pagesAttempted;
         public int pageBudget;
+        /** Image-oriented links in the answer that were collected as a possible second picture. */
+        public int discoveryHintsConsidered;
+        /** How many of those were actually read. */
+        public int discoveryHintsUsed;
         public Outcome outcome = Outcome.INCOMPLETE;
         public final List<PageRecord> pages = new ArrayList<>();
 
@@ -381,16 +402,29 @@ public final class RichAnswerTrace {
         b.append("Rich Answers enabled: ").append(attempt.enabled ? "yes" : "no").append('\n');
         b.append("Provider eligible: ").append(attempt.providerEligible ? "yes" : "no").append('\n');
         b.append("Images requested: ").append(attempt.requestedImages).append('\n');
+        b.append("Images attached: ").append(attempt.attachedImages).append('\n');
         b.append("Source provenance: ").append(readable(attempt.provenance)).append('\n');
         b.append("Sources received: ").append(attempt.sourcesReceived).append('\n');
         b.append("Page budget: ").append(attempt.pageBudget).append('\n');
         b.append("Pages attempted: ").append(attempt.pagesAttempted).append('\n');
+        if (attempt.discoveryHintsConsidered > 0 || attempt.discoveryHintsUsed > 0) {
+            b.append("Discovery hints considered: ")
+                    .append(attempt.discoveryHintsConsidered).append('\n');
+            b.append("Discovery hints used: ").append(attempt.discoveryHintsUsed).append('\n');
+        }
         b.append("Candidates considered: ").append(attempt.candidatesConsidered()).append('\n');
         b.append("Images fetched: ").append(attempt.imagesFetched()).append('\n');
         b.append("Result: ").append(readable(attempt.outcome));
+        // The one line that explains a plural request answered with a single picture. Deliberately
+        // here and nowhere else: showing one good photograph is the right outcome, so the shortfall
+        // belongs in a report somebody opened on purpose rather than in the chat.
+        if (attempt.requestedImages > 1 && attempt.attachedImages == 1) {
+            b.append("\nSecond image unavailable");
+        }
         for (PageRecord page : attempt.pages) {
             b.append("\n\n").append(page.host.isEmpty() ? "(unknown host)" : page.host);
             if (!page.path.isEmpty()) b.append(page.path);
+            if (page.discoveryHint) b.append(" (discovery hint)");
             b.append('\n');
             if (!page.fetchAllowed) {
                 b.append("Page fetch: blocked · ").append(page.reason.name());
@@ -470,14 +504,18 @@ public final class RichAnswerTrace {
         o.put("intent", attempt.intent.name());
         o.put("prov_route", attempt.provenance.name());
         o.put("want", attempt.requestedImages);
+        o.put("got", attempt.attachedImages);
         o.put("src", attempt.sourcesReceived);
         o.put("tried", attempt.pagesAttempted);
         o.put("budget", attempt.pageBudget);
+        o.put("hint_n", attempt.discoveryHintsConsidered);
+        o.put("hint_u", attempt.discoveryHintsUsed);
         o.put("out", attempt.outcome.name());
         JSONArray pages = new JSONArray();
         for (PageRecord page : attempt.pages) {
             JSONObject p = new JSONObject();
             p.put("h", page.host);
+            p.put("hint", page.discoveryHint);
             p.put("p", page.path);
             p.put("ok", page.fetchAllowed);
             p.put("s", page.httpStatus);
@@ -521,9 +559,12 @@ public final class RichAnswerTrace {
         attempt.intent = intent(o.optString("intent", "NONE"));
         attempt.provenance = provenance(o.optString("prov_route", "NONE"));
         attempt.requestedImages = o.optInt("want", 0);
+        attempt.attachedImages = o.optInt("got", 0);
         attempt.sourcesReceived = o.optInt("src", 0);
         attempt.pagesAttempted = o.optInt("tried", 0);
         attempt.pageBudget = o.optInt("budget", 0);
+        attempt.discoveryHintsConsidered = o.optInt("hint_n", 0);
+        attempt.discoveryHintsUsed = o.optInt("hint_u", 0);
         attempt.outcome = outcome(o.optString("out", "INCOMPLETE"));
         JSONArray pages = o.optJSONArray("pages");
         if (pages == null) return attempt;
@@ -532,6 +573,7 @@ public final class RichAnswerTrace {
             if (p == null) continue;
             PageRecord page = attempt.page();
             page.host = p.optString("h", "");
+            page.discoveryHint = p.optBoolean("hint", false);
             page.path = p.optString("p", "");
             page.fetchAllowed = p.optBoolean("ok", true);
             page.httpStatus = p.optInt("s", 0);
