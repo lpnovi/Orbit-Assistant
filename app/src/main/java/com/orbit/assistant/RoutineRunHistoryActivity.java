@@ -47,7 +47,7 @@ public class RoutineRunHistoryActivity extends Activity {
     private View buildContent() {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(UiKit.BG);
+        OrbitBackground.applyPage(scroll);
 
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);

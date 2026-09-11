@@ -471,7 +471,7 @@ public final class OrbitPredictiveBack {
             catch (Exception ignored) {}
         }
         if (moving.getBackground() == null) {
-            moving.setBackgroundColor(UiKit.BG);
+            moving.setBackground(OrbitBackground.pageDrawable(moving.getContext()));
             addedBackground = true;
         }
         moving.setOutlineProvider(new ViewOutlineProvider() {

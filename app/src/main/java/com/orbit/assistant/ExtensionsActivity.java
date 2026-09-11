@@ -128,7 +128,7 @@ public final class ExtensionsActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         activeScroll = scroll;
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(UiKit.BG);
+        OrbitBackground.applyPage(scroll);
         scroll.setForceDarkAllowed(false);
 
         LinearLayout page = new LinearLayout(this);
@@ -757,7 +757,7 @@ public final class ExtensionsActivity extends Activity {
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setGravity(Gravity.CENTER_VERTICAL);
-        page.setBackgroundColor(UiKit.BG);
+        OrbitBackground.applyPage(page);
         page.setPadding(UiKit.dp(this, 28), UiKit.dp(this, 40),
                 UiKit.dp(this, 28), UiKit.dp(this, 40));
 

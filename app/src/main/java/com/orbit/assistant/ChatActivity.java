@@ -183,6 +183,14 @@ public class ChatActivity extends Activity {
     private String pendingScreenSelectionApp = "";
     private String pendingScreenSelectionAge = "";
     private boolean screenSelectionOpening;
+    /**
+     * The appearance this conversation was built in, and a guard against rebuilding inside a rebuild.
+     *
+     * <p>Recorded rather than compared against preferences on the fly, so the screen rebuilds once
+     * when a theme is applied underneath it and never merely because it resumed.
+     */
+    private String appliedAppearance = "";
+    private boolean rebuildingForAppearance;
     private final ExecutorService attachmentExecutor = Executors.newSingleThreadExecutor();
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -204,8 +212,9 @@ public class ChatActivity extends Activity {
         }
         currentMode = ConversationStore.modeFor(this, conversationId);
         Window w = getWindow();
-        w.setStatusBarColor(UiKit.BG);
-        w.setNavigationBarColor(UiKit.BG);
+        w.setStatusBarColor(OrbitBackground.systemBarColor(this));
+        w.setNavigationBarColor(OrbitBackground.systemBarColor(this));
+        appliedAppearance = UiKit.structuralAppearanceSignature(this);
         View content = buildContent();
         setContentView(content);
         UiKit.applyActivityInsets(this, content, true);
@@ -255,6 +264,9 @@ public class ChatActivity extends Activity {
         UiPresence.enter(this);
         RichAnswerCoordinator.addListener(richImageListener);
         if (modeChip != null) modeChip.setText(modeChipText());
+        // Before the reload below, so a rebuilt hierarchy is the one the conversation is drawn into
+        // rather than one that is replaced immediately afterwards.
+        rebuildForNewAppearanceIfNeeded();
         reloadConversation();
         attachToPending();
         applyLauncherComposerIntent();
@@ -264,6 +276,47 @@ public class ChatActivity extends Activity {
         // composer. The collection is the truth either way; this just redraws from it, and
         // AttachmentStripView.planScroll treats an unchanged list as a reason to move nothing.
         refreshAttachmentStrip(false);
+    }
+
+    /**
+     * Rebuilds this conversation in a theme that was applied while it was in the background.
+     *
+     * <p>A chat can legitimately be sitting underneath Settings and Theme Studio, so applying a theme
+     * and pressing Back twice arrives here. Every colour on this screen was resolved from
+     * {@code UiKit} when the hierarchy was built, and as of advanced backgrounds so was the page's
+     * own drawable, so coming back without this would show a conversation in the previous theme -
+     * and, if the new theme has a gradient or a glow, on the previous page - until the next cold
+     * start. Chats and Settings have each had their own version of this for some time; the chat did
+     * not, because until the background became part of the theme the omission was invisible.
+     *
+     * <p>The composer's text is carried across by hand because it is the one piece of state a person
+     * would be upset to lose. Attachments need no help: they live in {@code composerAttachments} and
+     * the strip is redrawn from that collection either way.
+     */
+    private void rebuildForNewAppearanceIfNeeded() {
+        if (rebuildingForAppearance) return;
+        String desired = UiKit.structuralAppearanceSignature(this);
+        if (desired.equals(appliedAppearance)) return;
+        rebuildingForAppearance = true;
+        try {
+            CharSequence typed = input == null ? "" : input.getText();
+            UiKit.syncTheme(this);
+            Window window = getWindow();
+            window.setStatusBarColor(OrbitBackground.systemBarColor(this));
+            window.setNavigationBarColor(OrbitBackground.systemBarColor(this));
+            UiKit.applySystemBarIcons(window);
+            View content = buildContent();
+            setContentView(content);
+            UiKit.applyActivityInsets(this, content, true);
+            if (input != null && typed != null && typed.length() > 0) {
+                input.setText(typed);
+                input.setSelection(input.getText().length());
+            }
+            refreshAttachmentStrip(false);
+            appliedAppearance = desired;
+        } finally {
+            rebuildingForAppearance = false;
+        }
     }
 
     /**
@@ -465,7 +518,7 @@ public class ChatActivity extends Activity {
     private View buildContent() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(UiKit.BG);
+        OrbitBackground.applyPage(root);
         root.setPadding(UiKit.dp(this, 14), UiKit.dp(this, 12), UiKit.dp(this, 14), UiKit.dp(this, 10));
 
         LinearLayout top = new LinearLayout(this);

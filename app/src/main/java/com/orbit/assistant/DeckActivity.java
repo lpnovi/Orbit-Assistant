@@ -174,7 +174,7 @@ public final class DeckActivity extends Activity {
 
     private View buildContent() {
         root = new FrameLayout(this);
-        root.setBackgroundColor(UiKit.BG);
+        OrbitBackground.applyPage(root);
 
         scroll = new ScrollView(this);
         scroll.setFillViewport(true);

@@ -109,6 +109,26 @@ public final class ThemeStudioActivity extends Activity {
     private MessageStylePreview messagePreview;
     private GlassStylePreview glassPreview;
 
+    // The Background tool, held on exactly the same terms as the five controls above it. The two
+    // containers are the one place this tool differs: showing every possible background control at
+    // once would be a wall of settings most of which do not apply, so the Linear and Glow groups are
+    // built once and then shown or hidden. Their visibility changes; their contents never do, which is
+    // what keeps a mode change from rebuilding the card the user is working in.
+    private BackgroundStylePreview backgroundPreview;
+    private OrbitSegmented backgroundModeSegment;
+    private LinearLayout linearControls;
+    private LinearLayout glowControls;
+    private View effectColourSwatch;
+    private TextView effectColourSummary;
+    private TextView directionValue;
+    private LinearLayout directionRow;
+    private OrbitSlider glowStrengthSlider;
+    private OrbitSlider glowSizeSlider;
+    private TextView glowStrengthValue;
+    private TextView glowSizeValue;
+    private OrbitSegmented glowPositionSegment;
+    private TextView amoledBackgroundNote;
+
     /**
      * The preset cards currently on screen, so selection can be re-marked without rebuilding them.
      *
@@ -140,8 +160,12 @@ public final class ThemeStudioActivity extends Activity {
         draft = state == null ? applied : restore(state);
 
         Window window = getWindow();
-        window.setStatusBarColor(UiKit.BG);
-        window.setNavigationBarColor(UiKit.BG);
+        // The base theme colour, not a sample of whatever the page effect is doing at the top of
+        // the screen. A system bar cannot carry a gradient without Orbit reimplementing one inside
+        // an inset it does not control, and one tinted to the effect would visibly disagree with the
+        // page the moment anything moved. OrbitBackground owns that decision for every screen.
+        window.setStatusBarColor(OrbitBackground.systemBarColor(this));
+        window.setNavigationBarColor(OrbitBackground.systemBarColor(this));
         applySystemBarIcons();
 
         View content = buildContent();
@@ -370,6 +394,7 @@ public final class ThemeStudioActivity extends Activity {
         if (preview != null) preview.render(tokens);
         if (messagePreview != null) messagePreview.render(tokens, style);
         if (glassPreview != null) glassPreview.render(tokens, style);
+        if (backgroundPreview != null) backgroundPreview.render(tokens, style);
         renderWarnings(tokens);
         updateActionState();
     }
@@ -390,7 +415,15 @@ public final class ThemeStudioActivity extends Activity {
         glassOpacitySlider.setValue(style.glassOpacity);
         glassTintSlider.setValue(style.glassTint);
         glassEdgeSlider.setValue(style.glassEdge);
+        glowStrengthSlider.setValue(style.glowStrength);
+        glowSizeSlider.setValue(style.glowSize);
+        // Neither segmented control notifies from setSelected, for the same reason OrbitSlider does
+        // not: this runs after a preset selection, and a control that reported its own
+        // synchronization as a user choice would edit the draft it was being synchronized to.
+        backgroundModeSegment.setSelected(style.backgroundMode);
+        glowPositionSegment.setSelected(style.glowPosition);
         syncProLabels();
+        syncBackgroundVisibility();
     }
 
     /** The value word beside each premium control. */
@@ -402,6 +435,39 @@ public final class ThemeStudioActivity extends Activity {
         glassOpacityValue.setText(style.glassOpacityLabel());
         glassTintValue.setText(style.glassTintLabel());
         glassEdgeValue.setText(style.glassEdgeLabel());
+        glowStrengthValue.setText(style.glowStrengthLabel());
+        glowSizeValue.setText(style.glowSizeLabel());
+        directionValue.setText(style.directionLabel());
+
+        int effect = style.backgroundEffectColor(this, OrbitThemeTokens.resolve(this, draft).accent);
+        effectColourSwatch.setBackground(UiKit.outlined(effect,
+                UiKit.withAlpha(OrbitContrast.inkOn(effect), 70), 11, this));
+        effectColourSummary.setText(OrbitTheme.ACCENT.equals(style.backgroundEffectColor)
+                ? OrbitColorName.of(effect) + " · theme accent"
+                : OrbitColorName.of(effect) + " · " + OrbitPalette.labelFor(style.backgroundEffectColor));
+    }
+
+    /**
+     * Which background controls apply to the mode that is selected.
+     *
+     * <p>Visibility, not construction. A mode change hides the group that no longer applies and shows
+     * the one that does, and neither group is ever rebuilt - so switching from Linear to Glow and back
+     * returns to the same direction row, holding the same value, with the same sliders in it.
+     *
+     * <p>The AMOLED note appears whenever an effect is configured and AMOLED is suppressing it, in
+     * either mode. It says the settings are kept because that is the question it exists to answer:
+     * a person who turns AMOLED on and sees their gradient vanish needs to know Orbit has not thrown
+     * it away.
+     */
+    private void syncBackgroundVisibility() {
+        if (backgroundModeSegment == null) return;
+        OrbitProStyle style = draft.pro;
+        linearControls.setVisibility(
+                style.backgroundMode == OrbitProStyle.BACKGROUND_LINEAR ? View.VISIBLE : View.GONE);
+        glowControls.setVisibility(
+                style.backgroundMode == OrbitProStyle.BACKGROUND_GLOW ? View.VISIBLE : View.GONE);
+        boolean suppressed = draft.amoled && style.hasBackgroundEffect();
+        amoledBackgroundNote.setVisibility(suppressed ? View.VISIBLE : View.GONE);
     }
 
     /**
@@ -455,8 +521,12 @@ public final class ThemeStudioActivity extends Activity {
         final int scrollY = contentScroll == null ? 0 : contentScroll.getScrollY();
         UiKit.syncTheme(this);
         Window window = getWindow();
-        window.setStatusBarColor(UiKit.BG);
-        window.setNavigationBarColor(UiKit.BG);
+        // The base theme colour, not a sample of whatever the page effect is doing at the top of
+        // the screen. A system bar cannot carry a gradient without Orbit reimplementing one inside
+        // an inset it does not control, and one tinted to the effect would visibly disagree with the
+        // page the moment anything moved. OrbitBackground owns that decision for every screen.
+        window.setStatusBarColor(OrbitBackground.systemBarColor(this));
+        window.setNavigationBarColor(OrbitBackground.systemBarColor(this));
         applySystemBarIcons();
         View content = buildContent();
         setContentView(content);
@@ -506,7 +576,7 @@ public final class ThemeStudioActivity extends Activity {
     private View buildContent() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(UiKit.BG);
+        OrbitBackground.applyPage(root);
         root.setForceDarkAllowed(false);
 
         int inset = horizontalInset();
@@ -667,6 +737,9 @@ public final class ThemeStudioActivity extends Activity {
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(twoPane() ? (Gravity.END | Gravity.CENTER_VERTICAL)
                 : Gravity.CENTER_VERTICAL);
+        // Chrome pinned below the scroll, not the page canvas, so it is opaque in the page own
+        // colour rather than a second slice of the page effect. The scrolling content above it
+        // carries the background; this bar is what that content passes behind.
         bar.setBackgroundColor(UiKit.BG);
         bar.setPadding(UiKit.dp(this, 20) + inset, UiKit.dp(this, 12),
                 UiKit.dp(this, 20) + inset, UiKit.dp(this, 14));
@@ -1064,6 +1137,20 @@ public final class ThemeStudioActivity extends Activity {
         glassEdgeValue = null;
         messagePreview = null;
         glassPreview = null;
+        backgroundPreview = null;
+        backgroundModeSegment = null;
+        linearControls = null;
+        glowControls = null;
+        effectColourSwatch = null;
+        effectColourSummary = null;
+        directionValue = null;
+        directionRow = null;
+        glowStrengthSlider = null;
+        glowSizeSlider = null;
+        glowStrengthValue = null;
+        glowSizeValue = null;
+        glowPositionSegment = null;
+        amoledBackgroundNote = null;
     }
 
     /**
@@ -1080,16 +1167,18 @@ public final class ThemeStudioActivity extends Activity {
      * differs in colour says nothing to somebody using a screen reader.
      */
     private void buildProTeaser() {
-        TextView what = UiKit.text(this, "Advanced message and glass styling", 13.5f,
+        TextView what = UiKit.text(this,
+                "Advanced message styling, Liquid Glass and advanced backgrounds", 13.5f,
                 UiKit.TEXT, false);
+        what.setLineSpacing(0, 1.15f);
         proBody.addView(what, matchWrap(0));
 
         TextView note = UiKit.text(this, proUnavailableNote(), 12, UiKit.MUTED, false);
         note.setLineSpacing(0, 1.15f);
         proBody.addView(note, matchWrap(6));
 
-        proBody.setContentDescription("Orbit Pro. Advanced message and glass styling, locked. "
-                + proUnavailableNote());
+        proBody.setContentDescription("Orbit Pro. Advanced message styling, Liquid Glass and "
+                + "advanced backgrounds, locked. " + proUnavailableNote());
         proBody.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
         what.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         note.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
@@ -1098,7 +1187,8 @@ public final class ThemeStudioActivity extends Activity {
     /**
      * What Pro sees: two tools rather than one form.
      *
-     * <p>Message style and Floating glass are separate panels, each led by the sample it changes.
+     * <p>Message style, Liquid Glass and Background are separate panels, each led by the sample it
+     * changes.
      * Beta 2 stacked all five sliders in one column with the only demonstration of their effect at
      * the top of a scrolling page, so tuning a corner radius meant dragging, scrolling up to look,
      * and scrolling back down. Putting each sample directly above its own controls is most of what
@@ -1136,7 +1226,7 @@ public final class ThemeStudioActivity extends Activity {
         proBody.addView(messages, matchWrap(14));
 
         LinearLayout glass = toolPanel();
-        glass.addView(toolTitle("Floating glass"), matchWrap(0));
+        glass.addView(toolTitle("Liquid Glass"), matchWrap(0));
         glassPreview = new GlassStylePreview(this);
         glass.addView(glassPreview, matchWrap(10));
 
@@ -1164,6 +1254,235 @@ public final class ThemeStudioActivity extends Activity {
                 OrbitProStyle::strengthLabel,
                 (v, settled) -> editPro(draft.pro.withGlassEdge(v), settled)), matchWrap(12));
         proBody.addView(glass, matchWrap(14));
+
+        proBody.addView(buildBackgroundTool(), matchWrap(14));
+    }
+
+    /**
+     * The third tool: what the page itself looks like.
+     *
+     * <p>Below Message style and Liquid Glass because that is the order of increasing scope - a
+     * bubble, then the controls floating over the page, then the page - and because it is the newest
+     * of the three and moving the two a person already knows would be the wrong kind of surprise.
+     *
+     * <p>The free Background colour control stays exactly where it has always been, in the Colors
+     * card at the top of this screen. Nothing here replaces it: Linear runs it into a premium colour
+     * and Glow lays light over it, so a person without Pro loses nothing and a person with Pro is
+     * building on the choice they already made rather than making it again somewhere else.
+     */
+    private View buildBackgroundTool() {
+        LinearLayout panel = toolPanel();
+        panel.addView(toolTitle("Background"), matchWrap(0));
+
+        backgroundPreview = new BackgroundStylePreview(this);
+        panel.addView(backgroundPreview, matchWrap(10));
+
+        backgroundModeSegment = new OrbitSegmented(this);
+        backgroundModeSegment.setTitle("Background");
+        backgroundModeSegment.setOptions(new String[]{
+                OrbitProStyle.backgroundModeLabel(OrbitProStyle.BACKGROUND_SOLID),
+                OrbitProStyle.backgroundModeLabel(OrbitProStyle.BACKGROUND_LINEAR),
+                OrbitProStyle.backgroundModeLabel(OrbitProStyle.BACKGROUND_GLOW)});
+        backgroundModeSegment.setSelected(draft.pro.backgroundMode);
+        backgroundModeSegment.setOnSelectListener(
+                (view, index) -> editPro(draft.pro.withBackgroundMode(index), true));
+        panel.addView(backgroundModeSegment, matchWrap(12));
+
+        // The note that explains why a configured effect is not on screen. Held rather than added and
+        // removed, so turning AMOLED on does not change the height of this panel.
+        amoledBackgroundNote = UiKit.text(this,
+                "Background effects are hidden while AMOLED is on. Your settings are kept.",
+                12, UiKit.MUTED, false);
+        amoledBackgroundNote.setLineSpacing(0, 1.15f);
+        panel.addView(amoledBackgroundNote, matchWrap(10));
+
+        linearControls = new LinearLayout(this);
+        linearControls.setOrientation(LinearLayout.VERTICAL);
+        linearControls.addView(effectColourRow("Gradient color",
+                "The color the background runs into"), matchWrap(0));
+        directionValue = UiKit.text(this, draft.pro.directionLabel(), 14, UiKit.TEXT, true);
+        directionRow = selectorRow("Direction", directionValue, v -> chooseDirection(v));
+        linearControls.addView(directionRow, matchWrap(10));
+        panel.addView(linearControls, matchWrap(10));
+
+        glowControls = new LinearLayout(this);
+        glowControls.setOrientation(LinearLayout.VERTICAL);
+        glowControls.addView(effectColourRow("Glow color", "The color of the light"), matchWrap(0));
+
+        glowStrengthValue = valueLabel(draft.pro.glowStrengthLabel());
+        glowStrengthSlider = new OrbitSlider(this);
+        glowControls.addView(proControl("Glow strength", glowStrengthValue, glowStrengthSlider,
+                OrbitProStyle.GLOW_STRENGTH_MIN, OrbitProStyle.GLOW_STRENGTH_MAX,
+                draft.pro.glowStrength,
+                OrbitProStyle::glowStrengthLabel,
+                (v, settled) -> editPro(draft.pro.withGlowStrength(v), settled)), matchWrap(12));
+
+        glowSizeValue = valueLabel(draft.pro.glowSizeLabel());
+        glowSizeSlider = new OrbitSlider(this);
+        glowControls.addView(proControl("Glow size", glowSizeValue, glowSizeSlider,
+                OrbitProStyle.GLOW_SIZE_MIN, OrbitProStyle.GLOW_SIZE_MAX,
+                draft.pro.glowSize,
+                OrbitProStyle::glowSizeLabel,
+                (v, settled) -> editPro(draft.pro.withGlowSize(v), settled)), matchWrap(12));
+
+        glowControls.addView(UiKit.text(this, "Position", 13.5f, UiKit.TEXT, false), matchWrap(12));
+        glowPositionSegment = new OrbitSegmented(this);
+        glowPositionSegment.setTitle("Glow position");
+        glowPositionSegment.setOptions(new String[]{
+                OrbitProStyle.glowPositionLabel(OrbitProStyle.GLOW_TOP),
+                OrbitProStyle.glowPositionLabel(OrbitProStyle.GLOW_CENTER),
+                OrbitProStyle.glowPositionLabel(OrbitProStyle.GLOW_BOTTOM)});
+        glowPositionSegment.setSelected(draft.pro.glowPosition);
+        glowPositionSegment.setOnSelectListener(
+                (view, index) -> editPro(draft.pro.withGlowPosition(index), true));
+        glowControls.addView(glowPositionSegment, matchWrap(4));
+        panel.addView(glowControls, matchWrap(10));
+
+        syncBackgroundVisibility();
+        return panel;
+    }
+
+    /**
+     * The premium effect colour, in the same row shape the Colors card uses.
+     *
+     * <p>Deliberately not a second colour picker. The row opens {@link UiKit#showOrbitColorMenu} with
+     * Orbit's own palette and hands a custom choice to {@link OrbitColorPicker}, which is exactly what
+     * the Accent and Background rows above do, so a colour chosen here is stored in the same token
+     * vocabulary and recognised by the same name everywhere in the app.
+     *
+     * <p>One row's worth of references is held rather than two, because Linear and Glow each show one
+     * of these and only one of them is ever visible. Both call this, both end up pointing at the same
+     * held swatch and label, and whichever is on screen is the one that gets updated.
+     */
+    private View effectColourRow(String title, String description) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(UiKit.dp(this, 10), UiKit.dp(this, 8), UiKit.dp(this, 12), UiKit.dp(this, 8));
+        row.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_3,
+                UiKit.withAlpha(UiKit.accent(this), 60), UiKit.accent(this), 14, this));
+        row.setMinimumHeight(UiKit.dp(this, 54));
+        UiKit.pressScale(row);
+        row.setOnClickListener(v -> {
+            UiKit.haptic(v, HapticFeedbackConstants.VIRTUAL_KEY);
+            chooseEffectColour(v);
+        });
+
+        View swatch = new View(this);
+        swatch.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams swatchLp =
+                new LinearLayout.LayoutParams(UiKit.dp(this, 34), UiKit.dp(this, 34));
+        swatchLp.rightMargin = UiKit.dp(this, 12);
+        row.addView(swatch, swatchLp);
+        effectColourSwatch = swatch;
+
+        LinearLayout labels = new LinearLayout(this);
+        labels.setOrientation(LinearLayout.VERTICAL);
+        labels.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        labels.addView(UiKit.text(this, title, 13.5f, UiKit.TEXT, false));
+        TextView summary = UiKit.text(this, "", 12, UiKit.MUTED, false);
+        labels.addView(summary);
+        row.addView(labels, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        effectColourSummary = summary;
+
+        TextView chevron = UiKit.text(this, UiKit.SELECTOR_CHEVRON, 15, UiKit.accent(this), false);
+        chevron.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        row.addView(chevron);
+
+        row.setContentDescription(title + ". " + description + ". Opens a color editor.");
+        return row;
+    }
+
+    /** A label, its current value in words, and a chevron. Used by Direction. */
+    private LinearLayout selectorRow(String title, TextView value, View.OnClickListener onOpen) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(UiKit.dp(this, 12), UiKit.dp(this, 11), UiKit.dp(this, 12), UiKit.dp(this, 12));
+        row.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_3,
+                UiKit.withAlpha(UiKit.accent(this), 60), UiKit.accent(this), 14, this));
+        row.setMinimumHeight(UiKit.dp(this, 48));
+        UiKit.pressScale(row);
+        row.setOnClickListener(v -> {
+            UiKit.haptic(v, HapticFeedbackConstants.VIRTUAL_KEY);
+            onOpen.onClick(v);
+        });
+        row.addView(UiKit.text(this, title, 13.5f, UiKit.TEXT, false),
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(value);
+        TextView chevron = UiKit.text(this, UiKit.SELECTOR_CHEVRON, 15, UiKit.accent(this), false);
+        chevron.setPadding(UiKit.dp(this, 8), 0, 0, 0);
+        chevron.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        row.addView(chevron);
+        return row;
+    }
+
+    /**
+     * Orbit's own palette, plus a custom colour, for the one premium effect colour.
+     *
+     * <p>{@code accent} leads the list rather than sitting in it, because an effect that follows the
+     * theme's accent is not one colour among twelve - it is the answer that goes on being right after
+     * the accent changes, and it is the default for that reason.
+     */
+    private void chooseEffectColour(View anchor) {
+        OrbitThemeTokens tokens = OrbitThemeTokens.resolve(this, draft);
+        String[] keys = UiKit.accentKeys();
+        List<String> labels = new ArrayList<>();
+        List<Integer> colours = new ArrayList<>();
+        List<String> tokensForIndex = new ArrayList<>();
+
+        labels.add("Theme accent");
+        colours.add(tokens.accent);
+        tokensForIndex.add(OrbitTheme.ACCENT);
+        for (String key : keys) {
+            if (OrbitTheme.DYNAMIC.equals(key)) continue;
+            labels.add(OrbitPalette.labelFor(key));
+            colours.add(UiKit.accentForName(this, key));
+            tokensForIndex.add(key);
+        }
+        int current = draft.pro.backgroundEffectColor(this, tokens.accent);
+        labels.add("Custom color…");
+        colours.add(current);
+
+        int selected = tokensForIndex.indexOf(draft.pro.backgroundEffectColor);
+        final int customIndex = labels.size() - 1;
+        showColourChoice(anchor, "Background effect", labels, colours, selected, index -> {
+            if (index == customIndex) {
+                pickCustom("Background effect", current, effectColourSuggestions(tokens),
+                        colour -> editPro(draft.pro.withBackgroundEffectColor(
+                                OrbitTheme.colorToken(colour)), true));
+            } else {
+                editPro(draft.pro.withBackgroundEffectColor(tokensForIndex.get(index)), true);
+            }
+        });
+    }
+
+    /**
+     * Starting points a background effect actually looks good at.
+     *
+     * <p>The theme's own colours first, then the deep tones Orbit's shipped presets are built from.
+     * A background effect is the one place a mid-bright colour is usually wrong, so what is offered
+     * here leans towards the dark end rather than towards the accent palette.
+     */
+    private List<Integer> effectColourSuggestions(OrbitThemeTokens tokens) {
+        List<Integer> out = new ArrayList<>();
+        out.add(tokens.accent);
+        out.add(OrbitContrast.blend(tokens.accent, tokens.background, 0.4f));
+        out.add(tokens.surface3);
+        for (OrbitTheme preset : OrbitTheme.builtIns()) {
+            if (OrbitTheme.isHexToken(preset.surface)) {
+                out.add(OrbitTheme.hexTokenColor(preset.surface));
+            }
+        }
+        return out;
+    }
+
+    private void chooseDirection(View anchor) {
+        String[] labels = new String[OrbitProStyle.DIRECTION_COUNT];
+        for (int i = 0; i < labels.length; i++) labels[i] = OrbitProStyle.directionLabel(i);
+        UiKit.showOrbitMenu(this, anchor, labels, draft.pro.gradientDirection,
+                (index, label) -> editPro(draft.pro.withGradientDirection(index), true));
     }
 
     /** One of the two tools. A quiet inner surface, not a second card with its own border. */
@@ -1249,6 +1568,10 @@ public final class ThemeStudioActivity extends Activity {
         // Beta 2, and which is what made the thumb appear to snap back the moment it was released.
         draft = OrbitThemeStore.canonicalIdentity(this, draft);
         syncProLabels();
+        // Which background controls apply can only have changed on a settled edit - a mode or a
+        // position is chosen, never dragged - and this changes visibility rather than creating
+        // anything, so the slider that was just released is untouched by it.
+        syncBackgroundVisibility();
         syncPreviews();
         syncPresetSelection();
     }

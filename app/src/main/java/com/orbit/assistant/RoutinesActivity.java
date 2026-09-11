@@ -87,7 +87,7 @@ public class RoutinesActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         pageScroll = scroll;
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(UiKit.BG);
+        OrbitBackground.applyPage(scroll);
 
         LinearLayout page = new LinearLayout(this);
         pageContent = page;

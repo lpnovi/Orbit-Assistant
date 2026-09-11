@@ -59,7 +59,7 @@ public final class WhatsNewActivity extends Activity {
     private View buildContent() {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(UiKit.BG);
+        OrbitBackground.applyPage(scroll);
         scroll.setForceDarkAllowed(false);
 
         LinearLayout page = new LinearLayout(this);

@@ -386,9 +386,33 @@ Shipped in `0.8.0.0-beta.3`, after physical testing of Beta 2 on a Galaxy S25 Ul
 - **Correct preset behavior.** Selecting a preset synchronizes the advanced controls once and
   still changes nothing in Orbit until Apply
 
+Shipped in `0.8.0.0-beta.4`, the release where Orbit Pro became visual:
+
+- **Liquid Orbit Glass.** The floating chrome in Chats and the Vault is now a layered material: a
+  translucent body with real interior depth, a directional specular highlight, a lit upper rim, a
+  faint reflection at its foot, and accent refraction gathering at its edges
+- **No blur, still.** The depth is layered light rather than a sampled backdrop, so API 29 gets the
+  identical treatment and there is no bitmap capture, no per-frame processing and no fallback path
+- **Glass controls that earn their range.** Opacity reaches further down into genuine translucency,
+  tint drives the accent character of the whole material, and edge drives every light layer rather
+  than the hairline alone
+- **Orbit Pro Advanced Backgrounds.** A third Theme Studio tool with Solid, Linear and Glow, each
+  with its own compact live preview above its own controls
+- **Linear gradients** in eight directions, built from the existing free Background color as one
+  endpoint plus one premium effect color, so the free control still decides what color the page is
+- **Radial glow** with its own color, strength, size and Top / Center / Bottom position, stored
+  semantically so one theme is correct in portrait, in landscape and across a rotation
+- **One central page renderer.** `OrbitBackground` resolves every page canvas from theme,
+  entitlement and AMOLED, and no Activity carries gradient or radial arithmetic of its own
+- **AMOLED still means true black.** Background effects are suppressed while it is on, the stored
+  configuration is kept intact, and turning it off restores exactly what was configured
+- **Two new Orbit Pro presets**, Aurora and Nova Ultra, marked premium by stable identity
+- **Solid backgrounds stay free**, along with the Background color control itself and every
+  existing preset, saved theme, custom color, and theme import and export
+
 Planned, in order:
 
-- Theme Studio Pro backgrounds: gradient and radial page treatments, and per-surface profiles
+- Theme Studio Pro backgrounds, further: per-surface profiles and background images
 - Theme Studio Pro typography and further message styling, including separate bubble shapes
 - Orbit Deck Pro
 - Vault Pro organization

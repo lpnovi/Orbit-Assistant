@@ -382,6 +382,8 @@ public final class OrbitTheme {
     /** The Orbit Pro presets. Their {@code orbit.pro.} prefix is the identity, not their name. */
     public static final String ID_SIGNAL_VIOLET = "orbit.pro.signal.violet";
     public static final String ID_NEBULA_GLASS = "orbit.pro.nebula.glass";
+    public static final String ID_AURORA = "orbit.pro.aurora";
+    public static final String ID_NOVA_ULTRA = "orbit.pro.nova.ultra";
 
     /**
      * Whether a preset is one of the premium ones.
@@ -484,6 +486,37 @@ public final class OrbitTheme {
         out.add(new OrbitTheme(ID_NEBULA_GLASS, "Nebula Glass", true,
                 "violet", "#33275C", "#1C1730", "#191427", "#0A0714", false,
                 OrbitProStyle.of(22, OrbitProStyle.OUTLINE_SUBTLE, 188, 155, 160)));
+
+        // The two presets v0.8.0.0-beta.4 added, and the first two whose point is the page itself
+        // rather than what is on it. Both are still ordinary Orbit themes in every free respect, and
+        // both still fall back to exactly that on a device without Pro.
+
+        // Aurora: the linear one. Deep cool navy at the foot running up into indigo, which is the
+        // right way round for the thing it is named after - light gathers towards the top of a sky,
+        // not the bottom of one. Two colours from the same cold end of the spectrum on purpose: a
+        // gradient between colours that disagree is a rainbow, and Orbit does not have those.
+        out.add(new OrbitTheme(ID_AURORA, "Aurora", true,
+                "#7C8CFF", "#243066", "#161C33", "#161C33", "#0B0F1E", false,
+                OrbitProStyle.of(20, OrbitProStyle.OUTLINE_SUBTLE, 194, 118, 140)
+                        .withBackgroundMode(OrbitProStyle.BACKGROUND_LINEAR)
+                        .withBackgroundEffectColor("#242A66")
+                        .withGradientDirection(OrbitProStyle.DIRECTION_BOTTOM_TOP)));
+
+        // Nova Ultra: the glow one, and deliberately not Signal Violet with the light turned up.
+        // Signal Violet is a true-black page with a bright violet on it; this is a near-black one
+        // that is very slightly blue, a colder and deeper accent, and a blue-violet light sitting
+        // high on the page - so the two read as different themes rather than two settings of one.
+        // Not AMOLED, and that is the design rather than an oversight: AMOLED means a true-black
+        // page, a true-black page suppresses background effects, and a preset whose whole point is
+        // its glow must not ship with the thing that hides it already switched on.
+        out.add(new OrbitTheme(ID_NOVA_ULTRA, "Nova Ultra", true,
+                "#7E5BFF", "#2A1D5E", "#14112B", "#151129", "#07060F", false,
+                OrbitProStyle.of(16, OrbitProStyle.OUTLINE_SUBTLE, 176, 150, 158)
+                        .withBackgroundMode(OrbitProStyle.BACKGROUND_GLOW)
+                        .withBackgroundEffectColor("#5B3FCF")
+                        .withGlowStrength(55)
+                        .withGlowSize(70)
+                        .withGlowPosition(OrbitProStyle.GLOW_TOP)));
         return Collections.unmodifiableList(out);
     }
 

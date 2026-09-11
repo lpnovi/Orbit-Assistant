@@ -273,7 +273,7 @@ public final class OrbitVaultActivity extends Activity {
      */
     private View build() {
         FrameLayout host = new FrameLayout(this);
-        host.setBackgroundColor(UiKit.BG);
+        OrbitBackground.applyPage(host);
         int side = UiKit.dp(this, 18);
         host.setPadding(side, UiKit.dp(this, 10), side, 0);
 

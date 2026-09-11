@@ -139,7 +139,7 @@ public class AppProfileActivity extends Activity {
 
     private View build() {
         ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(UiKit.BG);
+        OrbitBackground.applyPage(scroll);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(UiKit.dp(this,18),UiKit.dp(this,10),UiKit.dp(this,18),UiKit.dp(this,38));

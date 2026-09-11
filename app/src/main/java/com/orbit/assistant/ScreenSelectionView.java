@@ -74,6 +74,8 @@ public final class ScreenSelectionView extends View {
 
     public ScreenSelectionView(Context context) {
         super(context);
+        // A component interior, not a page. This is the mat a screenshot is laid on while it is
+        // cropped and marked up, so it stays a flat opaque colour whatever the theme page does.
         setBackgroundColor(UiKit.BG);
         setForceDarkAllowed(false);
         setContentDescription("Screen preview. Drag to crop or mark up the screenshot.");

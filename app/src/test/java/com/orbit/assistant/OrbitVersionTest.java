@@ -147,27 +147,27 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * This build is Orbit Pro Beta 3, the Theme Studio Pro interaction fixes.
+     * This build is Orbit Pro Beta 4, Liquid Orbit Glass and advanced backgrounds.
      *
-     * <p>Beta 2 shipped the first premium functionality and physical testing found it stiff and
-     * jumpy; this one is the repair. The version rules are unchanged and still carry the same
-     * weight: prerelease metadata, a prerelease tag, a rank above every 0.7 release and above the
-     * two Betas before it, and below the 0.8.0.0 Stable it works towards. The last assertion
-     * remains the one that matters most, because the version name reading as a Beta is the only
-     * reason the developer preview override is legal on this build at all.
+     * <p>Beta 3 repaired how Theme Studio Pro behaves; this one is about how Orbit Pro looks. The
+     * version rules are unchanged and still carry the same weight: prerelease metadata, a prerelease
+     * tag, a rank above every 0.7 release and above the three Betas before it, and below the 0.8.0.0
+     * Stable it works towards. The last assertion remains the one that matters most, because the
+     * version name reading as a Beta is the only reason the developer preview override is legal on
+     * this build at all - and this is the release where that override unlocks the most.
      */
-    @Test public void thisBuildIsOrbitProBetaThree() {
+    @Test public void thisBuildIsOrbitProBetaFour() {
         String version = BuildConfig.VERSION_NAME;
         assertTrue(OrbitVersion.installedIsBeta());
         assertTrue(OrbitVersion.isBeta(version));
         assertFalse(OrbitVersion.isStable(version));
-        assertEquals("0.8.0.0-beta.3", version);
+        assertEquals("0.8.0.0-beta.4", version);
         assertEquals("0.8.0.0", OrbitVersion.baseVersion(version));
-        assertEquals(3, OrbitVersion.betaNumber(version));
+        assertEquals(4, OrbitVersion.betaNumber(version));
 
-        assertEquals("0.8.0.0 Beta 3", OrbitVersion.displayName(version));
-        assertEquals("Orbit Assistant v0.8.0.0 Beta 3", OrbitVersion.releaseTitle(version));
-        assertEquals("v0.8.0.0-beta.3", OrbitVersion.tagFor(version));
+        assertEquals("0.8.0.0 Beta 4", OrbitVersion.displayName(version));
+        assertEquals("Orbit Assistant v0.8.0.0 Beta 4", OrbitVersion.releaseTitle(version));
+        assertEquals("v0.8.0.0-beta.4", OrbitVersion.tagFor(version));
         assertTrue("the release workflow must publish it as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
         assertFalse("and never as a normal release",
@@ -181,20 +181,21 @@ public final class OrbitVersionTest {
                 OrbitVersion.compareVersions(version, "0.7.9.9") > 0);
         assertTrue("while ranking below the Stable it is working towards",
                 OrbitVersion.compareVersions(version, "0.8.0.0") < 0);
-        assertTrue("above both Betas it supersedes",
-                OrbitVersion.compareVersions(version, "0.8.0.0-beta.2") > 0);
+        assertTrue("above all three Betas it supersedes",
+                OrbitVersion.compareVersions(version, "0.8.0.0-beta.3") > 0);
+        assertTrue(OrbitVersion.compareVersions(version, "0.8.0.0-beta.2") > 0);
         assertTrue(OrbitVersion.compareVersions(version, "0.8.0.0-beta.1") > 0);
         assertTrue("and below the Beta that would follow it",
-                OrbitVersion.compareVersions(version, "0.8.0.0-beta.4") < 0);
+                OrbitVersion.compareVersions(version, "0.8.0.0-beta.5") < 0);
         assertTrue("the preview override is legal only because this reads as a Beta",
                 OrbitProEntitlement.previewAvailable(false, version));
     }
 
-    /** Beta 3 must supersede Beta 2, published as versionCode 789. */
+    /** Beta 4 must supersede Beta 3, published as versionCode 790. */
     @Test public void thisBuildOutranksThePublishedReleaseItFollows() {
-        assertEquals("Beta 3 must use the next synchronized version code",
-                790, BuildConfig.VERSION_CODE);
-        assertTrue(OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.8.0.0-beta.2") > 0);
+        assertEquals("Beta 4 must use the next synchronized version code",
+                791, BuildConfig.VERSION_CODE);
+        assertTrue(OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.8.0.0-beta.3") > 0);
         assertTrue(OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.7.8.5") > 0);
     }
 }

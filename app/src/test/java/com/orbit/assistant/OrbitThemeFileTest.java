@@ -438,17 +438,24 @@ public final class OrbitThemeFileTest {
         JSONObject json = new JSONObject(
                 OrbitThemeFileCodec.encode(OrbitTheme.builtIn(OrbitTheme.ID_NOVA_AMOLED)));
         // Twelve since Orbit Pro: the eleven a theme has always had, plus the premium styling
-        // block. It is still nothing but appearance - five bounded integers describing a corner
-        // radius, an outline level and three glass strengths.
+        // block. Advanced backgrounds went inside that block rather than beside it, so the document
+        // itself is exactly as wide as it was and an older Orbit still meets one key it does not
+        // know instead of seven.
         assertEquals(12, json.length());
         assertTrue("the premium block is the only addition", json.has("pro"));
         JSONObject pro = json.getJSONObject("pro");
-        assertEquals("and it carries five numbers and nothing else", 5, pro.length());
+        // Eleven since advanced backgrounds: the five that described a bubble and the glass, plus
+        // six describing the page. Still nothing but appearance - bounded numbers and one colour
+        // token in exactly the vocabulary the theme's own colour fields use.
+        assertEquals("and it carries eleven appearance values and nothing else", 11, pro.length());
         for (String field : new String[]{"bubbleRadius", "bubbleOutline", "glassOpacity",
-                "glassTint", "glassEdge"}) {
+                "glassTint", "glassEdge", "backgroundMode", "gradientDirection",
+                "glowStrength", "glowSize", "glowPosition"}) {
             assertTrue("a premium block must describe " + field, pro.has(field));
             assertTrue(field + " must be a plain number", pro.get(field) instanceof Integer);
         }
+        assertTrue("the effect colour is a token, like every other colour in the file",
+                pro.get("backgroundEffectColor") instanceof String);
         for (String forbidden : new String[]{"url", "uri", "intent", "action", "package",
                 "component", "permission", "provider", "apiKey", "token", "secret", "routine",
                 "memory", "deck", "update", "class", "code", "script"}) {

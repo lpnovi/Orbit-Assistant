@@ -12,6 +12,7 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.LayerDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.provider.Settings;
 import android.view.View;
@@ -253,8 +254,11 @@ public final class OrbitGlassChromeTest {
         View vaultSearch = vaultScreen().searchSurfaceForTest();
         assertNotNull(chatsSearch);
         assertNotNull(vaultSearch);
-        assertTrue(chatsSearch.getBackground() instanceof GradientDrawable);
-        assertTrue(vaultSearch.getBackground() instanceof GradientDrawable);
+        assertTrue(chatsSearch.getBackground() instanceof LayerDrawable);
+        assertTrue(vaultSearch.getBackground() instanceof LayerDrawable);
+        assertEquals("both wear the same liquid material, layer for layer",
+                ((LayerDrawable) chatsSearch.getBackground()).getNumberOfLayers(),
+                ((LayerDrawable) vaultSearch.getBackground()).getNumberOfLayers());
         float resting = UiKit.dp(context, OrbitGlass.RESTING_ELEVATION_DP);
         assertEquals("Search sits above the page", resting, chatsSearch.getElevation(), 0.01f);
         assertEquals(resting, vaultSearch.getElevation(), 0.01f);
@@ -546,7 +550,17 @@ public final class OrbitGlassChromeTest {
      * everywhere and there is no second path to rot.
      */
     @Test public void everySupportedAndroidVersionGetsTheSameGlass() {
-        assertTrue(OrbitGlass.surfaceDrawable(context) instanceof GradientDrawable);
+        // Liquid Orbit Glass, at both API levels, with the same number of layers on each. The
+        // material became a LayerDrawable in v0.8.0.0-beta.4; what this test is actually protecting
+        // is that there is one material rather than a rich one on new Android and a plain one on
+        // API 29, and that is asserted more strongly now than when it was a single fill.
+        LayerDrawable glass = OrbitGlass.surfaceDrawable(context);
+        assertEquals("the liquid material is five layers on every supported level",
+                5, glass.getNumberOfLayers());
+        for (int i = 0; i < glass.getNumberOfLayers(); i++) {
+            assertTrue("every layer is a gradient, so every level draws the same way",
+                    glass.getDrawable(i) instanceof GradientDrawable);
+        }
         assertTrue(OrbitGlass.interactive(context) instanceof RippleDrawable);
         assertTrue(OrbitGlass.scrimDrawable(context) instanceof GradientDrawable);
         assertFalse("no API-level branch to keep working",
@@ -605,9 +619,9 @@ public final class OrbitGlassChromeTest {
         assertTrue("a resting selector is Orbit glass",
                 type.getBackground() instanceof RippleDrawable);
         Drawable resting = ((RippleDrawable) type.getBackground()).getDrawable(0);
-        assertTrue(resting instanceof GradientDrawable);
-        assertNotNull("its translucency is a gradient, not a flat fill",
-                ((GradientDrawable) resting).getColors());
+        assertTrue("a resting selector wears the liquid material", resting instanceof LayerDrawable);
+        assertNotNull("its translucency is a gradient body, not a flat fill",
+                OrbitGlass.bodyOf((LayerDrawable) resting).getColors());
 
         Prefs.setVaultFilter(context, OrbitVaultFilter.NONE
                 .withType(OrbitVaultFilter.Type.LINKS));

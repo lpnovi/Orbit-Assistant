@@ -97,7 +97,15 @@ public final class OrbitThemeStore {
                 p.getInt(Prefs.THEME_PRO_BUBBLE_OUTLINE, OrbitProStyle.OUTLINE_DEFAULT),
                 p.getInt(Prefs.THEME_PRO_GLASS_OPACITY, OrbitProStyle.GLASS_OPACITY_DEFAULT),
                 p.getInt(Prefs.THEME_PRO_GLASS_TINT, OrbitProStyle.GLASS_TINT_DEFAULT),
-                p.getInt(Prefs.THEME_PRO_GLASS_EDGE, OrbitProStyle.GLASS_EDGE_DEFAULT));
+                p.getInt(Prefs.THEME_PRO_GLASS_EDGE, OrbitProStyle.GLASS_EDGE_DEFAULT),
+                p.getInt(Prefs.THEME_PRO_BACKGROUND_MODE, OrbitProStyle.BACKGROUND_MODE_DEFAULT),
+                p.getString(Prefs.THEME_PRO_BACKGROUND_EFFECT_COLOR,
+                        OrbitProStyle.EFFECT_COLOR_DEFAULT),
+                p.getInt(Prefs.THEME_PRO_GRADIENT_DIRECTION,
+                        OrbitProStyle.GRADIENT_DIRECTION_DEFAULT),
+                p.getInt(Prefs.THEME_PRO_GLOW_STRENGTH, OrbitProStyle.GLOW_STRENGTH_DEFAULT),
+                p.getInt(Prefs.THEME_PRO_GLOW_SIZE, OrbitProStyle.GLOW_SIZE_DEFAULT),
+                p.getInt(Prefs.THEME_PRO_GLOW_POSITION, OrbitProStyle.GLOW_POSITION_DEFAULT));
     }
 
     /**
@@ -128,6 +136,12 @@ public final class OrbitThemeStore {
                 .putInt(Prefs.THEME_PRO_GLASS_OPACITY, theme.pro.glassOpacity)
                 .putInt(Prefs.THEME_PRO_GLASS_TINT, theme.pro.glassTint)
                 .putInt(Prefs.THEME_PRO_GLASS_EDGE, theme.pro.glassEdge)
+                .putInt(Prefs.THEME_PRO_BACKGROUND_MODE, theme.pro.backgroundMode)
+                .putString(Prefs.THEME_PRO_BACKGROUND_EFFECT_COLOR, theme.pro.backgroundEffectColor)
+                .putInt(Prefs.THEME_PRO_GRADIENT_DIRECTION, theme.pro.gradientDirection)
+                .putInt(Prefs.THEME_PRO_GLOW_STRENGTH, theme.pro.glowStrength)
+                .putInt(Prefs.THEME_PRO_GLOW_SIZE, theme.pro.glowSize)
+                .putInt(Prefs.THEME_PRO_GLOW_POSITION, theme.pro.glowPosition)
                 .commit();
         UiKit.syncTheme(c);
         return true;

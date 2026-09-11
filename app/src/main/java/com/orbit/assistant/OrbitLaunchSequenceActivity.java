@@ -43,6 +43,9 @@ public final class OrbitLaunchSequenceActivity extends Activity {
         getWindow().setNavigationBarColor(UiKit.BG);
 
         FrameLayout root = new FrameLayout(this);
+        // The launch sequence draws its own sky. This is the backdrop that scene is composed
+        // against rather than a themed Orbit page, so it stays flat: a page gradient behind an
+        // animation that is already lighting itself would be two light sources disagreeing.
         root.setBackgroundColor(UiKit.BG);
 
         scene = new OrbitLaunchSequenceView(this);

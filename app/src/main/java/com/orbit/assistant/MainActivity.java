@@ -275,7 +275,14 @@ public class MainActivity extends Activity {
                 // And the Vault control for exactly the same reason: switching the Vault off in
                 // Settings has to remove it from the header on the way back, not on the next
                 // cold start.
-                "|vault=" + Prefs.vaultEnabled(this);
+                "|vault=" + Prefs.vaultEnabled(this) +
+                // Everything that is baked into this page when it is built, which since advanced
+                // backgrounds includes the page's own drawable. Chats used to watch the accent and
+                // AMOLED and nothing else, so applying a theme that changed only the background - a
+                // custom page colour, or a gradient - left this screen painting the previous one
+                // until the next cold start. The shared signature is used rather than a longer list
+                // here, so the next appearance value Orbit adds is covered without editing Chats.
+                "|theme=" + UiKit.structuralAppearanceSignature(this);
     }
 
     /**
@@ -330,7 +337,7 @@ public class MainActivity extends Activity {
      */
     private View buildContent() {
         FrameLayout host = new FrameLayout(this);
-        host.setBackgroundColor(UiKit.BG);
+        OrbitBackground.applyPage(host);
         int h = UiKit.dp(this, 18);
         host.setPadding(h, UiKit.dp(this, 10), h, 0);
 

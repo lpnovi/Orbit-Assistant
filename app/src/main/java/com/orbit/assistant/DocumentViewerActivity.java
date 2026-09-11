@@ -195,7 +195,7 @@ public final class DocumentViewerActivity extends Activity {
     private View buildContent() {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(UiKit.BG);
+        OrbitBackground.applyPage(root);
         root.setPadding(UiKit.dp(this, 12), UiKit.dp(this, 8),
                 UiKit.dp(this, 12), UiKit.dp(this, 10));
 

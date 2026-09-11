@@ -88,6 +88,10 @@ public final class ScreenSelectionActivity extends Activity {
     private View buildContent(Bitmap original, Bundle savedState) {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
+        // Deliberately the flat page colour rather than OrbitBackground: this is the backing of an
+        // image editor, not a themed page. A gradient or a glow behind a screenshot being cropped
+        // would be decoration competing with the thing the user is trying to look at, which is also
+        // why force-dark is turned off for the same surface on the next line.
         root.setBackgroundColor(UiKit.BG);
         root.setForceDarkAllowed(false);
         root.setPadding(UiKit.dp(this, 12), UiKit.dp(this, 2),

@@ -9,7 +9,10 @@ import org.json.JSONObject;
  *
  * <p>Every free appearance decision Orbit has ever had lives on {@link OrbitTheme}: an accent, two
  * bubble colours, a surface, a background and AMOLED. None of them move here, and none of them
- * ever will. This is the second, smaller set of decisions that Orbit Pro unlocks, and it is
+ * ever will - including the Background colour, which advanced backgrounds build on rather than
+ * replace: Linear runs the free colour into a premium one and Glow lays light over it, so the free
+ * control is still the thing that decides what colour the page is. This is the second, smaller set
+ * of decisions that Orbit Pro unlocks, and it is
  * deliberately part of the theme rather than a scattering of unrelated preferences: a theme is one
  * complete appearance, it is saved as one object, exported as one file and applied in one act, and
  * a premium styling value that lived outside it would be none of those things.
@@ -68,8 +71,16 @@ public final class OrbitProStyle {
      * readable against whatever happens to scroll under them; above the ceiling the treatment stops
      * reading as glass and becomes an opaque bar, which is the thing {@link OrbitGlass} exists to
      * replace.
+     *
+     * <p>The floor dropped from 170 to 130 in v0.8.0.0-beta.4, and that is the whole of the
+     * migration for this control. A stored value from an earlier Beta is inside the new range and
+     * means precisely what it meant before; what changed is that there is now somewhere below it to
+     * go. At 170 the page behind the glass was influencing about two thirds of what you saw, which
+     * is why the minimum never really read as translucent - the control had a floor, not a low end.
+     * The four light layers above the body do not scale with this at all, so thin glass is thin and
+     * still unmistakably glass.
      */
-    public static final int GLASS_OPACITY_MIN = 170;
+    public static final int GLASS_OPACITY_MIN = 130;
     public static final int GLASS_OPACITY_MAX = 245;
     /** {@code OrbitGlass.FILL_ALPHA}. Asserted equal to it by test, not merely intended to be. */
     public static final int GLASS_OPACITY_DEFAULT = 214;
@@ -90,6 +101,75 @@ public final class OrbitProStyle {
     public static final int GLASS_EDGE_MAX = 200;
     public static final int GLASS_EDGE_DEFAULT = 100;
 
+    // ---- the page's own background -------------------------------------------------------------
+
+    /**
+     * No premium background effect. The page is the theme's Background color and nothing else.
+     *
+     * <p>Zero deliberately, and the default, because it is the only value that reproduces the
+     * release before this one. Orbit's free Background color control is untouched by any of this:
+     * it still chooses the color of the page, and these modes decide what is layered over it.
+     */
+    public static final int BACKGROUND_SOLID = 0;
+    /** The theme's Background color running into one premium color, in a chosen direction. */
+    public static final int BACKGROUND_LINEAR = 1;
+    /** A diffused radial light laid over the theme's Background color. */
+    public static final int BACKGROUND_GLOW = 2;
+    public static final int BACKGROUND_MODE_DEFAULT = BACKGROUND_SOLID;
+
+    /**
+     * The one premium color the advanced background effects are built from.
+     *
+     * <p>A token in exactly the vocabulary every other Orbit color uses - {@code accent}, a named
+     * palette entry, or {@code #RRGGBB} - so the existing picker chooses it and the existing
+     * normaliser validates it. {@code accent} rather than a hex default, because an effect that
+     * follows the theme's own accent is the one starting point that looks deliberate in every theme.
+     */
+    public static final String EFFECT_COLOR_DEFAULT = OrbitTheme.ACCENT;
+
+    /**
+     * The eight directions a linear background may run, in {@code GradientDrawable.Orientation}
+     * order.
+     *
+     * <p>Stored as this index rather than as the platform enum's {@code name()}. The stored value
+     * has to go on meaning the same thing whatever Android calls it, and a theme file written by one
+     * build has to be read the same way by another.
+     */
+    public static final int DIRECTION_TOP_BOTTOM = 0;
+    public static final int DIRECTION_TR_BL = 1;
+    public static final int DIRECTION_RIGHT_LEFT = 2;
+    public static final int DIRECTION_BR_TL = 3;
+    public static final int DIRECTION_BOTTOM_TOP = 4;
+    public static final int DIRECTION_BL_TR = 5;
+    public static final int DIRECTION_LEFT_RIGHT = 6;
+    public static final int DIRECTION_TL_BR = 7;
+    public static final int DIRECTION_COUNT = 8;
+    /** Light from above, which is the direction every other Orbit surface is already lit from. */
+    public static final int GRADIENT_DIRECTION_DEFAULT = DIRECTION_TOP_BOTTOM;
+
+    /**
+     * How strong the radial glow is.
+     *
+     * <p>Floored above zero, because a mode that draws nothing is already
+     * {@link #BACKGROUND_SOLID}, and having two ways to say that is how somebody ends up with Glow
+     * selected and no glow. Ceilinged well below opaque: the glow is illumination laid over the
+     * page, and the page is what Orbit derives its text readability from.
+     */
+    public static final int GLOW_STRENGTH_MIN = 10;
+    public static final int GLOW_STRENGTH_MAX = 100;
+    public static final int GLOW_STRENGTH_DEFAULT = 45;
+
+    /** How far the glow spreads, as a share of the longer edge of the page. */
+    public static final int GLOW_SIZE_MIN = 25;
+    public static final int GLOW_SIZE_MAX = 100;
+    public static final int GLOW_SIZE_DEFAULT = 60;
+
+    /** Where the light comes from. Three answers, because a page has a top, a middle and a foot. */
+    public static final int GLOW_TOP = 0;
+    public static final int GLOW_CENTER = 1;
+    public static final int GLOW_BOTTOM = 2;
+    public static final int GLOW_POSITION_DEFAULT = GLOW_TOP;
+
     // ---- ceilings the percentages cannot pass ---------------------------------------------------
 
     /** The most accent the glass fill may carry, whatever the tint is set to. */
@@ -103,6 +183,36 @@ public final class OrbitProStyle {
     /** The most opaque the hairline may become. */
     static final int MAX_BORDER_ALPHA = 150;
 
+    // ---- ceilings on the liquid layers ----------------------------------------------------------
+    //
+    // The Liquid Orbit Glass material is five layers rather than one fill, and each of the four
+    // above the body is bounded here for the same reason the older shares are: Glass edge reaching
+    // its maximum has to read as reflective material catching light, and there is a point past
+    // which every one of these stops doing that and becomes a sticker instead.
+
+    /** The most white the primary specular sweep may carry at its brightest point. */
+    static final float MAX_SPECULAR_ALPHA = 0.34f;
+    /** The most white the lit upper rim may carry. Past this it is an outline, not a highlight. */
+    static final float MAX_RIM_LIGHT_ALPHA = 0.44f;
+    /** The most white the secondary reflection near the foot may carry. Understated by design. */
+    static final float MAX_REFLECTION_ALPHA = 0.15f;
+    /** The most accent that may pool at the side edges as refraction. */
+    static final float MAX_REFRACTION_ALPHA = 0.40f;
+    /** The most the body's interior may vary from top to foot. Depth, never a glossy stripe. */
+    static final float MAX_INTERIOR_LIFT = 0.22f;
+
+    /**
+     * The most of the page's own light the glow may add, at {@link #GLOW_STRENGTH_MAX}.
+     *
+     * <p>Just over half. A page whose decoration could reach full opacity would be a page whose
+     * text colour no longer follows from the theme's Background color, and that is the one thing
+     * advanced backgrounds are not allowed to take away.
+     */
+    static final float MAX_GLOW_ALPHA = 0.55f;
+    /** The narrowest and widest the glow's falloff may be, as a share of the page's longer edge. */
+    static final float MIN_GLOW_RADIUS_SHARE = 0.38f;
+    static final float MAX_GLOW_RADIUS_SHARE = 1.30f;
+
     // ---- the value ------------------------------------------------------------------------------
 
     public final int bubbleRadiusDp;
@@ -110,45 +220,137 @@ public final class OrbitProStyle {
     public final int glassOpacity;
     public final int glassTint;
     public final int glassEdge;
+    public final int backgroundMode;
+    /** A colour token, in Orbit's existing vocabulary. Never a resolved colour. */
+    public final String backgroundEffectColor;
+    public final int gradientDirection;
+    public final int glowStrength;
+    public final int glowSize;
+    public final int glowPosition;
 
     /** Orbit exactly as it shipped. What Free resolves to, and what an older theme file becomes. */
     public static final OrbitProStyle DEFAULT = new OrbitProStyle(
             BUBBLE_RADIUS_DEFAULT, OUTLINE_DEFAULT,
-            GLASS_OPACITY_DEFAULT, GLASS_TINT_DEFAULT, GLASS_EDGE_DEFAULT);
+            GLASS_OPACITY_DEFAULT, GLASS_TINT_DEFAULT, GLASS_EDGE_DEFAULT,
+            BACKGROUND_MODE_DEFAULT, EFFECT_COLOR_DEFAULT, GRADIENT_DIRECTION_DEFAULT,
+            GLOW_STRENGTH_DEFAULT, GLOW_SIZE_DEFAULT, GLOW_POSITION_DEFAULT);
 
     private OrbitProStyle(int bubbleRadiusDp, int bubbleOutline, int glassOpacity,
-                          int glassTint, int glassEdge) {
+                          int glassTint, int glassEdge, int backgroundMode,
+                          String backgroundEffectColor, int gradientDirection,
+                          int glowStrength, int glowSize, int glowPosition) {
         this.bubbleRadiusDp = clamp(bubbleRadiusDp, BUBBLE_RADIUS_MIN, BUBBLE_RADIUS_MAX);
         this.bubbleOutline = clamp(bubbleOutline, OUTLINE_OFF, OUTLINE_DEFINED);
         this.glassOpacity = clamp(glassOpacity, GLASS_OPACITY_MIN, GLASS_OPACITY_MAX);
         this.glassTint = clamp(glassTint, GLASS_TINT_MIN, GLASS_TINT_MAX);
         this.glassEdge = clamp(glassEdge, GLASS_EDGE_MIN, GLASS_EDGE_MAX);
+        this.backgroundMode = clamp(backgroundMode, BACKGROUND_SOLID, BACKGROUND_GLOW);
+        this.backgroundEffectColor = normalizeEffectColor(backgroundEffectColor);
+        this.gradientDirection = clamp(gradientDirection, 0, DIRECTION_COUNT - 1);
+        this.glowStrength = clamp(glowStrength, GLOW_STRENGTH_MIN, GLOW_STRENGTH_MAX);
+        this.glowSize = clamp(glowSize, GLOW_SIZE_MIN, GLOW_SIZE_MAX);
+        this.glowPosition = clamp(glowPosition, GLOW_TOP, GLOW_BOTTOM);
     }
 
-    /** Always valid: every value out of range is pulled inside it rather than refused. */
+    /**
+     * The five styling values that existed before advanced backgrounds, at background defaults.
+     *
+     * <p>Kept as the short way in rather than widened to eleven parameters. Every caller that has
+     * one of these is describing message and glass styling, and the background fields it does not
+     * mention are the ones that reproduce the previous release - so the shorter call is also the
+     * more honest one. Anything that wants a background says so with {@link #withBackgroundMode}
+     * and the builders beside it.
+     */
     public static OrbitProStyle of(int bubbleRadiusDp, int bubbleOutline, int glassOpacity,
                                    int glassTint, int glassEdge) {
-        return new OrbitProStyle(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, glassEdge);
+        return new OrbitProStyle(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, glassEdge,
+                BACKGROUND_MODE_DEFAULT, EFFECT_COLOR_DEFAULT, GRADIENT_DIRECTION_DEFAULT,
+                GLOW_STRENGTH_DEFAULT, GLOW_SIZE_DEFAULT, GLOW_POSITION_DEFAULT);
+    }
+
+    /** Every value at once. Used by storage and by the theme file codec, which have all of them. */
+    public static OrbitProStyle of(int bubbleRadiusDp, int bubbleOutline, int glassOpacity,
+                                   int glassTint, int glassEdge, int backgroundMode,
+                                   String backgroundEffectColor, int gradientDirection,
+                                   int glowStrength, int glowSize, int glowPosition) {
+        return new OrbitProStyle(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, glassEdge,
+                backgroundMode, backgroundEffectColor, gradientDirection,
+                glowStrength, glowSize, glowPosition);
     }
 
     public OrbitProStyle withBubbleRadiusDp(int value) {
-        return of(value, bubbleOutline, glassOpacity, glassTint, glassEdge);
+        return of(value, bubbleOutline, glassOpacity, glassTint, glassEdge, backgroundMode,
+                backgroundEffectColor, gradientDirection, glowStrength, glowSize, glowPosition);
     }
 
     public OrbitProStyle withBubbleOutline(int value) {
-        return of(bubbleRadiusDp, value, glassOpacity, glassTint, glassEdge);
+        return of(bubbleRadiusDp, value, glassOpacity, glassTint, glassEdge, backgroundMode,
+                backgroundEffectColor, gradientDirection, glowStrength, glowSize, glowPosition);
     }
 
     public OrbitProStyle withGlassOpacity(int value) {
-        return of(bubbleRadiusDp, bubbleOutline, value, glassTint, glassEdge);
+        return of(bubbleRadiusDp, bubbleOutline, value, glassTint, glassEdge, backgroundMode,
+                backgroundEffectColor, gradientDirection, glowStrength, glowSize, glowPosition);
     }
 
     public OrbitProStyle withGlassTint(int value) {
-        return of(bubbleRadiusDp, bubbleOutline, glassOpacity, value, glassEdge);
+        return of(bubbleRadiusDp, bubbleOutline, glassOpacity, value, glassEdge, backgroundMode,
+                backgroundEffectColor, gradientDirection, glowStrength, glowSize, glowPosition);
     }
 
     public OrbitProStyle withGlassEdge(int value) {
-        return of(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, value);
+        return of(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, value, backgroundMode,
+                backgroundEffectColor, gradientDirection, glowStrength, glowSize, glowPosition);
+    }
+
+    public OrbitProStyle withBackgroundMode(int value) {
+        return of(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, glassEdge, value,
+                backgroundEffectColor, gradientDirection, glowStrength, glowSize, glowPosition);
+    }
+
+    public OrbitProStyle withBackgroundEffectColor(String value) {
+        return of(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, glassEdge, backgroundMode,
+                value, gradientDirection, glowStrength, glowSize, glowPosition);
+    }
+
+    public OrbitProStyle withGradientDirection(int value) {
+        return of(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, glassEdge, backgroundMode,
+                backgroundEffectColor, value, glowStrength, glowSize, glowPosition);
+    }
+
+    public OrbitProStyle withGlowStrength(int value) {
+        return of(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, glassEdge, backgroundMode,
+                backgroundEffectColor, gradientDirection, value, glowSize, glowPosition);
+    }
+
+    public OrbitProStyle withGlowSize(int value) {
+        return of(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, glassEdge, backgroundMode,
+                backgroundEffectColor, gradientDirection, glowStrength, value, glowPosition);
+    }
+
+    public OrbitProStyle withGlowPosition(int value) {
+        return of(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, glassEdge, backgroundMode,
+                backgroundEffectColor, gradientDirection, glowStrength, glowSize, value);
+    }
+
+    /**
+     * A colour token Orbit recognises, or the accent when it is not one.
+     *
+     * <p>Deliberately the same rule the theme's own colour fields are held to. A stored value that
+     * cannot be resolved is not a reason to draw nothing, and it is certainly not a reason to throw:
+     * it falls back to the accent, which is a background effect that still looks like the theme.
+     */
+    private static String normalizeEffectColor(String value) {
+        if (value == null) return EFFECT_COLOR_DEFAULT;
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) return EFFECT_COLOR_DEFAULT;
+        if (OrbitTheme.ACCENT.equals(trimmed)) return OrbitTheme.ACCENT;
+        String hex = OrbitTheme.parseHexToken(trimmed);
+        if (hex != null) return hex;
+        for (String key : OrbitPalette.accentKeys()) {
+            if (key.equals(trimmed)) return key;
+        }
+        return EFFECT_COLOR_DEFAULT;
     }
 
     /** True when this asks for nothing beyond the appearance Orbit ships to everybody. */
@@ -162,7 +364,18 @@ public final class OrbitProStyle {
                 && bubbleOutline == other.bubbleOutline
                 && glassOpacity == other.glassOpacity
                 && glassTint == other.glassTint
-                && glassEdge == other.glassEdge;
+                && glassEdge == other.glassEdge
+                && backgroundMode == other.backgroundMode
+                && backgroundEffectColor.equals(other.backgroundEffectColor)
+                && gradientDirection == other.gradientDirection
+                && glowStrength == other.glowStrength
+                && glowSize == other.glowSize
+                && glowPosition == other.glowPosition;
+    }
+
+    /** True when this theme asks for a background effect at all, entitlement aside. */
+    public boolean hasBackgroundEffect() {
+        return backgroundMode != BACKGROUND_SOLID;
     }
 
     // ---- entitlement -----------------------------------------------------------------------------
@@ -251,6 +464,106 @@ public final class OrbitProStyle {
         return clamp(Math.round(OrbitGlass.BASE_BORDER_ALPHA * edgeFactor()), 0, MAX_BORDER_ALPHA);
     }
 
+    // ---- the liquid layers -------------------------------------------------------------------------
+    //
+    // Four of these, and between them they are the difference between a translucent rounded
+    // rectangle and glass. Each is a share of white or of accent, each is driven by one of the two
+    // existing controls, and each is bounded.
+    //
+    // Edge drives the three light layers rather than the hairline alone, which is what finally makes
+    // that control worth having: at its minimum the material is nearly flat, at its default it is
+    // polished, and at its maximum light is visibly pooling on a curved surface. Tint drives the
+    // refraction, so the accent shows up at the edges of the glass the way colour shows up at the
+    // edges of a real pane rather than as a wash across the whole face of it.
+
+    /**
+     * The brightest point of the primary specular sweep, as a share of white.
+     *
+     * <p>Floored above zero on purpose. Edge at zero means subdued, not absent: a surface with no
+     * light on it at all stops being glass, and there is no setting in Orbit that should turn a
+     * material into a flat fill.
+     */
+    public float glassSpecularAlpha() {
+        return bounded(OrbitGlass.BASE_SPECULAR_ALPHA, MAX_SPECULAR_ALPHA, edgeFactor(), 0.30f);
+    }
+
+    /** The lit upper rim: the light that catches the top curve of the glass. */
+    public float glassRimLightAlpha() {
+        return bounded(OrbitGlass.BASE_RIM_LIGHT_ALPHA, MAX_RIM_LIGHT_ALPHA, edgeFactor(), 0.26f);
+    }
+
+    /** The secondary reflection near the foot. Understated, and the first thing to go. */
+    public float glassReflectionAlpha() {
+        return bounded(OrbitGlass.BASE_REFLECTION_ALPHA, MAX_REFLECTION_ALPHA, edgeFactor(), 0f);
+    }
+
+    /**
+     * How much accent pools at the side edges of the glass, as refraction rather than tinting.
+     *
+     * <p>Zero at tint zero, which is the whole point of neutral glass: the material still lifts off
+     * the page and still catches light, it simply has no colour of its own anywhere in it.
+     */
+    public float glassRefractionAlpha() {
+        return Math.min(MAX_REFRACTION_ALPHA, OrbitGlass.BASE_REFRACTION_ALPHA * tintFactor());
+    }
+
+    /**
+     * How far the body's interior varies between its lit top and its settled foot.
+     *
+     * <p>This is what stops the fill being one flat field at any opacity. Only half-driven by Edge,
+     * because interior depth is a property of the material rather than of how brightly it is lit.
+     */
+    public float glassInteriorLift() {
+        return Math.min(MAX_INTERIOR_LIFT,
+                OrbitGlass.BASE_INTERIOR_LIFT * (0.55f + 0.45f * edgeFactor()));
+    }
+
+    /** A share scaled by one control, held under a ceiling, and never allowed below its floor. */
+    private static float bounded(float base, float ceiling, float factor, float floorShare) {
+        return Math.max(base * floorShare, Math.min(ceiling, base * factor));
+    }
+
+    // ---- background derivations ---------------------------------------------------------------------
+
+    /**
+     * The premium effect colour, resolved against the theme it belongs to.
+     *
+     * <p>Takes the theme's accent rather than the live one, so the Theme Studio previews resolve a
+     * draft's effect colour exactly as an applied theme would.
+     */
+    public int backgroundEffectColor(Context c, int themeAccent) {
+        if (OrbitTheme.ACCENT.equals(backgroundEffectColor)) return themeAccent;
+        if (OrbitTheme.isHexToken(backgroundEffectColor)) {
+            return OrbitTheme.hexTokenColor(backgroundEffectColor);
+        }
+        return UiKit.accentForName(c, backgroundEffectColor);
+    }
+
+    /** How opaque the radial glow is at its centre. Bounded, so the page stays readable. */
+    public float glowAlpha() {
+        return MAX_GLOW_ALPHA * (glowStrength / (float) GLOW_STRENGTH_MAX);
+    }
+
+    /** How far the glow reaches, as a share of the longer edge of whatever it is drawn into. */
+    public float glowRadiusShare() {
+        float span = (glowSize - GLOW_SIZE_MIN) / (float) (GLOW_SIZE_MAX - GLOW_SIZE_MIN);
+        return MIN_GLOW_RADIUS_SHARE + span * (MAX_GLOW_RADIUS_SHARE - MIN_GLOW_RADIUS_SHARE);
+    }
+
+    /**
+     * Where the centre of the glow sits down the page, as a fraction of its height.
+     *
+     * <p>A fraction rather than a pixel coordinate, so one stored theme is correct on a phone in
+     * portrait, on a tablet in landscape and across a rotation. Top and bottom are pulled inside the
+     * page rather than sitting on its edge, which is the difference between light coming from
+     * somewhere and half a circle stuck to a border.
+     */
+    public float glowCenterY() {
+        if (glowPosition == GLOW_BOTTOM) return 0.82f;
+        if (glowPosition == GLOW_CENTER) return 0.5f;
+        return 0.18f;
+    }
+
     // ---- how each value reads to a person ------------------------------------------------------------
 
     public String bubbleRadiusLabel() {
@@ -287,6 +600,73 @@ public final class OrbitProStyle {
 
     public String glassEdgeLabel() { return strengthLabel(glassEdge); }
 
+    /** What each background mode is called. The control shows these; storage never does. */
+    public static String backgroundModeLabel(int mode) {
+        if (mode == BACKGROUND_LINEAR) return "Linear";
+        if (mode == BACKGROUND_GLOW) return "Glow";
+        return "Solid";
+    }
+
+    public String backgroundModeLabel() {
+        return backgroundModeLabel(backgroundMode);
+    }
+
+    /**
+     * The eight directions, in words a person can match to what they are seeing.
+     *
+     * <p>Named by where the light starts rather than by an angle, because "Top left" is something
+     * you can look at the preview and verify and "135 degrees" is not.
+     */
+    public static String directionLabel(int direction) {
+        switch (direction) {
+            case DIRECTION_TR_BL: return "Top right";
+            case DIRECTION_RIGHT_LEFT: return "Right";
+            case DIRECTION_BR_TL: return "Bottom right";
+            case DIRECTION_BOTTOM_TOP: return "Bottom";
+            case DIRECTION_BL_TR: return "Bottom left";
+            case DIRECTION_LEFT_RIGHT: return "Left";
+            case DIRECTION_TL_BR: return "Top left";
+            default: return "Top";
+        }
+    }
+
+    public String directionLabel() {
+        return directionLabel(gradientDirection);
+    }
+
+    public static String glowPositionLabel(int position) {
+        if (position == GLOW_CENTER) return "Center";
+        if (position == GLOW_BOTTOM) return "Bottom";
+        return "Top";
+    }
+
+    public String glowPositionLabel() {
+        return glowPositionLabel(glowPosition);
+    }
+
+    public static String glowStrengthLabel(int value) {
+        if (value <= 20) return "Faint";
+        if (value <= 40) return "Subtle";
+        if (value == GLOW_STRENGTH_DEFAULT) return "Orbit default";
+        if (value <= 70) return "Clear";
+        return "Dramatic";
+    }
+
+    public String glowStrengthLabel() {
+        return glowStrengthLabel(glowStrength);
+    }
+
+    public static String glowSizeLabel(int value) {
+        if (value <= 35) return "Focused";
+        if (value == GLOW_SIZE_DEFAULT) return "Orbit default";
+        if (value <= 75) return "Wide";
+        return "Atmospheric";
+    }
+
+    public String glowSizeLabel() {
+        return glowSizeLabel(glowSize);
+    }
+
     // ---- serialisation ----------------------------------------------------------------------------
 
     /**
@@ -304,6 +684,17 @@ public final class OrbitProStyle {
         out.put("glassOpacity", glassOpacity);
         out.put("glassTint", glassTint);
         out.put("glassEdge", glassEdge);
+        // Added in v0.8.0.0-beta.4, additively rather than behind a schema bump. Every one of these
+        // keys has a default that reproduces the release before it, so a file that predates them is
+        // read as a theme whose author never asked for a background effect - which is exactly what
+        // they were. That is what keeps the theme document at schema 2 and keeps every Beta 1, 2 and
+        // 3 file importable without a migration step.
+        out.put("backgroundMode", backgroundMode);
+        out.put("backgroundEffectColor", backgroundEffectColor);
+        out.put("gradientDirection", gradientDirection);
+        out.put("glowStrength", glowStrength);
+        out.put("glowSize", glowSize);
+        out.put("glowPosition", glowPosition);
         return out;
     }
 
@@ -321,7 +712,13 @@ public final class OrbitProStyle {
                 json.optInt("bubbleOutline", OUTLINE_DEFAULT),
                 json.optInt("glassOpacity", GLASS_OPACITY_DEFAULT),
                 json.optInt("glassTint", GLASS_TINT_DEFAULT),
-                json.optInt("glassEdge", GLASS_EDGE_DEFAULT));
+                json.optInt("glassEdge", GLASS_EDGE_DEFAULT),
+                json.optInt("backgroundMode", BACKGROUND_MODE_DEFAULT),
+                json.optString("backgroundEffectColor", EFFECT_COLOR_DEFAULT),
+                json.optInt("gradientDirection", GRADIENT_DIRECTION_DEFAULT),
+                json.optInt("glowStrength", GLOW_STRENGTH_DEFAULT),
+                json.optInt("glowSize", GLOW_SIZE_DEFAULT),
+                json.optInt("glowPosition", GLOW_POSITION_DEFAULT));
     }
 
     private static int clamp(int value, int min, int max) {

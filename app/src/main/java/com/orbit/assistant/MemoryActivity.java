@@ -57,7 +57,7 @@ public class MemoryActivity extends Activity {
     private View build() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(UiKit.BG);
+        OrbitBackground.applyPage(root);
         root.setPadding(UiKit.dp(this,18), UiKit.dp(this,10), UiKit.dp(this,18), 0);
 
         LinearLayout top = new LinearLayout(this);

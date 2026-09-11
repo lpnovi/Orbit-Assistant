@@ -183,7 +183,14 @@ public final class UiKit {
                 "|userBubble=" + Prefs.userBubbleColor(c) +
                 "|assistantBubble=" + Prefs.assistantBubbleColor(c) +
                 "|surface=" + Prefs.get(c).getString(Prefs.THEME_SURFACE, OrbitTheme.CLASSIC) +
-                "|background=" + Prefs.get(c).getString(Prefs.THEME_BACKGROUND, OrbitTheme.CLASSIC);
+                "|background=" + Prefs.get(c).getString(Prefs.THEME_BACKGROUND, OrbitTheme.CLASSIC) +
+                // Premium styling joined this in v0.8.0.0-beta.4, and advanced backgrounds are the
+                // reason. A page's background is now a drawable built from the theme when the page is
+                // built, so a screen that only watched the background *token* would come back from
+                // Theme Studio still painting the previous gradient - or none at all - until the next
+                // cold start. The effective styling is used, so a Free device never rebuilds a screen
+                // because a stored premium value moved.
+                "|pro=" + proStyleSignature(c);
     }
 
     /**
@@ -219,7 +226,15 @@ public final class UiKit {
     private static String proStyleSignature(Context c) {
         OrbitProStyle style = OrbitProStyle.live(c);
         return style.bubbleRadiusDp + "." + style.bubbleOutline + "." + style.glassOpacity
-                + "." + style.glassTint + "." + style.glassEdge;
+                + "." + style.glassTint + "." + style.glassEdge
+                // The advanced background belongs here for the strongest version of the reason
+                // everything else does: it is baked into the drawable on the page's own root. A
+                // screen sitting underneath Theme Studio has to rebuild to pick up a new gradient,
+                // and a device that cannot draw one never rebuilds because a stored value moved,
+                // because this reads the effective styling rather than the stored styling.
+                + "." + style.backgroundMode + "." + style.backgroundEffectColor
+                + "." + style.gradientDirection + "." + style.glowStrength
+                + "." + style.glowSize + "." + style.glowPosition;
     }
 
     /**

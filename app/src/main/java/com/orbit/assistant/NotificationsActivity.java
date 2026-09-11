@@ -50,7 +50,7 @@ public class NotificationsActivity extends Activity {
     private void rebuild() {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(UiKit.BG);
+        OrbitBackground.applyPage(scroll);
 
         page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);

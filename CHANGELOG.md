@@ -842,6 +842,14 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.0.0-beta.4**: Liquid Orbit Glass and advanced backgrounds, the most visual Orbit Pro release so far.
+  - Orbit's floating controls are now Liquid Glass: a see-through body, light catching the top curve, and accent gathering at the edges.
+  - Glass opacity, tint and edge all reach much further, so the difference between subtle and dramatic is now obvious.
+  - Orbit Pro adds a Background tool with linear gradients in eight directions, built on your existing background color.
+  - It also adds a radial glow with its own color, strength, size and position, for a page that reads like deep space.
+  - Two new Orbit Pro presets show them off: Aurora for the gradient and Nova Ultra for the glow.
+  - True black AMOLED still means true black. Background effects hide while it is on and return exactly as you left them.
+  - Solid backgrounds, every existing preset and your background color stay completely free.
 - **v0.8.0.0-beta.3**: Theme Studio Pro polish, with the interaction problems found on the Galaxy S25 Ultra fixed.
   - Orbit Pro now sits below Colors and Presets, so free Theme Studio is first and uninterrupted.
   - Without Pro, the locked area is a short note at the bottom instead of a large panel in the middle.

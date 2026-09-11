@@ -124,7 +124,7 @@ public final class OrbitVaultPickerActivity extends Activity {
     private View build() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(UiKit.BG);
+        OrbitBackground.applyPage(root);
         int side = UiKit.dp(this, 18);
         root.setPadding(side, UiKit.dp(this, 10), side, 0);
 

@@ -94,7 +94,7 @@ public final class DiagnosticsActivity extends Activity {
 
     private View build() {
         ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(UiKit.BG);
+        OrbitBackground.applyPage(scroll);
         page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setPadding(UiKit.dp(this, 20), UiKit.dp(this, 12), UiKit.dp(this, 20), UiKit.dp(this, 40));

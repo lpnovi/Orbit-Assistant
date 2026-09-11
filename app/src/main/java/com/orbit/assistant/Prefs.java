@@ -93,6 +93,20 @@ public final class Prefs {
     public static final String THEME_PRO_GLASS_OPACITY = "theme_pro_glass_opacity";
     public static final String THEME_PRO_GLASS_TINT = "theme_pro_glass_tint";
     public static final String THEME_PRO_GLASS_EDGE = "theme_pro_glass_edge";
+    /**
+     * The active theme's advanced background, added in v0.8.0.0-beta.4.
+     *
+     * <p>Every one of these defaults to the value that reproduces the previous release, so an install
+     * that has never had these keys reads back as a page with no effect on it - which is what it was.
+     * The effect colour is a token in Orbit's existing colour vocabulary rather than a packed integer,
+     * so it survives an accent change the way every other theme colour does.
+     */
+    public static final String THEME_PRO_BACKGROUND_MODE = "theme_pro_background_mode";
+    public static final String THEME_PRO_BACKGROUND_EFFECT_COLOR = "theme_pro_background_effect_color";
+    public static final String THEME_PRO_GRADIENT_DIRECTION = "theme_pro_gradient_direction";
+    public static final String THEME_PRO_GLOW_STRENGTH = "theme_pro_glow_strength";
+    public static final String THEME_PRO_GLOW_SIZE = "theme_pro_glow_size";
+    public static final String THEME_PRO_GLOW_POSITION = "theme_pro_glow_position";
     /** The id an appearance that matches no shipped preset is recorded under. */
     public static final String THEME_ID_CUSTOM = "custom";
     public static final String QUICK_SETTINGS_ROUTINE_ID = "quick_settings_routine_id";
@@ -236,7 +250,8 @@ public final class Prefs {
             MODEL, REASONING, INTELLIGENCE_MODE, ACCENT, USER_BUBBLE_COLOR,
             ASSISTANT_BUBBLE_COLOR, CHAT_TEXT_SIZE, WEATHER_LOCATION, WEATHER_UNITS, APP_FONT,
             QUICK_SETTINGS_ROUTINE_ID, PAGE_TRANSITION,
-            THEME_SURFACE, THEME_BACKGROUND, THEME_ID, THEME_NAME));
+            THEME_SURFACE, THEME_BACKGROUND, THEME_ID, THEME_NAME,
+            THEME_PRO_BACKGROUND_EFFECT_COLOR));
     private static final Set<String> BACKUP_BOOLEAN_KEYS = new HashSet<>(Arrays.asList(
             SCREEN_CONTEXT, SCREENSHOT, CONTEXT_CHIPS, ATTACH_SCREEN_BY_DEFAULT,
             SPEAK, HAPTICS, AUTO_LISTEN, AUTO_LISTEN_ON_OPEN, SMART_FOLLOW_UPS,
@@ -253,7 +268,9 @@ public final class Prefs {
     private static final Set<String> BACKUP_INTEGER_KEYS = new HashSet<>(
             Arrays.asList(NOTIFICATION_RETENTION_DAYS, THEME_SCHEMA,
                     THEME_PRO_BUBBLE_RADIUS, THEME_PRO_BUBBLE_OUTLINE,
-                    THEME_PRO_GLASS_OPACITY, THEME_PRO_GLASS_TINT, THEME_PRO_GLASS_EDGE));
+                    THEME_PRO_GLASS_OPACITY, THEME_PRO_GLASS_TINT, THEME_PRO_GLASS_EDGE,
+                    THEME_PRO_BACKGROUND_MODE, THEME_PRO_GRADIENT_DIRECTION,
+                    THEME_PRO_GLOW_STRENGTH, THEME_PRO_GLOW_SIZE, THEME_PRO_GLOW_POSITION));
 
     public static SharedPreferences get(Context context) {
         return context.getSharedPreferences(FILE, Context.MODE_PRIVATE);

@@ -195,7 +195,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         ScrollView scroll = new ScrollView(this);
         settingsScroll = scroll;
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(UiKit.BG);
+        OrbitBackground.applyPage(scroll);
 
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
@@ -590,7 +590,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         ScrollView scroll = new ScrollView(this);
         settingsScroll = scroll;
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(UiKit.BG);
+        OrbitBackground.applyPage(scroll);
 
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);

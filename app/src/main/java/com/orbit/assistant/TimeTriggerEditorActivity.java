@@ -103,7 +103,7 @@ public class TimeTriggerEditorActivity extends Activity {
     }
 
     private View buildContent() {
-        ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true); scroll.setBackgroundColor(UiKit.BG);
+        ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true); OrbitBackground.applyPage(scroll);
         LinearLayout page = new LinearLayout(this); page.setOrientation(LinearLayout.VERTICAL);
         int p = UiKit.dp(this, 20); page.setPadding(p, UiKit.dp(this, 26), p, UiKit.dp(this, 48));
         scroll.addView(page, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));

@@ -101,7 +101,7 @@ public final class OrbitVaultItemActivity extends Activity {
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(UiKit.BG);
+        OrbitBackground.applyPage(scroll);
         page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         int side = UiKit.dp(this, 18);

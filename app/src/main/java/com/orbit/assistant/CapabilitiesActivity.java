@@ -72,7 +72,7 @@ public final class CapabilitiesActivity extends Activity {
 
     private View build() {
         ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(UiKit.BG);
+        OrbitBackground.applyPage(scroll);
 
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);

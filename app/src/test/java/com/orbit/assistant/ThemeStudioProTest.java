@@ -492,24 +492,46 @@ public final class ThemeStudioProTest {
     @Test public void thePremiumPresetsAreMarkedThroughStableMetadata() {
         OrbitTheme violet = OrbitTheme.builtIn(OrbitTheme.ID_SIGNAL_VIOLET);
         OrbitTheme glass = OrbitTheme.builtIn(OrbitTheme.ID_NEBULA_GLASS);
+        OrbitTheme aurora = OrbitTheme.builtIn(OrbitTheme.ID_AURORA);
+        OrbitTheme nova = OrbitTheme.builtIn(OrbitTheme.ID_NOVA_ULTRA);
         assertNotNull(violet);
         assertNotNull(glass);
+        assertNotNull(aurora);
+        assertNotNull(nova);
         assertEquals("Signal Violet", violet.name);
         assertEquals("Nebula Glass", glass.name);
-        assertTrue(violet.premium());
-        assertTrue(glass.premium());
-        assertTrue(OrbitTheme.isPremiumId(OrbitTheme.ID_SIGNAL_VIOLET));
-        assertTrue(OrbitTheme.isPremiumId(OrbitTheme.ID_NEBULA_GLASS));
+        assertEquals("Aurora", aurora.name);
+        assertEquals("Nova Ultra", nova.name);
+        for (OrbitTheme preset : new OrbitTheme[]{violet, glass, aurora, nova}) {
+            assertTrue(preset.name + " must be premium", preset.premium());
+            assertTrue(preset.name + " must be premium by id",
+                    OrbitTheme.isPremiumId(preset.id));
+        }
 
-        assertEquals("both, and only both", 2, OrbitTheme.premiumBuiltIns().size());
+        assertEquals("the four, and only the four", 4, OrbitTheme.premiumBuiltIns().size());
         for (OrbitTheme preset : OrbitTheme.freeBuiltIns()) assertFalse(preset.premium());
 
-        // Both actually use the premium layer, or they are premium in name only.
+        // Each actually uses the premium layer, or it is premium in name only.
         assertFalse("Signal Violet must use the premium styling layer", violet.pro.isDefault());
         assertFalse("Nebula Glass must use the premium styling layer", glass.pro.isDefault());
         assertTrue("and Nebula Glass must be the glass-forward one",
                 glass.pro.glassTint > OrbitProStyle.GLASS_TINT_DEFAULT
                         && glass.pro.glassEdge > OrbitProStyle.GLASS_EDGE_DEFAULT);
+
+        // The two v0.8.0.0-beta.4 presets exist to show the two new background modes, so each is
+        // asserted to actually be in that mode rather than merely to be new and premium.
+        assertEquals("Aurora is the linear one",
+                OrbitProStyle.BACKGROUND_LINEAR, aurora.pro.backgroundMode);
+        assertEquals("Nova Ultra is the glow one",
+                OrbitProStyle.BACKGROUND_GLOW, nova.pro.backgroundMode);
+        // A glow preset that shipped with AMOLED on would suppress its own reason for existing.
+        assertFalse("Nova Ultra must not hide its own glow behind AMOLED", nova.amoled);
+        assertFalse("Aurora must not hide its own gradient behind AMOLED", aurora.amoled);
+        // And Nova Ultra has to be a theme of its own rather than Signal Violet turned up.
+        assertFalse("Nova Ultra must not be Signal Violet with a glow",
+                nova.sameColours(violet.withPro(nova.pro)));
+        assertTrue("Nova Ultra sits on a darker page than Signal Violet's surfaces",
+                !nova.background.equals(violet.background));
     }
 
     /**
@@ -791,7 +813,8 @@ public final class ThemeStudioProTest {
         throw new AssertionError("repository root was not found above " + start);
     }
 
-    private static List<Path> mainSources() {
+    /** Every Orbit source file, shared with the Beta 4 architecture tests. */
+    static List<Path> mainSources() {
         List<Path> found = new ArrayList<>();
         try (Stream<Path> walk = Files.walk(sourceRoot())) {
             walk.filter(p -> p.getFileName().toString().endsWith(".java")).forEach(found::add);

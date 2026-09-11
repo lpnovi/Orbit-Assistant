@@ -130,8 +130,8 @@ public final class ThemeStudioInteractionTest {
                 joined.contains("Included with Orbit Pro"));
         assertFalse("and its feature inventory with it",
                 joined.contains("Messages: bubble roundness"));
-        assertTrue("it still says what Pro adds",
-                joined.contains("Advanced message and glass styling"));
+        assertTrue("it still says what Pro adds, including the two Beta 4 tools",
+                joined.contains("Advanced message styling, Liquid Glass and advanced backgrounds"));
 
         // No purchase, at any size.
         for (String selling : new String[]{"Upgrade", "Buy", "Subscribe", "$", "price", "checkout"}) {
@@ -475,25 +475,32 @@ public final class ThemeStudioInteractionTest {
         ThemePreviewView preview = (ThemePreviewView) field(activity, "preview");
         MessageStylePreview message = (MessageStylePreview) field(activity, "messagePreview");
         GlassStylePreview glass = (GlassStylePreview) field(activity, "glassPreview");
+        BackgroundStylePreview background =
+                (BackgroundStylePreview) field(activity, "backgroundPreview");
 
         List<View> previewBefore = descendants(preview);
         List<View> messageBefore = descendants(message);
         List<View> glassBefore = descendants(glass);
+        List<View> backgroundBefore = descendants(background);
         assertTrue("the previews must actually contain something", previewBefore.size() > 5);
+        assertTrue("including the background sample", backgroundBefore.size() > 3);
 
         drag(slider(activity, "bubbleRadiusSlider"), 0.1f, 0.9f);
         drag(slider(activity, "glassOpacitySlider"), 0.9f, 0.2f);
+        drag(slider(activity, "glowStrengthSlider"), 0.1f, 0.8f);
+        drag(slider(activity, "glowSizeSlider"), 0.8f, 0.3f);
 
         assertSameViews("the main preview", previewBefore, descendants(preview));
         assertSameViews("the message sample", messageBefore, descendants(message));
         assertSameViews("the glass sample", glassBefore, descendants(glass));
+        assertSameViews("the background sample", backgroundBefore, descendants(background));
         controller.pause().stop().destroy();
     }
 
     /** And the source says so, so a future rewrite cannot quietly go back to rebuilding. */
     @Test public void previewsUpdateInPlaceRatherThanRebuilding() {
         for (String file : new String[]{"ThemePreviewView.java", "MessageStylePreview.java",
-                "GlassStylePreview.java"}) {
+                "GlassStylePreview.java", "BackgroundStylePreview.java"}) {
             String source = ThemeStudioProTest.readSourceFile(file);
             int at = source.indexOf("public void render(");
             assertTrue(file + " must have a render method", at > 0);
@@ -505,6 +512,248 @@ public final class ThemeStudioInteractionTest {
             assertFalse(file + "'s render must not clear its own hierarchy",
                     body.contains("\n        removeAllViews()"));
         }
+    }
+
+    // ---- the Background tool, on the same terms as everything above it -------------------------------
+
+    /**
+     * The third tool exists, in order, with its own sample above its own controls.
+     *
+     * <p>Order asserted rather than presence alone. Message style, Liquid Glass and then Background is
+     * increasing scope - a bubble, the controls over the page, the page - and the newest tool going
+     * anywhere but last would move two a person already knows.
+     */
+    @Test public void proStateHasAThirdToolForTheBackground() {
+        ActivityController<ThemeStudioActivity> controller = openPro();
+        ThemeStudioActivity activity = controller.get();
+        View root = activity.getWindow().getDecorView();
+
+        BackgroundStylePreview sample =
+                (BackgroundStylePreview) field(activity, "backgroundPreview");
+        assertNotNull("Background must have its own live sample", sample);
+        assertNotNull(field(activity, "backgroundModeSegment"));
+        assertNotNull(field(activity, "glowStrengthSlider"));
+        assertNotNull(field(activity, "glowSizeSlider"));
+        assertNotNull(field(activity, "glowPositionSegment"));
+
+        // Read inside the Orbit Pro card only. "Background" is also the name of the free background
+        // colour row in the Colors card at the top of the page, which is exactly where it should be
+        // and exactly what a scan of the whole screen would trip over.
+        List<String> titles = new ArrayList<>();
+        for (String text : textsIn((View) field(activity, "proBody"))) {
+            if (text.equals("Message style") || text.equals("Liquid Glass")
+                    || text.equals("Background")) {
+                if (!titles.contains(text)) titles.add(text);
+            }
+        }
+        assertEquals("the three tools must appear in order of increasing scope",
+                List.of("Message style", "Liquid Glass", "Background"), titles);
+
+        // And the sample sits above the controls that change it, not at the top of the page.
+        int sampleAt = indexOfDescendant(root, sample);
+        int segmentAt = indexOfDescendant(root, (View) field(activity, "backgroundModeSegment"));
+        assertTrue("the background sample must lead its own controls", sampleAt < segmentAt);
+        controller.pause().stop().destroy();
+    }
+
+    /**
+     * Only the controls that apply to the chosen mode are on screen, and none are ever rebuilt.
+     *
+     * <p>Visibility rather than construction, which is the Beta 3 rule applied to a new kind of
+     * change. Switching Linear to Glow and back has to return to the same direction row holding the
+     * same value, so the assertion is on object identity across the round trip rather than on what is
+     * visible at the end of it.
+     */
+    @Test public void changingBackgroundModeShowsAndHidesRatherThanRebuilds() {
+        ActivityController<ThemeStudioActivity> controller = openPro();
+        ThemeStudioActivity activity = controller.get();
+
+        View linear = (View) field(activity, "linearControls");
+        View glow = (View) field(activity, "glowControls");
+        OrbitSlider strength = (OrbitSlider) field(activity, "glowStrengthSlider");
+        View direction = (View) field(activity, "directionRow");
+        List<View> linearBefore = descendants(linear);
+        List<View> glowBefore = descendants(glow);
+
+        assertEquals("Solid shows no effect controls at all", View.GONE, linear.getVisibility());
+        assertEquals(View.GONE, glow.getVisibility());
+
+        chooseBackgroundMode(activity, OrbitProStyle.BACKGROUND_LINEAR);
+        assertEquals(View.VISIBLE, linear.getVisibility());
+        assertEquals(View.GONE, glow.getVisibility());
+
+        chooseBackgroundMode(activity, OrbitProStyle.BACKGROUND_GLOW);
+        assertEquals(View.GONE, linear.getVisibility());
+        assertEquals(View.VISIBLE, glow.getVisibility());
+
+        chooseBackgroundMode(activity, OrbitProStyle.BACKGROUND_SOLID);
+        assertEquals(View.GONE, linear.getVisibility());
+        assertEquals(View.GONE, glow.getVisibility());
+
+        assertSame("the glow sliders must be the same objects afterwards",
+                strength, field(activity, "glowStrengthSlider"));
+        assertSame("and so must the direction row", direction, field(activity, "directionRow"));
+        assertSameViews("the linear controls", linearBefore, descendants(linear));
+        assertSameViews("the glow controls", glowBefore, descendants(glow));
+        controller.pause().stop().destroy();
+    }
+
+    /**
+     * Every background adjustment is a draft edit. Only Apply changes Orbit.
+     *
+     * <p>The same contract the preset fix established, extended to the six values this release added.
+     * Each is changed in turn and the applied theme, the live premium styling and the live canvas are
+     * all asserted not to move - then Apply is pressed once and asserted to commit exactly what the
+     * preview was showing.
+     */
+    @Test public void backgroundEditsAreDraftOnlyUntilApply() {
+        ActivityController<ThemeStudioActivity> controller = openPro();
+        ThemeStudioActivity activity = controller.get();
+
+        OrbitTheme appliedBefore = OrbitThemeStore.active(context);
+        OrbitProStyle liveBefore = OrbitProStyle.live(context);
+        int backgroundBefore = UiKit.BG;
+
+        chooseBackgroundMode(activity, OrbitProStyle.BACKGROUND_GLOW);
+        editPro(activity, draft(activity).pro.withBackgroundEffectColor("#5B3FCF"));
+        editPro(activity, draft(activity).pro.withGlowPosition(OrbitProStyle.GLOW_BOTTOM));
+        drag(slider(activity, "glowStrengthSlider"), 0.1f, 0.9f);
+        drag(slider(activity, "glowSizeSlider"), 0.9f, 0.2f);
+        editPro(activity, draft(activity).pro
+                .withBackgroundMode(OrbitProStyle.BACKGROUND_LINEAR)
+                .withGradientDirection(OrbitProStyle.DIRECTION_BR_TL));
+
+        assertTrue("the draft must have moved", draft(activity).pro.hasBackgroundEffect());
+        assertTrue("but the applied theme must not",
+                OrbitThemeStore.active(context).sameColours(appliedBefore));
+        assertTrue("nor the styling Orbit actually draws with",
+                OrbitProStyle.live(context).same(liveBefore));
+        assertEquals("nor the live page colour", backgroundBefore, UiKit.BG);
+        assertFalse("and no page anywhere in Orbit may be drawing an effect yet",
+                OrbitBackground.effectDraws(context));
+
+        OrbitProStyle intended = draft(activity).pro;
+        invoke(activity, "applyDraft");
+        assertTrue("Apply commits exactly what the preview showed",
+                OrbitProStyle.live(context).same(intended));
+        assertTrue(OrbitBackground.effectDraws(context));
+        controller.pause().stop().destroy();
+    }
+
+    /** A segmented control reports a tap once, and reports a synchronization never. */
+    @Test public void segmentedSelectionNeverNotifiesWhenItIsSynchronized() {
+        OrbitSegmented segmented = new OrbitSegmented(context);
+        segmented.setOptions(new String[]{"Solid", "Linear", "Glow"});
+        List<Integer> reported = new ArrayList<>();
+        segmented.setOnSelectListener((view, index) -> reported.add(index));
+
+        segmented.setSelected(2);
+        segmented.setSelected(0);
+        segmented.setSelected(0);
+        assertTrue("setSelected must never call the listener", reported.isEmpty());
+        assertEquals(0, segmented.selectedIndex());
+
+        segmented.segmentAt(1).performClick();
+        assertEquals("a tap reports exactly once", List.of(1), reported);
+        assertEquals(1, segmented.selectedIndex());
+        segmented.segmentAt(1).performClick();
+        assertEquals("and tapping the current choice reports nothing", List.of(1), reported);
+
+        // Rebuilding with the same options is a no-op, so a caller cannot destroy it by asking.
+        View pill = segmented.segmentAt(1);
+        segmented.setOptions(new String[]{"Solid", "Linear", "Glow"});
+        assertSame("the segments must survive a repeated setOptions", pill, segmented.segmentAt(1));
+    }
+
+    /**
+     * Selecting a background preset synchronizes every new control once, without callbacks.
+     *
+     * <p>Aurora and Nova Ultra are the first presets that move the background controls, so they are
+     * the first ones where a synchronization reporting itself as a user edit would be visible - and
+     * the Beta 3 fix this extends is exactly that.
+     */
+    @Test public void selectingABackgroundPresetSynchronizesTheNewControlsOnce() {
+        ActivityController<ThemeStudioActivity> controller = openPro();
+        ThemeStudioActivity activity = controller.get();
+
+        OrbitSegmented mode = (OrbitSegmented) field(activity, "backgroundModeSegment");
+        OrbitSegmented position = (OrbitSegmented) field(activity, "glowPositionSegment");
+        OrbitSlider strength = (OrbitSlider) field(activity, "glowStrengthSlider");
+        OrbitSlider size = (OrbitSlider) field(activity, "glowSizeSlider");
+
+        for (String id : new String[]{OrbitTheme.ID_AURORA, OrbitTheme.ID_NOVA_ULTRA}) {
+            OrbitTheme preset = OrbitTheme.builtIn(id);
+            invoke(activity, "selectPreset", new Class<?>[]{OrbitTheme.class}, preset);
+
+            assertEquals(preset.name + " must reach the draft only", preset.id, draft(activity).id);
+            assertSame("no control may be replaced", mode, field(activity, "backgroundModeSegment"));
+            assertSame(position, field(activity, "glowPositionSegment"));
+            assertSame(strength, field(activity, "glowStrengthSlider"));
+            assertSame(size, field(activity, "glowSizeSlider"));
+
+            assertEquals("and every one must be showing the preset's own value",
+                    preset.pro.backgroundMode, mode.selectedIndex());
+            assertEquals(preset.pro.glowPosition, position.selectedIndex());
+            assertEquals(preset.pro.glowStrength, strength.getValue());
+            assertEquals(preset.pro.glowSize, size.getValue());
+        }
+        controller.pause().stop().destroy();
+    }
+
+    /** Dragging a glow slider does not move the reading position, exactly as the others do not. */
+    @Test public void scrollPositionIsUnchangedByABackgroundSliderDrag() {
+        ActivityController<ThemeStudioActivity> controller = openPro();
+        ThemeStudioActivity activity = controller.get();
+        android.widget.ScrollView scroll =
+                (android.widget.ScrollView) field(activity, "contentScroll");
+        assertNotNull(scroll);
+        scroll.scrollTo(0, 420);
+        int before = scroll.getScrollY();
+
+        chooseBackgroundMode(activity, OrbitProStyle.BACKGROUND_GLOW);
+        drag(slider(activity, "glowStrengthSlider"), 0.2f, 0.85f);
+        drag(slider(activity, "glowSizeSlider"), 0.85f, 0.25f);
+
+        assertEquals("a background drag must not move the page", before, scroll.getScrollY());
+        controller.pause().stop().destroy();
+    }
+
+    /** AMOLED explains itself rather than silently swallowing a configured effect. */
+    @Test public void amoledSaysWhyTheBackgroundEffectIsNotShowing() {
+        ActivityController<ThemeStudioActivity> controller = openPro();
+        ThemeStudioActivity activity = controller.get();
+        View note = (View) field(activity, "amoledBackgroundNote");
+        assertNotNull(note);
+        assertEquals("nothing to explain with no effect configured",
+                View.GONE, note.getVisibility());
+
+        chooseBackgroundMode(activity, OrbitProStyle.BACKGROUND_GLOW);
+        assertEquals("still nothing, because AMOLED is off", View.GONE, note.getVisibility());
+
+        invoke(activity, "edit", new Class<?>[]{OrbitTheme.class},
+                draft(activity).withAmoled(true));
+        assertEquals("now it has to say so", View.VISIBLE, note.getVisibility());
+        assertTrue("and say the settings are kept",
+                textsIn(note).toString().contains("kept"));
+        assertTrue("while the configuration really is kept",
+                draft(activity).pro.backgroundMode == OrbitProStyle.BACKGROUND_GLOW);
+
+        invoke(activity, "edit", new Class<?>[]{OrbitTheme.class},
+                draft(activity).withAmoled(false));
+        assertEquals(View.GONE, note.getVisibility());
+        assertEquals("and the glow returns", OrbitProStyle.BACKGROUND_GLOW,
+                draft(activity).pro.backgroundMode);
+        controller.pause().stop().destroy();
+    }
+
+    /** Selects a background mode the way the segmented control does, through the draft edit path. */
+    private void chooseBackgroundMode(ThemeStudioActivity activity, int mode) {
+        editPro(activity, draft(activity).pro.withBackgroundMode(mode));
+    }
+
+    private void editPro(ThemeStudioActivity activity, OrbitProStyle next) {
+        invoke(activity, "editPro", new Class<?>[]{OrbitProStyle.class, boolean.class},
+                next, true);
     }
 
     // ---- 30 to 32. typography ----------------------------------------------------------------------------------
