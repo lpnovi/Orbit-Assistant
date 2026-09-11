@@ -643,7 +643,7 @@ public final class OrbitRichResponseRenderer {
         int vertical = UiKit.dp(context, compact ? 10 : 12);
         bubble.setOrientation(LinearLayout.VERTICAL);
         bubble.setPadding(horizontal, vertical, horizontal, vertical);
-        bubble.setBackground(UiKit.rounded(bubbleFill, UiKit.RADIUS_BUBBLE, context));
+        bubble.setBackground(UiKit.bubbleSurface(context, bubbleFill));
         bubble.setForceDarkAllowed(false);
     }
 

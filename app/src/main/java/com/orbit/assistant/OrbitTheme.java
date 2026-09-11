@@ -89,8 +89,25 @@ public final class OrbitTheme {
     public final String background;
     public final boolean amoled;
 
+    /**
+     * The advanced styling Orbit Pro adds, always present and never null.
+     *
+     * <p>Part of the theme rather than a set of preferences beside it, so that premium styling is
+     * saved, named, previewed, exported and applied by everything that already does those things
+     * to a theme. It is stored unconditionally and drawn conditionally: see {@link OrbitProStyle}
+     * for why keeping a Free device's stored premium values intact is the whole point.
+     */
+    public final OrbitProStyle pro;
+
     OrbitTheme(String id, String name, boolean builtIn, String accent, String userBubble,
                String assistantBubble, String surface, String background, boolean amoled) {
+        this(id, name, builtIn, accent, userBubble, assistantBubble, surface, background, amoled,
+                OrbitProStyle.DEFAULT);
+    }
+
+    OrbitTheme(String id, String name, boolean builtIn, String accent, String userBubble,
+               String assistantBubble, String surface, String background, boolean amoled,
+               OrbitProStyle pro) {
         this.id = normalizeId(id);
         this.name = normalizeName(name);
         this.builtIn = builtIn;
@@ -101,14 +118,22 @@ public final class OrbitTheme {
         this.surface = normalizeSurface(surface);
         this.background = normalizeSurface(background);
         this.amoled = amoled;
+        this.pro = pro == null ? OrbitProStyle.DEFAULT : pro;
     }
 
     /** A custom theme with a freshly generated identity. */
     public static OrbitTheme custom(String name, String accent, String userBubble,
                                     String assistantBubble, String surface, String background,
                                     boolean amoled) {
+        return custom(name, accent, userBubble, assistantBubble, surface, background, amoled,
+                OrbitProStyle.DEFAULT);
+    }
+
+    public static OrbitTheme custom(String name, String accent, String userBubble,
+                                    String assistantBubble, String surface, String background,
+                                    boolean amoled, OrbitProStyle pro) {
         return new OrbitTheme(newId(), name, false, accent, userBubble, assistantBubble,
-                surface, background, amoled);
+                surface, background, amoled, pro);
     }
 
     public static String newId() {
@@ -119,37 +144,43 @@ public final class OrbitTheme {
 
     public OrbitTheme withAccent(String value) {
         return new OrbitTheme(id, name, builtIn, value, userBubble, assistantBubble,
-                surface, background, amoled);
+                surface, background, amoled, pro);
     }
 
     public OrbitTheme withUserBubble(String value) {
         return new OrbitTheme(id, name, builtIn, accent, value, assistantBubble,
-                surface, background, amoled);
+                surface, background, amoled, pro);
     }
 
     public OrbitTheme withAssistantBubble(String value) {
         return new OrbitTheme(id, name, builtIn, accent, userBubble, value,
-                surface, background, amoled);
+                surface, background, amoled, pro);
     }
 
     public OrbitTheme withSurface(String value) {
         return new OrbitTheme(id, name, builtIn, accent, userBubble, assistantBubble,
-                value, background, amoled);
+                value, background, amoled, pro);
     }
 
     public OrbitTheme withBackground(String value) {
         return new OrbitTheme(id, name, builtIn, accent, userBubble, assistantBubble,
-                surface, value, amoled);
+                surface, value, amoled, pro);
     }
 
     public OrbitTheme withAmoled(boolean value) {
         return new OrbitTheme(id, name, builtIn, accent, userBubble, assistantBubble,
-                surface, background, value);
+                surface, background, value, pro);
+    }
+
+    /** The same theme wearing a different advanced styling layer. */
+    public OrbitTheme withPro(OrbitProStyle value) {
+        return new OrbitTheme(id, name, builtIn, accent, userBubble, assistantBubble,
+                surface, background, amoled, value);
     }
 
     public OrbitTheme withName(String value) {
         return new OrbitTheme(id, value, builtIn, accent, userBubble, assistantBubble,
-                surface, background, amoled);
+                surface, background, amoled, pro);
     }
 
     /**
@@ -161,10 +192,17 @@ public final class OrbitTheme {
      */
     public OrbitTheme asCustomNamed(String newName) {
         return new OrbitTheme(newId(), newName, false, accent, userBubble, assistantBubble,
-                surface, background, amoled);
+                surface, background, amoled, pro);
     }
 
-    /** True when the two of these describe the same appearance, ignoring identity and name. */
+    /**
+     * True when the two of these describe the same appearance, ignoring identity and name.
+     *
+     * <p>Premium styling counts. It is an appearance decision like any other, and leaving it out
+     * would break the two things this method is actually for: Theme Studio would think a draft was
+     * unchanged after a bubble-roundness edit and refuse to let it be applied, and the gallery
+     * would go on showing Orbit Default as selected while the conversation drew something else.
+     */
     public boolean sameColours(OrbitTheme other) {
         return other != null
                 && accent.equals(other.accent)
@@ -172,7 +210,8 @@ public final class OrbitTheme {
                 && assistantBubble.equals(other.assistantBubble)
                 && surface.equals(other.surface)
                 && background.equals(other.background)
-                && amoled == other.amoled;
+                && amoled == other.amoled
+                && pro.same(other.pro);
     }
 
     /**
@@ -201,6 +240,11 @@ public final class OrbitTheme {
         out.put("surface", surface);
         out.put("background", background);
         out.put("amoled", amoled);
+        // Always written, even at its defaults. A theme document that omitted it would be
+        // indistinguishable from one written before premium styling existed, and the two deserve
+        // the same treatment on import but not the same guarantee on export: a person exporting a
+        // theme they styled has to get a file that still describes it on the next device.
+        out.put("pro", pro.toJson());
         return out;
     }
 
@@ -226,7 +270,10 @@ public final class OrbitTheme {
                 json.optString("assistantBubble", CLASSIC),
                 json.optString("surface", CLASSIC),
                 json.optString("background", CLASSIC),
-                json.optBoolean("amoled", false));
+                json.optBoolean("amoled", false),
+                // Absent in every file written before this release, which is exactly the case the
+                // defaults are chosen to serve: an older theme comes back looking the way it did.
+                OrbitProStyle.fromJson(json.optJSONObject("pro")));
     }
 
     // ---- token handling ----------------------------------------------------------------------
@@ -332,6 +379,34 @@ public final class OrbitTheme {
     public static final String ID_BLURPLE = "orbit.blurple";
     public static final String ID_NOVA_AMOLED = "orbit.nova.amoled";
 
+    /** The Orbit Pro presets. Their {@code orbit.pro.} prefix is the identity, not their name. */
+    public static final String ID_SIGNAL_VIOLET = "orbit.pro.signal.violet";
+    public static final String ID_NEBULA_GLASS = "orbit.pro.nebula.glass";
+
+    /**
+     * Whether a preset is one of the premium ones.
+     *
+     * <p>Asked of the id, never of the display name. A name is a string a user can see, type into
+     * a saved theme, and import from a file somebody else wrote; deciding entitlement from one
+     * would mean a theme called "Signal Violet" was premium and a duplicate of the real thing was
+     * not. The prefix is storage identity: it is assigned here, it is refused to imported files by
+     * {@link OrbitThemeFileCodec}, and it cannot be reached by renaming anything.
+     *
+     * <p>This is also the only place the question is answered. Call sites ask {@link #premium()};
+     * the policy that decides what being premium <em>means</em> is {@code OrbitThemeStore.canApply}.
+     */
+    public static boolean isPremiumId(String id) {
+        return id != null && id.startsWith(PREMIUM_ID_PREFIX);
+    }
+
+    /** The prefix that marks a shipped preset as belonging to Orbit Pro. */
+    public static final String PREMIUM_ID_PREFIX = "orbit.pro.";
+
+    /** True when this theme is one of Orbit's premium presets. */
+    public boolean premium() {
+        return isPremiumId(id);
+    }
+
     /**
      * A short second line on a built-in preset card, or "" for every other theme.
      *
@@ -386,6 +461,43 @@ public final class OrbitTheme {
         // Orbit's classic ramp with the blurple accent carried through the conversation.
         out.add(new OrbitTheme(ID_BLURPLE, "Blurple", true,
                 "blurple", "#2B3060", CLASSIC, CLASSIC, CLASSIC, false));
+
+        // ---- Orbit Pro ----------------------------------------------------------------------
+        // The first two presets that need the premium layer to exist at all. Both are ordinary
+        // Orbit themes in every free respect - six colour decisions and an AMOLED flag - and both
+        // then say something with the styling layer that no free preset can. On a Free device
+        // that second half simply does not draw, which is why they are still readable, still
+        // distinct, and still recognisably Orbit there.
+
+        // Violet-forward Orbit on a true-black page: cooler and more deliberate than Nova AMOLED,
+        // with the message shape squared off a little and a hairline holding each bubble. The
+        // restraint is the point - a premium preset that announced itself with glow would be the
+        // opposite of what Orbit looks like.
+        out.add(new OrbitTheme(ID_SIGNAL_VIOLET, "Signal Violet", true,
+                "#9070FF", "#2E2160", "#17142A", "#141221", "#000000", true,
+                OrbitProStyle.of(14, OrbitProStyle.OUTLINE_SUBTLE, 206, 130, 135)));
+
+        // The glass one. Nebula's family of colours, pushed into the floating chrome rather than
+        // the conversation: a more translucent surface, more of the accent in it, and a brighter
+        // lit edge, with softer bubbles underneath so the two read as one design. Still bounded by
+        // the same ceilings every other value is, so it stays glass rather than becoming a light.
+        out.add(new OrbitTheme(ID_NEBULA_GLASS, "Nebula Glass", true,
+                "violet", "#33275C", "#1C1730", "#191427", "#0A0714", false,
+                OrbitProStyle.of(22, OrbitProStyle.OUTLINE_SUBTLE, 188, 155, 160)));
+        return Collections.unmodifiableList(out);
+    }
+
+    /** The presets anyone can apply. Every shipped theme that is not an Orbit Pro one. */
+    public static List<OrbitTheme> freeBuiltIns() {
+        List<OrbitTheme> out = new ArrayList<>();
+        for (OrbitTheme preset : BUILT_IN) if (!preset.premium()) out.add(preset);
+        return Collections.unmodifiableList(out);
+    }
+
+    /** The presets Orbit Pro adds. */
+    public static List<OrbitTheme> premiumBuiltIns() {
+        List<OrbitTheme> out = new ArrayList<>();
+        for (OrbitTheme preset : BUILT_IN) if (preset.premium()) out.add(preset);
         return Collections.unmodifiableList(out);
     }
 

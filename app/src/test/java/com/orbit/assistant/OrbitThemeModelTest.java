@@ -95,8 +95,18 @@ public final class OrbitThemeModelTest {
 
     @Test public void everyBuiltInPresetIsWellFormed() {
         List<OrbitTheme> presets = OrbitTheme.builtIns();
+        // Counted in two tiers since Orbit Pro, because the curation rule applies to each. The
+        // free set is what every install has and must stay a curated shelf rather than a catalogue;
+        // the premium set is smaller still, and a release that quietly grew it to a dozen would be
+        // padding the tier rather than designing it.
         assertTrue("Orbit ships a curated set, not a novelty catalogue",
-                presets.size() >= 5 && presets.size() <= 8);
+                OrbitTheme.freeBuiltIns().size() >= 5 && OrbitTheme.freeBuiltIns().size() <= 8);
+        assertTrue("and a smaller premium set on top of it",
+                OrbitTheme.premiumBuiltIns().size() >= 1
+                        && OrbitTheme.premiumBuiltIns().size() <= 4);
+        assertEquals("every shipped preset is in exactly one of the two tiers",
+                presets.size(),
+                OrbitTheme.freeBuiltIns().size() + OrbitTheme.premiumBuiltIns().size());
         for (OrbitTheme preset : presets) {
             assertTrue(preset.name + " must be immutable", preset.builtIn);
             assertFalse(preset.id.trim().isEmpty());

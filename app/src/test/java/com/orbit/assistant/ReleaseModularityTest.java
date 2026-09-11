@@ -185,14 +185,15 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * Orbit Pro opens the 0.8 line, and opens it as a Beta.
+     * Orbit Pro continues the 0.8 line, and continues it as a Beta.
      *
-     * <p>The guard runs in the prerelease direction again. Phase 0 is entitlement infrastructure
-     * that has never run on a phone, so it must carry prerelease metadata rather than Stable
-     * metadata, and the changelog entry the release workflow builds its notes from must exist for
-     * the Beta version name.
+     * <p>The guard runs in the prerelease direction again, and for a sharper reason than it did in
+     * Beta 1. Theme Studio Pro is real premium functionality that has never run on a phone, and the
+     * developer Free / Pro Preview override that testers use to check both halves of it is legal
+     * only on a Beta. Shipping this version name as Stable would both publish untested work and
+     * silently remove the only way anyone can currently reach the feature.
      */
-    @Test public void thisReleaseIsOrbitProBetaOne() {
+    @Test public void thisReleaseIsOrbitProBetaTwo() {
         assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
                 OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
         assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));

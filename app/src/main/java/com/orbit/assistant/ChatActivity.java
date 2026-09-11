@@ -709,7 +709,7 @@ public class ChatActivity extends Activity {
                     UiKit.onBubble(fill), false);
             UiKit.applyBubbleTextMetrics(bubble);
             bubble.setPadding(UiKit.dp(this, 15), UiKit.dp(this, 12), UiKit.dp(this, 15), UiKit.dp(this, 12));
-            bubble.setBackground(UiKit.rounded(fill, 18, this));
+            bubble.setBackground(UiKit.bubbleSurface(this, fill));
             MessageActions.bindUser(bubble, rawVisible, () -> beginEditResend(rawVisible), null);
             messages.addView(bubble, bubbleLp(Gravity.END, UiKit.dp(this, 310)));
         } else {
@@ -1631,7 +1631,7 @@ public class ChatActivity extends Activity {
         thinkingRow.setGravity(Gravity.CENTER_VERTICAL);
         thinkingRow.setPadding(UiKit.dp(this, 13), UiKit.dp(this, 10), UiKit.dp(this, 15), UiKit.dp(this, 10));
         int thinkingFill = UiKit.assistantBubbleFill(this, UiKit.SURFACE);
-        thinkingRow.setBackground(UiKit.rounded(thinkingFill, 18, this));
+        thinkingRow.setBackground(UiKit.bubbleSurface(this, thinkingFill));
         thinkingRow.setContentDescription("Orbit is thinking");
 
         thinkingView = new OrbitThinkingView(this);

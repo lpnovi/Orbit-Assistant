@@ -203,7 +203,10 @@ public final class ThemeStudioDraftTest {
         ActivityController<ThemeStudioActivity> controller = open();
         ThemeStudioActivity activity = controller.get();
 
-        for (OrbitTheme preset : OrbitTheme.builtIns()) {
+        // The free presets, which is every preset this behaviour has ever applied to. An Orbit Pro
+        // preset is deliberately refused before it reaches the draft on a device without Pro, and
+        // that refusal has its own test in ThemeStudioProTest rather than being folded in here.
+        for (OrbitTheme preset : OrbitTheme.freeBuiltIns()) {
             select(activity, preset);
             assertEquals("the draft must be the preset that was selected",
                     preset.id, draft(activity).id);

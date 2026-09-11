@@ -2051,7 +2051,7 @@ public class OrbitSession extends VoiceInteractionSession {
         thinkingIndicator.setGravity(Gravity.CENTER_VERTICAL);
         thinkingIndicator.setPadding(UiKit.dp(c, 14), UiKit.dp(c, 11), UiKit.dp(c, 14), UiKit.dp(c, 11));
         int thinkingFill = UiKit.assistantBubbleFill(c, UiKit.SURFACE);
-        thinkingIndicator.setBackground(UiKit.rounded(thinkingFill, 18, c));
+        thinkingIndicator.setBackground(UiKit.bubbleSurface(c, thinkingFill));
         thinkingIndicator.setContentDescription("Orbit is thinking");
 
         // Same Orbit thinking identity as full chat, sized for the overlay sheet.
@@ -3681,7 +3681,7 @@ public class OrbitSession extends VoiceInteractionSession {
         TextView bubble = UiKit.text(c, text, Prefs.chatTextSp(c, 14), textColor, false);
         UiKit.applyBubbleTextMetrics(bubble);
         bubble.setPadding(UiKit.dp(c, 13), UiKit.dp(c, 10), UiKit.dp(c, 13), UiKit.dp(c, 10));
-        bubble.setBackground(UiKit.rounded(fill, 18, c));
+        bubble.setBackground(UiKit.bubbleSurface(c, fill));
         return bubble;
     }
 

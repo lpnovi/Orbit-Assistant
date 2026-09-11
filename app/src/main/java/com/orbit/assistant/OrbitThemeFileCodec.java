@@ -208,6 +208,13 @@ public final class OrbitThemeFileCodec {
      * which saved theme it is, are decided here rather than there. It also means importing a file
      * twice produces two themes rather than one theme overwritten, and that no file can be crafted
      * to land on top of Nova AMOLED.
+     *
+     * <p>That rule is what makes premium styling safe to carry in a file. A document may describe
+     * advanced styling and it is read faithfully, because it is an appearance; it may not describe
+     * an <em>Orbit Pro preset</em>, because that is an identity, and identity comes from
+     * {@link OrbitTheme#custom} here rather than from the file. So importing stays free, an
+     * imported theme's premium fields are stored intact, and whether they are ever drawn remains
+     * the entitlement layer's decision rather than the file's.
      */
     public static OrbitTheme decode(String raw) throws ThemeFileException {
         if (raw == null) throw unsupported();
@@ -245,7 +252,13 @@ public final class OrbitThemeFileCodec {
                 json.optString("assistantBubble", OrbitTheme.CLASSIC),
                 json.optString("surface", OrbitTheme.CLASSIC),
                 json.optString("background", OrbitTheme.CLASSIC),
-                json.optBoolean("amoled", false));
+                json.optBoolean("amoled", false),
+                // Optional, and deliberately not in REQUIRED_FIELDS. Every theme file Orbit wrote
+                // before this release lacks it and is still a complete, valid theme; demanding it
+                // would reject every one of them for describing an appearance that was correct
+                // when it was written. A file without it gets Orbit's own shipped values, which is
+                // exactly what its author was looking at.
+                OrbitProStyle.fromJson(json.optJSONObject("pro")));
     }
 
     /**

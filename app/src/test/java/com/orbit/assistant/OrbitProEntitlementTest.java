@@ -290,12 +290,18 @@ public final class OrbitProEntitlementTest {
     }
 
     /**
-     * 14. Phase 0 gates nothing. No existing feature asks whether this device has Pro.
+     * 14. Only genuinely new capability is gated, and the list of gates is named.
      *
-     * <p>The one product rule this release could break silently. Diagnostics is the single caller,
-     * and it calls it to report a state rather than to withhold anything.
+     * <p>Phase 0 asserted that nothing called {@link OrbitProEntitlement#hasPro} at all, which was
+     * the right assertion while the entitlement unlocked nothing. Beta 2 gives it something to
+     * unlock, so the inverse is what protects the product rule now: the callers are enumerated, and
+     * adding one is a deliberate edit to this list rather than something that happens quietly.
+     *
+     * <p>All three are Theme Studio Pro, which is new capability that has never been free. Nothing
+     * that existed before it appears here, and the free theme model, the file codec and the token
+     * resolver are asserted elsewhere to not consult entitlement at all.
      */
-    @Test public void noExistingFeatureIsGatedByEntitlement() {
+    @Test public void onlyNewPremiumCapabilityIsGatedByEntitlement() {
         List<String> callers = new ArrayList<>();
         for (Path source : mainSources()) {
             String name = source.getFileName().toString();
@@ -303,8 +309,34 @@ public final class OrbitProEntitlementTest {
             String body = read(source);
             if (body.contains("OrbitProEntitlement.hasPro(")) callers.add(name);
         }
-        assertTrue("Phase 0 is infrastructure: nothing may gate on Pro yet, found " + callers,
-                callers.isEmpty());
+        Collections.sort(callers);
+        assertEquals("the entitlement gates exactly these, and they are all Theme Studio Pro: "
+                        + callers,
+                java.util.Arrays.asList("OrbitProStyle.java", "OrbitThemeStore.java",
+                        "ThemeStudioActivity.java"),
+                callers);
+    }
+
+    /**
+     * And nothing that was free before this release acquired a gate.
+     *
+     * <p>The product rule stated the way it would actually be broken: not by the number of callers
+     * growing, but by one of them appearing in a file that implements something people already
+     * had. These are the free surfaces premium styling sits closest to.
+     */
+    @Test public void noPreviouslyFreeFeatureAcquiredAGate() {
+        for (String free : new String[]{"OrbitTheme.java", "OrbitThemeFileCodec.java",
+                "OrbitThemeTokens.java", "ThemePreviewView.java", "OrbitGlass.java",
+                "ChatActivity.java", "OrbitSession.java", "MainActivity.java",
+                "OrbitVaultActivity.java", "SettingsActivity.java", "OnboardingActivity.java"}) {
+            Path source = null;
+            for (Path candidate : mainSources()) {
+                if (candidate.getFileName().toString().equals(free)) source = candidate;
+            }
+            assertNotNull(free + " must exist to be checked", source);
+            assertFalse(free + " was free before Orbit Pro and must not gate on it",
+                    read(source).contains("OrbitProEntitlement.hasPro("));
+        }
     }
 
     /** And nothing in the app nags, badges or offers to sell anything. */

@@ -842,6 +842,13 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.0.0-beta.2**: Theme Studio Pro arrives with advanced message and glass styling, the first Orbit Pro features that actually change how Orbit looks.
+  - A new Advanced section in Theme Studio adds bubble roundness and an optional bubble outline for your conversations.
+  - It also adds glass opacity, accent tint and edge light for Orbit's floating controls in Chats and the Vault.
+  - Two Orbit Pro presets join the gallery: Signal Violet and Nebula Glass.
+  - Everything Theme Studio already did stays free, including all existing presets, custom colors, saved themes and theme import and export.
+  - Orbit looks exactly as it did before unless you deliberately change one of the new settings.
+  - Your advanced settings are kept even when Pro is unavailable, and they come straight back when it returns.
 - **v0.8.0.0-beta.1**: Groundwork for Orbit Pro, the optional paid layer of advanced customization planned on top of free Orbit.
   - Nothing changes for anyone using Orbit today. No existing feature moved behind Pro, and none ever will.
   - Orbit now resolves Orbit Pro through one central place, so future premium features stay independent of how entitlement is granted.

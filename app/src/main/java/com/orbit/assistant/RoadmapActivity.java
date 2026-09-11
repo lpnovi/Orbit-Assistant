@@ -107,8 +107,15 @@ public final class RoadmapActivity extends Activity {
                 {OrbitRoadmap.CURRENT, "An optional paid layer of advanced customization and "
                         + "power-user extras, built on top of free Orbit. Everything free today "
                         + "stays free. There is nothing to buy yet."},
-                {"Theme Studio Pro", "The first premium feature planned. Deeper control over how "
-                        + "Orbit looks, added on top of the free theming everyone already has."}
+                // Theme Studio Pro started shipping in v0.8.0.0-beta.2 and is deliberately still
+                // here, because most of it is genuinely ahead: what has landed is message shape
+                // and glass, and the entry now says what is still owed rather than promising the
+                // part somebody already has. The moment the whole line is finished it leaves this
+                // page, the way every other shipped feature has.
+                {"Theme Studio Pro", "Deeper control over how Orbit looks, added on top of the "
+                        + "free theming everyone already has. Message shape and floating glass "
+                        + "have landed. Backgrounds, typography and further styling are still to "
+                        + "come."}
         });
         addGroup(page, "LATER", new String[][]{
                 {"Smart Vault", "Making saved things easier to find and understand, with optional "

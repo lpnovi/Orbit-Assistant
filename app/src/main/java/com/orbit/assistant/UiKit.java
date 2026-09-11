@@ -184,7 +184,19 @@ public final class UiKit {
                 // The theme's name is drawn in Settings, so it is baked into a built view exactly
                 // the way a colour is. Without it, applying a differently named theme whose accent
                 // and surfaces happen to match would leave the old name on screen.
-                "|theme=" + Prefs.get(c).getString(Prefs.THEME_NAME, "");
+                "|theme=" + Prefs.get(c).getString(Prefs.THEME_NAME, "") +
+                // Premium styling belongs here for the same reason accent does: glass opacity,
+                // tint and edge are baked into the drawable under every floating control the
+                // moment it is built, and a screen sitting underneath Theme Studio has to rebuild
+                // to pick up a change. The effective value is used, so a device that cannot draw
+                // premium styling never rebuilds because a stored premium value moved.
+                "|pro=" + proStyleSignature(c);
+    }
+
+    private static String proStyleSignature(Context c) {
+        OrbitProStyle style = OrbitProStyle.live(c);
+        return style.bubbleRadiusDp + "." + style.bubbleOutline + "." + style.glassOpacity
+                + "." + style.glassTint + "." + style.glassEdge;
     }
 
     /**
@@ -1110,6 +1122,40 @@ public final class UiKit {
         return d;
     }
 
+    /**
+     * The background every conversation bubble in Orbit is drawn with.
+     *
+     * <p>One call, used by full chat, by the side-button overlay, by the rich response renderer,
+     * by the streaming view, by the thinking row and by the Theme Studio preview. Before this they
+     * each wrote {@code rounded(fill, 18, c)} or reached for {@link #RADIUS_BUBBLE} directly, which
+     * was harmless while the answer was a constant and becomes two different answers the moment it
+     * is a setting. The overlay and full chat disagreeing about the shape of a bubble is precisely
+     * the failure this exists to make impossible.
+     *
+     * <p>Both the roundness and the optional outline come from the styling Orbit is entitled to
+     * draw right now, so a Free device gets the shape it has always had without any caller knowing
+     * that entitlement was involved.
+     */
+    public static GradientDrawable bubbleSurface(Context c, int fill) {
+        return bubbleSurface(c, fill, accent(c), OrbitProStyle.live(c));
+    }
+
+    /**
+     * The same bubble, for a theme that is not the applied one.
+     *
+     * <p>The accent and the styling are passed in rather than read, because the Theme Studio
+     * preview draws a draft: reading either from the live app is what would leave the preview's
+     * bubbles holding still while everything around them moved.
+     */
+    public static GradientDrawable bubbleSurface(Context c, int fill, int accent,
+                                                 OrbitProStyle style) {
+        OrbitProStyle resolved = style == null ? OrbitProStyle.DEFAULT : style;
+        GradientDrawable bubble = rounded(fill, resolved.bubbleRadiusDp, c);
+        int width = resolved.bubbleOutlineWidthPx(c);
+        if (width > 0) bubble.setStroke(width, resolved.bubbleOutlineColor(accent, fill));
+        return bubble;
+    }
+
     public static GradientDrawable gradientSheet(Context c) {
         return gradientSheet(c, 30f);
     }
@@ -1918,7 +1964,14 @@ public final class UiKit {
     // ended up with three different corners depending on which file drew it. Different component
     // classes are still allowed different shapes - a bubble is not a chip - but one class now has
     // one number.
-    /** Chat bubbles, in both surfaces. */
+    /**
+     * Chat bubbles, in both surfaces.
+     *
+     * <p>Still the number Orbit draws, and now also the default of the Orbit Pro bubble roundness
+     * control. Nothing should read this constant to draw a bubble any more: {@link #bubbleSurface}
+     * is how a bubble gets its background, because a literal here and a literal in Theme Studio is
+     * exactly how the overlay and full chat would end up disagreeing about their own shape.
+     */
     public static final float RADIUS_BUBBLE = 18f;
     /** Cards inside a response or a sheet: code blocks, confirmation cards, image cards. */
     public static final float RADIUS_CARD = 12f;

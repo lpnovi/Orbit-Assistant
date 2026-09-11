@@ -52,9 +52,15 @@ public final class OrbitGlass {
 
     /** Corner radius of a floating control. Matches Orbit's search and primary-button rhythm. */
     public static final float RADIUS_DP = 18f;
-    /** How much of the page shows through the glass. Translucent, never washed out. */
+    /**
+     * How much of the page shows through the glass. Translucent, never washed out.
+     *
+     * <p>Orbit's own value, and now also the default of the Pro glass opacity control. A surface is
+     * drawn at {@code OrbitProStyle.glassOpacity}, which is this number for everybody who has not
+     * deliberately moved it.
+     */
     public static final int FILL_ALPHA = 214;
-    /** The hairline around a floating control. */
+    /** The hairline around a floating control, at Orbit's own edge strength. */
     public static final int BORDER_ALPHA = 64;
     public static final float BORDER_WIDTH_DP = 1f;
     /** Resting depth of a floating control, and the depth it takes when content is underneath. */
@@ -71,10 +77,21 @@ public final class OrbitGlass {
     /** A floating control stops widening past this, so a tablet does not get an absurd search box. */
     public static final int MAX_CONTROL_WIDTH_DP = 520;
 
-    /** How much light the top edge of the glass carries. */
-    private static final float HIGHLIGHT_SHARE = 0.14f;
-    /** How far the bottom of the glass settles back towards the page behind it. */
-    private static final float DEPTH_SHARE = 0.34f;
+    /**
+     * The four shares the shipped treatment is built from, before Orbit Pro scales any of them.
+     *
+     * <p>These were private constants with no reason to be anything else until Theme Studio Pro
+     * gave a person a way to adjust the glass. They are now the 100% mark of those controls rather
+     * than the only numbers Orbit can draw: {@link OrbitProStyle} multiplies each one, a Pro user
+     * sitting at every default lands back on these exact values, and Free never leaves them. That
+     * is what makes "identical to the previous release unless you changed something" a property of
+     * the arithmetic rather than a promise.
+     */
+    static final float BASE_HIGHLIGHT_SHARE = 0.14f;
+    /** How much of the accent's own colour is in the lit top edge, before it meets the surface. */
+    static final float BASE_FILL_ACCENT_SHARE = 0.42f;
+    /** How much of the accent is in the hairline. */
+    static final float BASE_BORDER_ACCENT_SHARE = 0.38f;
     /**
      * How much accent is in the scrim's haze. Deliberately a whisper, never a colour wash.
      *
@@ -82,7 +99,11 @@ public final class OrbitGlass {
      * channel: enough that the transition reads as light coming off the glass rather than as
      * nothing, and nowhere near enough to be seen as a gradient somebody added.
      */
-    private static final float HAZE_SHARE = 0.10f;
+    static final float BASE_HAZE_SHARE = 0.10f;
+    /** How opaque the hairline is at Orbit's own edge strength. */
+    static final int BASE_BORDER_ALPHA = BORDER_ALPHA;
+    /** How far the bottom of the glass settles back towards the page behind it. */
+    private static final float DEPTH_SHARE = 0.34f;
     /** The scrim's falloff, from the clipped edge of the list down to nothing. */
     private static final int[] SCRIM_ALPHAS = {255, 214, 140, 58, 0};
 
@@ -92,6 +113,44 @@ public final class OrbitGlass {
     /** How far the list has to move before the chrome is treated as having content beneath it. */
     private static final float RAISE_THRESHOLD_DP = 2f;
 
+    // ---- what the glass is made of ----------------------------------------------------------------
+
+    /**
+     * The three colours and one styling value every glass surface is derived from.
+     *
+     * <p>This exists for the same reason {@link OrbitThemeTokens} does. Every colour below used to
+     * be read straight off {@code UiKit}'s live canvas, which is correct for the app and useless
+     * for the Theme Studio preview: a preview has to show a theme that is <em>not</em> applied, and
+     * a resolver that can only read the applied one forces the preview to grow its own copy of the
+     * arithmetic. That copy is the thing that drifts. So the inputs are named here, the app passes
+     * {@link #live}, the preview passes {@link #of}, and there is still exactly one implementation
+     * of what Orbit's glass looks like.
+     */
+    public static final class Palette {
+        final int accent;
+        final int background;
+        final int surface;
+        final OrbitProStyle style;
+
+        private Palette(int accent, int background, int surface, OrbitProStyle style) {
+            this.accent = accent;
+            this.background = background;
+            this.surface = surface;
+            this.style = style == null ? OrbitProStyle.DEFAULT : style;
+        }
+
+        /** The glass of the theme Orbit is drawing with, at the styling it is entitled to draw. */
+        public static Palette live(Context c) {
+            return new Palette(UiKit.accent(c), UiKit.BG, UiKit.SURFACE, OrbitProStyle.live(c));
+        }
+
+        /** The glass a resolved theme would have. Used by the preview, which has no live canvas. */
+        public static Palette of(OrbitThemeTokens tokens, OrbitProStyle style) {
+            if (tokens == null) return new Palette(UiKit.DEFAULT_ACCENT, UiKit.BG, UiKit.SURFACE, style);
+            return new Palette(tokens.accent, tokens.background, tokens.surface, style);
+        }
+    }
+
     // ---- colour, derived from whatever theme is live ----------------------------------------------
 
     /**
@@ -100,25 +159,47 @@ public final class OrbitGlass {
      * <p>The accent is mixed towards white first, so the highlight reads as light falling on the
      * control rather than as the control being tinted. On a warm accent it is warm, on a violet one
      * it is violet, and on a light Theme Studio surface it stays a highlight rather than a stain.
+     *
+     * <p>Orbit Pro's tint control moves how much accent survives that mix and its edge control
+     * moves how much of the result reaches the surface. At the shipped values both are one, and the
+     * expression reduces to exactly what it was.
      */
     public static int fillTop(Context c) {
-        int lit = UiKit.blend(UiKit.accent(c), Color.WHITE, 0.42f);
-        return UiKit.blend(lit, UiKit.SURFACE, HIGHLIGHT_SHARE);
+        return fillTop(Palette.live(c));
+    }
+
+    public static int fillTop(Palette p) {
+        int lit = UiKit.blend(p.accent, Color.WHITE, p.style.glassFillAccentShare());
+        return UiKit.blend(lit, p.surface, p.style.glassHighlightShare());
     }
 
     /** The foot of the glass, settled back towards the page it is floating over. */
     public static int fillBottom(Context c) {
-        return UiKit.blend(UiKit.BG, UiKit.SURFACE, DEPTH_SHARE);
+        return fillBottom(Palette.live(c));
+    }
+
+    public static int fillBottom(Palette p) {
+        return UiKit.blend(p.background, p.surface, DEPTH_SHARE);
     }
 
     /** The hairline. Accent-derived and very quiet, so it defines an edge without drawing one. */
     public static int borderColor(Context c) {
-        return UiKit.withAlpha(UiKit.blend(UiKit.accent(c), Color.WHITE, 0.38f), BORDER_ALPHA);
+        return borderColor(Palette.live(c));
+    }
+
+    public static int borderColor(Palette p) {
+        return UiKit.withAlpha(
+                UiKit.blend(p.accent, Color.WHITE, p.style.glassBorderAccentShare()),
+                p.style.glassBorderAlpha());
     }
 
     /** The scrim's haze: the page's own background carrying a whisper of the accent. */
     public static int hazeColor(Context c) {
-        return UiKit.blend(UiKit.accent(c), UiKit.BG, HAZE_SHARE);
+        return hazeColor(Palette.live(c));
+    }
+
+    public static int hazeColor(Palette p) {
+        return UiKit.blend(p.accent, p.background, p.style.glassHazeShare());
     }
 
     /**
@@ -129,23 +210,31 @@ public final class OrbitGlass {
      * in a test, so the check and the drawable can never disagree about what is on screen.
      */
     public static int effectiveFill(Context c) {
-        int mid = UiKit.blend(fillTop(c), fillBottom(c), 0.5f);
-        float share = FILL_ALPHA / 255f;
-        return UiKit.blend(mid, UiKit.BG, share);
+        return effectiveFill(Palette.live(c));
+    }
+
+    public static int effectiveFill(Palette p) {
+        int mid = UiKit.blend(fillTop(p), fillBottom(p), 0.5f);
+        float share = p.style.glassOpacity / 255f;
+        return UiKit.blend(mid, p.background, share);
     }
 
     // ---- the surfaces -----------------------------------------------------------------------------
 
     /** A floating control's background: translucent, lit at the top, with a hairline around it. */
     public static GradientDrawable surfaceDrawable(Context c, float radiusDp) {
+        return surfaceDrawable(c, Palette.live(c), radiusDp);
+    }
+
+    public static GradientDrawable surfaceDrawable(Context c, Palette p, float radiusDp) {
         GradientDrawable glass = new GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
                 new int[]{
-                        UiKit.withAlpha(fillTop(c), FILL_ALPHA),
-                        UiKit.withAlpha(fillBottom(c), FILL_ALPHA)
+                        UiKit.withAlpha(fillTop(p), p.style.glassOpacity),
+                        UiKit.withAlpha(fillBottom(p), p.style.glassOpacity)
                 });
         glass.setCornerRadius(UiKit.dp(c, radiusDp));
-        glass.setStroke(UiKit.dp(c, BORDER_WIDTH_DP), borderColor(c));
+        glass.setStroke(UiKit.dp(c, BORDER_WIDTH_DP), borderColor(p));
         return glass;
     }
 
@@ -193,10 +282,14 @@ public final class OrbitGlass {
      * stop is indistinguishable from the page above it and the last stop is not there at all.
      */
     public static GradientDrawable scrimDrawable(Context c) {
-        int haze = hazeColor(c);
+        return scrimDrawable(Palette.live(c));
+    }
+
+    public static GradientDrawable scrimDrawable(Palette p) {
+        int haze = hazeColor(p);
         int[] colors = new int[SCRIM_ALPHAS.length];
         for (int i = 0; i < SCRIM_ALPHAS.length; i++) {
-            colors[i] = UiKit.withAlpha(i == 0 ? UiKit.BG : haze, SCRIM_ALPHAS[i]);
+            colors[i] = UiKit.withAlpha(i == 0 ? p.background : haze, SCRIM_ALPHAS[i]);
         }
         return new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, colors);
     }

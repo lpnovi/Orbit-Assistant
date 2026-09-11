@@ -437,7 +437,18 @@ public final class OrbitThemeFileTest {
     @Test public void aThemeFileCarriesNothingButAppearance() throws Exception {
         JSONObject json = new JSONObject(
                 OrbitThemeFileCodec.encode(OrbitTheme.builtIn(OrbitTheme.ID_NOVA_AMOLED)));
-        assertEquals(11, json.length());
+        // Twelve since Orbit Pro: the eleven a theme has always had, plus the premium styling
+        // block. It is still nothing but appearance - five bounded integers describing a corner
+        // radius, an outline level and three glass strengths.
+        assertEquals(12, json.length());
+        assertTrue("the premium block is the only addition", json.has("pro"));
+        JSONObject pro = json.getJSONObject("pro");
+        assertEquals("and it carries five numbers and nothing else", 5, pro.length());
+        for (String field : new String[]{"bubbleRadius", "bubbleOutline", "glassOpacity",
+                "glassTint", "glassEdge"}) {
+            assertTrue("a premium block must describe " + field, pro.has(field));
+            assertTrue(field + " must be a plain number", pro.get(field) instanceof Integer);
+        }
         for (String forbidden : new String[]{"url", "uri", "intent", "action", "package",
                 "component", "permission", "provider", "apiKey", "token", "secret", "routine",
                 "memory", "deck", "update", "class", "code", "script"}) {

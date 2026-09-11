@@ -78,6 +78,21 @@ public final class Prefs {
     public static final String THEME_ID = "theme_id";
     public static final String THEME_NAME = "theme_name";
     public static final String THEME_SCHEMA = "theme_schema";
+
+    /**
+     * The active theme's Orbit Pro styling.
+     *
+     * <p>Beside the other theme keys rather than in a store of their own, for the reason the whole
+     * of {@link OrbitThemeStore} is built on: the active theme is not stored anywhere new, it is
+     * the live preference values, and a premium field kept somewhere else would be a second source
+     * of truth for one appearance. They are written whether or not the device has Pro and read the
+     * same way; {@code OrbitProStyle.resolve} is what decides whether they are drawn.
+     */
+    public static final String THEME_PRO_BUBBLE_RADIUS = "theme_pro_bubble_radius";
+    public static final String THEME_PRO_BUBBLE_OUTLINE = "theme_pro_bubble_outline";
+    public static final String THEME_PRO_GLASS_OPACITY = "theme_pro_glass_opacity";
+    public static final String THEME_PRO_GLASS_TINT = "theme_pro_glass_tint";
+    public static final String THEME_PRO_GLASS_EDGE = "theme_pro_glass_edge";
     /** The id an appearance that matches no shipped preset is recorded under. */
     public static final String THEME_ID_CUSTOM = "custom";
     public static final String QUICK_SETTINGS_ROUTINE_ID = "quick_settings_routine_id";
@@ -232,8 +247,13 @@ public final class Prefs {
             MEMORY_ENABLED, MEMORY_USAGE_INDICATOR, MEMORY_SUGGESTIONS,
             NOTIFICATION_AI_ENABLED, AMOLED_MODE, UPDATE_NOTIFICATIONS,
             ENHANCED_CHAT_BACK, CHAT_SWIPE_ACTIONS, LOCAL_DEVICE_ACTIONS, VAULT_ENABLED));
+    // The Pro styling keys are backed up with the rest of the appearance. They describe a theme
+    // the person built, not an entitlement: restoring them onto a Free device stores values that
+    // simply do not draw, and restoring them onto a Pro one gives somebody their theme back.
     private static final Set<String> BACKUP_INTEGER_KEYS = new HashSet<>(
-            Arrays.asList(NOTIFICATION_RETENTION_DAYS, THEME_SCHEMA));
+            Arrays.asList(NOTIFICATION_RETENTION_DAYS, THEME_SCHEMA,
+                    THEME_PRO_BUBBLE_RADIUS, THEME_PRO_BUBBLE_OUTLINE,
+                    THEME_PRO_GLASS_OPACITY, THEME_PRO_GLASS_TINT, THEME_PRO_GLASS_EDGE));
 
     public static SharedPreferences get(Context context) {
         return context.getSharedPreferences(FILE, Context.MODE_PRIVATE);

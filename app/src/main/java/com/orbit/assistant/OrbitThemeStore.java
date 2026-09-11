@@ -72,7 +72,32 @@ public final class OrbitThemeStore {
                 p.getString(Prefs.ASSISTANT_BUBBLE_COLOR, OrbitTheme.CLASSIC),
                 p.getString(Prefs.THEME_SURFACE, OrbitTheme.CLASSIC),
                 p.getString(Prefs.THEME_BACKGROUND, OrbitTheme.CLASSIC),
-                p.getBoolean(Prefs.AMOLED_MODE, false));
+                p.getBoolean(Prefs.AMOLED_MODE, false),
+                activeProStyle(c));
+    }
+
+    /**
+     * The premium styling stored against the active theme, whether or not Orbit may draw it.
+     *
+     * <p>Storage, not entitlement. This is what the user chose and it is returned exactly as it was
+     * saved on a Free device as much as on a Pro one, because losing it the moment entitlement
+     * lapses would mean a tester flipping Pro Preview twice came back to a theme they had to
+     * rebuild. The decision about what may actually be drawn is {@link OrbitProStyle#resolve}, and
+     * it is made at render time rather than here.
+     *
+     * <p>Each value is read individually against its shipped default, so an install upgrading from
+     * a release that had none of these keys - which is every install before this one - lands on the
+     * appearance it already had rather than on a mixture.
+     */
+    public static OrbitProStyle activeProStyle(Context c) {
+        if (c == null) return OrbitProStyle.DEFAULT;
+        SharedPreferences p = Prefs.get(c);
+        return OrbitProStyle.of(
+                p.getInt(Prefs.THEME_PRO_BUBBLE_RADIUS, OrbitProStyle.BUBBLE_RADIUS_DEFAULT),
+                p.getInt(Prefs.THEME_PRO_BUBBLE_OUTLINE, OrbitProStyle.OUTLINE_DEFAULT),
+                p.getInt(Prefs.THEME_PRO_GLASS_OPACITY, OrbitProStyle.GLASS_OPACITY_DEFAULT),
+                p.getInt(Prefs.THEME_PRO_GLASS_TINT, OrbitProStyle.GLASS_TINT_DEFAULT),
+                p.getInt(Prefs.THEME_PRO_GLASS_EDGE, OrbitProStyle.GLASS_EDGE_DEFAULT));
     }
 
     /**
@@ -82,8 +107,9 @@ public final class OrbitThemeStore {
      * from {@code UiKit}'s constants, and reading a preference that has not landed yet would show
      * the previous theme for one frame.
      */
-    public static void applyActive(Context c, OrbitTheme theme) {
-        if (c == null || theme == null) return;
+    public static boolean applyActive(Context c, OrbitTheme theme) {
+        if (c == null || theme == null) return false;
+        if (!canApply(c, theme)) return false;
         Prefs.get(c).edit()
                 .putString(Prefs.THEME_ID, theme.id)
                 .putString(Prefs.THEME_NAME, theme.name)
@@ -94,8 +120,37 @@ public final class OrbitThemeStore {
                 .putString(Prefs.THEME_SURFACE, theme.surface)
                 .putString(Prefs.THEME_BACKGROUND, theme.background)
                 .putBoolean(Prefs.AMOLED_MODE, theme.amoled)
+                // Written whatever the entitlement is. Storing a premium value on a Free device
+                // costs nothing and is not a leak: it is the user's own setting, it does not draw,
+                // and it is what makes entitlement reversible instead of destructive.
+                .putInt(Prefs.THEME_PRO_BUBBLE_RADIUS, theme.pro.bubbleRadiusDp)
+                .putInt(Prefs.THEME_PRO_BUBBLE_OUTLINE, theme.pro.bubbleOutline)
+                .putInt(Prefs.THEME_PRO_GLASS_OPACITY, theme.pro.glassOpacity)
+                .putInt(Prefs.THEME_PRO_GLASS_TINT, theme.pro.glassTint)
+                .putInt(Prefs.THEME_PRO_GLASS_EDGE, theme.pro.glassEdge)
                 .commit();
         UiKit.syncTheme(c);
+        return true;
+    }
+
+    /**
+     * Whether this device may make {@code theme} the appearance Orbit draws with.
+     *
+     * <p>One rule, in one place: an Orbit Pro preset needs Orbit Pro. Everything else - every
+     * preset Orbit has ever shipped, every theme the user saved, every file they imported, and
+     * every edit they made in Theme Studio - is free and always will be.
+     *
+     * <p>The reason this is a policy method rather than a check inside Theme Studio is the
+     * bypass it closes. A premium preset's premium <em>styling</em> is already suppressed at render
+     * time by {@link OrbitProStyle#resolve}, but its colours are ordinary theme colours and would
+     * apply perfectly well, which would make the preset a free way to take most of what it offers.
+     * Refusing it here means every route to the applied theme passes the same test, including any
+     * route added later that forgets this one existed.
+     */
+    public static boolean canApply(Context c, OrbitTheme theme) {
+        if (theme == null) return false;
+        if (!theme.premium()) return true;
+        return c != null && OrbitProEntitlement.hasPro(c);
     }
 
     /**
@@ -215,6 +270,10 @@ public final class OrbitThemeStore {
     public static OrbitTheme canonicalIdentity(Context c, OrbitTheme theme) {
         if (theme == null) return OrbitTheme.orbitDefault();
         for (OrbitTheme preset : allPresets(c)) {
+            // A premium preset only gets to claim an appearance on a device that could have
+            // applied it. Without this a Free device whose stored values happened to match one
+            // would be labelled with a theme it is not allowed to have.
+            if (!canApply(c, preset)) continue;
             if (preset.sameColours(theme)) return preset;
         }
         if (theme.builtIn || OrbitTheme.isBuiltInId(theme.id)) {
@@ -247,6 +306,10 @@ public final class OrbitThemeStore {
         List<OrbitTheme> out = new ArrayList<>();
         for (OrbitTheme preset : OrbitTheme.builtIns()) {
             if (preset.amoled) continue;
+            // An Orbit Pro preset is not a starting point. First-run setup is where somebody picks
+            // a look before they have met the app, and offering one they may not be able to keep
+            // would be the first thing Orbit ever showed them that it then took away.
+            if (preset.premium()) continue;
             out.add(preset);
         }
         return Collections.unmodifiableList(out);

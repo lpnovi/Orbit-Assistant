@@ -131,7 +131,12 @@ public final class RoadmapSyncTest {
         String file = markdown();
         int at = file.indexOf("### `0.8` - " + OrbitRoadmap.CURRENT);
         assertTrue("Orbit Pro must have its own section in ROADMAP.md", at >= 0);
-        String section = file.substring(at, Math.min(file.length(), at + 2600));
+        // Bounded by the heading that follows rather than by a character count. The section grows
+        // as each Beta records what it shipped, and a fixed window quietly stops covering the
+        // commitments it was written to protect - which is exactly what happened to the Play
+        // billing line when Beta 2's shipped list was added above it.
+        int end = file.indexOf("\n## ", at);
+        String section = file.substring(at, end > at ? end : file.length());
         assertTrue("free Orbit must stay the complete assistant",
                 section.contains("Free Orbit stays the real, complete assistant"));
         assertTrue("and nothing free may move behind Pro",

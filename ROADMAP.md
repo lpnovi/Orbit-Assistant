@@ -344,7 +344,7 @@ does everything already listed under Shipped / Stable above.
 builds, not DRM, and the project does not pretend that somebody cannot modify a build they compiled
 themselves.
 
-Shipped in `0.8.0.0-beta.1`:
+Phase 0, the entitlement foundation, is **complete** and shipped in `0.8.0.0-beta.1`:
 
 - **Entitlement foundation.** One central place decides whether a device has Orbit Pro, and every
   future premium feature asks only that. No feature knows, or may know, whether the answer came
@@ -355,13 +355,28 @@ Shipped in `0.8.0.0-beta.1`:
   screen, so a premium feature can be tested in both its locked and unlocked states on one device
 - **Stable protection.** A Stable build never honors that override, including a Stable installed
   over a Beta where Pro Preview was selected
-- **No feature gated.** Phase 0 is infrastructure. It adds no lock, no upgrade prompt and no badge
+- **No feature gated.** Phase 0 was infrastructure. It added no lock, no upgrade prompt and no badge
   anywhere in Orbit
+
+Shipped in `0.8.0.0-beta.2`, the first release with real premium functionality:
+
+- **Theme Studio Pro, Messages.** Bubble roundness and an optional bubble outline, applied
+  identically in full chat, the Side-button assistant and the Theme Studio preview
+- **Theme Studio Pro, Glass.** Opacity, accent tint and edge light for Orbit's floating controls,
+  added to the existing `OrbitGlass` treatment rather than a second glass system beside it
+- **The first two Orbit Pro presets**, Signal Violet and Nebula Glass, marked premium by stable
+  identity rather than by name
+- **Entitlement resolved at render time**, not only at the controls. A stored premium setting never
+  draws while entitlement is Free, and is never deleted either, so switching back restores it
+- **Everything Theme Studio already did stays free**, including every existing preset, custom
+  colors, saved themes, and theme import and export
+- **Identical by default.** A user who changes none of the new settings sees exactly the Beta 1
+  appearance
 
 Planned, in order:
 
-- **Theme Studio Pro**, the flagship first premium feature
-- Theme Studio Pro visual refinement and premium presets
+- Theme Studio Pro backgrounds: gradient and radial page treatments, and per-surface profiles
+- Theme Studio Pro typography and further message styling, including separate bubble shapes
 - Orbit Deck Pro
 - Vault Pro organization
 - Backup and export Pro

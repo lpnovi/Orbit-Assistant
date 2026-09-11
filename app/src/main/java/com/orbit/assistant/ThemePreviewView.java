@@ -36,6 +36,15 @@ public final class ThemePreviewView extends LinearLayout {
     private static final float MARK_SIZE_DP = 18f;
 
     private OrbitThemeTokens tokens;
+    /**
+     * The premium styling this preview is allowed to draw, resolved exactly as the app resolves it.
+     *
+     * <p>Held rather than recomputed per piece, and never read from the live app. A preview that
+     * resolved entitlement differently from the conversation would be the one failure worth caring
+     * about here: somebody dragging a slider on a Free device and seeing it move while their chats
+     * did not.
+     */
+    private OrbitProStyle style = OrbitProStyle.DEFAULT;
 
     public ThemePreviewView(Context c) {
         super(c);
@@ -50,6 +59,9 @@ public final class ThemePreviewView extends LinearLayout {
         removeAllViews();
         if (tokens == null) return;
         Context c = getContext();
+        // The theme's own premium styling, put through the same entitlement gate the app draws
+        // with rather than trusted because it is stored.
+        style = OrbitProStyle.resolve(c, tokens.theme == null ? null : tokens.theme.pro);
 
         setBackground(UiKit.outlined(tokens.background,
                 UiKit.withAlpha(tokens.text, 34), 20, c));
@@ -63,6 +75,8 @@ public final class ThemePreviewView extends LinearLayout {
         addView(assistantBubble(c), lp(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 8));
         addView(bottomRow(c), lp(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 10));
+        addView(glassRow(c), lp(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 10));
     }
 
@@ -108,19 +122,32 @@ public final class ThemePreviewView extends LinearLayout {
     private View userBubble(Context c) {
         TextView bubble = UiKit.text(c, "How does this look?", 13, tokens.userBubbleInk, false);
         bubble.setPadding(UiKit.dp(c, 13), UiKit.dp(c, 9), UiKit.dp(c, 13), UiKit.dp(c, 9));
-        bubble.setBackground(UiKit.rounded(tokens.userBubble, UiKit.RADIUS_BUBBLE, c));
+        // The same call the conversation makes, given the draft's accent and styling instead of
+        // the applied theme's. Roundness and outline therefore cannot be shown here as anything
+        // other than what a real message would get.
+        bubble.setBackground(UiKit.bubbleSurface(c, tokens.userBubble, tokens.accent, style));
         bubble.setContentDescription("Your message bubble, "
-                + OrbitColorName.of(tokens.userBubble));
+                + OrbitColorName.of(tokens.userBubble) + shapeDescription());
         return bubble;
+    }
+
+    /** How the premium message shape reads aloud, or nothing when it is Orbit's own. */
+    private String shapeDescription() {
+        if (style.isDefault()) return "";
+        String outline = style.bubbleOutline == OrbitProStyle.OUTLINE_OFF
+                ? "no outline" : style.bubbleOutlineLabel().toLowerCase(java.util.Locale.US)
+                + " outline";
+        return ", " + style.bubbleRadiusLabel().toLowerCase(java.util.Locale.US)
+                + " corners, " + outline;
     }
 
     private View assistantBubble(Context c) {
         LinearLayout bubble = new LinearLayout(c);
         bubble.setOrientation(VERTICAL);
         bubble.setPadding(UiKit.dp(c, 13), UiKit.dp(c, 10), UiKit.dp(c, 13), UiKit.dp(c, 11));
-        bubble.setBackground(UiKit.rounded(tokens.assistantBubble, UiKit.RADIUS_BUBBLE, c));
+        bubble.setBackground(UiKit.bubbleSurface(c, tokens.assistantBubble, tokens.accent, style));
         bubble.setContentDescription("Orbit's reply bubble, "
-                + OrbitColorName.of(tokens.assistantBubble));
+                + OrbitColorName.of(tokens.assistantBubble) + shapeDescription());
 
         TextView heading = UiKit.text(c, "Looking good", 13, tokens.assistantBubbleInk, true);
         bubble.addView(heading);
@@ -204,6 +231,38 @@ public final class ThemePreviewView extends LinearLayout {
         tileLp.leftMargin = UiKit.dp(c, 9);
         row.addView(tile, tileLp);
         return row;
+    }
+
+    /**
+     * Orbit's floating glass, over the page the theme actually has.
+     *
+     * <p>The glass is the one part of Orbit's appearance a person cannot judge from colours alone,
+     * because it is translucent: what it looks like depends on what is behind it. So this is a
+     * floating control drawn over the preview's own background, from {@link OrbitGlass} rather than
+     * from an impression of it - the same drawable Chats and the Vault put under their search box.
+     * Adjusting opacity, tint or edge moves this and the real screens together or neither.
+     */
+    private View glassRow(Context c) {
+        OrbitGlass.Palette palette = OrbitGlass.Palette.of(tokens, style);
+
+        LinearLayout control = new LinearLayout(c);
+        control.setOrientation(HORIZONTAL);
+        control.setGravity(Gravity.CENTER_VERTICAL);
+        control.setPadding(UiKit.dp(c, 12), UiKit.dp(c, 9), UiKit.dp(c, 12), UiKit.dp(c, 9));
+        control.setBackground(OrbitGlass.surfaceDrawable(c, palette, 14f));
+
+        // Read against the fill composited over the page, which is what OrbitGlass.effectiveFill
+        // exists to answer, so the label stays legible at every opacity the control allows.
+        int ink = OrbitContrast.inkOn(OrbitGlass.effectiveFill(palette));
+        control.addView(UiKit.text(c, "Search", 11.5f, ink, false),
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        control.addView(UiKit.text(c, "Chats", 10.5f, UiKit.withAlpha(ink, 170), false));
+        control.setContentDescription("Floating glass control, "
+                + (style.isDefault() ? "Orbit default" : style.glassOpacityLabel().toLowerCase(
+                        java.util.Locale.US) + ", tint " + style.glassTintLabel().toLowerCase(
+                        java.util.Locale.US) + ", edge " + style.glassEdgeLabel().toLowerCase(
+                        java.util.Locale.US)) + ".");
+        return control;
     }
 
     private LinearLayout.LayoutParams lp(int width, int height, int topDp) {
