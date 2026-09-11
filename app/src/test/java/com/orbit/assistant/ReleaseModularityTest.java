@@ -185,18 +185,18 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * Rich Answers continues as a Beta line after the Stable Vault release.
+     * Rich Answers reaches Stable after nine Betas.
      *
-     * <p>Beta 2 is the real-device fix pass for Beta 1's image transport. It stays a prerelease for
-     * the same reason Beta 1 was one - the point of it is to be tested on a real phone against the
-     * real web - so the guard still runs in the Beta direction: prerelease metadata must be
-     * present, and the changelog entry the release workflow builds its notes from must exist.
+     * <p>The guard now runs in the Stable direction. Beta 9 is the tested behaviour and the
+     * promotion changed release metadata only, so this build must carry Stable metadata rather than
+     * prerelease metadata, and the changelog entry the release workflow builds its notes from must
+     * exist for the Stable version name.
      */
-    @Test public void thisReleaseIsRichAnswersBeta() {
-        assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
-                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
-        assertTrue(OrbitVersion.installedIsBeta());
+    @Test public void thisReleaseIsRichAnswersStable() {
+        assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
+                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.installedIsBeta());
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
     }
 

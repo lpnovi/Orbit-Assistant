@@ -17,18 +17,15 @@ package com.orbit.assistant;
  */
 public final class OrbitRoadmap {
 
-    /** The active line after Orbit Vault reached Stable. */
-    public static final String CURRENT = "Rich Answers / Visual Web Results";
     /**
-     * The smaller piece of the same release as {@link #CURRENT}.
+     * The active line after Rich Answers reached Stable.
      *
-     * <p>Listed here rather than left to prose because it is exactly the kind of entry that gets
-     * quietly promoted or quietly dropped. Settings search ships alongside Rich Answers in
-     * {@code 0.7.8.5}; it is not the headline of that release and it is not a milestone of its own.
+     * <p>One name rather than three. Rich Answers, Settings search and Astra all shipped in
+     * {@code 0.7.8.5}, and the in-app page is future-only, so a milestone constant for any of them
+     * would be a promise about something a user already has. Smart Vault is what follows, and
+     * nothing beyond it is named yet.
      */
-    public static final String ALONGSIDE = "Settings search";
-    /** And the one after that. */
-    public static final String AFTER = "Smart Vault";
+    public static final String CURRENT = "Smart Vault";
 
     /**
      * Every milestone both roadmaps must agree about.
@@ -36,7 +33,7 @@ public final class OrbitRoadmap {
      * <p>The list is short on purpose. It is a guard against silent drift on the things a reader
      * would be actively misled by, not an index of everything either document says.
      */
-    public static final String[] MILESTONES = {CURRENT, ALONGSIDE, AFTER};
+    public static final String[] MILESTONES = {CURRENT};
 
     private OrbitRoadmap() {}
 }

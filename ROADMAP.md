@@ -9,98 +9,18 @@ canonical record of what actually shipped.
 
 ## Shipped / Stable
 
-### `0.7.8.4` Stable - Orbit Vault
+### `0.7.8.5` Stable - Rich Answers / Visual Web Results
 
-Released from the tested Beta 6 line with no product-behaviour changes. Orbit Vault, Quick Capture,
-its explicit save and attach paths, organization, safe swipe actions, Theme Studio onboarding, and
-the shared floating-glass treatment for Chats and Vault are now Stable.
-
-### `0.7.8.4-beta.6` - Floating chrome for Chats and the Vault
-
-No new behaviour anywhere, deliberately. Beta 5 tested correctly on a Galaxy S25 Ultra and one
-thing about both screens still read badly: each ended with a band of controls, then a boundary, then
-a list whose first card was sliced flat against the page. Every earlier attempt - a thinner rule, a
-wrapping panel, more black space - treated it as a spacing problem and made the screens read as more
-segmented, because the boundary itself was still being drawn.
-
-- **One shared primitive.** `OrbitGlass` owns the corner radius, the surface and border alphas, the
-  scrim depth, the fade distance and the control spacing. Chats and the Vault both draw from it, and
-  a future Orbit list screen will too
-- **Floating glass controls.** Search on both screens, and the Vault's Type and Saved from
-  selectors, are translucent surfaces with a lit top edge, a hairline border and a little real
-  depth - lying over the page rather than cut into it
-- **No divider.** The accent rule under Chats' search is gone, with nothing in its place
-- **A scrim over the list, not beside it.** A theme-derived haze is laid over the top of the
-  scrolling column: the page's own colour where the list is clipped, dissolving to nothing 30dp
-  lower. Content fades out underneath the chrome instead of ending at a line
-- **Scroll-linked depth.** Two states rather than a per-frame effect: the scrim reaches full
-  strength the moment content is underneath it, and settles back at the top
-- **Theme-derived, not Nova.** Every colour comes from the active Theme Studio surfaces and accent,
-  and true black stays true black at the boundary
-- **No blur, on purpose.** Android has no backdrop blur a View can use at Orbit's `minSdk 29`
-  floor; the only route is capturing and blurring the screen every frame. A flawless translucent
-  scrim is worth more than a janky blur
-- **A Saved Items heading**, in the same voice as Chats' own RECENT CHATS
-- **Saved from narrows to the current type**, so the source list only offers doors the kind of item
-  on screen actually came through. Display only: nothing stored changes
-
-### `0.7.8.4-beta.5` - Vault release-candidate polish
-
-No new Vault feature, deliberately. Beta 4's organization model tested correctly on a Galaxy S25
-Ultra and read badly: the filters worked and had to be discovered by dragging a row of eight
-controls sideways, a single choice could not be turned off without losing the others, and a Pin
-button in the item header was taking width from titles that needed it. Beta 5 is the pass that makes
-the model obvious before Stable.
-
-- **Two selectors instead of a chip conveyor.** Type and Saved from sit on one row that always fits,
-  with no horizontal scrolling and nothing parked off the edge of the screen
-- **Independent reset.** Each selector returns to its own resting answer without disturbing the
-  other one, and without deleting the words the user typed into search
-- **Type and source told apart.** A source is a door in Orbit, so the one that used to read
-  "Document" beside a "Documents" type filter now reads "Orbit Documents". Display only: nothing
-  stored is renamed or migrated
-- **Vault cards swipe like chat cards.** Left to delete, right to pin and unpin, through the same
-  shared `OrbitSwipeRow` rather than a second gesture that would drift away from the first
-- **Safe deletion.** A swiped-away item is held aside rather than removed, so Undo returns it
-  complete and the picture it owns is only deleted once the offer has expired
-- **Room for the title.** The item header no longer carries a 48dp Pin control; Pin moved into the
-  responsive utility row beside Rename, Copy and Share
-
-Deliberately still not in this line: folders, tags, collections, smart collections, AI organization,
-semantic search, OCR, webpage extraction and summaries.
-
-### `0.7.8.4-beta.4` - Vault organization and refinement
-
-The last feature Beta of the first Orbit Vault line. Beta 3 gave the user many more ways to
-put things in the Vault, which is exactly the condition that makes organization worth building: a
-collection of six items needs none, and a collection built from documents, screenshots, selections
-and shares does.
-
-- **Type filters** across the six kinds a saved item can be: All, Text, Links, Images, Documents and
-  Orbit answers, matched on canonical item types rather than on the words a card happens to draw
-- **Source filtering** over Orbit's own closed source vocabulary, so "things I selected" and "pages
-  I kept" are one choice apart, and no filter can ever be steered by a string another app supplied
-- **Pinning**, one durable boolean on the item, for the handful of things somebody keeps coming back
-  to. No folder, no collection, no second list, and no change to any timestamp
-- **Search, filters and sort compose.** One reading path answers all four questions at once, and the
-  empty state says which of them found nothing rather than claiming the Vault is empty
-- **A compact Screen Selection Vault control**, replacing Beta 3's full-width row and giving that
-  band of the screen back to the selection itself
-- **Both roadmaps rebuilt**, which is this section
-- **Real-device refinement**, on a Galaxy S25 Ultra first and a Tab S9 Plus after it: chip density
-  at phone width, the source popup, the pinned section with real pinned things in it, long titles,
-  large text, AMOLED, and the height the screen-selection preview actually gets back
-
-Deliberately not in Beta 4: folders, tags, collections, smart collections, AI organization, semantic
-search, OCR, webpage extraction and summaries.
-
-## Current
+Released from the tested Beta 9 line with no product-behaviour changes. Sourced web images
+inside answers, their duplicate and junk-image protection, the image viewer and Vault paths they
+reuse, Settings search, and optional GPT-6 Astra are now Stable.
 
 ### `0.7.8.5` - Rich Answers / Visual Web Results
 
-The active line, opened by Beta 1. Orbit already answered questions from the web and already had an
-image viewer and a Vault; what it did not do was show the pictures that make some of those answers
-obviously better. It does now, for the answers a picture genuinely improves and for no others.
+The line opened by Beta 1 and completed through Beta 9. Orbit already answered questions from the web
+and already had an image viewer and a Vault; what it did not do was show the pictures that make some
+of those answers obviously better. It does now, for the answers a picture genuinely improves and for
+no others.
 
 **Shipped in `0.7.8.5-beta.1`:**
 
@@ -280,7 +200,7 @@ whether it was useful.
   placement and its standing, and a plural request answered with one picture says which of the three
   reasons it was
 
-**Still ahead in `0.7.8.5`, depending on real-device testing:**
+**Not in `0.7.8.5`, and still open:**
 
 - Richer multi-image presentation, where a comparison genuinely needs two pictures side by side
 - Better placement, if the deterministic first-paragraph anchor turns out to read badly in practice
@@ -322,7 +242,92 @@ Advanced access rather than a new default, for people whose ChatGPT/Codex accoun
 Rich Answers remains the primary work of `0.7.8.5`. Settings search and Astra ship in the same
 release, not as replacements for it.
 
-## Next
+### `0.7.8.4` Stable - Orbit Vault
+
+Released from the tested Beta 6 line with no product-behaviour changes. Orbit Vault, Quick Capture,
+its explicit save and attach paths, organization, safe swipe actions, Theme Studio onboarding, and
+the shared floating-glass treatment for Chats and Vault are now Stable.
+
+### `0.7.8.4-beta.6` - Floating chrome for Chats and the Vault
+
+No new behaviour anywhere, deliberately. Beta 5 tested correctly on a Galaxy S25 Ultra and one
+thing about both screens still read badly: each ended with a band of controls, then a boundary, then
+a list whose first card was sliced flat against the page. Every earlier attempt - a thinner rule, a
+wrapping panel, more black space - treated it as a spacing problem and made the screens read as more
+segmented, because the boundary itself was still being drawn.
+
+- **One shared primitive.** `OrbitGlass` owns the corner radius, the surface and border alphas, the
+  scrim depth, the fade distance and the control spacing. Chats and the Vault both draw from it, and
+  a future Orbit list screen will too
+- **Floating glass controls.** Search on both screens, and the Vault's Type and Saved from
+  selectors, are translucent surfaces with a lit top edge, a hairline border and a little real
+  depth - lying over the page rather than cut into it
+- **No divider.** The accent rule under Chats' search is gone, with nothing in its place
+- **A scrim over the list, not beside it.** A theme-derived haze is laid over the top of the
+  scrolling column: the page's own colour where the list is clipped, dissolving to nothing 30dp
+  lower. Content fades out underneath the chrome instead of ending at a line
+- **Scroll-linked depth.** Two states rather than a per-frame effect: the scrim reaches full
+  strength the moment content is underneath it, and settles back at the top
+- **Theme-derived, not Nova.** Every colour comes from the active Theme Studio surfaces and accent,
+  and true black stays true black at the boundary
+- **No blur, on purpose.** Android has no backdrop blur a View can use at Orbit's `minSdk 29`
+  floor; the only route is capturing and blurring the screen every frame. A flawless translucent
+  scrim is worth more than a janky blur
+- **A Saved Items heading**, in the same voice as Chats' own RECENT CHATS
+- **Saved from narrows to the current type**, so the source list only offers doors the kind of item
+  on screen actually came through. Display only: nothing stored changes
+
+### `0.7.8.4-beta.5` - Vault release-candidate polish
+
+No new Vault feature, deliberately. Beta 4's organization model tested correctly on a Galaxy S25
+Ultra and read badly: the filters worked and had to be discovered by dragging a row of eight
+controls sideways, a single choice could not be turned off without losing the others, and a Pin
+button in the item header was taking width from titles that needed it. Beta 5 is the pass that makes
+the model obvious before Stable.
+
+- **Two selectors instead of a chip conveyor.** Type and Saved from sit on one row that always fits,
+  with no horizontal scrolling and nothing parked off the edge of the screen
+- **Independent reset.** Each selector returns to its own resting answer without disturbing the
+  other one, and without deleting the words the user typed into search
+- **Type and source told apart.** A source is a door in Orbit, so the one that used to read
+  "Document" beside a "Documents" type filter now reads "Orbit Documents". Display only: nothing
+  stored is renamed or migrated
+- **Vault cards swipe like chat cards.** Left to delete, right to pin and unpin, through the same
+  shared `OrbitSwipeRow` rather than a second gesture that would drift away from the first
+- **Safe deletion.** A swiped-away item is held aside rather than removed, so Undo returns it
+  complete and the picture it owns is only deleted once the offer has expired
+- **Room for the title.** The item header no longer carries a 48dp Pin control; Pin moved into the
+  responsive utility row beside Rename, Copy and Share
+
+Deliberately still not in this line: folders, tags, collections, smart collections, AI organization,
+semantic search, OCR, webpage extraction and summaries.
+
+### `0.7.8.4-beta.4` - Vault organization and refinement
+
+The last feature Beta of the first Orbit Vault line. Beta 3 gave the user many more ways to
+put things in the Vault, which is exactly the condition that makes organization worth building: a
+collection of six items needs none, and a collection built from documents, screenshots, selections
+and shares does.
+
+- **Type filters** across the six kinds a saved item can be: All, Text, Links, Images, Documents and
+  Orbit answers, matched on canonical item types rather than on the words a card happens to draw
+- **Source filtering** over Orbit's own closed source vocabulary, so "things I selected" and "pages
+  I kept" are one choice apart, and no filter can ever be steered by a string another app supplied
+- **Pinning**, one durable boolean on the item, for the handful of things somebody keeps coming back
+  to. No folder, no collection, no second list, and no change to any timestamp
+- **Search, filters and sort compose.** One reading path answers all four questions at once, and the
+  empty state says which of them found nothing rather than claiming the Vault is empty
+- **A compact Screen Selection Vault control**, replacing Beta 3's full-width row and giving that
+  band of the screen back to the selection itself
+- **Both roadmaps rebuilt**, which is this section
+- **Real-device refinement**, on a Galaxy S25 Ultra first and a Tab S9 Plus after it: chip density
+  at phone width, the source popup, the pinned section with real pinned things in it, long titles,
+  large text, AMOLED, and the height the screen-selection preview actually gets back
+
+Deliberately not in Beta 4: folders, tags, collections, smart collections, AI organization, semantic
+search, OCR, webpage extraction and summaries.
+
+## Current
 
 ### `0.7.8.6` - Smart Vault
 
@@ -1767,9 +1772,9 @@ it changes. Anything released belongs to the sections above and to What's New, n
 below.
 
 **This section is historical.** It records the direction as it stood through the 0.7.7 and early
-0.7.8 lines. The current plan - Vault, then Rich Answers, then Smart Vault - is at the top of this
-file, and `OrbitRoadmap` holds those three milestone names so this document and the in-app page
-cannot drift apart about them again.
+0.7.8 lines. The current plan - Smart Vault, after the Vault and Rich Answers lines shipped - is at
+the top of this file, and `OrbitRoadmap` holds that milestone name so this document and the in-app
+page cannot drift apart about it again.
 
 ### 0.7.7 development line — hybrid, provider-agnostic AI
 
@@ -2275,8 +2280,8 @@ place. Orbit should first be excellent *during* cooking rather than become a mea
 ### Historical near-term order (superseded)
 
 The order below was the plan for the 0.7.7 line. It is kept for the reasoning in it and is no
-longer current: the active plan is Vault, then Rich Answers, then Smart Vault, at the top of this
-file. Everything still unfinished here is listed under **Later / parked** there.
+longer current: the active plan is Smart Vault, after the Vault and Rich Answers lines, at the top
+of this file. Everything still unfinished here is listed under **Later / parked** there.
 
 - Local device actions, beyond the first allowlist: more actions, short follow-ups through the
   semantic path, and requests that need more than one action. The foundation shipped in

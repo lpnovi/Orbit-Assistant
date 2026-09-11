@@ -831,3 +831,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Captions no longer borrow a page title for an image the page never described, so nothing is mislabelled.
   - Diagrams, maps, flags, logos and illustrations are unaffected and still appear as before.
   - Diagnostics now reports each picture's own subject match and why a second one was refused.
+
+- **v0.7.8.5**: Rich Answers, Settings search, and expanded model choice are now Stable.
+  - Orbit can show sourced web images inside an answer when a picture genuinely helps, with the domain it came from.
+  - A plural request can bring back two useful pictures, and one excellent picture instead of a poor second.
+  - Duplicate and junk images are rejected, so the same photo is never repeated and graphics never stand in for photographs.
+  - Tap any sourced picture to open Orbit's image viewer, visit its source page, or save it to your Vault.
+  - Search Orbit Settings to jump straight to the control you want, with no AI and no network involved.
+  - Optional GPT-6 Astra is available as a Custom model for eligible ChatGPT accounts, and Auto routing is unchanged.

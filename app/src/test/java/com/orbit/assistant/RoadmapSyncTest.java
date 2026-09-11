@@ -30,7 +30,8 @@ import java.util.List;
  * is no Markdown parser, no schema, no generated file, and nothing that runs on a user's phone.
  * {@link OrbitRoadmap} holds the names of the active milestones, the in-app page draws its headings
  * from those constants, and this test asserts the same names appear in `ROADMAP.md` above its
- * history. Rename or drop a milestone in one place and the build says so.
+ * history. Rename or drop a milestone in one place and the build says so. A milestone that ships
+ * leaves those constants and is checked here as recorded history instead.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {29, 35})
@@ -38,6 +39,17 @@ public final class RoadmapSyncTest {
 
     /** Where the plan stops and the record of how Orbit got here begins. */
     private static final String HISTORY_HEADING = "# Development history";
+
+    /**
+     * Two names this file still has to check that are no longer active milestones.
+     *
+     * <p>Both shipped in {@code 0.7.8.5}. They left {@link OrbitRoadmap} at Stable promotion,
+     * because the in-app page is future-only and a constant for either would have kept offering a
+     * user something they already have. What they must still do is stay correctly recorded in
+     * `ROADMAP.md`, so the commitments made about them are named here instead.
+     */
+    private static final String RICH_ANSWERS = "Rich Answers / Visual Web Results";
+    private static final String SETTINGS_SEARCH = "Settings search";
 
     private static String markdown() {
         return ComponentUninstallTest.readRepositoryFile("ROADMAP.md");
@@ -84,17 +96,28 @@ public final class RoadmapSyncTest {
         }
     }
 
-    /** The plan reads in the order it happens, in both documents. */
-    @Test public void theOrderIsTheSameInBothRoadmaps() {
-        for (String text : new String[]{markdown(), inApp()}) {
-            int current = text.indexOf(OrbitRoadmap.CURRENT);
-            int alongside = text.indexOf(OrbitRoadmap.ALONGSIDE);
-            int after = text.indexOf(OrbitRoadmap.AFTER);
-            assertTrue("Rich Answers is the active line", current >= 0);
-            assertTrue("Settings search is listed under Rich Answers, not above it",
-                    alongside > current);
-            assertTrue("and Smart Vault still follows both", after > alongside);
-        }
+    /**
+     * The plan reads in the order it happens, in both documents.
+     *
+     * <p>At Stable promotion the order question changes shape. There is one active milestone left,
+     * so what has to hold is that the finished line is recorded as finished above it and has left
+     * the future-only in-app page entirely.
+     */
+    @Test public void theShippedLineIsRecordedAboveTheActivePlan() {
+        String file = markdown();
+        int shipped = file.indexOf(RICH_ANSWERS);
+        int current = file.indexOf(OrbitRoadmap.CURRENT);
+        assertTrue("Rich Answers must still be recorded", shipped >= 0);
+        assertTrue("Smart Vault is the active line", current > shipped);
+        assertTrue("Rich Answers is recorded as Stable, not as current work",
+                file.indexOf("### `0.7.8.5` Stable") >= 0);
+        assertTrue("and the Stable entry comes before the active plan",
+                file.indexOf("### `0.7.8.5` Stable") < current);
+
+        String page = inApp();
+        assertTrue("the in-app page leads with the active line",
+                page.indexOf(OrbitRoadmap.CURRENT) >= 0);
+        assertFalse("and a shipped line is never offered there", page.contains(RICH_ANSWERS));
     }
 
     /**
@@ -114,8 +137,8 @@ public final class RoadmapSyncTest {
         // Anchored on the heading rather than on the first mention: Beta 1's shipped list names
         // Settings search before the section that describes it, and reading the section means
         // starting where the section starts.
-        int at = file.indexOf("In the same release: " + OrbitRoadmap.ALONGSIDE);
-        assertTrue(OrbitRoadmap.ALONGSIDE + " must have its own section in ROADMAP.md", at >= 0);
+        int at = file.indexOf("In the same release: " + SETTINGS_SEARCH);
+        assertTrue(SETTINGS_SEARCH + " must have its own section in ROADMAP.md", at >= 0);
         String section = file.substring(at, Math.min(file.length(), at + 1600));
         assertTrue("it belongs to the 0.7.8.5 release", file.substring(0, at).contains("0.7.8.5"));
         assertTrue("and finding a setting must not need a provider", section.contains("No AI"));
@@ -143,12 +166,12 @@ public final class RoadmapSyncTest {
      */
     @Test public void richAnswersIsRecordedAsReusingOrbitsOwnImageViewerAndVault() {
         String file = markdown();
-        int at = file.indexOf(OrbitRoadmap.CURRENT);
+        int at = file.indexOf(RICH_ANSWERS);
         assertTrue(at >= 0);
         // Bounded by the next release heading rather than by a character count. The section grows
         // as each Beta records what it shipped, and a fixed window quietly stops covering the
         // commitments it was written to protect.
-        int end = file.indexOf("## Next", at);
+        int end = file.indexOf("### `0.7.8.4` Stable", at);
         String section = file.substring(at, end > at ? end : file.length());
         assertTrue("inline images must open in the image viewer Orbit already has",
                 section.contains("image viewer"));
@@ -163,7 +186,7 @@ public final class RoadmapSyncTest {
     /** Smart Vault stays opt-in, and the roadmap has to keep saying so. */
     @Test public void smartVaultIsRecordedAsOptIn() {
         String file = markdown();
-        int at = file.indexOf(OrbitRoadmap.AFTER);
+        int at = file.indexOf("### `0.7.8.6` - " + OrbitRoadmap.CURRENT);
         assertTrue(at >= 0);
         String section = file.substring(at, Math.min(file.length(), at + 1400));
         assertTrue(section.contains("opt-in"));

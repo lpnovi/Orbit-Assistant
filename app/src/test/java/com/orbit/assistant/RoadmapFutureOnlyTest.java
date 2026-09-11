@@ -28,9 +28,9 @@ import java.util.List;
  * with 0.7.7-era priorities under "NEXT UP" while the whole project had moved to Orbit Vault, so
  * nothing on it was false and the page as a whole was still misleading: a reader came away with a
  * confident and wrong idea of what Orbit was working on. Stale-but-real work is therefore asserted
- * to be listed <em>below</em> the active plan rather than merely listed, and the three active
- * milestones are asserted to be present in the page and in {@code ROADMAP.md} at once - see
- * {@link RoadmapSyncTest}.
+ * to be listed <em>below</em> the active plan rather than merely listed, and the active
+ * milestone is asserted to be present in the page and in {@code ROADMAP.md} at once - see
+ * {@link RoadmapSyncTest}. A milestone that ships leaves those constants and joins the list above.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {29, 35})
@@ -73,6 +73,12 @@ public final class RoadmapFutureOnlyTest {
             "Attach from Vault",
             "Vault notes",
             "Theme Studio",
+            // v0.7.8.5 shipped Rich Answers, Settings search and optional GPT-6 Astra, and
+            // was promoted to Stable from the tested Beta 9. All three left OrbitRoadmap with
+            // it, and none of them may be offered on a future-only page any more.
+            "Rich Answers / Visual Web Results",
+            "Settings search",
+            "GPT-6 Astra",
     };
 
     private String roadmapText() {
@@ -104,14 +110,11 @@ public final class RoadmapFutureOnlyTest {
     /** The page leads with what Orbit is building, then what follows it. */
     @Test public void thePageLeadsWithTheCurrentPlan() {
         String text = roadmapText();
-        assertTrue("the page must say what is being built now", text.contains("NOW"));
-        assertTrue(text.contains("AFTER - 0.7.8.6"));
+        assertTrue("the page must say what is being built now", text.contains("NOW - 0.7.8.6"));
         assertTrue(text.contains("LATER"));
         assertTrue(text.contains("EXPLORING"));
 
-        assertTrue("Rich Answers is the current line", text.contains(OrbitRoadmap.CURRENT));
-        assertTrue("Settings search ships alongside it", text.contains(OrbitRoadmap.ALONGSIDE));
-        assertTrue("and Smart Vault follows it", text.contains(OrbitRoadmap.AFTER));
+        assertTrue("Smart Vault is the current line", text.contains(OrbitRoadmap.CURRENT));
     }
 
     /**
@@ -121,18 +124,14 @@ public final class RoadmapFutureOnlyTest {
     @Test public void olderIdeasSitBelowTheActivePlan() {
         String text = roadmapText();
         int current = text.indexOf(OrbitRoadmap.CURRENT);
-        int alongside = text.indexOf(OrbitRoadmap.ALONGSIDE);
-        int after = text.indexOf(OrbitRoadmap.AFTER);
         assertTrue("the current work must be listed first", current >= 0);
-        assertTrue("Settings search follows Rich Answers in the same line", alongside > current);
-        assertTrue("and Smart Vault follows 0.7.8.5", after > alongside);
 
         for (String older : new String[]{"Local device actions", "Calendar awareness",
                 "More branch points & conditions", "Deeper Android actions", "Cook with Orbit",
                 "OpenRouter chat", "Hybrid Auto", "Proactive screen intelligence"}) {
             int at = text.indexOf(older);
             assertTrue(older + " is still genuinely unfinished and must still be listed", at >= 0);
-            assertTrue(older + " must not be presented above the active plan", at > after);
+            assertTrue(older + " must not be presented above the active plan", at > current);
         }
     }
 
