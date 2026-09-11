@@ -1,0 +1,796 @@
+package com.orbit.assistant;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
+
+import android.app.Activity;
+import android.content.Context;
+import android.graphics.Typeface;
+import android.os.SystemClock;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.TextView;
+
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.robolectric.Robolectric;
+import org.robolectric.RobolectricTestRunner;
+import org.robolectric.RuntimeEnvironment;
+import org.robolectric.android.controller.ActivityController;
+import org.robolectric.annotation.Config;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * What physical testing of v0.8.0.0-beta.2 found, turned into assertions.
+ *
+ * <p>Beta 2's premium controls worked and were unusable, which is a combination unit tests are bad
+ * at catching and a person notices in about four seconds. Every fault came from one decision: the
+ * screen rebuilt its controls whenever the draft changed, and a slider changes the draft
+ * continuously. Destroying and recreating five sliders sixty times a second made unrelated thumbs
+ * move, made the thumb being dragged snap on release, reloaded the theme library from disk under
+ * the user's finger, and fed the typography watcher a fresh set of labels every frame.
+ *
+ * <p>So the tests here are mostly about <em>identity and persistence of view objects</em> rather
+ * than about values. The interesting assertion is usually "this is the same object it was before",
+ * because that is the property that was actually lost. Where a value is at stake, the drag is
+ * driven with real {@link MotionEvent}s rather than by calling a listener, since the reported
+ * problems lived in the gesture contract rather than in the arithmetic.
+ */
+@RunWith(RobolectricTestRunner.class)
+@Config(sdk = {29, 35})
+public final class ThemeStudioInteractionTest {
+
+    private Context context;
+
+    @Before public void setUp() {
+        context = RuntimeEnvironment.getApplication();
+        Prefs.get(context).edit().clear().commit();
+        OrbitThemeStore.clearForTests(context);
+        UiPresence.clearForTests();
+        OrbitThemeStore.applyActive(context, OrbitTheme.orbitDefault());
+    }
+
+    private ActivityController<ThemeStudioActivity> openPro() {
+        Prefs.setProPreview(context, Prefs.PRO_PREVIEW_PRO);
+        assertTrue(OrbitProEntitlement.hasPro(context));
+        return Robolectric.buildActivity(ThemeStudioActivity.class).setup();
+    }
+
+    private ActivityController<ThemeStudioActivity> openFree() {
+        Prefs.setProPreview(context, Prefs.PRO_PREVIEW_FREE);
+        assertFalse(OrbitProEntitlement.hasPro(context));
+        return Robolectric.buildActivity(ThemeStudioActivity.class).setup();
+    }
+
+    // ---- 1 and 2. where Orbit Pro sits ------------------------------------------------------------
+
+    /**
+     * 1. Orbit Pro comes after everything Theme Studio already had.
+     *
+     * <p>Beta 2 put it between Colors and Presets. On a phone that meant a free user scrolling to
+     * the gallery had to scroll past a large locked panel describing things they could not use,
+     * which is the single change that made the screen feel taken over. Asserted by the order the
+     * card titles actually appear in the built hierarchy, so a future edit that moves a card
+     * fails here rather than on a device.
+     */
+    @Test public void phoneOrderIsPreviewThenColorsThenPresetsThenPro() {
+        for (boolean pro : new boolean[]{false, true}) {
+            ActivityController<ThemeStudioActivity> controller = pro ? openPro() : openFree();
+            List<String> order = sectionOrder(controller.get());
+            assertEquals("with Pro " + pro + ", sections must read " + order,
+                    java.util.Arrays.asList("Colors", "Presets", "Orbit Pro"), order);
+            assertTrue("the preview comes before all of them",
+                    previewIndex(controller.get()) >= 0);
+            controller.pause().stop().destroy();
+        }
+    }
+
+    /** 2. And the same order in the tablet's right-hand pane. */
+    @Test public void tabletRightPaneOrderIsColorsThenPresetsThenPro() {
+        RuntimeEnvironment.setQualifiers("w1024dp-h768dp");
+        for (boolean pro : new boolean[]{false, true}) {
+            ActivityController<ThemeStudioActivity> controller = pro ? openPro() : openFree();
+            assertEquals("two-pane order must match the phone",
+                    java.util.Arrays.asList("Colors", "Presets", "Orbit Pro"),
+                    sectionOrder(controller.get()));
+            controller.pause().stop().destroy();
+        }
+        RuntimeEnvironment.setQualifiers("w411dp-h891dp");
+    }
+
+    // ---- 3 to 6. the Free state -------------------------------------------------------------------
+
+    /**
+     * 3 and 4. The locked treatment is a teaser, not a panel.
+     *
+     * <p>Measured rather than described. Beta 2's locked state was a bordered box inside the card
+     * carrying a heading, a two-line feature inventory and an explanation; the replacement is one
+     * line saying what Pro adds and one saying why it is off. The assertion is on the amount of
+     * text, because that is what the complaint was about.
+     */
+    @Test public void freeLockedProTreatmentIsCompact() {
+        ActivityController<ThemeStudioActivity> controller = openFree();
+        ThemeStudioActivity activity = controller.get();
+
+        View proBody = (View) field(activity, "proBody");
+        assertNotNull(proBody);
+        List<String> lines = textsIn(proBody);
+        assertTrue("the locked state must be a short teaser, found " + lines,
+                lines.size() <= 3);
+
+        String joined = String.join(" ", lines);
+        assertFalse("the old nested panel heading must be gone",
+                joined.contains("Included with Orbit Pro"));
+        assertFalse("and its feature inventory with it",
+                joined.contains("Messages: bubble roundness"));
+        assertTrue("it still says what Pro adds",
+                joined.contains("Advanced message and glass styling"));
+
+        // No purchase, at any size.
+        for (String selling : new String[]{"Upgrade", "Buy", "Subscribe", "$", "price", "checkout"}) {
+            assertFalse("a locked state must never read like a store: " + selling,
+                    joined.toLowerCase(java.util.Locale.US)
+                            .contains(selling.toLowerCase(java.util.Locale.US)));
+        }
+
+        // And no disabled slider graveyard.
+        assertTrue("Free must not build premium controls at all",
+                findAll(proBody, OrbitSlider.class).isEmpty());
+        controller.pause().stop().destroy();
+    }
+
+    /** 5 and 6. Free keeps the whole of the editor it already had. */
+    @Test public void freeColorsAndPresetsRemainFullyUsable() {
+        ActivityController<ThemeStudioActivity> controller = openFree();
+        ThemeStudioActivity activity = controller.get();
+
+        List<String> shown = allTexts(activity);
+        for (String row : new String[]{"Accent", "Your messages", "Orbit's replies", "Cards",
+                "Background", "True black AMOLED background"}) {
+            assertTrue(row + " must still be offered on Free", shown.contains(row));
+        }
+        for (OrbitTheme preset : OrbitTheme.freeBuiltIns()) {
+            assertTrue(preset.name + " must still be in the gallery", shown.contains(preset.name));
+        }
+
+        // And a free preset still loads into the draft on a Free device.
+        invoke(activity, "selectPreset", new Class<?>[]{OrbitTheme.class},
+                OrbitTheme.builtIn(OrbitTheme.ID_NEBULA));
+        assertEquals(OrbitTheme.ID_NEBULA, draft(activity).id);
+        controller.pause().stop().destroy();
+    }
+
+    // ---- 7 to 10. the two local previews ------------------------------------------------------------
+
+    /** 7, 8, 9 and 10. Each tool leads with a sample, and neither sample has its own styling math. */
+    @Test public void proStateHasLocalMessageAndGlassPreviews() {
+        ActivityController<ThemeStudioActivity> controller = openPro();
+        ThemeStudioActivity activity = controller.get();
+
+        MessageStylePreview message = (MessageStylePreview) field(activity, "messagePreview");
+        GlassStylePreview glass = (GlassStylePreview) field(activity, "glassPreview");
+        assertNotNull("Message style must have its own live sample", message);
+        assertNotNull("Floating glass must have its own live sample", glass);
+
+        // Each sits above the controls it explains rather than at the top of the page.
+        View proBody = (View) field(activity, "proBody");
+        assertTrue(indexOfDescendant(proBody, message) < indexOfFirst(proBody, OrbitSlider.class));
+
+        // 9 and 10: the shared implementations, not local imitations of them.
+        String messageSource = ThemeStudioProTest.readSourceFile("MessageStylePreview.java");
+        assertTrue("the message sample must draw bubbles the way conversations do",
+                messageSource.contains("UiKit.bubbleSurface("));
+        assertFalse("and must not carry its own corner radius",
+                messageSource.contains("setCornerRadius") || messageSource.contains("setStroke"));
+
+        String glassSource = ThemeStudioProTest.readSourceFile("GlassStylePreview.java");
+        assertTrue("the glass sample must be drawn by OrbitGlass",
+                glassSource.contains("OrbitGlass.surfaceDrawable("));
+        assertFalse("and must not hand-roll a translucent rectangle",
+                glassSource.contains("GradientDrawable"));
+        controller.pause().stop().destroy();
+    }
+
+    // ---- 11 to 13. a drag does not rebuild controls ----------------------------------------------------
+
+    /**
+     * 11 and 12. The five sliders are the same five objects before, during and after a drag.
+     *
+     * <p>This is the assertion the whole release turns on. Beta 2 replaced all five on every
+     * settled change, so the four the user was not touching were reconstructed at whatever value
+     * the draft then held, and the one they were touching was replaced underneath the finger.
+     */
+    @Test public void slidersAreNotRecreatedByADragOrItsSettle() {
+        ActivityController<ThemeStudioActivity> controller = openPro();
+        ThemeStudioActivity activity = controller.get();
+
+        OrbitSlider radius = slider(activity, "bubbleRadiusSlider");
+        OrbitSlider outline = slider(activity, "bubbleOutlineSlider");
+        OrbitSlider opacity = slider(activity, "glassOpacitySlider");
+        OrbitSlider tint = slider(activity, "glassTintSlider");
+        OrbitSlider edge = slider(activity, "glassEdgeSlider");
+        MessageStylePreview message = (MessageStylePreview) field(activity, "messagePreview");
+        GlassStylePreview glass = (GlassStylePreview) field(activity, "glassPreview");
+        ThemePreviewView preview = (ThemePreviewView) field(activity, "preview");
+
+        drag(radius, 0.1f, 0.9f);
+
+        assertSame("the dragged slider must survive its own gesture",
+                radius, slider(activity, "bubbleRadiusSlider"));
+        assertSame(outline, slider(activity, "bubbleOutlineSlider"));
+        assertSame(opacity, slider(activity, "glassOpacitySlider"));
+        assertSame(tint, slider(activity, "glassTintSlider"));
+        assertSame(edge, slider(activity, "glassEdgeSlider"));
+        assertSame("the samples must not be replaced either",
+                message, field(activity, "messagePreview"));
+        assertSame(glass, field(activity, "glassPreview"));
+        assertSame(preview, field(activity, "preview"));
+        controller.pause().stop().destroy();
+    }
+
+    /** 13. And moving one slider does not move any other. */
+    @Test public void adjustingOneSliderLeavesTheOthersWhereTheyWere() {
+        ActivityController<ThemeStudioActivity> controller = openPro();
+        ThemeStudioActivity activity = controller.get();
+
+        int outlineBefore = slider(activity, "bubbleOutlineSlider").getValue();
+        int opacityBefore = slider(activity, "glassOpacitySlider").getValue();
+        int tintBefore = slider(activity, "glassTintSlider").getValue();
+        int edgeBefore = slider(activity, "glassEdgeSlider").getValue();
+
+        drag(slider(activity, "bubbleRadiusSlider"), 0.05f, 0.95f);
+
+        assertEquals(outlineBefore, slider(activity, "bubbleOutlineSlider").getValue());
+        assertEquals(opacityBefore, slider(activity, "glassOpacitySlider").getValue());
+        assertEquals(tintBefore, slider(activity, "glassTintSlider").getValue());
+        assertEquals(edgeBefore, slider(activity, "glassEdgeSlider").getValue());
+
+        // 25: and the draft's other premium fields are untouched.
+        OrbitProStyle pro = draft(activity).pro;
+        assertEquals(outlineBefore, pro.bubbleOutline);
+        assertEquals(opacityBefore, pro.glassOpacity);
+        assertEquals(tintBefore, pro.glassTint);
+        assertEquals(edgeBefore, pro.glassEdge);
+        controller.pause().stop().destroy();
+    }
+
+    // ---- 14 to 16. the gesture contract -------------------------------------------------------------------
+
+    /**
+     * 14. Lifting the finger settles the value the drag reached, and does not sample again.
+     *
+     * <p>Reproduced exactly as it happens: ACTION_UP carries its own coordinate, and a finger
+     * rolling off the glass routinely lands it several pixels from the last ACTION_MOVE. Beta 2
+     * recomputed from it, so the thumb moved once more after the user had stopped.
+     */
+    @Test public void liftingTheFingerDoesNotResampleIntoADifferentValue() {
+        OrbitSlider slider = measuredSlider(0, 100, 50);
+        List<Integer> settled = new ArrayList<>();
+        slider.setOnValueChangeListener((view, value, isSettled) -> {
+            if (isSettled) settled.add(value);
+        });
+
+        float width = slider.getWidth();
+        dispatch(slider, MotionEvent.ACTION_DOWN, width * 0.5f);
+        dispatch(slider, MotionEvent.ACTION_MOVE, width * 0.75f);
+        int afterMove = slider.getValue();
+
+        // The lift lands a long way from the last move, which is the pathological version of what
+        // a real finger does. The value must not follow it.
+        dispatch(slider, MotionEvent.ACTION_UP, width * 0.20f);
+
+        assertEquals("the value must stay where the drag left it", afterMove, slider.getValue());
+        assertEquals("and settle exactly once", 1, settled.size());
+        assertEquals(afterMove, (int) settled.get(0));
+    }
+
+    /** 15. A cancelled gesture keeps the value it had reached rather than inventing a new one. */
+    @Test public void cancellingAGestureDoesNotJumpToANewValue() {
+        OrbitSlider slider = measuredSlider(0, 100, 50);
+        float width = slider.getWidth();
+        dispatch(slider, MotionEvent.ACTION_DOWN, width * 0.5f);
+        dispatch(slider, MotionEvent.ACTION_MOVE, width * 0.6f);
+        int afterMove = slider.getValue();
+        dispatch(slider, MotionEvent.ACTION_CANCEL, 0f);
+        assertEquals(afterMove, slider.getValue());
+    }
+
+    /** 16. The programmatic path stays silent, which is what makes synchronization safe. */
+    @Test public void setValueNeverNotifiesTheListener() {
+        OrbitSlider slider = measuredSlider(0, 100, 50);
+        List<Integer> heard = new ArrayList<>();
+        slider.setOnValueChangeListener((view, value, settled) -> heard.add(value));
+        slider.setValue(10);
+        slider.setValue(90);
+        slider.setValue(90);
+        assertEquals(90, slider.getValue());
+        assertTrue("setValue must never call back, found " + heard, heard.isEmpty());
+    }
+
+    // ---- 17 to 23. preset selection is draft-only ------------------------------------------------------------
+
+    /**
+     * 17, 18, 19 and 20. Selecting a preset synchronizes the controls once, silently.
+     *
+     * <p>Run over a premium preset and an ordinary one together, because the reported symptom was
+     * that the two behaved differently. They do not: a premium preset is simply the first kind that
+     * carries values these controls display, so it is the first one where the synchronization was
+     * visible at all.
+     */
+    @Test public void selectingAnyPresetSynchronizesSlidersOnceWithoutCallbacks() {
+        ActivityController<ThemeStudioActivity> controller = openPro();
+        ThemeStudioActivity activity = controller.get();
+
+        for (String id : new String[]{OrbitTheme.ID_SIGNAL_VIOLET, OrbitTheme.ID_NEBULA_GLASS,
+                OrbitTheme.ID_NEBULA, OrbitTheme.ID_DEFAULT}) {
+            OrbitTheme preset = OrbitTheme.builtIn(id);
+            List<Integer> callbacks = new ArrayList<>();
+            OrbitSlider radius = slider(activity, "bubbleRadiusSlider");
+            radius.setOnValueChangeListener((view, value, settled) -> callbacks.add(value));
+
+            invoke(activity, "selectPreset", new Class<?>[]{OrbitTheme.class}, preset);
+
+            assertTrue(preset.name + " must not fire edit callbacks while synchronizing, found "
+                    + callbacks, callbacks.isEmpty());
+            assertEquals(preset.name + " must show its own bubble roundness",
+                    preset.pro.bubbleRadiusDp, radius.getValue());
+            assertEquals(preset.pro.bubbleOutline,
+                    slider(activity, "bubbleOutlineSlider").getValue());
+            assertEquals(preset.pro.glassOpacity,
+                    slider(activity, "glassOpacitySlider").getValue());
+            assertEquals(preset.pro.glassTint, slider(activity, "glassTintSlider").getValue());
+            assertEquals(preset.pro.glassEdge, slider(activity, "glassEdgeSlider").getValue());
+        }
+        controller.pause().stop().destroy();
+    }
+
+    /**
+     * 18, 19, 20, 21, 22 and 23. Selecting a preset changes the draft and nothing else.
+     *
+     * <p>The mental model the whole screen rests on, asserted against the app's own state rather
+     * than against the screen's. Orbit goes on drawing what it was drawing, no appearance broadcast
+     * goes out, and only Apply moves the applied theme.
+     */
+    @Test public void selectingAPresetIsPreviewOnlyUntilApply() {
+        ActivityController<ThemeStudioActivity> controller = openPro();
+        ThemeStudioActivity activity = controller.get();
+
+        OrbitTheme appliedBefore = OrbitThemeStore.active(context);
+        OrbitProStyle liveBefore = OrbitProStyle.live(context);
+        int accentBefore = UiKit.accent(context);
+
+        for (String id : new String[]{OrbitTheme.ID_SIGNAL_VIOLET, OrbitTheme.ID_NEBULA_GLASS,
+                OrbitTheme.ID_TIDE}) {
+            OrbitTheme preset = OrbitTheme.builtIn(id);
+            invoke(activity, "selectPreset", new Class<?>[]{OrbitTheme.class}, preset);
+
+            assertEquals(preset.name + " must only reach the draft", preset.id, draft(activity).id);
+            assertTrue("the applied theme must not move",
+                    OrbitThemeStore.active(context).sameColours(appliedBefore));
+            assertTrue("nor the styling Orbit actually draws with",
+                    OrbitProStyle.live(context).same(liveBefore));
+            assertEquals("nor the live canvas", accentBefore, UiKit.accent(context));
+        }
+
+        // Only Apply commits, and then it commits exactly what was in the preview.
+        invoke(activity, "selectPreset", new Class<?>[]{OrbitTheme.class},
+                OrbitTheme.builtIn(OrbitTheme.ID_NEBULA_GLASS));
+        invoke(activity, "applyDraft");
+        assertEquals(OrbitTheme.ID_NEBULA_GLASS, OrbitThemeStore.active(context).id);
+        assertTrue(OrbitProStyle.live(context)
+                .same(OrbitTheme.builtIn(OrbitTheme.ID_NEBULA_GLASS).pro));
+        controller.pause().stop().destroy();
+    }
+
+    /** 22. And selection never broadcasts an appearance change to the rest of the app. */
+    @Test public void presetSelectionDoesNotBroadcastAnAppearanceChange() {
+        String source = ThemeStudioProTest.readSourceFile("ThemeStudioActivity.java");
+        int at = source.indexOf("private void selectPreset(");
+        assertTrue(at > 0);
+        String body = source.substring(at, source.indexOf("\n    }", at));
+        assertFalse("selecting a preset must not notify the app",
+                body.contains("notifyAppearanceChanged"));
+        assertFalse("and must not write the active theme", body.contains("applyActive"));
+    }
+
+    // ---- 24 to 26. editing after selecting ------------------------------------------------------------------
+
+    /**
+     * 24, 25 and 26. The value the user chose survives the settle that follows it.
+     *
+     * <p>This is the Beta 2 bug with the sharpest edge, and it was not in the slider at all.
+     * Settling re-derives which preset the draft is, and {@code canonicalIdentity} rebuilt the
+     * theme through a constructor overload that defaults the premium block - so releasing the thumb
+     * reset all five premium values to Orbit's own. The thumb appeared to snap back because the
+     * draft behind it really had.
+     */
+    @Test public void aSliderEditAfterSelectingAPresetKeepsItsValue() {
+        ActivityController<ThemeStudioActivity> controller = openPro();
+        ThemeStudioActivity activity = controller.get();
+
+        OrbitTheme violet = OrbitTheme.builtIn(OrbitTheme.ID_SIGNAL_VIOLET);
+        invoke(activity, "selectPreset", new Class<?>[]{OrbitTheme.class}, violet);
+
+        OrbitSlider opacity = slider(activity, "glassOpacitySlider");
+        measure(opacity);
+        drag(opacity, 0.5f, 0.95f);
+        int chosen = opacity.getValue();
+
+        assertTrue("the drag must have moved it", chosen != violet.pro.glassOpacity);
+        assertEquals("and the draft must hold exactly what was chosen",
+                chosen, draft(activity).pro.glassOpacity);
+        assertEquals("the control must agree with the draft",
+                chosen, slider(activity, "glassOpacitySlider").getValue());
+
+        // 25 and 26: the identity may stop being Signal Violet, and that must cost nothing else.
+        assertEquals("Signal Violet's other premium values must survive",
+                violet.pro.bubbleRadiusDp, draft(activity).pro.bubbleRadiusDp);
+        assertEquals(violet.pro.bubbleOutline, draft(activity).pro.bubbleOutline);
+        assertEquals(violet.pro.glassTint, draft(activity).pro.glassTint);
+        assertEquals(violet.pro.glassEdge, draft(activity).pro.glassEdge);
+        assertEquals("and its colours too", violet.accent, draft(activity).accent);
+        controller.pause().stop().destroy();
+    }
+
+    /** The same rule at the model level, where the reset actually happened. */
+    @Test public void canonicalIdentityNeverDiscardsPremiumStyling() {
+        Prefs.setProPreview(context, Prefs.PRO_PREVIEW_PRO);
+        OrbitProStyle styled = OrbitProStyle.of(11, OrbitProStyle.OUTLINE_DEFINED, 180, 150, 140);
+
+        // A built-in wearing premium styling it does not itself have: the exact shape of "the user
+        // selected a preset and then moved a slider".
+        OrbitTheme edited = OrbitTheme.builtIn(OrbitTheme.ID_NEBULA).withPro(styled);
+        OrbitTheme canonical = OrbitThemeStore.canonicalIdentity(context, edited);
+        assertTrue("re-labelling must carry the premium styling through",
+                canonical.pro.same(styled));
+        assertFalse("while the theme stops claiming to be the preset", canonical.builtIn);
+
+        // And the other fallback, for a theme that already belonged to the user.
+        OrbitTheme owned = OrbitTheme.custom("Mine", "violet", OrbitTheme.CLASSIC,
+                OrbitTheme.CLASSIC, OrbitTheme.CLASSIC, OrbitTheme.CLASSIC, false, styled);
+        assertTrue(OrbitThemeStore.canonicalIdentity(context, owned).pro.same(styled));
+    }
+
+    // ---- 27 to 29. the previews hold still ----------------------------------------------------------------------
+
+    /**
+     * 27, 28 and 29. None of the three previews rebuilds itself to show a new value.
+     *
+     * <p>Identity of the child views is the test, because that is exactly what was lost. The main
+     * preview called {@code removeAllViews} on every render, which is both wasteful and the likeliest
+     * source of the weight flicker: a fresh TextView on every frame is a fresh TextView for the
+     * typography watcher to meet.
+     */
+    @Test public void everyPreviewKeepsItsChildViewsAcrossUpdates() {
+        ActivityController<ThemeStudioActivity> controller = openPro();
+        ThemeStudioActivity activity = controller.get();
+
+        ThemePreviewView preview = (ThemePreviewView) field(activity, "preview");
+        MessageStylePreview message = (MessageStylePreview) field(activity, "messagePreview");
+        GlassStylePreview glass = (GlassStylePreview) field(activity, "glassPreview");
+
+        List<View> previewBefore = descendants(preview);
+        List<View> messageBefore = descendants(message);
+        List<View> glassBefore = descendants(glass);
+        assertTrue("the previews must actually contain something", previewBefore.size() > 5);
+
+        drag(slider(activity, "bubbleRadiusSlider"), 0.1f, 0.9f);
+        drag(slider(activity, "glassOpacitySlider"), 0.9f, 0.2f);
+
+        assertSameViews("the main preview", previewBefore, descendants(preview));
+        assertSameViews("the message sample", messageBefore, descendants(message));
+        assertSameViews("the glass sample", glassBefore, descendants(glass));
+        controller.pause().stop().destroy();
+    }
+
+    /** And the source says so, so a future rewrite cannot quietly go back to rebuilding. */
+    @Test public void previewsUpdateInPlaceRatherThanRebuilding() {
+        for (String file : new String[]{"ThemePreviewView.java", "MessageStylePreview.java",
+                "GlassStylePreview.java"}) {
+            String source = ThemeStudioProTest.readSourceFile(file);
+            int at = source.indexOf("public void render(");
+            assertTrue(file + " must have a render method", at > 0);
+            String body = source.substring(at, Math.min(source.length(), at + 3000));
+            // A bare self-clear is the thing being forbidden. ThemePreviewView legitimately calls
+            // markHost.removeAllViews() to swap the one child it cannot recolour in place, the
+            // brand mark, and only when the accent actually changes - so the receiver matters and
+            // banning the method name outright would ban the documented exception with it.
+            assertFalse(file + "'s render must not clear its own hierarchy",
+                    body.contains("\n        removeAllViews()"));
+        }
+    }
+
+    // ---- 30 to 32. typography ----------------------------------------------------------------------------------
+
+    /**
+     * 30 and 31. Intended weight is deterministic across everything that redraws a label.
+     *
+     * <p>The device symptom was text changing weight while a slider moved. The cause was that every
+     * re-application of typography inferred the intended weight by reading the realized
+     * {@link Typeface} back, and {@code Typeface.create} reports the style of the font it matched
+     * rather than the one that was asked for. A family with no true bold therefore reported NORMAL
+     * for a bold request, and the next pass made it normal for real.
+     *
+     * <p>The assertion is the round trip that was broken: put a label through repeated typography
+     * passes and its weight must not move. "Looking good" is checked by name because it is the one
+     * the user watched it happen to.
+     */
+    @Test public void intendedFontWeightSurvivesRepeatedTypographyPasses() {
+        TextView bold = UiKit.text(context, "Looking good", 13, UiKit.TEXT, true);
+        TextView normal = UiKit.text(context, "Bubble roundness", 13.5f, UiKit.TEXT, false);
+
+        boolean boldWanted = bold.getTypeface() != null && bold.getTypeface().isBold();
+        for (int pass = 0; pass < 5; pass++) {
+            UiKit.applyTypography(bold);
+            UiKit.applyTypography(normal);
+            assertEquals("a bold label must stay bold on pass " + pass,
+                    boldWanted, bold.getTypeface() != null && bold.getTypeface().isBold());
+            assertFalse("a normal label must never become bold on pass " + pass,
+                    normal.getTypeface() != null && normal.getTypeface().isBold());
+        }
+    }
+
+    /** 30. And the same, driven through a real drag of the real screen. */
+    @Test public void theMainPreviewHeadingKeepsItsWeightThroughADrag() {
+        ActivityController<ThemeStudioActivity> controller = openPro();
+        ThemeStudioActivity activity = controller.get();
+        ThemePreviewView preview = (ThemePreviewView) field(activity, "preview");
+
+        TextView heading = findText(preview, "Looking good");
+        assertNotNull("the preview must contain the heading", heading);
+        Typeface before = heading.getTypeface();
+
+        drag(slider(activity, "bubbleRadiusSlider"), 0.1f, 0.9f);
+        UiKit.applyTypography(preview);
+
+        assertSame("the heading must be the same view after a drag",
+                heading, findText(preview, "Looking good"));
+        assertEquals("and must not have changed weight",
+                before != null && before.isBold(),
+                heading.getTypeface() != null && heading.getTypeface().isBold());
+        controller.pause().stop().destroy();
+    }
+
+    /**
+     * 31. Every premium control title is deliberately normal weight, and stays that way.
+     *
+     * <p>Beta 2 made each one bold at nearly heading size, which is most of why five settings read
+     * as a wall. They are normal now; the accent value word beside them carries the emphasis.
+     */
+    @Test public void proControlTitlesAreNormalWeightAndStayThere() {
+        ActivityController<ThemeStudioActivity> controller = openPro();
+        ThemeStudioActivity activity = controller.get();
+        View proBody = (View) field(activity, "proBody");
+
+        for (String title : new String[]{"Bubble roundness", "Bubble outline", "Glass opacity",
+                "Glass tint", "Glass edge"}) {
+            TextView label = findText(proBody, title);
+            assertNotNull(title + " must be on screen", label);
+            assertFalse(title + " must not be bold",
+                    label.getTypeface() != null && label.getTypeface().isBold());
+        }
+
+        drag(slider(activity, "glassTintSlider"), 0.2f, 0.8f);
+        UiKit.applyTypography(proBody);
+
+        for (String title : new String[]{"Bubble roundness", "Glass tint"}) {
+            TextView label = findText(proBody, title);
+            assertNotNull(label);
+            assertFalse(title + " must still not be bold after a drag",
+                    label.getTypeface() != null && label.getTypeface().isBold());
+        }
+        controller.pause().stop().destroy();
+    }
+
+    /** 32. Re-weighting goes through UiKit so the intent is recorded rather than overwritten. */
+    @Test public void deliberateReWeightingIsRecordedAsTheNewIntent() {
+        TextView label = UiKit.text(context, "Nebula", 13, UiKit.TEXT, false);
+        UiKit.setTextWeight(label, true);
+        boolean boldWanted = label.getTypeface() != null && label.getTypeface().isBold();
+
+        for (int pass = 0; pass < 3; pass++) UiKit.applyTypography(label);
+        assertEquals("a deliberately bolded label must stay bold",
+                boldWanted, label.getTypeface() != null && label.getTypeface().isBold());
+
+        UiKit.setTextWeight(label, false);
+        for (int pass = 0; pass < 3; pass++) UiKit.applyTypography(label);
+        assertFalse("and must go back to normal when told to",
+                label.getTypeface() != null && label.getTypeface().isBold());
+    }
+
+    // ---- 33. the page does not move ---------------------------------------------------------------------------
+
+    /** 33. A drag leaves the user where they were editing. */
+    @Test public void scrollPositionIsUnchangedByASliderDrag() {
+        ActivityController<ThemeStudioActivity> controller = openPro();
+        ThemeStudioActivity activity = controller.get();
+
+        android.widget.ScrollView scroll =
+                (android.widget.ScrollView) field(activity, "contentScroll");
+        assertNotNull(scroll);
+        scroll.setScrollY(420);
+
+        drag(slider(activity, "glassEdgeSlider"), 0.2f, 0.85f);
+
+        assertEquals("the page must not scroll because a slider moved", 420, scroll.getScrollY());
+        controller.pause().stop().destroy();
+    }
+
+    // ---- helpers ------------------------------------------------------------------------------------------------
+
+    /**
+     * The order Theme Studio's card headings appear in, top to bottom.
+     *
+     * <p>Matched on the text the headings actually carry. {@code cardTitle} draws them in caps
+     * through {@code setAllCaps}, which is a display transformation and leaves {@code getText}
+     * returning the original words - so "Colors" is what is here, while the all-caps "ORBIT PRO"
+     * string belongs to the small Pro chip and is deliberately not one of these.
+     */
+    private List<String> sectionOrder(ThemeStudioActivity activity) {
+        List<String> out = new ArrayList<>();
+        for (String text : allTexts(activity)) {
+            if (text.equals("Colors") || text.equals("Presets") || text.equals("Orbit Pro")) {
+                if (!out.contains(text)) out.add(text);
+            }
+        }
+        return out;
+    }
+
+    private int previewIndex(ThemeStudioActivity activity) {
+        List<View> all = descendants(activity.getWindow().getDecorView());
+        for (int i = 0; i < all.size(); i++) {
+            if (all.get(i) instanceof ThemePreviewView) return i;
+        }
+        return -1;
+    }
+
+    /**
+     * A slider that has been through measure and layout, so it has a width to compute against.
+     *
+     * <p>Robolectric does not lay a detached view out, and a slider with zero width returns its
+     * current value for every coordinate, which would make every gesture assertion here vacuous.
+     */
+    private OrbitSlider measuredSlider(int min, int max, int start) {
+        OrbitSlider slider = new OrbitSlider(context);
+        slider.setRange(min, max, start);
+        measure(slider);
+        return slider;
+    }
+
+    private void measure(OrbitSlider slider) {
+        slider.measure(
+                View.MeasureSpec.makeMeasureSpec(600, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(120, View.MeasureSpec.EXACTLY));
+        slider.layout(0, 0, 600, 120);
+        assertTrue("the slider must have a width to drag across", slider.getWidth() > 0);
+    }
+
+    /** Down, a few moves, then up at the end position. The gesture a finger actually makes. */
+    private void drag(OrbitSlider slider, float fromFraction, float toFraction) {
+        if (slider.getWidth() <= 0) measure(slider);
+        float width = slider.getWidth();
+        dispatch(slider, MotionEvent.ACTION_DOWN, width * fromFraction);
+        for (int step = 1; step <= 4; step++) {
+            float at = fromFraction + ((toFraction - fromFraction) * step / 4f);
+            dispatch(slider, MotionEvent.ACTION_MOVE, width * at);
+        }
+        dispatch(slider, MotionEvent.ACTION_UP, width * toFraction);
+    }
+
+    private void dispatch(OrbitSlider slider, int action, float x) {
+        long now = SystemClock.uptimeMillis();
+        MotionEvent event = MotionEvent.obtain(now, now, action, x, slider.getHeight() / 2f, 0);
+        slider.onTouchEvent(event);
+        event.recycle();
+    }
+
+    private OrbitSlider slider(ThemeStudioActivity activity, String name) {
+        OrbitSlider slider = (OrbitSlider) field(activity, name);
+        assertNotNull(name + " must exist in the Pro state", slider);
+        if (slider.getWidth() <= 0) measure(slider);
+        return slider;
+    }
+
+    private void assertSameViews(String what, List<View> before, List<View> after) {
+        assertEquals(what + " must keep the same number of views", before.size(), after.size());
+        for (int i = 0; i < before.size(); i++) {
+            assertSame(what + " must keep view " + i, before.get(i), after.get(i));
+        }
+    }
+
+    private List<View> descendants(View root) {
+        List<View> out = new ArrayList<>();
+        collect(root, out);
+        return out;
+    }
+
+    private void collect(View view, List<View> into) {
+        if (view == null) return;
+        into.add(view);
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) collect(group.getChildAt(i), into);
+        }
+    }
+
+    private <T> List<T> findAll(View root, Class<T> type) {
+        List<T> out = new ArrayList<>();
+        for (View view : descendants(root)) {
+            if (type.isInstance(view)) out.add(type.cast(view));
+        }
+        return out;
+    }
+
+    private int indexOfDescendant(View root, View target) {
+        List<View> all = descendants(root);
+        for (int i = 0; i < all.size(); i++) if (all.get(i) == target) return i;
+        return -1;
+    }
+
+    private int indexOfFirst(View root, Class<?> type) {
+        List<View> all = descendants(root);
+        for (int i = 0; i < all.size(); i++) if (type.isInstance(all.get(i))) return i;
+        return Integer.MAX_VALUE;
+    }
+
+    private List<String> textsIn(View root) {
+        List<String> out = new ArrayList<>();
+        for (View view : descendants(root)) {
+            if (view instanceof TextView) {
+                CharSequence text = ((TextView) view).getText();
+                if (text != null && text.length() > 0) out.add(text.toString());
+            }
+        }
+        return out;
+    }
+
+    private List<String> allTexts(ThemeStudioActivity activity) {
+        return textsIn(activity.getWindow().getDecorView());
+    }
+
+    private TextView findText(View root, String exact) {
+        for (View view : descendants(root)) {
+            if (view instanceof TextView
+                    && exact.contentEquals(((TextView) view).getText())) {
+                return (TextView) view;
+            }
+        }
+        return null;
+    }
+
+    private OrbitTheme draft(ThemeStudioActivity activity) {
+        return (OrbitTheme) field(activity, "draft");
+    }
+
+    private void invoke(Activity activity, String name, Class<?>[] types, Object... args) {
+        try {
+            java.lang.reflect.Method method =
+                    ThemeStudioActivity.class.getDeclaredMethod(name, types);
+            method.setAccessible(true);
+            method.invoke(activity, args);
+        } catch (Exception e) {
+            throw new AssertionError("could not invoke " + name, e);
+        }
+    }
+
+    private void invoke(Activity activity, String name) {
+        invoke(activity, name, new Class<?>[0]);
+    }
+
+    private Object field(Activity activity, String name) {
+        try {
+            java.lang.reflect.Field field = ThemeStudioActivity.class.getDeclaredField(name);
+            field.setAccessible(true);
+            return field.get(activity);
+        } catch (Exception e) {
+            throw new AssertionError("could not read " + name, e);
+        }
+    }
+}

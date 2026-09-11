@@ -102,6 +102,29 @@ public final class UiKit {
     private static final Map<TextView, FontPreview> FONT_PREVIEWS = new WeakHashMap<>();
     private static final Map<TextView, Boolean> INTENTIONAL_MONOSPACE = new WeakHashMap<>();
     private static final Map<TextView, Boolean> TYPOGRAPHY_APPLIED = new WeakHashMap<>();
+    /**
+     * The weight Orbit actually asked for, per label.
+     *
+     * <p>This map is the fix for a typography bug that survived the original v0.6.4.7 work because
+     * the mitigation there was aimed at a different half of the problem. {@code TYPOGRAPHY_APPLIED}
+     * stops the layout watcher from touching a label twice; it does nothing about the fact that
+     * every re-application <em>infers</em> the intended weight by reading the realized
+     * {@link Typeface} back with {@link Typeface#getStyle()}.
+     *
+     * <p>That inference is not sound. {@code Typeface.create(family, style)} reports the style of
+     * the font it actually matched, not the one that was requested. A family with no true bold
+     * face is drawn bold by the paint and still reports {@code NORMAL}, so the next pass reads
+     * NORMAL, re-applies NORMAL, and the heading quietly stops being bold. The reverse happens on a
+     * family whose matched face is heavy enough to report BOLD for a normal request. Either way a
+     * weight can flip on any pass that re-reads it, which on the device looked like text randomly
+     * changing weight while a slider moved and the surface around it was rebuilt.
+     *
+     * <p>So the intent is recorded when Orbit sets it and read back instead of guessed. Inference
+     * survives only as the fallback for labels Orbit never created - a platform button inside an
+     * AlertDialog, for instance - where there is no recorded intent and a guess is still better
+     * than forcing everything to normal.
+     */
+    private static final Map<TextView, Integer> TYPOGRAPHY_STYLE = new WeakHashMap<>();
     private static final Map<View, Boolean> TYPOGRAPHY_WATCHED = new WeakHashMap<>();
     private static final Map<AppearanceListener, Boolean> APPEARANCE_LISTENERS = new WeakHashMap<>();
 
@@ -394,6 +417,9 @@ public final class UiKit {
 
     private static void applyTypography(TextView text, int style) {
         if (text == null) return;
+        // Recorded before anything is drawn, so every later pass re-applies the weight Orbit asked
+        // for rather than the weight the matched font happened to report.
+        TYPOGRAPHY_STYLE.put(text, style);
         if (INTENTIONAL_MONOSPACE.containsKey(text)) {
             text.setTypeface(Typeface.MONOSPACE, style);
             text.setTextScaleX(1f);
@@ -414,6 +440,20 @@ public final class UiKit {
         TYPOGRAPHY_APPLIED.put(text, true);
     }
 
+    /**
+     * Changes the weight a label is meant to have, and records that as its new intent.
+     *
+     * <p>The supported way to re-weight an existing label. Calling {@code setTypeface} directly
+     * would change what is drawn now and leave the recorded intent saying something else, so the
+     * next typography pass would quietly undo it - which is the whole class of bug
+     * {@link #TYPOGRAPHY_STYLE} exists to end. Used where a weight legitimately follows state, such
+     * as the selected preset's name in Theme Studio.
+     */
+    public static void setTextWeight(TextView text, boolean bold) {
+        if (text == null) return;
+        applyTypography(text, bold ? Typeface.BOLD : Typeface.NORMAL);
+    }
+
     /** Marks a Look & Feel sample as an intentional font preview. */
     public static void applyFontPreview(TextView text, String choice, int style) {
         if (text == null) return;
@@ -428,14 +468,25 @@ public final class UiKit {
         applyTypography(text, Typeface.NORMAL);
     }
 
+    /**
+     * The weight to re-apply to a label, preferring what Orbit asked for over what the font says.
+     *
+     * <p>One lookup, shared by the two passes that re-apply typography, so neither of them can go
+     * back to guessing on its own.
+     */
+    private static int intendedStyle(TextView text) {
+        Integer intended = TYPOGRAPHY_STYLE.get(text);
+        if (intended != null) return intended;
+        Typeface current = text.getTypeface();
+        return current == null ? Typeface.NORMAL : current.getStyle();
+    }
+
     /** Apply the saved Orbit font to every text-bearing child in a rendered surface. */
     public static void applyTypography(View root) {
         if (root == null) return;
         if (root instanceof TextView) {
             TextView text = (TextView) root;
-            Typeface current = text.getTypeface();
-            int style = current == null ? Typeface.NORMAL : current.getStyle();
-            applyTypography(text, style);
+            applyTypography(text, intendedStyle(text));
         }
         if (root instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) root;
@@ -471,8 +522,7 @@ public final class UiKit {
         if (root == null) return;
         if (root instanceof TextView && !TYPOGRAPHY_APPLIED.containsKey(root)) {
             TextView text = (TextView) root;
-            Typeface current = text.getTypeface();
-            applyTypography(text, current == null ? Typeface.NORMAL : current.getStyle());
+            applyTypography(text, intendedStyle(text));
         }
         if (root instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) root;

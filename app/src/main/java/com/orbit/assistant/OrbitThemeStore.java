@@ -276,14 +276,20 @@ public final class OrbitThemeStore {
             if (!canApply(c, preset)) continue;
             if (preset.sameColours(theme)) return preset;
         }
+        // Both fallbacks re-label the theme and change nothing else. Carrying theme.pro through is
+        // not a detail: these overloads default it, so until v0.8.0.0-beta.3 editing any single
+        // value while a shipped preset was selected silently reset all five premium settings to
+        // Orbit's own. On the device that was the sliders jumping back the instant a drag ended,
+        // which looked like a broken control rather than lost data.
         if (theme.builtIn || OrbitTheme.isBuiltInId(theme.id)) {
             return OrbitTheme.custom("Your theme", theme.accent, theme.userBubble,
-                    theme.assistantBubble, theme.surface, theme.background, theme.amoled);
+                    theme.assistantBubble, theme.surface, theme.background, theme.amoled,
+                    theme.pro);
         }
         if (!Prefs.THEME_ID_CUSTOM.equals(theme.id)) {
             return new OrbitTheme(Prefs.THEME_ID_CUSTOM, "Your theme", false, theme.accent,
                     theme.userBubble, theme.assistantBubble, theme.surface, theme.background,
-                    theme.amoled);
+                    theme.amoled, theme.pro);
         }
         return theme;
     }

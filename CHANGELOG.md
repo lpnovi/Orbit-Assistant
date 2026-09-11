@@ -842,6 +842,13 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.0.0-beta.3**: Theme Studio Pro polish, with the interaction problems found on the Galaxy S25 Ultra fixed.
+  - Orbit Pro now sits below Colors and Presets, so free Theme Studio is first and uninterrupted.
+  - Without Pro, the locked area is a short note at the bottom instead of a large panel in the middle.
+  - Message style and Floating glass are now two tools, each with its own small live preview beside its controls.
+  - Sliders follow your finger and stay exactly where you release them.
+  - Choosing a preset updates the advanced controls once, cleanly, and still changes nothing until you apply it.
+  - Fixed text that could change weight while you adjusted a slider.
 - **v0.8.0.0-beta.2**: Theme Studio Pro arrives with advanced message and glass styling, the first Orbit Pro features that actually change how Orbit looks.
   - A new Advanced section in Theme Studio adds bubble roundness and an optional bubble outline for your conversations.
   - It also adds glass opacity, accent tint and edge light for Orbit's floating controls in Chats and the Vault.

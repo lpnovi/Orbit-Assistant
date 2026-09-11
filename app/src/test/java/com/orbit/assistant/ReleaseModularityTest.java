@@ -187,13 +187,14 @@ public final class ReleaseModularityTest {
     /**
      * Orbit Pro continues the 0.8 line, and continues it as a Beta.
      *
-     * <p>The guard runs in the prerelease direction again, and for a sharper reason than it did in
-     * Beta 1. Theme Studio Pro is real premium functionality that has never run on a phone, and the
-     * developer Free / Pro Preview override that testers use to check both halves of it is legal
-     * only on a Beta. Shipping this version name as Stable would both publish untested work and
-     * silently remove the only way anyone can currently reach the feature.
+     * <p>The guard runs in the prerelease direction again, and Beta 3 is the clearest case for it
+     * yet: this release exists because physical testing of Beta 2 found Theme Studio Pro stiff and
+     * jumpy, so the line is demonstrably still being corrected against a real device. The developer
+     * Free / Pro Preview override testers use to reach the feature at all is legal only on a Beta,
+     * so shipping this version name as Stable would publish work that is still under repair and
+     * remove the only way to check it in the same act.
      */
-    @Test public void thisReleaseIsOrbitProBetaTwo() {
+    @Test public void thisReleaseIsOrbitProBetaThree() {
         assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
                 OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
         assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));

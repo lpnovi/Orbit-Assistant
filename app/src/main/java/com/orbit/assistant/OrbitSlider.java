@@ -182,7 +182,13 @@ public class OrbitSlider extends View {
                 if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
                 if (dragging) {
                     dragging = false;
-                    changeTo(valueAt(event.getX()), true);
+                    // Settles the value the drag already reached. It deliberately does not read
+                    // the lift coordinate: ACTION_UP carries its own x, which is routinely a few
+                    // pixels from the last ACTION_MOVE as the finger rolls off the glass, so
+                    // sampling it again moved the thumb one last time after the user had stopped.
+                    // On the device that read as the control correcting itself. ACTION_CANCEL has
+                    // no meaningful coordinate at all, and sampling it could land anywhere.
+                    changeTo(value, true);
                 }
                 return true;
             default:

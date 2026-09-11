@@ -391,8 +391,11 @@ public final class ThemeStudioProTest {
         assertTrue("there must be exactly one glass: " + offenders, offenders.isEmpty());
 
         // And every consumer reaches it rather than assembling its own translucent surface.
+        // GlassStylePreview replaced ThemePreviewView here in v0.8.0.0-beta.3: the glass sample
+        // moved out of the general overview and into a dedicated preview sitting directly above
+        // the glass controls. Which file draws it changed; that OrbitGlass draws it did not.
         for (String file : new String[]{"MainActivity.java", "OrbitVaultActivity.java",
-                "ThemePreviewView.java"}) {
+                "GlassStylePreview.java"}) {
             assertTrue(file + " must get its glass from OrbitGlass",
                     readSource(file).contains("OrbitGlass."));
         }
@@ -584,10 +587,18 @@ public final class ThemeStudioProTest {
                 preview.contains("OrbitProStyle.resolve("));
         assertTrue("and draw bubbles with the shared call",
                 preview.contains("UiKit.bubbleSurface("));
-        assertTrue("and glass with OrbitGlass's own drawable",
-                preview.contains("OrbitGlass.surfaceDrawable("));
         assertFalse("it must never read the live app's styling for a draft",
                 preview.contains("OrbitProStyle.live("));
+
+        // The glass half of the same rule, now in the sample that owns it. Both Theme Studio
+        // previews are held to it, so neither can start resolving a draft differently from the app.
+        String glassSample = readSource("GlassStylePreview.java");
+        assertTrue("the glass sample must draw with OrbitGlass's own drawable",
+                glassSample.contains("OrbitGlass.surfaceDrawable("));
+        assertFalse("and must not read the live app's styling either",
+                glassSample.contains("OrbitProStyle.live("));
+        assertFalse("nor may the message sample",
+                readSource("MessageStylePreview.java").contains("OrbitProStyle.live("));
 
         asFree();
         assertTrue("Free previews Orbit's own styling",
@@ -744,7 +755,13 @@ public final class ThemeStudioProTest {
         String body = studio.substring(resume, Math.min(studio.length(), resume + 600));
         assertTrue("onResume must re-ask the entitlement",
                 body.contains("OrbitProEntitlement.hasPro(this)"));
-        assertTrue("and redraw when the answer moved", body.contains("refreshDraftSurfaces()"));
+        // An entitlement change is the one thing allowed to rebuild the Pro card, because what
+        // that card contains genuinely differs between Free and Pro. Beta 3 split that from the
+        // ordinary draft updates, which must never rebuild a control.
+        assertTrue("and rebuild the Pro section when the answer moved",
+                body.contains("rebuildProSection()"));
+        assertTrue("then bring every control onto the current draft",
+                body.contains("syncAllToDraft()"));
     }
 
     // ---- reading the source tree -------------------------------------------------------------------------------
@@ -757,6 +774,11 @@ public final class ThemeStudioProTest {
 
     private static String readSource(String fileName) {
         return read(sourceRoot().resolve(fileName));
+    }
+
+    /** The same read, for the Beta 3 interaction tests, so the repository walk lives in one place. */
+    static String readSourceFile(String fileName) {
+        return readSource(fileName);
     }
 
     private static Path sourceRoot() {

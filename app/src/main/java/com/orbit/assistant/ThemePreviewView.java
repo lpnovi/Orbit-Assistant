@@ -2,7 +2,7 @@ package com.orbit.assistant;
 
 import android.content.Context;
 import android.content.res.ColorStateList;
-import android.graphics.Color;
+import android.graphics.Paint;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -23,6 +23,24 @@ import android.widget.TextView;
  * exchange of messages with real Markdown in the reply, a card, an accent chip and a Deck tile.
  * Enough to judge a theme; little enough to sit above the controls on a phone without pushing them
  * off the screen.
+ *
+ * <h2>Built once, then updated</h2>
+ *
+ * <p>It used to rebuild: {@code render} called {@code removeAllViews} and constructed every label,
+ * bubble and tile again. That was fine when a render followed a colour being chosen from a menu,
+ * and became the wrong shape entirely in v0.8.0.0-beta.2, when premium sliders started calling it
+ * continuously as a finger moved. Sixty hierarchy rebuilds a second is wasteful on its own, and it
+ * also fed the typography watcher a fresh set of labels on every frame, which is where the visible
+ * weight flicker on "Looking good" came from.
+ *
+ * <p>So the hierarchy is constructed once, in {@link #buildOnce}, and {@link #render} now only
+ * assigns colours, drawables and text to views that already exist. The preview is the same picture
+ * either way; what changed is that dragging a slider no longer destroys and recreates it.
+ *
+ * <p>There is deliberately no glass sample here any more. Beta 2 added one, and once Theme Studio
+ * grew a dedicated glass preview sitting directly above the glass controls, keeping a second one
+ * up here made the overview longer without making it more useful. This view is the overall look;
+ * the detailed tuning samples belong beside the controls that tune them.
  */
 public final class ThemePreviewView extends LinearLayout {
 
@@ -46,38 +64,114 @@ public final class ThemePreviewView extends LinearLayout {
      */
     private OrbitProStyle style = OrbitProStyle.DEFAULT;
 
+    // ---- the pieces, held so they can be updated rather than replaced --------------------------
+
+    private LinearLayout markHost;
+    /**
+     * The accent the brand mark is currently drawn in.
+     *
+     * <p>{@link UiKit#orbitMark(Context, float, int)} captures its accent when it is constructed,
+     * because a preview mark has to hold still at a draft's accent rather than follow the applied
+     * one. That leaves exactly one child here that cannot be recoloured in place, so it is swapped
+     * instead - and only when the accent genuinely moves. A premium slider never changes the
+     * accent, so the hierarchy really is stable for the whole of a drag, which is the property
+     * this file was refactored to get.
+     */
+    private int markAccent;
+    private boolean markDrawn;
+    private TextView title;
+    private TextView modeChip;
+    private TextView userBubble;
+    private LinearLayout assistantBubble;
+    private TextView assistantHeading;
+    private TextView assistantBody;
+    private TextView inlineCode;
+    private TextView inlineLink;
+    private LinearLayout card;
+    private TextView cardTitle;
+    private TextView cardSubtitle;
+    private LinearLayout tile;
+    private ImageView tileMark;
+    private TextView tileLabel;
+
     public ThemePreviewView(Context c) {
         super(c);
         setOrientation(VERTICAL);
         setClipToOutline(true);
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
+        buildOnce(c);
     }
 
-    /** Rebuilds the fragment for {@code tokens}. Cheap: a handful of views and no measurement. */
+    /**
+     * Updates the fragment to {@code tokens}.
+     *
+     * <p>No view is created or removed here. Every call assigns to the same objects, which is what
+     * makes this cheap enough to run on every reported value of a drag.
+     */
     public void render(OrbitThemeTokens tokens) {
         this.tokens = tokens;
-        removeAllViews();
         if (tokens == null) return;
         Context c = getContext();
         // The theme's own premium styling, put through the same entitlement gate the app draws
         // with rather than trusted because it is stored.
         style = OrbitProStyle.resolve(c, tokens.theme == null ? null : tokens.theme.pro);
 
-        setBackground(UiKit.outlined(tokens.background,
-                UiKit.withAlpha(tokens.text, 34), 20, c));
-        setPadding(UiKit.dp(c, 14), UiKit.dp(c, 12), UiKit.dp(c, 14), UiKit.dp(c, 14));
+        setBackground(UiKit.outlined(tokens.background, UiKit.withAlpha(tokens.text, 34), 20, c));
         setContentDescription(describe());
 
-        addView(header(c), lp(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 0));
-        addView(userBubble(c), lp(ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 12, Gravity.END));
-        addView(assistantBubble(c), lp(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 8));
-        addView(bottomRow(c), lp(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 10));
-        addView(glassRow(c), lp(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 10));
+        if (!markDrawn || markAccent != tokens.accent) {
+            markAccent = tokens.accent;
+            markDrawn = true;
+            markHost.removeAllViews();
+            markHost.addView(UiKit.orbitMark(c, MARK_SIZE_DP, tokens.accent),
+                    new LinearLayout.LayoutParams(UiKit.dp(c, MARK_SIZE_DP),
+                            UiKit.dp(c, MARK_SIZE_DP)));
+        }
+        title.setTextColor(tokens.text);
+        modeChip.setTextColor(tokens.onAccent);
+        modeChip.setBackground(UiKit.rounded(tokens.accent, 99, c));
+
+        // The same call the conversation makes, given the draft's accent and styling instead of
+        // the applied theme's. Roundness and outline therefore cannot be shown here as anything
+        // other than what a real message would get.
+        userBubble.setTextColor(tokens.userBubbleInk);
+        userBubble.setBackground(UiKit.bubbleSurface(c, tokens.userBubble, tokens.accent, style));
+        userBubble.setContentDescription("Your message bubble, "
+                + OrbitColorName.of(tokens.userBubble) + shapeDescription());
+
+        assistantBubble.setBackground(
+                UiKit.bubbleSurface(c, tokens.assistantBubble, tokens.accent, style));
+        assistantBubble.setContentDescription("Orbit's reply bubble, "
+                + OrbitColorName.of(tokens.assistantBubble) + shapeDescription());
+        assistantHeading.setTextColor(tokens.assistantBubbleInk);
+        assistantBody.setTextColor(tokens.assistantBubbleInk);
+
+        // The same two derivations the renderer uses for an inline code pill and a link, so a
+        // theme that would make either unreadable shows it here rather than in a real answer.
+        inlineCode.setTextColor(UiKit.inlineCodeInk(tokens.assistantBubble));
+        inlineCode.setBackground(
+                UiKit.rounded(UiKit.inlineCodeTint(tokens.assistantBubble), 7, c));
+        // The theme's own link token, not the accent Orbit happens to be using right now. The
+        // preview shows a draft, and reading the live accent here is what left this sample sitting
+        // still while every other colour on the screen moved.
+        inlineLink.setTextColor(tokens.link);
+
+        card.setBackground(UiKit.outlined(tokens.surface,
+                UiKit.withAlpha(tokens.accent, 44), UiKit.RADIUS_CARD, c));
+        card.setContentDescription("Card, " + OrbitColorName.of(tokens.surface));
+        cardTitle.setTextColor(tokens.text);
+        cardSubtitle.setTextColor(tokens.muted);
+
+        tile.setBackground(UiKit.outlined(tokens.surface2,
+                UiKit.withAlpha(tokens.accent, 52), UiKit.RADIUS_CARD, c));
+        tile.setContentDescription("Deck tile, " + OrbitColorName.of(tokens.surface2));
+        tileMark.setImageTintList(ColorStateList.valueOf(tokens.accent));
+        tileLabel.setTextColor(tokens.text);
+    }
+
+    /** The tokens this preview is currently showing, for the screens and tests that ask. */
+    public OrbitThemeTokens tokens() {
+        return tokens;
     }
 
     private String describe() {
@@ -87,48 +181,6 @@ public final class ThemePreviewView extends LinearLayout {
                 + ", accent " + OrbitColorName.of(tokens.accent)
                 + ", your messages " + OrbitColorName.of(tokens.userBubble)
                 + ", Orbit's replies " + OrbitColorName.of(tokens.assistantBubble) + ".";
-    }
-
-    // ---- pieces --------------------------------------------------------------------------------
-
-    private View header(Context c) {
-        LinearLayout row = new LinearLayout(c);
-        row.setOrientation(HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-
-        // Orbit's own brand mark, wearing the draft's accent. It was a plain accent circle, which
-        // is not what sits beside the title anywhere else in Orbit and told nobody how their accent
-        // would actually look on the app's own mark. Drawn by UiKit from ic_orbit.xml's geometry,
-        // the same call the Chats header and the overlay make, so the miniature cannot drift from
-        // the real one. The accent is passed in rather than resolved at draw time, because this is
-        // a preview of a theme that has not been applied.
-        View mark = UiKit.orbitMark(c, MARK_SIZE_DP, tokens.accent);
-        LinearLayout.LayoutParams markLp =
-                new LinearLayout.LayoutParams(UiKit.dp(c, MARK_SIZE_DP), UiKit.dp(c, MARK_SIZE_DP));
-        markLp.rightMargin = UiKit.dp(c, 9);
-        row.addView(mark, markLp);
-
-        TextView title = UiKit.text(c, UiKit.appTitle(c), 15, tokens.text, true);
-        row.addView(title, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        TextView chip = UiKit.text(c, "Balanced", 11, tokens.onAccent, false);
-        chip.setPadding(UiKit.dp(c, 10), UiKit.dp(c, 4), UiKit.dp(c, 10), UiKit.dp(c, 4));
-        chip.setBackground(UiKit.rounded(tokens.accent, 99, c));
-        row.addView(chip);
-        return row;
-    }
-
-    private View userBubble(Context c) {
-        TextView bubble = UiKit.text(c, "How does this look?", 13, tokens.userBubbleInk, false);
-        bubble.setPadding(UiKit.dp(c, 13), UiKit.dp(c, 9), UiKit.dp(c, 13), UiKit.dp(c, 9));
-        // The same call the conversation makes, given the draft's accent and styling instead of
-        // the applied theme's. Roundness and outline therefore cannot be shown here as anything
-        // other than what a real message would get.
-        bubble.setBackground(UiKit.bubbleSurface(c, tokens.userBubble, tokens.accent, style));
-        bubble.setContentDescription("Your message bubble, "
-                + OrbitColorName.of(tokens.userBubble) + shapeDescription());
-        return bubble;
     }
 
     /** How the premium message shape reads aloud, or nothing when it is Orbit's own. */
@@ -141,49 +193,95 @@ public final class ThemePreviewView extends LinearLayout {
                 + " corners, " + outline;
     }
 
-    private View assistantBubble(Context c) {
-        LinearLayout bubble = new LinearLayout(c);
-        bubble.setOrientation(VERTICAL);
-        bubble.setPadding(UiKit.dp(c, 13), UiKit.dp(c, 10), UiKit.dp(c, 13), UiKit.dp(c, 11));
-        bubble.setBackground(UiKit.bubbleSurface(c, tokens.assistantBubble, tokens.accent, style));
-        bubble.setContentDescription("Orbit's reply bubble, "
-                + OrbitColorName.of(tokens.assistantBubble) + shapeDescription());
+    // ---- construction ---------------------------------------------------------------------------
 
-        TextView heading = UiKit.text(c, "Looking good", 13, tokens.assistantBubbleInk, true);
-        bubble.addView(heading);
+    /**
+     * Builds the hierarchy, with no colour in it.
+     *
+     * <p>Everything here is structure, size and text. Colour arrives in {@link #render}, which is
+     * the whole point of the split: the expensive part happens once and the part that changes as a
+     * slider moves is a handful of assignments.
+     */
+    private void buildOnce(Context c) {
+        setPadding(UiKit.dp(c, 14), UiKit.dp(c, 12), UiKit.dp(c, 14), UiKit.dp(c, 14));
 
-        TextView body = UiKit.text(c, "Headings, links and code all follow the theme.",
-                12.5f, tokens.assistantBubbleInk, false);
-        body.setPadding(0, UiKit.dp(c, 3), 0, 0);
-        bubble.addView(body);
+        addView(header(c), lp(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 0));
+        addView(buildUserBubble(c), lp(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 12, Gravity.END));
+        addView(buildAssistantBubble(c), lp(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 8));
+        addView(bottomRow(c), lp(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 10));
+    }
+
+    private View header(Context c) {
+        LinearLayout row = new LinearLayout(c);
+        row.setOrientation(HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+
+        // Orbit's own brand mark, wearing the draft's accent. It was a plain accent circle, which
+        // is not what sits beside the title anywhere else in Orbit and told nobody how their accent
+        // would actually look on the app's own mark. Drawn by UiKit from ic_orbit.xml's geometry,
+        // the same call the Chats header and the overlay make, so the miniature cannot drift from
+        // the real one. The accent is passed in rather than resolved at draw time, because this is
+        // a preview of a theme that has not been applied.
+        markHost = new LinearLayout(c);
+        markHost.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams markLp =
+                new LinearLayout.LayoutParams(UiKit.dp(c, MARK_SIZE_DP), UiKit.dp(c, MARK_SIZE_DP));
+        markLp.rightMargin = UiKit.dp(c, 9);
+        row.addView(markHost, markLp);
+
+        title = UiKit.text(c, UiKit.appTitle(c), 15, UiKit.TEXT, true);
+        row.addView(title, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        modeChip = UiKit.text(c, "Balanced", 11, UiKit.TEXT, false);
+        modeChip.setPadding(UiKit.dp(c, 10), UiKit.dp(c, 4), UiKit.dp(c, 10), UiKit.dp(c, 4));
+        row.addView(modeChip);
+        return row;
+    }
+
+    private View buildUserBubble(Context c) {
+        userBubble = UiKit.text(c, "How does this look?", 13, UiKit.TEXT, false);
+        userBubble.setPadding(UiKit.dp(c, 13), UiKit.dp(c, 9), UiKit.dp(c, 13), UiKit.dp(c, 9));
+        return userBubble;
+    }
+
+    private View buildAssistantBubble(Context c) {
+        assistantBubble = new LinearLayout(c);
+        assistantBubble.setOrientation(VERTICAL);
+        assistantBubble.setPadding(UiKit.dp(c, 13), UiKit.dp(c, 10),
+                UiKit.dp(c, 13), UiKit.dp(c, 11));
+
+        assistantHeading = UiKit.text(c, "Looking good", 13, UiKit.TEXT, true);
+        assistantBubble.addView(assistantHeading);
+
+        assistantBody = UiKit.text(c, "Headings, links and code all follow the theme.",
+                12.5f, UiKit.TEXT, false);
+        assistantBody.setPadding(0, UiKit.dp(c, 3), 0, 0);
+        assistantBubble.addView(assistantBody);
 
         LinearLayout inline = new LinearLayout(c);
         inline.setOrientation(HORIZONTAL);
         inline.setGravity(Gravity.CENTER_VERTICAL);
         inline.setPadding(0, UiKit.dp(c, 7), 0, 0);
 
-        // The same two derivations the renderer uses for an inline code pill and a link, so a
-        // theme that would make either unreadable shows it here rather than in a real answer.
-        int codeTint = UiKit.inlineCodeTint(tokens.assistantBubble);
-        TextView code = UiKit.text(c, "setTimer()", 11.5f,
-                UiKit.inlineCodeInk(tokens.assistantBubble), false);
-        UiKit.applyCodeTypeface(code);
-        code.setPadding(UiKit.dp(c, 7), UiKit.dp(c, 2), UiKit.dp(c, 7), UiKit.dp(c, 3));
-        code.setBackground(UiKit.rounded(codeTint, 7, c));
-        inline.addView(code);
+        inlineCode = UiKit.text(c, "setTimer()", 11.5f, UiKit.TEXT, false);
+        UiKit.applyCodeTypeface(inlineCode);
+        inlineCode.setPadding(UiKit.dp(c, 7), UiKit.dp(c, 2), UiKit.dp(c, 7), UiKit.dp(c, 3));
+        inline.addView(inlineCode);
 
-        // The theme's own link token, not the accent Orbit happens to be using right now. The
-        // preview shows a draft, and reading the live accent here is what left this sample sitting
-        // still while every other colour on the screen moved.
-        TextView link = UiKit.text(c, "a link", 12, tokens.link, false);
-        link.setPaintFlags(link.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
+        inlineLink = UiKit.text(c, "a link", 12, UiKit.TEXT, false);
+        inlineLink.setPaintFlags(inlineLink.getPaintFlags() | Paint.UNDERLINE_TEXT_FLAG);
         LinearLayout.LayoutParams linkLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         linkLp.leftMargin = UiKit.dp(c, 10);
-        inline.addView(link, linkLp);
+        inline.addView(inlineLink, linkLp);
 
-        bubble.addView(inline);
-        return bubble;
+        assistantBubble.addView(inline);
+        return assistantBubble;
     }
 
     /** A card and a Deck tile side by side, which is where the surface token shows itself. */
@@ -191,78 +289,42 @@ public final class ThemePreviewView extends LinearLayout {
         LinearLayout row = new LinearLayout(c);
         row.setOrientation(HORIZONTAL);
 
-        LinearLayout card = new LinearLayout(c);
+        card = new LinearLayout(c);
         card.setOrientation(VERTICAL);
         card.setPadding(UiKit.dp(c, 11), UiKit.dp(c, 9), UiKit.dp(c, 11), UiKit.dp(c, 10));
-        card.setBackground(UiKit.outlined(tokens.surface,
-                UiKit.withAlpha(tokens.accent, 44), UiKit.RADIUS_CARD, c));
-        card.setContentDescription("Card, " + OrbitColorName.of(tokens.surface));
-        card.addView(UiKit.text(c, "Reminders", 12.5f, tokens.text, true));
-        card.addView(UiKit.text(c, "Two today", 11, tokens.muted, false));
+        cardTitle = UiKit.text(c, "Reminders", 12.5f, UiKit.TEXT, true);
+        card.addView(cardTitle);
+        cardSubtitle = UiKit.text(c, "Two today", 11, UiKit.MUTED, false);
+        card.addView(cardSubtitle);
         row.addView(card, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.MATCH_PARENT, 1.35f));
 
-        LinearLayout tile = new LinearLayout(c);
+        tile = new LinearLayout(c);
         tile.setOrientation(VERTICAL);
         tile.setGravity(Gravity.CENTER);
         tile.setPadding(UiKit.dp(c, 8), UiKit.dp(c, 9), UiKit.dp(c, 8), UiKit.dp(c, 9));
-        tile.setBackground(UiKit.outlined(tokens.surface2,
-                UiKit.withAlpha(tokens.accent, 52), UiKit.RADIUS_CARD, c));
-        tile.setContentDescription("Deck tile, " + OrbitColorName.of(tokens.surface2));
 
         // Orbit's own Deck mark, tinted by the draft's accent. It was a plain accent circle until
         // Beta 3, which said nothing: a coloured dot above the word "Deck" is not a Deck tile, and
         // the one thing this sample is here to show is how an icon carries the accent on a card.
         // The resource is the same grid MainActivity opens Deck with, so the miniature and the real
         // thing cannot end up drawing different marks.
-        ImageView mark = new ImageView(c);
-        mark.setImageResource(R.drawable.ic_deck);
-        mark.setImageTintList(ColorStateList.valueOf(tokens.accent));
-        mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        mark.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
-        LinearLayout.LayoutParams markLp =
+        tileMark = new ImageView(c);
+        tileMark.setImageResource(R.drawable.ic_deck);
+        tileMark.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        tileMark.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams tileMarkLp =
                 new LinearLayout.LayoutParams(UiKit.dp(c, 16), UiKit.dp(c, 16));
-        markLp.bottomMargin = UiKit.dp(c, 5);
-        tile.addView(mark, markLp);
-        tile.addView(UiKit.text(c, "Deck", 10.5f, tokens.text, false));
+        tileMarkLp.bottomMargin = UiKit.dp(c, 5);
+        tile.addView(tileMark, tileMarkLp);
+        tileLabel = UiKit.text(c, "Deck", 10.5f, UiKit.TEXT, false);
+        tile.addView(tileLabel);
 
         LinearLayout.LayoutParams tileLp = new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.MATCH_PARENT, 1f);
         tileLp.leftMargin = UiKit.dp(c, 9);
         row.addView(tile, tileLp);
         return row;
-    }
-
-    /**
-     * Orbit's floating glass, over the page the theme actually has.
-     *
-     * <p>The glass is the one part of Orbit's appearance a person cannot judge from colours alone,
-     * because it is translucent: what it looks like depends on what is behind it. So this is a
-     * floating control drawn over the preview's own background, from {@link OrbitGlass} rather than
-     * from an impression of it - the same drawable Chats and the Vault put under their search box.
-     * Adjusting opacity, tint or edge moves this and the real screens together or neither.
-     */
-    private View glassRow(Context c) {
-        OrbitGlass.Palette palette = OrbitGlass.Palette.of(tokens, style);
-
-        LinearLayout control = new LinearLayout(c);
-        control.setOrientation(HORIZONTAL);
-        control.setGravity(Gravity.CENTER_VERTICAL);
-        control.setPadding(UiKit.dp(c, 12), UiKit.dp(c, 9), UiKit.dp(c, 12), UiKit.dp(c, 9));
-        control.setBackground(OrbitGlass.surfaceDrawable(c, palette, 14f));
-
-        // Read against the fill composited over the page, which is what OrbitGlass.effectiveFill
-        // exists to answer, so the label stays legible at every opacity the control allows.
-        int ink = OrbitContrast.inkOn(OrbitGlass.effectiveFill(palette));
-        control.addView(UiKit.text(c, "Search", 11.5f, ink, false),
-                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        control.addView(UiKit.text(c, "Chats", 10.5f, UiKit.withAlpha(ink, 170), false));
-        control.setContentDescription("Floating glass control, "
-                + (style.isDefault() ? "Orbit default" : style.glassOpacityLabel().toLowerCase(
-                        java.util.Locale.US) + ", tint " + style.glassTintLabel().toLowerCase(
-                        java.util.Locale.US) + ", edge " + style.glassEdgeLabel().toLowerCase(
-                        java.util.Locale.US)) + ".");
-        return control;
     }
 
     private LinearLayout.LayoutParams lp(int width, int height, int topDp) {

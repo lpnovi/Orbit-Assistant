@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputFilter;
@@ -82,8 +83,39 @@ public final class ThemeStudioActivity extends Activity {
     private LinearLayout warningStrip;
     private LinearLayout colourRows;
     private LinearLayout presetGrid;
-    /** The Orbit Pro card's contents, refilled whenever entitlement or the draft changes. */
+    /**
+     * The Orbit Pro card's contents. Refilled when entitlement changes, and at no other time.
+     *
+     * <p>Beta 2 refilled it on every draft update, which is how dragging one slider came to
+     * destroy and rebuild the other four. Free to Pro and back is a structural change to what this
+     * card contains and legitimately rebuilds it; a slider moving is not.
+     */
     private LinearLayout proBody;
+
+    // The five premium controls, their value words, and the two samples that sit above them. Held
+    // from the moment the Pro section is built so that every later update is an assignment. A
+    // control that is replaced in order to show a different number is a control that loses its
+    // touch state, its accessibility focus and its position mid-gesture.
+    private OrbitSlider bubbleRadiusSlider;
+    private OrbitSlider bubbleOutlineSlider;
+    private OrbitSlider glassOpacitySlider;
+    private OrbitSlider glassTintSlider;
+    private OrbitSlider glassEdgeSlider;
+    private TextView bubbleRadiusValue;
+    private TextView bubbleOutlineValue;
+    private TextView glassOpacityValue;
+    private TextView glassTintValue;
+    private TextView glassEdgeValue;
+    private MessageStylePreview messagePreview;
+    private GlassStylePreview glassPreview;
+
+    /**
+     * The preset cards currently on screen, so selection can be re-marked without rebuilding them.
+     *
+     * <p>The gallery is rebuilt when its contents change - a theme saved, renamed, deleted or
+     * imported - and never merely because the selected one moved.
+     */
+    private final List<PresetCard> presetCards = new ArrayList<>();
     /**
      * The entitlement the Pro section was last drawn for.
      *
@@ -141,7 +173,12 @@ public final class ThemeStudioActivity extends Activity {
         super.onResume();
         UiPresence.enter(this);
         boolean pro = OrbitProEntitlement.hasPro(this);
-        if (proWhenRendered != null && proWhenRendered != pro) refreshDraftSurfaces();
+        if (proWhenRendered != null && proWhenRendered != pro) {
+            // A structural change to what the Pro card contains, so this one rebuilds it. It is
+            // the only thing that may, and it happens once per entitlement change.
+            rebuildProSection();
+            syncAllToDraft();
+        }
     }
 
     /**
@@ -219,10 +256,20 @@ public final class ThemeStudioActivity extends Activity {
         // The rule itself lives in OrbitThemeStore, because onboarding writes an appearance too
         // and the two must label the same colours the same way.
         draft = OrbitThemeStore.canonicalIdentity(this, next);
-        refreshDraftSurfaces();
+        syncAllToDraft();
     }
 
-    /** Selecting a preset loads it into the draft. It does not become the app's theme. */
+    /**
+     * Selecting a preset loads it into the draft. It does not become the app's theme.
+     *
+     * <p>Worth stating plainly, because on the device this was the behaviour that looked wrong:
+     * selecting Signal Violet moves five sliders, and moving five sliders looks like something
+     * being applied. It is not. The draft changes, every control is synchronized to it once, and
+     * Orbit goes on drawing whatever it was drawing until Apply is pressed. A premium preset and an
+     * ordinary one follow exactly the same rule - the premium one is simply the first preset that
+     * carries values the Pro controls display, so it is the first one where anybody could see the
+     * synchronization happen.
+     */
     private void selectPreset(OrbitTheme preset) {
         if (preset == null) return;
         // An Orbit Pro preset is refused before it reaches the draft, not after. Loading it and
@@ -232,8 +279,11 @@ public final class ThemeStudioActivity extends Activity {
             explainPremiumPreset(preset);
             return;
         }
+        // One assignment, then one synchronization pass. Nothing here is animated and nothing runs
+        // twice, which is the difference between the sliders arriving at the preset's values and
+        // the jitter Beta 2 showed while it rebuilt them.
         draft = preset;
-        refreshDraftSurfaces();
+        syncAllToDraft();
     }
 
     /**
@@ -267,40 +317,100 @@ public final class ThemeStudioActivity extends Activity {
                 : "Orbit Pro is not available on this device.";
     }
 
+    // ---- synchronizing the screen to the draft ------------------------------------------------
+    //
+    // Beta 2 had one method for this, and it rebuilt everything: the colour rows, the whole preset
+    // gallery (which reads the saved-theme file from disk), and the entire Orbit Pro section,
+    // sliders included. That was tolerable while the only things that called it were a menu
+    // selection and a switch. It became the source of most of this release's reported faults the
+    // moment a premium slider started calling it, because destroying and recreating five sliders
+    // and a preview sixty times a second is visible: unrelated thumbs move, labels flicker as the
+    // typography watcher meets new views, and the gallery reloads under the user's finger.
+    //
+    // So the screen is now synchronized in named pieces, and each interaction calls only the ones
+    // it actually affects. None of them create or destroy a control.
+
     /**
-     * Updates everything that depends on the draft, without rebuilding the screen.
+     * The three views that show what the draft looks like, plus the readability warning.
      *
-     * <p>Preview updates are local drawing and nothing else: no preference is written, no Activity
-     * is recreated, and no other screen is touched. That is what makes dragging inside the colour
-     * picker cheap enough to follow a finger.
+     * <p>This is the whole of the per-frame drag path. Each of the three previews builds its
+     * hierarchy once and assigns into it here, so a drag touches drawables and colours and never
+     * the view tree.
      */
     /**
-     * The cheap half of a draft update: the preview, the warnings and the action buttons.
+     * Brings every control onto the draft, without creating or destroying one.
      *
-     * <p>Split out for the Pro sliders. Dragging one calls this on every reported value, and the
-     * expensive half - re-deriving which preset the draft now is, which reads the saved-theme file,
-     * and rebuilding the gallery and the five colour rows - runs once when the finger lifts. A
-     * slider that did the whole thing per pixel would stutter on the first drag anybody tried.
+     * <p>What a preset selection, a colour edit and Revert all need: the draft changed wholesale,
+     * so everything that displays part of it is told the new value once. The gallery's contents are
+     * deliberately not rebuilt here, only its selection mark.
      */
-    private void refreshPreviewOnly() {
+    private void syncAllToDraft() {
+        renderColourRows();
+        syncAmoledSwitch();
+        syncProValues();
+        syncPreviews();
+        syncPresetSelection();
+    }
+
+    /**
+     * The saved-theme library changed, so the gallery genuinely has to be rebuilt.
+     *
+     * <p>Saving, renaming, duplicating, deleting and importing. These are the only things that
+     * change which cards exist, and they are all deliberate one-off actions rather than anything
+     * that happens under a moving finger.
+     */
+    private void onThemeLibraryChanged() {
+        rebuildPresetGallery();
+        syncPresetSelection();
+    }
+
+    private void syncPreviews() {
         OrbitThemeTokens tokens = OrbitThemeTokens.resolve(this, draft);
+        OrbitProStyle style = OrbitProStyle.resolve(this, draft.pro);
         if (preview != null) preview.render(tokens);
+        if (messagePreview != null) messagePreview.render(tokens, style);
+        if (glassPreview != null) glassPreview.render(tokens, style);
         renderWarnings(tokens);
         updateActionState();
     }
 
-    private void refreshDraftSurfaces() {
-        OrbitThemeTokens tokens = OrbitThemeTokens.resolve(this, draft);
-        if (preview != null) preview.render(tokens);
-        renderWarnings(tokens);
-        renderColourRows();
-        renderProSection();
-        renderPresets();
-        // Selecting an AMOLED preset has to move the switch too, or the screen shows a true-black
-        // preview above a control saying AMOLED is off. setChecked never calls the listener, so
-        // this cannot loop back into another edit.
+    /**
+     * Moves the five premium controls onto the draft's values.
+     *
+     * <p>{@link OrbitSlider#setValue} never notifies its listener, so this cannot loop back into an
+     * edit, and a slider already holding the right value ignores the call entirely. That second
+     * part is what makes it safe to run at the end of a drag: the control the user just released
+     * is told to be where it already is, and does nothing.
+     */
+    private void syncProValues() {
+        if (bubbleRadiusSlider == null) return;
+        OrbitProStyle style = draft.pro;
+        bubbleRadiusSlider.setValue(style.bubbleRadiusDp);
+        bubbleOutlineSlider.setValue(style.bubbleOutline);
+        glassOpacitySlider.setValue(style.glassOpacity);
+        glassTintSlider.setValue(style.glassTint);
+        glassEdgeSlider.setValue(style.glassEdge);
+        syncProLabels();
+    }
+
+    /** The value word beside each premium control. */
+    private void syncProLabels() {
+        if (bubbleRadiusValue == null) return;
+        OrbitProStyle style = draft.pro;
+        bubbleRadiusValue.setText(style.bubbleRadiusLabel());
+        bubbleOutlineValue.setText(style.bubbleOutlineLabel());
+        glassOpacityValue.setText(style.glassOpacityLabel());
+        glassTintValue.setText(style.glassTintLabel());
+        glassEdgeValue.setText(style.glassEdgeLabel());
+    }
+
+    /**
+     * Selecting an AMOLED preset has to move the switch too, or the screen shows a true-black
+     * preview above a control saying AMOLED is off. setChecked never calls the listener, so this
+     * cannot loop back into another edit.
+     */
+    private void syncAmoledSwitch() {
         if (amoledSwitch != null) amoledSwitch.setChecked(draft.amoled);
-        updateActionState();
     }
 
     private void updateActionState() {
@@ -370,7 +480,7 @@ public final class ThemeStudioActivity extends Activity {
     private void revertDraft() {
         if (!isDirty()) return;
         draft = applied;
-        refreshDraftSurfaces();
+        syncAllToDraft();
         Toast.makeText(this, "Changes discarded", Toast.LENGTH_SHORT).show();
     }
 
@@ -422,7 +532,13 @@ public final class ThemeStudioActivity extends Activity {
         root.addView(actionBar, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        refreshDraftSurfaces();
+        rebuildProSection();
+        rebuildPresetGallery();
+        renderColourRows();
+        syncAmoledSwitch();
+        syncProValues();
+        syncPreviews();
+        syncPresetSelection();
         return root;
     }
 
@@ -443,8 +559,8 @@ public final class ThemeStudioActivity extends Activity {
         column.addView(preview, matchWrap(0));
         column.addView(warningStrip, matchWrap(12));
         column.addView(coloursCard(), matchWrap(CARD_GAP_DP));
-        column.addView(proCard(), matchWrap(CARD_GAP_DP));
         column.addView(presetsCard(), matchWrap(CARD_GAP_DP));
+        column.addView(proCard(), matchWrap(CARD_GAP_DP));
         contentScroll.addView(column, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return contentScroll;
@@ -474,8 +590,8 @@ public final class ThemeStudioActivity extends Activity {
         LinearLayout right = new LinearLayout(this);
         right.setOrientation(LinearLayout.VERTICAL);
         right.addView(coloursCard(), matchWrap(0));
-        right.addView(proCard(), matchWrap(CARD_GAP_DP));
         right.addView(presetsCard(), matchWrap(CARD_GAP_DP));
+        right.addView(proCard(), matchWrap(CARD_GAP_DP));
         contentScroll.addView(right, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -885,18 +1001,24 @@ public final class ThemeStudioActivity extends Activity {
      * treatment rather than a lock icon on every row. Everything above it stays free and untouched:
      * this release adds a section, it does not move a single control into one.
      */
+    /**
+     * The Orbit Pro card, which sits below everything Theme Studio already had.
+     *
+     * <p>Its position is the point. Beta 2 put it between Colors and Presets, where a large locked
+     * panel stood between a free user and the gallery they were trying to reach, and made the
+     * screen read as though Pro were the middle of the workflow rather than an addition to the end
+     * of it. Free Theme Studio comes first, complete and uninterrupted, and this follows it.
+     */
     private View proCard() {
         LinearLayout card = card();
         LinearLayout heading = new LinearLayout(this);
         heading.setOrientation(LinearLayout.HORIZONTAL);
         heading.setGravity(Gravity.CENTER_VERTICAL);
-        heading.addView(cardTitle("Advanced"), new LinearLayout.LayoutParams(0,
+        heading.addView(cardTitle("Orbit Pro"), new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         heading.addView(proMark());
         card.addView(heading);
-        card.addView(cardNote("Fine detail for message shape and Orbit's floating glass. "
-                + "Everything else in Theme Studio is free and always will be."));
-        card.addView(proBody, matchWrap(12));
+        card.addView(proBody, matchWrap(10));
         return card;
     }
 
@@ -911,167 +1033,224 @@ public final class ThemeStudioActivity extends Activity {
     }
 
     /**
-     * Fills the Pro card for the entitlement in force right now.
+     * Builds the Pro card's contents for the entitlement in force.
      *
-     * <p>Asked on every render rather than remembered, so a tester who changes Pro Preview and
-     * comes back gets the other half of this screen without anything having to invalidate a cache.
+     * <p>Called when the screen is built and when entitlement changes, and at no other time. That
+     * restriction is the whole of this release's interaction fix: Free to Pro is a structural
+     * change to what this card contains and has to rebuild it, while a slider moving is not and
+     * must not. Everything between those two events is an assignment to a control that already
+     * exists.
      */
-    private void renderProSection() {
+    private void rebuildProSection() {
         if (proBody == null) return;
         proBody.removeAllViews();
+        clearProReferences();
         boolean pro = OrbitProEntitlement.hasPro(this);
         proWhenRendered = pro;
-        if (pro) renderProControls(); else renderProLocked();
+        if (pro) buildProControls(); else buildProTeaser();
+    }
+
+    /** Dropped together, so a stale reference into a removed hierarchy is not possible. */
+    private void clearProReferences() {
+        bubbleRadiusSlider = null;
+        bubbleOutlineSlider = null;
+        glassOpacitySlider = null;
+        glassTintSlider = null;
+        glassEdgeSlider = null;
+        bubbleRadiusValue = null;
+        bubbleOutlineValue = null;
+        glassOpacityValue = null;
+        glassTintValue = null;
+        glassEdgeValue = null;
+        messagePreview = null;
+        glassPreview = null;
     }
 
     /**
-     * What Free sees: what Pro adds, said plainly, and nothing that pretends to sell it.
+     * What Free sees: two lines and a short note.
      *
-     * <p>Deliberately not a wall of locks. The state is carried by a sentence as well as by the
-     * quiet chip above, because a treatment that only differs in colour tells a person relying on a
-     * screen reader nothing at all.
+     * <p>Beta 2 put a bordered panel in here, inside the card, carrying a heading, a two-line
+     * inventory of premium features and an explanation. On the device that was most of a screen
+     * spent describing things the person could not use, sitting in the middle of the editor they
+     * were trying to use, and it was the clearest single piece of feedback from testing. So it is
+     * a teaser now: what Pro adds, in one line, at the bottom of the page, with no nested card, no
+     * lock icons, no disabled controls and nothing resembling a purchase.
+     *
+     * <p>The state is still carried in words as well as in styling, because a treatment that only
+     * differs in colour says nothing to somebody using a screen reader.
      */
-    private void renderProLocked() {
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(UiKit.dp(this, 14), UiKit.dp(this, 12),
-                UiKit.dp(this, 14), UiKit.dp(this, 13));
-        box.setBackground(UiKit.outlined(UiKit.SURFACE_2,
-                UiKit.withAlpha(UiKit.accent(this), 60), 16, this));
-
-        box.addView(UiKit.text(this, "Included with Orbit Pro", 14, UiKit.TEXT, true));
-        TextView what = UiKit.text(this,
-                "Messages: bubble roundness and an optional outline.\n"
-                        + "Glass: opacity, accent tint and edge light on Orbit's floating controls.",
-                12.5f, UiKit.MUTED, false);
-        what.setLineSpacing(0, 1.2f);
-        what.setPadding(0, UiKit.dp(this, 7), 0, 0);
-        box.addView(what);
+    private void buildProTeaser() {
+        TextView what = UiKit.text(this, "Advanced message and glass styling", 13.5f,
+                UiKit.TEXT, false);
+        proBody.addView(what, matchWrap(0));
 
         TextView note = UiKit.text(this, proUnavailableNote(), 12, UiKit.MUTED, false);
         note.setLineSpacing(0, 1.15f);
-        note.setPadding(0, UiKit.dp(this, 9), 0, 0);
-        box.addView(note);
+        proBody.addView(note, matchWrap(6));
 
-        box.setContentDescription("Advanced styling, locked. Orbit Pro adds bubble roundness, "
-                + "bubble outline, and glass opacity, tint and edge. " + proUnavailableNote());
-        box.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
-        for (int i = 0; i < box.getChildCount(); i++) {
-            box.getChildAt(i).setImportantForAccessibility(
-                    View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
-        }
-        proBody.addView(box, matchWrap(0));
+        proBody.setContentDescription("Orbit Pro. Advanced message and glass styling, locked. "
+                + proUnavailableNote());
+        proBody.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+        what.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        note.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
     }
 
-    /** What Pro sees: five controls, editing the draft and nothing else. */
-    private void renderProControls() {
-        proBody.addView(subheading("Messages"), matchWrap(0));
+    /**
+     * What Pro sees: two tools rather than one form.
+     *
+     * <p>Message style and Floating glass are separate panels, each led by the sample it changes.
+     * Beta 2 stacked all five sliders in one column with the only demonstration of their effect at
+     * the top of a scrolling page, so tuning a corner radius meant dragging, scrolling up to look,
+     * and scrolling back down. Putting each sample directly above its own controls is most of what
+     * makes this read as a tool rather than a settings form.
+     */
+    private void buildProControls() {
+        proBody.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+        proBody.setContentDescription(null);
 
-        proBody.addView(proSlider("Bubble roundness",
-                "How rounded your messages and Orbit's replies are",
+        TextView intro = UiKit.text(this,
+                "Fine detail on top of your theme. Nothing changes in Orbit until you apply.",
+                12, UiKit.MUTED, false);
+        proBody.addView(intro, matchWrap(0));
+
+        LinearLayout messages = toolPanel();
+        messages.addView(toolTitle("Message style"), matchWrap(0));
+        messagePreview = new MessageStylePreview(this);
+        messages.addView(messagePreview, matchWrap(10));
+
+        bubbleRadiusValue = valueLabel(draft.pro.bubbleRadiusLabel());
+        bubbleRadiusSlider = new OrbitSlider(this);
+        messages.addView(proControl("Bubble roundness", bubbleRadiusValue, bubbleRadiusSlider,
                 OrbitProStyle.BUBBLE_RADIUS_MIN, OrbitProStyle.BUBBLE_RADIUS_MAX,
                 draft.pro.bubbleRadiusDp,
-                v -> OrbitProStyle.of(v, draft.pro.bubbleOutline, draft.pro.glassOpacity,
-                        draft.pro.glassTint, draft.pro.glassEdge).bubbleRadiusLabel(),
-                (v, settled) -> editPro(draft.pro.withBubbleRadiusDp(v), settled)), matchWrap(10));
+                v -> OrbitProStyle.DEFAULT.withBubbleRadiusDp(v).bubbleRadiusLabel(),
+                (v, settled) -> editPro(draft.pro.withBubbleRadiusDp(v), settled)), matchWrap(14));
 
-        proBody.addView(proSlider("Bubble outline",
-                "An optional hairline around every message bubble",
+        bubbleOutlineValue = valueLabel(draft.pro.bubbleOutlineLabel());
+        bubbleOutlineSlider = new OrbitSlider(this);
+        messages.addView(proControl("Bubble outline", bubbleOutlineValue, bubbleOutlineSlider,
                 OrbitProStyle.OUTLINE_OFF, OrbitProStyle.OUTLINE_DEFINED,
                 draft.pro.bubbleOutline,
                 OrbitProStyle::outlineLabel,
-                (v, settled) -> editPro(draft.pro.withBubbleOutline(v), settled)), matchWrap(14));
+                (v, settled) -> editPro(draft.pro.withBubbleOutline(v), settled)), matchWrap(12));
+        proBody.addView(messages, matchWrap(14));
 
-        proBody.addView(subheading("Glass"), matchWrap(20));
+        LinearLayout glass = toolPanel();
+        glass.addView(toolTitle("Floating glass"), matchWrap(0));
+        glassPreview = new GlassStylePreview(this);
+        glass.addView(glassPreview, matchWrap(10));
 
-        proBody.addView(proSlider("Glass opacity",
-                "How much of the page shows through floating controls",
+        glassOpacityValue = valueLabel(draft.pro.glassOpacityLabel());
+        glassOpacitySlider = new OrbitSlider(this);
+        glass.addView(proControl("Glass opacity", glassOpacityValue, glassOpacitySlider,
                 OrbitProStyle.GLASS_OPACITY_MIN, OrbitProStyle.GLASS_OPACITY_MAX,
                 draft.pro.glassOpacity,
-                v -> draft.pro.withGlassOpacity(v).glassOpacityLabel(),
-                (v, settled) -> editPro(draft.pro.withGlassOpacity(v), settled)), matchWrap(10));
+                v -> OrbitProStyle.DEFAULT.withGlassOpacity(v).glassOpacityLabel(),
+                (v, settled) -> editPro(draft.pro.withGlassOpacity(v), settled)), matchWrap(14));
 
-        proBody.addView(proSlider("Glass tint",
-                "How strongly the accent colors the glass",
+        glassTintValue = valueLabel(draft.pro.glassTintLabel());
+        glassTintSlider = new OrbitSlider(this);
+        glass.addView(proControl("Glass tint", glassTintValue, glassTintSlider,
                 OrbitProStyle.GLASS_TINT_MIN, OrbitProStyle.GLASS_TINT_MAX,
                 draft.pro.glassTint,
                 OrbitProStyle::strengthLabel,
-                (v, settled) -> editPro(draft.pro.withGlassTint(v), settled)), matchWrap(14));
+                (v, settled) -> editPro(draft.pro.withGlassTint(v), settled)), matchWrap(12));
 
-        proBody.addView(proSlider("Glass edge",
-                "How lit the top edge and hairline are",
+        glassEdgeValue = valueLabel(draft.pro.glassEdgeLabel());
+        glassEdgeSlider = new OrbitSlider(this);
+        glass.addView(proControl("Glass edge", glassEdgeValue, glassEdgeSlider,
                 OrbitProStyle.GLASS_EDGE_MIN, OrbitProStyle.GLASS_EDGE_MAX,
                 draft.pro.glassEdge,
                 OrbitProStyle::strengthLabel,
-                (v, settled) -> editPro(draft.pro.withGlassEdge(v), settled)), matchWrap(14));
+                (v, settled) -> editPro(draft.pro.withGlassEdge(v), settled)), matchWrap(12));
+        proBody.addView(glass, matchWrap(14));
+    }
+
+    /** One of the two tools. A quiet inner surface, not a second card with its own border. */
+    private LinearLayout toolPanel() {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(UiKit.dp(this, 13), UiKit.dp(this, 12),
+                UiKit.dp(this, 13), UiKit.dp(this, 14));
+        panel.setBackground(UiKit.rounded(UiKit.SURFACE_2, 18, this));
+        return panel;
+    }
+
+    private TextView toolTitle(String value) {
+        return UiKit.text(this, value, 13.5f, UiKit.TEXT, true);
+    }
+
+    /** The current value, in words, in the accent. Restrained: it is a reading, not a heading. */
+    private TextView valueLabel(String value) {
+        return UiKit.text(this, value, 12, UiKit.accent(this), false);
     }
 
     private interface ProEdit { void apply(int value, boolean settled); }
 
     /**
-     * One advanced control: a title, what it does, the value in words, and the slider.
+     * One advanced control: its name, its value in words, and the slider.
      *
-     * <p>The value is spelled out beside the title rather than left to the thumb's position, for
-     * the same reason the colour rows spell out "Deep violet, custom": a filled track is not a
-     * readable statement of a setting, and "Orbit default" is the one value somebody genuinely
-     * needs to be able to find their way back to.
+     * <p>The hierarchy is deliberately flatter than Beta 2's. The title was bold and nearly the
+     * size of a section heading, and every control carried a sentence of explanation underneath, so
+     * five settings read as five headings with paragraphs between them. The title is normal weight
+     * now, the value word beside it carries the accent, and the sentence is gone: "Bubble
+     * roundness" followed by "Rounded" already says what it was saying.
+     *
+     * <p>The slider is passed in already constructed so the caller keeps a reference to it. That is
+     * the mechanical half of this release: a control is created once and afterwards only ever told
+     * what value to show.
      */
-    private View proSlider(String title, String description, int min, int max, int value,
-                           OrbitSlider.Labeller labeller, ProEdit edit) {
+    private View proControl(String title, TextView reading, OrbitSlider slider,
+                            int min, int max, int value,
+                            OrbitSlider.Labeller labeller, ProEdit edit) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.VERTICAL);
 
         LinearLayout labels = new LinearLayout(this);
         labels.setOrientation(LinearLayout.HORIZONTAL);
         labels.setGravity(Gravity.CENTER_VERTICAL);
-        labels.addView(UiKit.text(this, title, 14, UiKit.TEXT, true),
+        labels.addView(UiKit.text(this, title, 13.5f, UiKit.TEXT, false),
                 new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        TextView reading = UiKit.text(this, labeller.label(value), 12, UiKit.accent(this), false);
         labels.addView(reading);
         labels.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         row.addView(labels, matchWrap(0));
 
-        TextView note = UiKit.text(this, description, 11.5f, UiKit.MUTED, false);
-        note.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
-        row.addView(note, matchWrap(2));
-
-        OrbitSlider slider = new OrbitSlider(this);
         slider.setTitle(title);
         slider.setLabeller(labeller);
         slider.setRange(min, max, value);
-        slider.setOnValueChangeListener((view, next, settled) -> {
-            reading.setText(labeller.label(next));
-            edit.apply(next, settled);
-        });
-        row.addView(slider, matchWrap(4));
+        slider.setOnValueChangeListener((view, next, settled) -> edit.apply(next, settled));
+        row.addView(slider, matchWrap(2));
         return row;
     }
 
     /**
      * Applies one premium edit to the draft.
      *
-     * <p>The draft, never a preference. Dragging a slider changes what the preview shows and
+     * <p>The draft, never a preference. Dragging a slider changes what the previews show and
      * nothing else in Orbit; Apply is still the only thing that commits, Revert still returns to
      * the applied theme, and leaving with an unapplied change still meets the same guarded Back
-     * this screen has always had. The premium half of a theme is a theme edit like any other.
+     * this screen has always had.
+     *
+     * <p>The two paths differ only in how much of the screen they touch, and that split is what
+     * keeps a drag smooth. While the finger is down nothing re-derives the draft's identity, so
+     * nothing reads the saved-theme file and nothing touches the gallery. On release that happens
+     * once. Neither path creates or destroys a control, so the four sliders the user is not
+     * touching cannot move and the one they are touching cannot be replaced underneath them.
      */
     private void editPro(OrbitProStyle next, boolean settled) {
-        OrbitTheme edited = draft.withPro(next);
+        draft = draft.withPro(next);
+        syncProLabels();
         if (!settled) {
-            // Mid-drag: no identity re-derivation, so nothing reads the saved-theme file and
-            // nothing rebuilds the gallery while the finger is still moving.
-            draft = edited;
-            refreshPreviewOnly();
+            syncPreviews();
             return;
         }
-        edit(edited);
-    }
-
-    private TextView subheading(String value) {
-        TextView title = UiKit.text(this, value, 11, UiKit.MUTED, true);
-        title.setLetterSpacing(0.11f);
-        title.setAllCaps(true);
-        return title;
+        // Re-label which preset this now is. canonicalIdentity carries the premium styling
+        // through, so settling cannot change the value the user just chose - which it did in
+        // Beta 2, and which is what made the thumb appear to snap back the moment it was released.
+        draft = OrbitThemeStore.canonicalIdentity(this, draft);
+        syncProLabels();
+        syncPreviews();
+        syncPresetSelection();
     }
 
     // ---- presets ----------------------------------------------------------------------------------
@@ -1106,9 +1285,18 @@ public final class ThemeStudioActivity extends Activity {
         return card;
     }
 
-    private void renderPresets() {
+    /**
+     * Rebuilds the gallery, which is a disk read and a card per theme.
+     *
+     * <p>Called when the set of themes changes - saved, renamed, duplicated, deleted, imported -
+     * and never merely because a different one became selected. Beta 2 called this from the same
+     * method a slider called, so releasing a slider reloaded the saved-theme file and rebuilt every
+     * card in the gallery. {@link #syncPresetSelection} is what selection changes use instead.
+     */
+    private void rebuildPresetGallery() {
         if (presetGrid == null) return;
         presetGrid.removeAllViews();
+        presetCards.clear();
         List<OrbitTheme> presets = OrbitThemeStore.allPresets(this);
         int columns = presetColumns();
         LinearLayout row = null;
@@ -1121,7 +1309,9 @@ public final class ThemeStudioActivity extends Activity {
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
                     ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             if (i % columns != 0) lp.leftMargin = UiKit.dp(this, 10);
-            row.addView(presetCard(presets.get(i)), lp);
+            PresetCard card = presetCard(presets.get(i));
+            presetCards.add(card);
+            row.addView(card.view, lp);
         }
         // A short final row must not stretch its cards across the full width.
         int remainder = presets.size() % columns;
@@ -1141,8 +1331,61 @@ public final class ThemeStudioActivity extends Activity {
         return width >= 480 ? 3 : 2;
     }
 
-    private View presetCard(OrbitTheme preset) {
-        boolean selected = draft != null && draft.sameColours(preset);
+    /**
+     * One preset card, plus everything needed to re-mark it as selected without rebuilding it.
+     *
+     * <p>Selection is the only thing about a card that changes while the screen is up, and in
+     * Beta 2 the only way to change it was to rebuild the whole gallery. Holding the three views
+     * it actually affects turns that into three assignments.
+     */
+    private static final class PresetCard {
+        final OrbitTheme preset;
+        final LinearLayout view;
+        final TextView name;
+        final TextView tick;
+        /** What the card says before the selection state, and what it says after it. */
+        final String spokenBase;
+        final String spokenTail;
+
+        PresetCard(OrbitTheme preset, LinearLayout view, TextView name, TextView tick,
+                   String spokenBase, String spokenTail) {
+            this.preset = preset;
+            this.view = view;
+            this.name = name;
+            this.tick = tick;
+            this.spokenBase = spokenBase;
+            this.spokenTail = spokenTail;
+        }
+    }
+
+    /**
+     * Re-marks which preset card is selected.
+     *
+     * <p>No disk read, no card construction, no layout change: the three things that say "this one"
+     * are reassigned and nothing else moves. This is what runs when a slider settles or a colour
+     * changes, which is why neither of those disturbs the gallery any more.
+     */
+    private void syncPresetSelection() {
+        for (PresetCard card : presetCards) {
+            boolean selected = draft != null && draft.sameColours(card.preset);
+            card.view.setBackground(presetCardBackground(selected));
+            // Through UiKit, so the new weight is recorded as the label's intent and the next
+            // typography pass re-applies it instead of reverting it.
+            UiKit.setTextWeight(card.name, selected);
+            card.tick.setVisibility(selected ? View.VISIBLE : View.GONE);
+            card.view.setContentDescription(
+                    card.spokenBase + (selected ? ", selected" : "") + card.spokenTail);
+        }
+    }
+
+    private Drawable presetCardBackground(boolean selected) {
+        return UiKit.rippleOutlined(
+                selected ? UiKit.blend(UiKit.accent(this), UiKit.SURFACE_2, 0.18f) : UiKit.SURFACE_2,
+                UiKit.withAlpha(UiKit.accent(this), selected ? 190 : 54),
+                UiKit.accent(this), 16, this);
+    }
+
+    private PresetCard presetCard(OrbitTheme preset) {
         boolean locked = !OrbitThemeStore.canApply(this, preset);
         OrbitThemeTokens tokens = OrbitThemeTokens.resolve(this, preset);
 
@@ -1150,20 +1393,14 @@ public final class ThemeStudioActivity extends Activity {
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(UiKit.dp(this, 10), UiKit.dp(this, 10),
                 UiKit.dp(this, 10), UiKit.dp(this, 11));
-        card.setBackground(UiKit.rippleOutlined(
-                selected ? UiKit.blend(UiKit.accent(this), UiKit.SURFACE_2, 0.18f) : UiKit.SURFACE_2,
-                UiKit.withAlpha(UiKit.accent(this), selected ? 190 : 54),
-                UiKit.accent(this), 16, this));
         card.setMinimumHeight(UiKit.dp(this, 96));
         // Selection is stated, not only drawn. A ring around a card of colours is exactly the kind
         // of state that disappears for anyone who cannot rely on colour to carry it.
-        card.setContentDescription(preset.name
+        String spokenBase = preset.name
                 + (preset.premium() ? ", Orbit Pro preset"
                         : preset.builtIn ? ", Orbit preset" : ", your theme")
                 + (locked ? ", locked" : "")
-                + (preset.note().isEmpty() ? "" : ", " + preset.note())
-                + (selected ? ", selected" : "") + ". Background " + OrbitColorName.of(tokens.background)
-                + ", accent " + OrbitColorName.of(tokens.accent) + ".");
+                + (preset.note().isEmpty() ? "" : ", " + preset.note());
         UiKit.pressScale(card);
         card.setOnClickListener(v -> {
             UiKit.haptic(v, HapticFeedbackConstants.VIRTUAL_KEY);
@@ -1183,16 +1420,17 @@ public final class ThemeStudioActivity extends Activity {
         LinearLayout titleRow = new LinearLayout(this);
         titleRow.setOrientation(LinearLayout.HORIZONTAL);
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
-        TextView name = UiKit.text(this, preset.name, 13, UiKit.TEXT, selected);
+        // Built unselected. The tick is created once and hidden rather than added and removed,
+        // so marking a different card selected changes visibility instead of the view tree.
+        TextView name = UiKit.text(this, preset.name, 13, UiKit.TEXT, false);
         name.setSingleLine(true);
         name.setEllipsize(android.text.TextUtils.TruncateAt.END);
         titleRow.addView(name, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        if (selected) {
-            titleRow.addView(UiKit.text(this, "✓", 14, UiKit.accent(this), true));
-        }
-        LinearLayout.LayoutParams titleLp = matchWrap(8);
-        card.addView(titleRow, titleLp);
+        TextView tick = UiKit.text(this, "✓", 14, UiKit.accent(this), true);
+        tick.setVisibility(View.GONE);
+        titleRow.addView(tick);
+        card.addView(titleRow, matchWrap(8));
 
         // The one built-in note Orbit ships sits on this line rather than becoming a badge, so a
         // card stays a swatch strip, a name and one quiet line whatever theme it describes.
@@ -1214,7 +1452,12 @@ public final class ThemeStudioActivity extends Activity {
             card.getChildAt(i).setImportantForAccessibility(
                     View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         }
-        return card;
+
+        String spokenTail = ". Background " + OrbitColorName.of(tokens.background)
+                + ", accent " + OrbitColorName.of(tokens.accent) + ".";
+        // The selected state itself is left to syncPresetSelection, so there is exactly one place
+        // that decides what a selected card looks like and says.
+        return new PresetCard(preset, card, name, tick, spokenBase, spokenTail);
     }
 
     /** Four bands of one theme: page, card, accent, and the user's bubble. */
@@ -1252,7 +1495,7 @@ public final class ThemeStudioActivity extends Activity {
             Toast.makeText(this, "Orbit could not duplicate that theme.", Toast.LENGTH_SHORT).show();
             return;
         }
-        refreshDraftSurfaces();
+        onThemeLibraryChanged();
         Toast.makeText(this, "Saved as " + copy.name, Toast.LENGTH_SHORT).show();
     }
 
@@ -1267,7 +1510,7 @@ public final class ThemeStudioActivity extends Activity {
                                 Toast.LENGTH_SHORT).show();
                         return;
                     }
-                    refreshDraftSurfaces();
+                    onThemeLibraryChanged();
                     Toast.makeText(this, preset.name + " deleted", Toast.LENGTH_SHORT).show();
                 })
                 .create();
@@ -1281,7 +1524,7 @@ public final class ThemeStudioActivity extends Activity {
                 Toast.makeText(this, "Orbit could not rename that theme.", Toast.LENGTH_SHORT).show();
                 return;
             }
-            refreshDraftSurfaces();
+            onThemeLibraryChanged();
         });
     }
 
@@ -1296,7 +1539,8 @@ public final class ThemeStudioActivity extends Activity {
             // The draft now *is* that preset, so the gallery shows it selected. Saving still does
             // not change what Orbit is drawing: Apply is the only thing that does.
             draft = saved;
-            refreshDraftSurfaces();
+            onThemeLibraryChanged();
+            syncAllToDraft();
             Toast.makeText(this, "Saved " + saved.name, Toast.LENGTH_SHORT).show();
         });
     }
@@ -1542,7 +1786,8 @@ public final class ThemeStudioActivity extends Activity {
                             + OrbitThemeStore.MAX_CUSTOM_PRESETS + " saved themes.");
             return;
         }
-        if (loadIntoPreview) selectPreset(saved); else refreshDraftSurfaces();
+        if (loadIntoPreview) { selectPreset(saved); onThemeLibraryChanged(); }
+        else onThemeLibraryChanged();
         Toast.makeText(this, "Imported " + saved.name, Toast.LENGTH_SHORT).show();
     }
 

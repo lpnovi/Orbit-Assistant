@@ -373,6 +373,19 @@ Shipped in `0.8.0.0-beta.2`, the first release with real premium functionality:
 - **Identical by default.** A user who changes none of the new settings sees exactly the Beta 1
   appearance
 
+Shipped in `0.8.0.0-beta.3`, after physical testing of Beta 2 on a Galaxy S25 Ultra:
+
+- **Orbit Pro moved below Colors and Presets.** Free Theme Studio comes first and is never
+  interrupted by a section describing features the person cannot use
+- **A compact locked treatment.** One short note at the bottom of the page instead of a large
+  panel in the middle of the editor
+- **Two tools instead of one form.** Message style and Floating glass are separate panels, each
+  led by its own small live preview sitting directly above the controls that change it
+- **A stable view hierarchy.** Theme Studio updates its controls in place rather than rebuilding
+  them while they are being used, which is what made sliders jump and text change weight
+- **Correct preset behavior.** Selecting a preset synchronizes the advanced controls once and
+  still changes nothing in Orbit until Apply
+
 Planned, in order:
 
 - Theme Studio Pro backgrounds: gradient and radial page treatments, and per-surface profiles
