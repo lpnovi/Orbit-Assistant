@@ -839,3 +839,13 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
   - Tap any sourced picture to open Orbit's image viewer, visit its source page, or save it to your Vault.
   - Search Orbit Settings to jump straight to the control you want, with no AI and no network involved.
   - Optional GPT-6 Astra is available as a Custom model for eligible ChatGPT accounts, and Auto routing is unchanged.
+
+## 0.8 series
+
+- **v0.8.0.0-beta.1**: Groundwork for Orbit Pro, the optional paid layer of advanced customization planned on top of free Orbit.
+  - Nothing changes for anyone using Orbit today. No existing feature moved behind Pro, and none ever will.
+  - Orbit now resolves Orbit Pro through one central place, so future premium features stay independent of how entitlement is granted.
+  - There is no checkout, no purchase, no billing, and no way to buy Orbit Pro yet. Every build resolves to Free.
+  - Beta testers can switch a Free and Pro Preview state in the hidden Diagnostics screen, so upcoming premium work can be checked in both states.
+  - That preview is a Beta testing aid only. Stable builds ignore it entirely and always resolve to Free.
+  - Theme Studio Pro is the first premium feature planned, and it is not in this Beta.

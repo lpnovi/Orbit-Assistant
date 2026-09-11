@@ -185,18 +185,18 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * Rich Answers reaches Stable after nine Betas.
+     * Orbit Pro opens the 0.8 line, and opens it as a Beta.
      *
-     * <p>The guard now runs in the Stable direction. Beta 9 is the tested behaviour and the
-     * promotion changed release metadata only, so this build must carry Stable metadata rather than
-     * prerelease metadata, and the changelog entry the release workflow builds its notes from must
-     * exist for the Stable version name.
+     * <p>The guard runs in the prerelease direction again. Phase 0 is entitlement infrastructure
+     * that has never run on a phone, so it must carry prerelease metadata rather than Stable
+     * metadata, and the changelog entry the release workflow builds its notes from must exist for
+     * the Beta version name.
      */
-    @Test public void thisReleaseIsRichAnswersStable() {
-        assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
-                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.installedIsBeta());
+    @Test public void thisReleaseIsOrbitProBetaOne() {
+        assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
+                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+        assertTrue(OrbitVersion.installedIsBeta());
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
     }
 

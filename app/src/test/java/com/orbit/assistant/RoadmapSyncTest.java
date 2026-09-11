@@ -108,7 +108,7 @@ public final class RoadmapSyncTest {
         int shipped = file.indexOf(RICH_ANSWERS);
         int current = file.indexOf(OrbitRoadmap.CURRENT);
         assertTrue("Rich Answers must still be recorded", shipped >= 0);
-        assertTrue("Smart Vault is the active line", current > shipped);
+        assertTrue("Orbit Pro is the active line", current > shipped);
         assertTrue("Rich Answers is recorded as Stable, not as current work",
                 file.indexOf("### `0.7.8.5` Stable") >= 0);
         assertTrue("and the Stable entry comes before the active plan",
@@ -118,6 +118,52 @@ public final class RoadmapSyncTest {
         assertTrue("the in-app page leads with the active line",
                 page.indexOf(OrbitRoadmap.CURRENT) >= 0);
         assertFalse("and a shipped line is never offered there", page.contains(RICH_ANSWERS));
+    }
+
+    /**
+     * Orbit Pro is described as an addition to free Orbit, in both documents.
+     *
+     * <p>The commitment worth pinning is not that Orbit Pro exists. It is the sentence a future
+     * release would quietly soften first: no feature that is free today is ever moved behind it.
+     * A roadmap that stops saying so has changed the product, whatever the code does.
+     */
+    @Test public void orbitProIsRecordedAsAdditiveRatherThanAsAPaywall() {
+        String file = markdown();
+        int at = file.indexOf("### `0.8` - " + OrbitRoadmap.CURRENT);
+        assertTrue("Orbit Pro must have its own section in ROADMAP.md", at >= 0);
+        String section = file.substring(at, Math.min(file.length(), at + 2600));
+        assertTrue("free Orbit must stay the complete assistant",
+                section.contains("Free Orbit stays the real, complete assistant"));
+        assertTrue("and nothing free may move behind Pro",
+                section.contains("free today is ever placed behind Pro"));
+        assertTrue("Theme Studio Pro is named as the first premium feature",
+                section.contains("Theme Studio Pro"));
+        assertTrue("Play billing is recorded as arriving behind the entitlement boundary",
+                section.contains("Google Play entitlement provider"));
+        assertTrue("and the project stays open source rather than growing DRM",
+                section.contains("MPL-2.0") && section.contains("not DRM"));
+        assertTrue("nothing may read as purchasable yet", section.contains("nothing to buy"));
+    }
+
+    /**
+     * Smart Vault was deferred, not cancelled, and not made premium.
+     *
+     * <p>This is the specific misreading worth preventing. Orbit Pro became the immediate focus in
+     * the same release that moved Smart Vault out of Current, and the honest version of that is
+     * "later, and still free". The roadmap has to keep saying the second half.
+     */
+    @Test public void smartVaultIsDeferredAndStaysFree() {
+        String file = markdown();
+        int pro = file.indexOf("### `0.8` - " + OrbitRoadmap.CURRENT);
+        int vault = file.indexOf("### Smart Vault");
+        assertTrue("Smart Vault must still be planned in ROADMAP.md", vault >= 0);
+        assertTrue("and must sit below the active Orbit Pro line", vault > pro);
+        assertTrue("it is recorded as a free Orbit feature",
+                file.substring(vault, Math.min(file.length(), vault + 400)).contains("free"));
+
+        String page = inApp();
+        assertTrue("it is still offered on the in-app page", page.contains("Smart Vault"));
+        assertTrue("and still described as free there", page.contains("always free"));
     }
 
     /**
@@ -186,7 +232,7 @@ public final class RoadmapSyncTest {
     /** Smart Vault stays opt-in, and the roadmap has to keep saying so. */
     @Test public void smartVaultIsRecordedAsOptIn() {
         String file = markdown();
-        int at = file.indexOf("### `0.7.8.6` - " + OrbitRoadmap.CURRENT);
+        int at = file.indexOf("### Smart Vault");
         assertTrue(at >= 0);
         String section = file.substring(at, Math.min(file.length(), at + 1400));
         assertTrue(section.contains("opt-in"));

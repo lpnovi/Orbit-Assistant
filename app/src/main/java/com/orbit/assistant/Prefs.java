@@ -92,6 +92,22 @@ public final class Prefs {
     public static final String UPDATE_CHANNEL = "update_channel";
     public static final String CHANNEL_STABLE = "stable";
     public static final String CHANNEL_BETA = "beta";
+    /**
+     * The developer Orbit Pro override, for building and testing premium features before there is
+     * any way to buy one. Exactly two values: {@link #PRO_PREVIEW_FREE} and {@link #PRO_PREVIEW_PRO}.
+     *
+     * <p>Only ever read on a build eligible for it, which {@link OrbitProEntitlement} decides and
+     * nothing else does. A Stable build ignores whatever is stored here, so a tester who installs
+     * Stable over a Beta does not carry Pro across, and their choice is still waiting for them in
+     * the next Beta.
+     *
+     * <p>Deliberately absent from every Backup &amp; Restore key set below, alongside the update
+     * channel. It is a testing override belonging to this build on this device, and restoring a
+     * backup onto another phone must never hand somebody a Pro state they did not choose.
+     */
+    public static final String PRO_PREVIEW = "pro_preview";
+    public static final String PRO_PREVIEW_FREE = "free";
+    public static final String PRO_PREVIEW_PRO = "pro";
     public static final String PAGE_TRANSITION = "page_transition";
     /**
      * Whether Orbit draws its own interactive back gesture when returning to the previous screen.
@@ -486,6 +502,46 @@ public final class Prefs {
         if (saved) OrbitUpdater.onChannelChanged(c);
         return saved;
     }
+
+    /**
+     * The stored Orbit Pro preview selection, always Free unless a tester explicitly chose Pro.
+     *
+     * <p>Anything unrecognised resolves to Free, for the same reason the update channel does:
+     * there must be no state in which a corrupted or unexpected value produces the unlocked one.
+     *
+     * <p>Reading this is not the same as honoring it. {@link OrbitProEntitlement} decides whether
+     * the running build may honor the override at all, and a Stable build never does.
+     */
+    public static String proPreview(Context c) {
+        return normalizeProPreview(get(c).getString(PRO_PREVIEW, PRO_PREVIEW_FREE));
+    }
+
+    public static String normalizeProPreview(String value) {
+        return PRO_PREVIEW_PRO.equals(value) ? PRO_PREVIEW_PRO : PRO_PREVIEW_FREE;
+    }
+
+    /** Whether the stored selection is Pro Preview. Says nothing about effective entitlement. */
+    public static boolean proPreviewSelected(Context c) {
+        return PRO_PREVIEW_PRO.equals(proPreview(c));
+    }
+
+    /**
+     * Records the selection, with {@code commit} rather than {@code apply}.
+     *
+     * <p>The whole point of the control is that the next thing read reflects the new state, on the
+     * same screen, in the same frame. A value still sitting in memory would make the selector and
+     * the entitlement it is meant to demonstrate disagree for exactly as long as it took somebody
+     * to notice.
+     */
+    public static boolean setProPreview(Context c, String value) {
+        return get(c).edit().putString(PRO_PREVIEW, normalizeProPreview(value)).commit();
+    }
+
+    /** How the selection reads to a person. */
+    public static String proPreviewLabel(String value) {
+        return PRO_PREVIEW_PRO.equals(normalizeProPreview(value)) ? "Pro Preview" : "Free";
+    }
+
     public static String quickSettingsRoutineId(Context c) {
         return get(c).getString(QUICK_SETTINGS_ROUTINE_ID, "").trim();
     }

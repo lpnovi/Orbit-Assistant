@@ -18,14 +18,15 @@ package com.orbit.assistant;
 public final class OrbitRoadmap {
 
     /**
-     * The active line after Rich Answers reached Stable.
+     * The active line: the optional paid layer that begins the {@code 0.8} series.
      *
-     * <p>One name rather than three. Rich Answers, Settings search and Astra all shipped in
-     * {@code 0.7.8.5}, and the in-app page is future-only, so a milestone constant for any of them
-     * would be a promise about something a user already has. Smart Vault is what follows, and
-     * nothing beyond it is named yet.
+     * <p>Smart Vault held this constant until {@code 0.8.0.0-beta.1} and was deliberately moved
+     * out of it rather than dropped. It is still planned, still a free Orbit feature, and still
+     * listed on both roadmaps; what changed is that it is no longer the thing being built next.
+     * Presenting it as current while the whole project had moved to Orbit Pro is exactly the
+     * drift this constant exists to prevent.
      */
-    public static final String CURRENT = "Smart Vault";
+    public static final String CURRENT = "Orbit Pro";
 
     /**
      * Every milestone both roadmaps must agree about.

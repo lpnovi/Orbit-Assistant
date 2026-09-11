@@ -329,9 +329,53 @@ search, OCR, webpage extraction and summaries.
 
 ## Current
 
-### `0.7.8.6` - Smart Vault
+### `0.8` - Orbit Pro
 
-After Rich Answers, and deliberately after the Vault has been worth organizing by hand.
+Orbit Pro is an optional paid layer of advanced customization, enthusiast features and power-user
+functionality, built on top of free Orbit rather than carved out of it.
+
+**The rule that does not move.** Free Orbit stays the real, complete assistant. No feature that is
+free today is ever placed behind Pro. The Side-button assistant, chat, streaming, background
+completion, attachments, screen context, voice, Rich Answers, device actions, Documents, the Vault,
+Theme Studio, Orbit Deck, Routines, shortcuts, model selection and backup all stay free, and so
+does everything already listed under Shipped / Stable above.
+
+**Openness rule.** Orbit is MPL-2.0 and stays MPL-2.0. Entitlement is an honest boundary for honest
+builds, not DRM, and the project does not pretend that somebody cannot modify a build they compiled
+themselves.
+
+Shipped in `0.8.0.0-beta.1`:
+
+- **Entitlement foundation.** One central place decides whether a device has Orbit Pro, and every
+  future premium feature asks only that. No feature knows, or may know, whether the answer came
+  from a store, a developer preview, or some later supporter mechanism
+- **A provider boundary.** Google Play Billing, when it exists, becomes one implementation behind
+  that boundary. No premium feature will depend on billing, purchase state, licenses or accounts
+- **An Orbit Pro Preview override on debug and Beta builds only**, in the hidden Diagnostics
+  screen, so a premium feature can be tested in both its locked and unlocked states on one device
+- **Stable protection.** A Stable build never honors that override, including a Stable installed
+  over a Beta where Pro Preview was selected
+- **No feature gated.** Phase 0 is infrastructure. It adds no lock, no upgrade prompt and no badge
+  anywhere in Orbit
+
+Planned, in order:
+
+- **Theme Studio Pro**, the flagship first premium feature
+- Theme Studio Pro visual refinement and premium presets
+- Orbit Deck Pro
+- Vault Pro organization
+- Backup and export Pro
+- Appearance Pro extras
+- Supporter and Orbit Labs extras
+- **A Google Play entitlement provider**, added last and behind the same boundary. Until it exists
+  there is no checkout, no billing library and nothing to buy, and every build resolves to Free
+
+## Next
+
+### Smart Vault - still a free Orbit feature
+
+Deferred while Orbit Pro is the immediate focus. Not cancelled, and deliberately not a Pro feature:
+finding your own saved things is part of what the Vault is for, and the Vault is free.
 
 - Semantic Vault search and natural-language retrieval
 - OCR for screenshots and images the user explicitly saved

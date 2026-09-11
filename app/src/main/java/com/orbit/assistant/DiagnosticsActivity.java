@@ -63,6 +63,17 @@ public final class DiagnosticsActivity extends Activity {
     private Button toggleAll;
     private final List<Runnable> sectionUpdates = new ArrayList<>();
 
+    /**
+     * The Overview body, kept so the Orbit Pro line in it can be rewritten in place.
+     *
+     * <p>Changing the preview selection has to be visible in the same frame, and rebuilding the
+     * whole page to show one changed word would lose the reader's scroll position and every
+     * section they had opened.
+     */
+    private TextView overviewBody;
+    /** Redraws the Orbit Pro preview area after a selection. Null on builds that never show it. */
+    private Runnable proPreviewUpdate;
+
     /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
     private OrbitPredictiveBack navigation;
 
@@ -96,6 +107,7 @@ public final class DiagnosticsActivity extends Activity {
     private void populate() {
         page.removeAllViews();
         sectionUpdates.clear();
+        proPreviewUpdate = null;
 
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
@@ -111,6 +123,9 @@ public final class DiagnosticsActivity extends Activity {
 
         // Always open, always short. This is the part someone reads without deciding to.
         page.addView(overviewCard(), cardLp());
+
+        // Developer and Beta builds only. See addProPreview.
+        addProPreview();
 
         TextView sectionsCaption = UiKit.text(this, "DETAILS", 11, UiKit.MUTED, true);
         sectionsCaption.setLetterSpacing(0.09f);
@@ -206,6 +221,7 @@ public final class DiagnosticsActivity extends Activity {
         body.setLineSpacing(0, 1.18f);
         body.setPadding(0, UiKit.dp(this, 4), 0, 0);
         card.addView(body);
+        overviewBody = body;
         return card;
     }
 
@@ -223,6 +239,10 @@ public final class DiagnosticsActivity extends Activity {
                 "\nPending requests: " + PendingRequestStore.active(this).size() +
                 "\nThinking updates: " + (Prefs.thinkingUpdates(this) ? "enabled" : "disabled")
                         + " · " + ReasoningSummarySupport.lastSource(this) +
+                // Informational on every build, including Stable, where it is simply "Free". One
+                // line, no badge, and never anything about how an entitlement was obtained beyond
+                // the public name of where it came from.
+                "\nOrbit Pro: " + OrbitProEntitlement.status(this) +
                 "\n" + healthLine();
     }
 
@@ -252,6 +272,108 @@ public final class DiagnosticsActivity extends Activity {
         if (hours < 24) return hours + (hours == 1 ? " hour ago" : " hours ago");
         long days = hours / 24L;
         return days + (days == 1 ? " day ago" : " days ago");
+    }
+
+    // ---- the Orbit Pro preview override -----------------------------------------------------------
+
+    /**
+     * The developer Free / Pro Preview override, on the builds allowed to have one.
+     *
+     * <p>It lives here rather than in Settings on purpose. Diagnostics is already the hidden
+     * developer and support surface, reached by long-pressing the version footer, and a control
+     * whose entire job is to fake an entitlement has no business on a screen a user browses.
+     *
+     * <p>Whether it exists at all is {@link OrbitProEntitlement}'s decision, asked once. This
+     * screen does not know what makes a build eligible and must not learn: a second copy of that
+     * rule is how a Stable build eventually grows a way to switch itself to Pro.
+     *
+     * <p>Nothing about this is a preview of Orbit Pro's future purchase flow. There is no checkout,
+     * no price, no upgrade prompt and no badge, because there is nothing to buy. It is a switch
+     * that lets a tester see both halves of a premium feature on one device.
+     */
+    private void addProPreview() {
+        if (!OrbitProEntitlement.previewAvailable()) return;
+
+        TextView caption = UiKit.text(this, "ORBIT PRO PREVIEW", 11, UiKit.MUTED, true);
+        caption.setLetterSpacing(0.09f);
+        caption.setPadding(UiKit.dp(this, 4), UiKit.dp(this, 14), 0, UiKit.dp(this, 2));
+        page.addView(caption);
+
+        LinearLayout card = card();
+
+        TextView state = UiKit.text(this, "", 13, UiKit.TEXT, false);
+        state.setLineSpacing(0, 1.18f);
+        card.addView(state);
+
+        TextView note = UiKit.text(this,
+                "Testing override for this build only. Stable ignores it, and nothing here is a "
+                        + "purchase.", 12, UiKit.MUTED, false);
+        note.setLineSpacing(0, 1.15f);
+        LinearLayout.LayoutParams noteLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        noteLp.topMargin = UiKit.dp(this, 3);
+        card.addView(note, noteLp);
+
+        LinearLayout choices = new LinearLayout(this);
+        choices.setOrientation(LinearLayout.HORIZONTAL);
+        TextView free = choiceControl(Prefs.PRO_PREVIEW_FREE);
+        TextView pro = choiceControl(Prefs.PRO_PREVIEW_PRO);
+        choices.addView(free, choiceLp(0));
+        choices.addView(pro, choiceLp(8));
+        LinearLayout.LayoutParams choicesLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        choicesLp.topMargin = UiKit.dp(this, 12);
+        card.addView(choices, choicesLp);
+
+        proPreviewUpdate = () -> {
+            String selected = Prefs.proPreview(this);
+            state.setText("Selected: " + Prefs.proPreviewLabel(selected)
+                    + "\nEffective: " + OrbitProEntitlement.status(this));
+            styleChoice(free, Prefs.PRO_PREVIEW_FREE.equals(selected));
+            styleChoice(pro, Prefs.PRO_PREVIEW_PRO.equals(selected));
+            if (overviewBody != null) overviewBody.setText(bodyText(new Section("Overview", overview())));
+        };
+        proPreviewUpdate.run();
+
+        page.addView(card, cardLp());
+    }
+
+    /** One half of the two-option selector. Styling is applied by {@link #styleChoice}. */
+    private TextView choiceControl(String value) {
+        TextView choice = UiKit.text(this, Prefs.proPreviewLabel(value), 14, UiKit.TEXT, true);
+        choice.setGravity(Gravity.CENTER);
+        choice.setClickable(true);
+        choice.setFocusable(true);
+        UiKit.pressScale(choice);
+        choice.setOnClickListener(v -> {
+            if (Prefs.proPreview(this).equals(value)) return;
+            UiKit.haptic(v, android.view.HapticFeedbackConstants.CLOCK_TICK);
+            Prefs.setProPreview(this, value);
+            // Written with commit, so the entitlement this redraw reports is already the new one.
+            if (proPreviewUpdate != null) proPreviewUpdate.run();
+        });
+        return choice;
+    }
+
+    /** Selected is filled with the accent; unselected keeps the outlined control Orbit uses. */
+    private void styleChoice(TextView choice, boolean selected) {
+        if (selected) {
+            choice.setBackground(UiKit.rounded(UiKit.accent(this), 16, this));
+            choice.setTextColor(UiKit.onAccent(this));
+        } else {
+            choice.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2,
+                    UiKit.withAlpha(UiKit.accent(this), 90), UiKit.accent(this), 16, this));
+            choice.setTextColor(UiKit.TEXT);
+        }
+        choice.setContentDescription(choice.getText() + (selected ? ", selected" : ""));
+        choice.setSelected(selected);
+    }
+
+    private LinearLayout.LayoutParams choiceLp(int leftMarginDp) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                0, UiKit.dp(this, 44), 1);
+        lp.leftMargin = UiKit.dp(this, leftMarginDp);
+        return lp;
     }
 
     // ---- the collapsible parts --------------------------------------------------------------------

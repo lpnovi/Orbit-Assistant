@@ -103,18 +103,71 @@ public final class RoadmapFutureOnlyTest {
         String text = roadmapText();
         for (String shipped : ALREADY_SHIPPED) {
             assertFalse(shipped + " has already shipped and must not appear on the Roadmap",
-                    text.contains(shipped));
+                    offeredAsUpcoming(text, shipped));
         }
+    }
+
+    /**
+     * Whether the page offers this shipped feature as future work.
+     *
+     * <p>A premium companion to a shipped feature is a different feature, and it is genuinely
+     * unbuilt. Theme Studio shipped and must never be promised again; Theme Studio Pro has not
+     * shipped and belongs on the page. A plain substring check cannot tell those apart and would
+     * force the shipped name off this list, losing the guard that matters.
+     */
+    private static boolean offeredAsUpcoming(String text, String shipped) {
+        for (int at = text.indexOf(shipped); at >= 0; at = text.indexOf(shipped, at + 1)) {
+            if (!text.startsWith(shipped + " Pro", at)) return true;
+        }
+        return false;
     }
 
     /** The page leads with what Orbit is building, then what follows it. */
     @Test public void thePageLeadsWithTheCurrentPlan() {
         String text = roadmapText();
-        assertTrue("the page must say what is being built now", text.contains("NOW - 0.7.8.6"));
+        assertTrue("the page must say what is being built now", text.contains("NOW - 0.8"));
         assertTrue(text.contains("LATER"));
         assertTrue(text.contains("EXPLORING"));
 
-        assertTrue("Smart Vault is the current line", text.contains(OrbitRoadmap.CURRENT));
+        assertTrue("Orbit Pro is the current line", text.contains(OrbitRoadmap.CURRENT));
+    }
+
+    /**
+     * Orbit Pro is offered honestly on the page a user actually opens.
+     *
+     * <p>Two things have to be true at once here, and they pull in opposite directions. Orbit Pro
+     * is genuinely the current work, so it belongs at the top; and it cannot be bought, so the
+     * entry must not read like an offer. The page has to say both.
+     */
+    @Test public void orbitProIsPresentedAsUpcomingAndNotAsPurchasable() {
+        String text = roadmapText();
+        assertTrue("the page must say everything free today stays free",
+                text.contains("Everything free today stays free"));
+        assertTrue("and that nothing can be bought yet",
+                text.contains("nothing to buy yet"));
+        assertTrue("Theme Studio Pro is named as the first premium feature",
+                text.contains("Theme Studio Pro"));
+        String lower = text.toLowerCase();
+        for (String selling : new String[]{"subscribe", "upgrade now", "purchase", "checkout"}) {
+            assertFalse("a future-only page must never read like a checkout: " + selling,
+                    lower.contains(selling));
+        }
+    }
+
+    /**
+     * Smart Vault moved down the page rather than off it, and kept its promise.
+     *
+     * <p>Deferring a feature in the same release that starts a paid tier is exactly the shape of
+     * change a reader would misread as "it went behind Pro". The entry stays, below the active
+     * line, and says out loud that it is free.
+     */
+    @Test public void smartVaultIsStillListedAndStillFree() {
+        String text = roadmapText();
+        int current = text.indexOf(OrbitRoadmap.CURRENT);
+        int vault = text.indexOf("Smart Vault");
+        assertTrue("Smart Vault is still real planned work", vault >= 0);
+        assertTrue("but no longer the active line", vault > current);
+        assertTrue("and it is still a free Orbit feature", text.contains("always free"));
     }
 
     /**
