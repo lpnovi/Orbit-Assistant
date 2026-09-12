@@ -8,7 +8,6 @@ import static org.junit.Assert.assertTrue;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.LayerDrawable;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -24,13 +23,20 @@ import java.util.List;
 /**
  * Liquid Orbit Glass: the material, and the three ways it could stop being one.
  *
- * <p>v0.8.0.0-beta.4 made Orbit's floating chrome considerably richer, and the honest summary of the
- * complaint it answers is that the old treatment was a slightly see-through rounded rectangle. It is
- * now five layers - a body with real interior depth, accent refraction at its sides, a directional
- * specular sweep, a lit upper rim and a faint reflection at its foot. None of that is pixel-testable
- * and this file does not try; whether it is beautiful is a question for a Galaxy S25 Ultra.
+ * <p>v0.8.0.0-beta.4 made Orbit's floating chrome considerably richer, and v0.8.0.0-beta.5 made it
+ * considerably more restrained after a Galaxy S25 Ultra showed what "richer" had actually produced on a
+ * full-width search field: a broad white band across the top and a diagonal sweep across the whole
+ * control, which together read as polished metal rather than glass. The material is now a body with
+ * real interior depth, accent pooled at its sides, a <em>local</em> glint, an edge-bounded rim and a
+ * faint bounce at the foot - and every one of those is sized from the control's height rather than its
+ * shape. None of it is pixel-testable and this file does not try; whether it is beautiful is a question
+ * for the device.
  *
- * <p>What a machine can settle is the three failures that would each be quiet and expensive.
+ * <p>What a machine can settle is the four failures that would each be quiet and expensive.
+ *
+ * <p><b>A highlight that grows with the control.</b> The Beta 4 fault, and the one this release exists
+ * for. Asserted as geometry: a control ten times wider than another of the same height must get an
+ * identical highlight, and the rim must stay bounded in absolute terms rather than as a share.
  *
  * <p><b>A second glass.</b> Making the material richer is exactly the moment somebody writes a
  * nicer one next to the old one, leaves Chats and the Vault on the plain path, and points the Theme
@@ -59,35 +65,36 @@ public final class LiquidGlassTest {
         UiKit.syncTheme(context);
     }
 
+    /** The Liquid material on Orbit's own theme, which is what these tests are mostly about. */
     private OrbitGlass.Palette palette(OrbitTheme theme, OrbitProStyle style) {
-        return OrbitGlass.Palette.of(OrbitThemeTokens.resolve(context, theme), style);
+        return OrbitGlass.Palette.of(OrbitThemeTokens.resolve(context, theme), style)
+                .asMaterial(OrbitTheme.MATERIAL_LIQUID);
     }
 
-    private LayerDrawable glass(OrbitProStyle style) {
-        return OrbitGlass.surfaceDrawable(context,
-                palette(OrbitTheme.orbitDefault(), style), OrbitGlass.RADIUS_DP);
+    private OrbitGlass.Finish finish(OrbitProStyle style) {
+        return OrbitGlass.finishFor(palette(OrbitTheme.orbitDefault(), style));
     }
 
-    /** Every colour in one layer of the material, so a change to it can be seen rather than argued. */
-    private static int[] layerColors(LayerDrawable glass, int layer) {
-        GradientDrawable gradient = (GradientDrawable) glass.getDrawable(layer);
-        int[] colors = gradient.getColors();
-        assertNotNull("layer " + layer + " must be a gradient, not a flat fill", colors);
-        return colors;
+    private OrbitGlass.Finish finish(String material, OrbitProStyle style) {
+        return OrbitGlass.finishFor(
+                OrbitGlass.Palette.of(OrbitThemeTokens.resolve(context, OrbitTheme.orbitDefault()),
+                        style).asMaterial(material));
     }
 
-    /** The strongest alpha anywhere in one layer. What "how lit is this" actually reduces to. */
-    private static int peakAlpha(LayerDrawable glass, int layer) {
-        int peak = 0;
-        for (int color : layerColors(glass, layer)) peak = Math.max(peak, Color.alpha(color));
-        return peak;
+    /**
+     * A glass surface laid out at a real control size, so its bounds-derived geometry is resolved.
+     *
+     * <p>Every highlight in the v0.8.0.0-beta.5 material is a function of the height it is drawn at,
+     * so a drawable that was never given bounds has no geometry to assert about.
+     */
+    private OrbitGlass.GlassDrawable laidOut(String material, OrbitProStyle style,
+                                             int width, int height) {
+        OrbitGlass.GlassDrawable glass = OrbitGlass.surfaceDrawable(context,
+                OrbitGlass.Palette.of(OrbitThemeTokens.resolve(context, OrbitTheme.orbitDefault()),
+                        style).asMaterial(material), OrbitGlass.RADIUS_DP);
+        glass.setBounds(0, 0, width, height);
+        return glass;
     }
-
-    private static final int BODY = 0;
-    private static final int REFRACTION = 1;
-    private static final int SPECULAR = 2;
-    private static final int RIM = 3;
-    private static final int REFLECTION = 4;
 
     // ---- 1, 2, 3 and 15. one implementation, and everything points at it ---------------------------
 
@@ -115,31 +122,35 @@ public final class LiquidGlassTest {
         assertTrue("there must be exactly one glass: " + offenders, offenders.isEmpty());
     }
 
-    /** 2 and 3. The real surfaces and the Theme Studio sample all get their glass from one place. */
-    @Test public void everyGlassConsumerStillReachesOrbitGlass() {
+    /** 2 and 3. The real surfaces and the Theme Studio sample all get their surface from one place. */
+    @Test public void everyGlassConsumerStillReachesTheSharedResolver() {
         for (String file : new String[]{"MainActivity.java", "OrbitVaultActivity.java",
                 "GlassStylePreview.java"}) {
-            assertTrue(file + " must get its glass from OrbitGlass",
-                    ThemeStudioProTest.readSourceFile(file).contains("OrbitGlass."));
+            assertTrue(file + " must get its floating surface from OrbitFloatingSurface",
+                    ThemeStudioProTest.readSourceFile(file).contains("OrbitFloatingSurface."));
         }
         assertTrue("the Theme Studio sample must be drawn by the shared builder",
                 ThemeStudioProTest.readSourceFile("GlassStylePreview.java")
-                        .contains("OrbitGlass.surfaceDrawable("));
+                        .contains("OrbitFloatingSurface.surfaceDrawable("));
         assertFalse("and must not hand-roll a translucent rectangle",
                 ThemeStudioProTest.readSourceFile("GlassStylePreview.java")
                         .contains("GradientDrawable"));
+        assertTrue("and OrbitGlass must still be the thing that renders the glass itself",
+                ThemeStudioProTest.readSourceFile("OrbitFloatingSurface.java")
+                        .contains("OrbitGlass.surfaceDrawable("));
     }
 
-    /** The material is the same five layers whichever supported Android version draws it. */
-    @Test public void theMaterialIsFiveGradientLayers() {
-        LayerDrawable glass = glass(OrbitProStyle.DEFAULT);
-        assertEquals(5, glass.getNumberOfLayers());
-        for (int i = 0; i < glass.getNumberOfLayers(); i++) {
-            assertTrue("layer " + i + " must be a gradient",
-                    glass.getDrawable(i) instanceof GradientDrawable);
-        }
-        assertTrue("the body must have real interior depth rather than two stops",
-                layerColors(glass, BODY).length >= 4);
+    /** The material is one bounds-aware drawable whose body has real interior depth. */
+    @Test public void theMaterialIsOneBoundsAwareDrawable() {
+        OrbitGlass.GlassDrawable glass =
+                laidOut(OrbitTheme.MATERIAL_LIQUID, OrbitProStyle.DEFAULT, 900, 150);
+        OrbitGlass.Finish finish = glass.finish();
+        assertEquals(OrbitTheme.MATERIAL_LIQUID, finish.material);
+        assertTrue("the body must be translucent", finish.bodyAlpha < 255);
+        assertTrue("and must travel between two different tones",
+                finish.bodyTop != finish.bodyFoot);
+        assertTrue("the glint must have somewhere to fall", glass.specularRadiusPx() > 0f);
+        assertTrue("and the rim must be a real thickness", glass.rimHeightPx() > 0f);
     }
 
     // ---- 4. a Beta 3 install comes back intact -----------------------------------------------------
@@ -186,29 +197,169 @@ public final class LiquidGlassTest {
      * which is the reason thin glass still looks like glass rather than fading towards nothing.
      */
     @Test public void glassOpacityProducesThreeDifferentMaterials() {
-        LayerDrawable thin = glass(
-                OrbitProStyle.DEFAULT.withGlassOpacity(OrbitProStyle.GLASS_OPACITY_MIN));
-        LayerDrawable middle = glass(OrbitProStyle.DEFAULT);
-        LayerDrawable solid = glass(
-                OrbitProStyle.DEFAULT.withGlassOpacity(OrbitProStyle.GLASS_OPACITY_MAX));
+        OrbitGlass.Finish thin =
+                finish(OrbitProStyle.DEFAULT.withGlassOpacity(OrbitProStyle.GLASS_OPACITY_MIN));
+        OrbitGlass.Finish middle = finish(OrbitProStyle.DEFAULT);
+        OrbitGlass.Finish dense =
+                finish(OrbitProStyle.DEFAULT.withGlassOpacity(OrbitProStyle.GLASS_OPACITY_MAX));
 
-        assertTrue("the body must get steadily more substantial",
-                peakAlpha(thin, BODY) < peakAlpha(middle, BODY));
-        assertTrue(peakAlpha(middle, BODY) < peakAlpha(solid, BODY));
-        assertTrue("and the low end must be genuinely translucent",
-                peakAlpha(thin, BODY) < 160);
-        assertTrue("while the high end never becomes an opaque card",
-                peakAlpha(solid, BODY) < 255);
+        assertTrue("the body must get steadily more substantial", thin.bodyAlpha < middle.bodyAlpha);
+        assertTrue(middle.bodyAlpha < dense.bodyAlpha);
+        assertTrue("and the low end must be genuinely translucent", thin.bodyAlpha < 160);
+        assertTrue("while the high end never becomes an opaque card", dense.bodyAlpha < 255);
 
         assertEquals("light on the surface does not fade because the material got thinner",
-                peakAlpha(middle, SPECULAR), peakAlpha(thin, SPECULAR));
-        assertEquals(peakAlpha(middle, RIM), peakAlpha(thin, RIM));
+                middle.specularAlpha, thin.specularAlpha, 0.0001f);
+        assertEquals(middle.rimAlpha, thin.rimAlpha, 0.0001f);
 
         int thinFill = OrbitGlass.effectiveFill(palette(OrbitTheme.orbitDefault(),
                 OrbitProStyle.DEFAULT.withGlassOpacity(OrbitProStyle.GLASS_OPACITY_MIN)));
-        int solidFill = OrbitGlass.effectiveFill(palette(OrbitTheme.orbitDefault(),
+        int denseFill = OrbitGlass.effectiveFill(palette(OrbitTheme.orbitDefault(),
                 OrbitProStyle.DEFAULT.withGlassOpacity(OrbitProStyle.GLASS_OPACITY_MAX)));
-        assertTrue("and what a label is read against must actually change", thinFill != solidFill);
+        assertTrue("and what a label is read against must actually change", thinFill != denseFill);
+    }
+
+    /**
+     * 22 and 23. The highlight does not grow because a control is wide.
+     *
+     * <p>This is the whole of the Beta 5 repair, asserted as geometry rather than as taste. The Chats
+     * search field on a Galaxy S25 Ultra is roughly a thousand pixels wide and a hundred and fifty
+     * tall, and in Beta 4 both the rim and the specular sweep were shares of that box: a white band
+     * across the top quarter, and a diagonal that on a box of that aspect ratio is very nearly a
+     * horizontal sweep. The honest description of the result was a polished metal tube.
+     *
+     * <p>So the rim is bounded in dp and the glint's radius is a multiple of the height. A control ten
+     * times wider than another of the same height must get an identical highlight, and both must stay
+     * small relative to the width.
+     */
+    @Test public void aWideControlDoesNotGetAWiderHighlight() {
+        int height = 150;
+        OrbitGlass.GlassDrawable narrow =
+                laidOut(OrbitTheme.MATERIAL_LIQUID, OrbitProStyle.DEFAULT, 220, height);
+        OrbitGlass.GlassDrawable wide =
+                laidOut(OrbitTheme.MATERIAL_LIQUID, OrbitProStyle.DEFAULT, 2200, height);
+
+        assertEquals("the rim must be the same thickness whatever the width",
+                narrow.rimHeightPx(), wide.rimHeightPx(), 0.01f);
+        assertEquals("and the glint must reach exactly as far",
+                narrow.specularRadiusPx(), wide.specularRadiusPx(), 0.01f);
+
+        // Bounded twice: by an absolute thickness, and by a share of the height. Whichever binds, the
+        // rim is a lit edge rather than the band across the top quarter that Beta 4 drew.
+        float cap = UiKit.dp(context, OrbitGlass.RIM_MAX_DP);
+        assertTrue("the rim must stay a lit edge rather than a band", wide.rimHeightPx() <= cap);
+        assertTrue("and must never be a quarter of the surface, which is what Beta 4 drew",
+                wide.rimHeightPx() <= height * OrbitGlass.RIM_MAX_HEIGHT_SHARE);
+        assertTrue("the glint must cover a fraction of a wide control rather than sweeping it",
+                wide.specularRadiusPx() < 2200 * 0.25f);
+
+        // A short control is held to the same share, so a small chip is not half edge light.
+        OrbitGlass.GlassDrawable chip =
+                laidOut(OrbitTheme.MATERIAL_LIQUID, OrbitProStyle.DEFAULT, 120, 40);
+        assertTrue("a short control's rim is bounded by its own height",
+                chip.rimHeightPx() <= Math.max(1f, 40 * OrbitGlass.RIM_MAX_HEIGHT_SHARE));
+        assertTrue("and its glint shrinks with it", chip.specularRadiusPx()
+                < wide.specularRadiusPx());
+
+        // And the peak white a Liquid surface may carry is well under half, at the strongest edge.
+        OrbitGlass.Finish lit =
+                finish(OrbitProStyle.DEFAULT.withGlassEdge(OrbitProStyle.GLASS_EDGE_MAX));
+        assertTrue("even the strongest specular stays a highlight", lit.specularAlpha < 0.25f);
+        assertTrue("and the strongest rim is not a white line", lit.rimAlpha < 0.35f);
+    }
+
+    /**
+     * 22 again, against the release it repairs. Beta 4's own numbers must no longer be reachable.
+     *
+     * <p>Written against the constants rather than against literals, so it keeps meaning something if
+     * they are retuned again, and asserting the direction of the change: the shipped highlight is
+     * quieter than it was, and the ceiling it is bounded by is lower than the old base.
+     */
+    @Test public void theShippedHighlightIsQuieterThanBetaFour() {
+        // The Beta 4 base values, recorded here because they are the thing being moved away from.
+        float betaFourSpecular = 0.15f;
+        float betaFourRim = 0.24f;
+        assertTrue("the specular base must have come down",
+                OrbitGlass.BASE_SPECULAR_ALPHA < betaFourSpecular);
+        assertTrue("and the rim base with it", OrbitGlass.BASE_RIM_LIGHT_ALPHA < betaFourRim);
+        assertTrue("the body must keep more of the theme's own surface than it did",
+                OrbitGlass.BASE_FILL_ACCENT_SHARE < 0.42f);
+        assertTrue(OrbitGlass.BASE_HIGHLIGHT_SHARE < 0.14f);
+    }
+
+    /**
+     * 20, 21, 24 and 25. The three materials are three different things.
+     *
+     * <p>Frosted is not Liquid with the sliders down, and Solid is not glass at all. Asserted on the
+     * resolved configuration, so "quieter" is a fact about what gets drawn rather than an intention
+     * recorded in a comment.
+     */
+    @Test public void theThreeMaterialsAreGenuinelyDifferent() {
+        OrbitGlass.Finish frosted = finish(OrbitTheme.MATERIAL_FROSTED, OrbitProStyle.DEFAULT);
+        OrbitGlass.Finish liquid = finish(OrbitTheme.MATERIAL_LIQUID, OrbitProStyle.DEFAULT);
+
+        assertTrue("Frosted must be less reflective than Liquid",
+                frosted.specularAlpha < liquid.specularAlpha);
+        assertTrue("with a softer rim", frosted.rimAlpha < liquid.rimAlpha);
+        assertTrue("a fainter bounce", frosted.reflectionAlpha < liquid.reflectionAlpha);
+        assertTrue("and less accent in it", frosted.refractionAlpha < liquid.refractionAlpha);
+        assertTrue("its glint must be wider and softer rather than local and bright",
+                frosted.specularSpread > liquid.specularSpread);
+
+        // Milky rather than merely dark: the body is lifted off the plain surface colour by a few
+        // percent of white, which is what "frosted" has to mean on a dark theme.
+        int surface = OrbitThemeTokens.resolve(context, OrbitTheme.orbitDefault()).surface;
+        assertTrue("Frosted's body must be lifted off the plain surface colour",
+                OrbitContrast.relativeLuminance(frosted.bodyTop)
+                        > OrbitContrast.relativeLuminance(surface));
+
+        // And it carries less of the theme's accent, measured by how much changing the accent moves it.
+        // Comparing the two body colours directly cannot settle this, because Frosted's milk moves it
+        // away from the surface too; how strongly each material responds to the accent is the question
+        // that actually distinguishes them.
+        double frostedSwing = accentSwing(OrbitTheme.MATERIAL_FROSTED);
+        double liquidSwing = accentSwing(OrbitTheme.MATERIAL_LIQUID);
+        assertTrue("Frosted must follow the accent less closely than Liquid, got "
+                        + frostedSwing + " against " + liquidSwing,
+                frostedSwing < liquidSwing);
+    }
+
+    /** How far a material's body moves when the theme's accent changes hue completely. */
+    private double accentSwing(String material) {
+        OrbitTheme cool = OrbitTheme.orbitDefault().withAccent("#7C5BFF").withMaterial(material);
+        OrbitTheme warm = OrbitTheme.orbitDefault().withAccent("#FF8A3D").withMaterial(material);
+        int coolTop = OrbitGlass.finishFor(
+                OrbitGlass.Palette.of(OrbitThemeTokens.resolve(context, cool),
+                        OrbitProStyle.DEFAULT)).bodyTop;
+        int warmTop = OrbitGlass.finishFor(
+                OrbitGlass.Palette.of(OrbitThemeTokens.resolve(context, warm),
+                        OrbitProStyle.DEFAULT)).bodyTop;
+        return distanceFrom(coolTop, warmTop);
+    }
+
+    /** How far one colour is from another, for the claims that are about colour rather than light. */
+    private static double distanceFrom(int a, int b) {
+        double dr = Color.red(a) - Color.red(b);
+        double dg = Color.green(a) - Color.green(b);
+        double db = Color.blue(a) - Color.blue(b);
+        return Math.sqrt(dr * dr + dg * dg + db * db);
+    }
+
+    /** Solid is answered outside the glass renderer entirely. */
+    @Test public void solidIsNotGlass() {
+        // Solid is answered by OrbitFloatingSurface and never reaches a finish at all.
+        OrbitGlass.Palette solid = OrbitGlass.Palette.of(
+                OrbitThemeTokens.resolve(context, OrbitTheme.orbitDefault()), OrbitProStyle.DEFAULT)
+                .asMaterial(OrbitTheme.MATERIAL_SOLID);
+        assertTrue("Solid must be an opaque gradient, not glass",
+                OrbitFloatingSurface.surfaceDrawable(context, solid, OrbitGlass.RADIUS_DP)
+                        instanceof GradientDrawable);
+        assertFalse(OrbitFloatingSurface.surfaceDrawable(context, solid, OrbitGlass.RADIUS_DP)
+                instanceof OrbitGlass.GlassDrawable);
+        assertFalse("and must not be described as tunable", OrbitFloatingSurface.tunable(
+                OrbitTheme.MATERIAL_SOLID));
+        assertTrue(OrbitFloatingSurface.tunable(OrbitTheme.MATERIAL_FROSTED));
+        assertTrue(OrbitFloatingSurface.tunable(OrbitTheme.MATERIAL_LIQUID));
     }
 
     /**
@@ -225,11 +376,10 @@ public final class LiquidGlassTest {
         OrbitProStyle infused = OrbitProStyle.DEFAULT.withGlassTint(OrbitProStyle.GLASS_TINT_MAX);
 
         assertEquals("neutral glass carries no accent at its edges at all",
-                0, peakAlpha(glass(neutral), REFRACTION));
-        assertTrue("the default carries some",
-                peakAlpha(glass(standard), REFRACTION) > 0);
+                0f, finish(neutral).refractionAlpha, 0.0001f);
+        assertTrue("the default carries some", finish(standard).refractionAlpha > 0f);
         assertTrue("and the maximum carries more",
-                peakAlpha(glass(infused), REFRACTION) > peakAlpha(glass(standard), REFRACTION));
+                finish(infused).refractionAlpha > finish(standard).refractionAlpha);
         assertTrue("bounded, so it stays refraction rather than a block of accent",
                 infused.glassRefractionAlpha() <= OrbitProStyle.MAX_REFRACTION_ALPHA);
 
@@ -257,14 +407,14 @@ public final class LiquidGlassTest {
         OrbitProStyle polished = OrbitProStyle.DEFAULT;
         OrbitProStyle lit = OrbitProStyle.DEFAULT.withGlassEdge(OrbitProStyle.GLASS_EDGE_MAX);
 
-        for (int layer : new int[]{SPECULAR, RIM}) {
-            assertTrue("layer " + layer + " must strengthen from subdued to polished",
-                    peakAlpha(glass(flat), layer) < peakAlpha(glass(polished), layer));
-            assertTrue("layer " + layer + " must strengthen from polished to pronounced",
-                    peakAlpha(glass(polished), layer) < peakAlpha(glass(lit), layer));
-            assertTrue("and must never disappear entirely",
-                    peakAlpha(glass(flat), layer) > 0);
-        }
+        assertTrue("the specular must strengthen from subdued to polished",
+                finish(flat).specularAlpha < finish(polished).specularAlpha);
+        assertTrue("and from polished to pronounced",
+                finish(polished).specularAlpha < finish(lit).specularAlpha);
+        assertTrue("while never disappearing entirely", finish(flat).specularAlpha > 0f);
+        assertTrue("the rim must do the same", finish(flat).rimAlpha < finish(polished).rimAlpha);
+        assertTrue(finish(polished).rimAlpha < finish(lit).rimAlpha);
+        assertTrue(finish(flat).rimAlpha > 0f);
         assertTrue("the hairline must strengthen with it",
                 lit.glassBorderAlpha() > flat.glassBorderAlpha());
 
@@ -274,9 +424,9 @@ public final class LiquidGlassTest {
         assertTrue(lit.glassReflectionAlpha() <= OrbitProStyle.MAX_REFLECTION_ALPHA);
         assertTrue(lit.glassBorderAlpha() <= OrbitProStyle.MAX_BORDER_ALPHA);
         assertTrue("the rim is a highlight, never an opaque outline",
-                peakAlpha(glass(lit), RIM) < 128);
+                finish(lit).rimAlpha < 0.5f);
         assertTrue("and the reflection stays understated",
-                peakAlpha(glass(lit), REFLECTION) < peakAlpha(glass(lit), RIM));
+                finish(lit).reflectionAlpha < finish(lit).rimAlpha);
     }
 
     // ---- 8 to 11. it stays readable over everything Orbit can draw behind it -----------------------
@@ -289,16 +439,21 @@ public final class LiquidGlassTest {
      * composited over the page and deliberately excludes the light on top of it, so this is the
      * dimmest part of the control rather than the brightest.
      */
-    @Test public void liquidGlassStaysReadableOnEveryShippedPage() {
-        for (int opacity : new int[]{OrbitProStyle.GLASS_OPACITY_MIN,
-                OrbitProStyle.GLASS_OPACITY_DEFAULT, OrbitProStyle.GLASS_OPACITY_MAX}) {
-            for (int tint : new int[]{OrbitProStyle.GLASS_TINT_MIN,
-                    OrbitProStyle.GLASS_TINT_DEFAULT, OrbitProStyle.GLASS_TINT_MAX}) {
-                for (OrbitTheme preset : OrbitTheme.builtIns()) {
-                    OrbitProStyle style = preset.pro
-                            .withGlassOpacity(opacity).withGlassTint(tint);
-                    int fill = OrbitGlass.effectiveFill(palette(preset, style));
-                    assertReadable(preset.name + " at opacity " + opacity + ", tint " + tint, fill);
+    @Test public void everyMaterialStaysReadableOnEveryShippedPage() {
+        for (String material : OrbitTheme.materials()) {
+            for (int opacity : new int[]{OrbitProStyle.GLASS_OPACITY_MIN,
+                    OrbitProStyle.GLASS_OPACITY_DEFAULT, OrbitProStyle.GLASS_OPACITY_MAX}) {
+                for (int tint : new int[]{OrbitProStyle.GLASS_TINT_MIN,
+                        OrbitProStyle.GLASS_TINT_DEFAULT, OrbitProStyle.GLASS_TINT_MAX}) {
+                    for (OrbitTheme preset : OrbitTheme.builtIns()) {
+                        OrbitProStyle style = preset.pro
+                                .withGlassOpacity(opacity).withGlassTint(tint);
+                        OrbitGlass.Palette p = OrbitGlass.Palette
+                                .of(OrbitThemeTokens.resolve(context, preset), style)
+                                .asMaterial(material);
+                        assertReadable(preset.name + " " + material + " at opacity " + opacity
+                                + ", tint " + tint, OrbitFloatingSurface.effectiveFill(p));
+                    }
                 }
             }
         }
@@ -324,16 +479,18 @@ public final class LiquidGlassTest {
                 .withGlowStrength(OrbitProStyle.GLOW_STRENGTH_MAX)
                 .withGlowSize(OrbitProStyle.GLOW_SIZE_MAX);
 
-        for (OrbitProStyle style : new OrbitProStyle[]{linear, glow}) {
-            for (OrbitTheme preset : OrbitTheme.builtIns()) {
-                OrbitTheme themed = preset.withPro(style);
-                OrbitThemeTokens tokens = OrbitThemeTokens.resolve(context, themed);
-                int behind = OrbitBackground.effectivePageColor(context,
-                        OrbitBackground.Page.of(tokens, style));
-                int fill = OrbitGlass.effectiveFill(
-                        OrbitGlass.Palette.over(tokens, style, behind));
-                assertReadable(preset.name + " glass over "
-                        + style.backgroundModeLabel(), fill);
+        for (String material : OrbitTheme.materials()) {
+            for (OrbitProStyle style : new OrbitProStyle[]{linear, glow}) {
+                for (OrbitTheme preset : OrbitTheme.builtIns()) {
+                    OrbitTheme themed = preset.withPro(style).withMaterial(material);
+                    OrbitThemeTokens tokens = OrbitThemeTokens.resolve(context, themed);
+                    int behind = OrbitBackground.effectivePageColor(context,
+                            OrbitBackground.Page.of(tokens, style));
+                    int fill = OrbitFloatingSurface.effectiveFill(
+                            OrbitGlass.Palette.over(tokens, style, behind));
+                    assertReadable(preset.name + " " + material + " over "
+                            + style.backgroundModeLabel(), fill);
+                }
             }
         }
     }

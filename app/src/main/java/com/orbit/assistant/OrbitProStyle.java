@@ -159,6 +159,21 @@ public final class OrbitProStyle {
     public static final int GLOW_STRENGTH_MAX = 100;
     public static final int GLOW_STRENGTH_DEFAULT = 45;
 
+    /**
+     * How far a linear background travels from the theme's Background colour towards the effect one.
+     *
+     * <p>Added in v0.8.0.0-beta.5 because the Beta 4 control was all or nothing: a linear background
+     * ran the whole way to the premium colour, which is the right maximum and a poor only option.
+     * Most pages want a colour cast rather than a two-colour sweep.
+     *
+     * <p>The default is the maximum, and that is a compatibility decision rather than a taste one. A
+     * theme written by Beta 4 has no such key, so it has to read back as the full gradient its author
+     * chose; anything else would quietly weaken every gradient a tester has already built.
+     */
+    public static final int GRADIENT_STRENGTH_MIN = 15;
+    public static final int GRADIENT_STRENGTH_MAX = 100;
+    public static final int GRADIENT_STRENGTH_DEFAULT = GRADIENT_STRENGTH_MAX;
+
     /** How far the glow spreads, as a share of the longer edge of the page. */
     public static final int GLOW_SIZE_MIN = 25;
     public static final int GLOW_SIZE_MAX = 100;
@@ -227,18 +242,21 @@ public final class OrbitProStyle {
     public final int glowStrength;
     public final int glowSize;
     public final int glowPosition;
+    public final int gradientStrength;
 
     /** Orbit exactly as it shipped. What Free resolves to, and what an older theme file becomes. */
     public static final OrbitProStyle DEFAULT = new OrbitProStyle(
             BUBBLE_RADIUS_DEFAULT, OUTLINE_DEFAULT,
             GLASS_OPACITY_DEFAULT, GLASS_TINT_DEFAULT, GLASS_EDGE_DEFAULT,
             BACKGROUND_MODE_DEFAULT, EFFECT_COLOR_DEFAULT, GRADIENT_DIRECTION_DEFAULT,
-            GLOW_STRENGTH_DEFAULT, GLOW_SIZE_DEFAULT, GLOW_POSITION_DEFAULT);
+            GLOW_STRENGTH_DEFAULT, GLOW_SIZE_DEFAULT, GLOW_POSITION_DEFAULT,
+            GRADIENT_STRENGTH_DEFAULT);
 
     private OrbitProStyle(int bubbleRadiusDp, int bubbleOutline, int glassOpacity,
                           int glassTint, int glassEdge, int backgroundMode,
                           String backgroundEffectColor, int gradientDirection,
-                          int glowStrength, int glowSize, int glowPosition) {
+                          int glowStrength, int glowSize, int glowPosition,
+                          int gradientStrength) {
         this.bubbleRadiusDp = clamp(bubbleRadiusDp, BUBBLE_RADIUS_MIN, BUBBLE_RADIUS_MAX);
         this.bubbleOutline = clamp(bubbleOutline, OUTLINE_OFF, OUTLINE_DEFINED);
         this.glassOpacity = clamp(glassOpacity, GLASS_OPACITY_MIN, GLASS_OPACITY_MAX);
@@ -250,6 +268,8 @@ public final class OrbitProStyle {
         this.glowStrength = clamp(glowStrength, GLOW_STRENGTH_MIN, GLOW_STRENGTH_MAX);
         this.glowSize = clamp(glowSize, GLOW_SIZE_MIN, GLOW_SIZE_MAX);
         this.glowPosition = clamp(glowPosition, GLOW_TOP, GLOW_BOTTOM);
+        this.gradientStrength =
+                clamp(gradientStrength, GRADIENT_STRENGTH_MIN, GRADIENT_STRENGTH_MAX);
     }
 
     /**
@@ -265,72 +285,106 @@ public final class OrbitProStyle {
                                    int glassTint, int glassEdge) {
         return new OrbitProStyle(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, glassEdge,
                 BACKGROUND_MODE_DEFAULT, EFFECT_COLOR_DEFAULT, GRADIENT_DIRECTION_DEFAULT,
-                GLOW_STRENGTH_DEFAULT, GLOW_SIZE_DEFAULT, GLOW_POSITION_DEFAULT);
+                GLOW_STRENGTH_DEFAULT, GLOW_SIZE_DEFAULT, GLOW_POSITION_DEFAULT,
+                GRADIENT_STRENGTH_DEFAULT);
     }
 
-    /** Every value at once. Used by storage and by the theme file codec, which have all of them. */
+    /**
+     * The eleven values that existed before gradient strength, at its default.
+     *
+     * <p>Kept so that a caller describing a Beta 4 appearance can still say so in one call and get the
+     * Beta 4 result, which is a full-strength gradient.
+     */
     public static OrbitProStyle of(int bubbleRadiusDp, int bubbleOutline, int glassOpacity,
                                    int glassTint, int glassEdge, int backgroundMode,
                                    String backgroundEffectColor, int gradientDirection,
                                    int glowStrength, int glowSize, int glowPosition) {
         return new OrbitProStyle(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, glassEdge,
                 backgroundMode, backgroundEffectColor, gradientDirection,
-                glowStrength, glowSize, glowPosition);
+                glowStrength, glowSize, glowPosition, GRADIENT_STRENGTH_DEFAULT);
+    }
+
+    /** Every value at once. Used by storage and by the theme file codec, which have all of them. */
+    public static OrbitProStyle of(int bubbleRadiusDp, int bubbleOutline, int glassOpacity,
+                                   int glassTint, int glassEdge, int backgroundMode,
+                                   String backgroundEffectColor, int gradientDirection,
+                                   int glowStrength, int glowSize, int glowPosition,
+                                   int gradientStrength) {
+        return new OrbitProStyle(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, glassEdge,
+                backgroundMode, backgroundEffectColor, gradientDirection,
+                glowStrength, glowSize, glowPosition, gradientStrength);
     }
 
     public OrbitProStyle withBubbleRadiusDp(int value) {
         return of(value, bubbleOutline, glassOpacity, glassTint, glassEdge, backgroundMode,
-                backgroundEffectColor, gradientDirection, glowStrength, glowSize, glowPosition);
+                backgroundEffectColor, gradientDirection, glowStrength, glowSize,
+                glowPosition, gradientStrength);
     }
 
     public OrbitProStyle withBubbleOutline(int value) {
         return of(bubbleRadiusDp, value, glassOpacity, glassTint, glassEdge, backgroundMode,
-                backgroundEffectColor, gradientDirection, glowStrength, glowSize, glowPosition);
+                backgroundEffectColor, gradientDirection, glowStrength, glowSize,
+                glowPosition, gradientStrength);
     }
 
     public OrbitProStyle withGlassOpacity(int value) {
         return of(bubbleRadiusDp, bubbleOutline, value, glassTint, glassEdge, backgroundMode,
-                backgroundEffectColor, gradientDirection, glowStrength, glowSize, glowPosition);
+                backgroundEffectColor, gradientDirection, glowStrength, glowSize,
+                glowPosition, gradientStrength);
     }
 
     public OrbitProStyle withGlassTint(int value) {
         return of(bubbleRadiusDp, bubbleOutline, glassOpacity, value, glassEdge, backgroundMode,
-                backgroundEffectColor, gradientDirection, glowStrength, glowSize, glowPosition);
+                backgroundEffectColor, gradientDirection, glowStrength, glowSize,
+                glowPosition, gradientStrength);
     }
 
     public OrbitProStyle withGlassEdge(int value) {
         return of(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, value, backgroundMode,
-                backgroundEffectColor, gradientDirection, glowStrength, glowSize, glowPosition);
+                backgroundEffectColor, gradientDirection, glowStrength, glowSize,
+                glowPosition, gradientStrength);
     }
 
     public OrbitProStyle withBackgroundMode(int value) {
         return of(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, glassEdge, value,
-                backgroundEffectColor, gradientDirection, glowStrength, glowSize, glowPosition);
+                backgroundEffectColor, gradientDirection, glowStrength, glowSize,
+                glowPosition, gradientStrength);
     }
 
     public OrbitProStyle withBackgroundEffectColor(String value) {
         return of(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, glassEdge, backgroundMode,
-                value, gradientDirection, glowStrength, glowSize, glowPosition);
+                value, gradientDirection, glowStrength, glowSize,
+                glowPosition, gradientStrength);
     }
 
     public OrbitProStyle withGradientDirection(int value) {
         return of(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, glassEdge, backgroundMode,
-                backgroundEffectColor, value, glowStrength, glowSize, glowPosition);
+                backgroundEffectColor, value, glowStrength, glowSize,
+                glowPosition, gradientStrength);
     }
 
     public OrbitProStyle withGlowStrength(int value) {
         return of(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, glassEdge, backgroundMode,
-                backgroundEffectColor, gradientDirection, value, glowSize, glowPosition);
+                backgroundEffectColor, gradientDirection, value, glowSize,
+                glowPosition, gradientStrength);
     }
 
     public OrbitProStyle withGlowSize(int value) {
         return of(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, glassEdge, backgroundMode,
-                backgroundEffectColor, gradientDirection, glowStrength, value, glowPosition);
+                backgroundEffectColor, gradientDirection, glowStrength, value,
+                glowPosition, gradientStrength);
     }
 
     public OrbitProStyle withGlowPosition(int value) {
         return of(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, glassEdge, backgroundMode,
-                backgroundEffectColor, gradientDirection, glowStrength, glowSize, value);
+                backgroundEffectColor, gradientDirection, glowStrength, glowSize,
+                value, gradientStrength);
+    }
+
+    public OrbitProStyle withGradientStrength(int value) {
+        return of(bubbleRadiusDp, bubbleOutline, glassOpacity, glassTint, glassEdge, backgroundMode,
+                backgroundEffectColor, gradientDirection, glowStrength, glowSize,
+                glowPosition, value);
     }
 
     /**
@@ -370,7 +424,8 @@ public final class OrbitProStyle {
                 && gradientDirection == other.gradientDirection
                 && glowStrength == other.glowStrength
                 && glowSize == other.glowSize
-                && glowPosition == other.glowPosition;
+                && glowPosition == other.glowPosition
+                && gradientStrength == other.gradientStrength;
     }
 
     /** True when this theme asks for a background effect at all, entitlement aside. */
@@ -539,6 +594,21 @@ public final class OrbitProStyle {
         return UiKit.accentForName(c, backgroundEffectColor);
     }
 
+    /**
+     * The colour the far end of a linear background actually reaches.
+     *
+     * <p>Strength is expressed as how far the effect colour travels from the base rather than as an
+     * opacity, and that distinction is the whole reason this control is worth having. Fading a finished
+     * gradient towards transparent would put the window behind the page into it, would disagree with
+     * the system bars, and would make a low setting look like a mistake. Pulling the far endpoint back
+     * towards the theme's Background colour instead keeps the page a solid, coherent thing at every
+     * setting: low is a colour cast on the user's own background, high is the two-colour sweep.
+     */
+    public int gradientEndColor(Context c, int themeAccent, int base) {
+        int effect = backgroundEffectColor(c, themeAccent);
+        return UiKit.blend(effect, base, gradientStrength / (float) GRADIENT_STRENGTH_MAX);
+    }
+
     /** How opaque the radial glow is at its centre. Bounded, so the page stays readable. */
     public float glowAlpha() {
         return MAX_GLOW_ALPHA * (glowStrength / (float) GLOW_STRENGTH_MAX);
@@ -656,6 +726,17 @@ public final class OrbitProStyle {
         return glowStrengthLabel(glowStrength);
     }
 
+    public static String gradientStrengthLabel(int value) {
+        if (value == GRADIENT_STRENGTH_MAX) return "Full";
+        if (value <= 30) return "Whisper";
+        if (value <= 55) return "Subtle";
+        return "Balanced";
+    }
+
+    public String gradientStrengthLabel() {
+        return gradientStrengthLabel(gradientStrength);
+    }
+
     public static String glowSizeLabel(int value) {
         if (value <= 35) return "Focused";
         if (value == GLOW_SIZE_DEFAULT) return "Orbit default";
@@ -695,6 +776,9 @@ public final class OrbitProStyle {
         out.put("glowStrength", glowStrength);
         out.put("glowSize", glowSize);
         out.put("glowPosition", glowPosition);
+        // Added in v0.8.0.0-beta.5, additively like the six before it. Absent in a Beta 4 file, where
+        // it reads back as the maximum, which is the gradient that file's author actually saw.
+        out.put("gradientStrength", gradientStrength);
         return out;
     }
 
@@ -718,7 +802,8 @@ public final class OrbitProStyle {
                 json.optInt("gradientDirection", GRADIENT_DIRECTION_DEFAULT),
                 json.optInt("glowStrength", GLOW_STRENGTH_DEFAULT),
                 json.optInt("glowSize", GLOW_SIZE_DEFAULT),
-                json.optInt("glowPosition", GLOW_POSITION_DEFAULT));
+                json.optInt("glowPosition", GLOW_POSITION_DEFAULT),
+                json.optInt("gradientStrength", GRADIENT_STRENGTH_DEFAULT));
     }
 
     private static int clamp(int value, int min, int max) {

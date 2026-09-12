@@ -254,11 +254,16 @@ public final class OrbitGlassChromeTest {
         View vaultSearch = vaultScreen().searchSurfaceForTest();
         assertNotNull(chatsSearch);
         assertNotNull(vaultSearch);
-        assertTrue(chatsSearch.getBackground() instanceof LayerDrawable);
-        assertTrue(vaultSearch.getBackground() instanceof LayerDrawable);
-        assertEquals("both wear the same liquid material, layer for layer",
-                ((LayerDrawable) chatsSearch.getBackground()).getNumberOfLayers(),
-                ((LayerDrawable) vaultSearch.getBackground()).getNumberOfLayers());
+        assertTrue(chatsSearch.getBackground() instanceof OrbitGlass.GlassDrawable);
+        assertTrue(vaultSearch.getBackground() instanceof OrbitGlass.GlassDrawable);
+        OrbitGlass.Finish chatsFinish =
+                ((OrbitGlass.GlassDrawable) chatsSearch.getBackground()).finish();
+        OrbitGlass.Finish vaultFinish =
+                ((OrbitGlass.GlassDrawable) vaultSearch.getBackground()).finish();
+        assertEquals("both wear the same material", chatsFinish.material, vaultFinish.material);
+        assertEquals("at the same body strength", chatsFinish.bodyAlpha, vaultFinish.bodyAlpha);
+        assertEquals("and the same highlight", chatsFinish.specularAlpha,
+                vaultFinish.specularAlpha, 0.0001f);
         float resting = UiKit.dp(context, OrbitGlass.RESTING_ELEVATION_DP);
         assertEquals("Search sits above the page", resting, chatsSearch.getElevation(), 0.01f);
         assertEquals(resting, vaultSearch.getElevation(), 0.01f);
@@ -523,11 +528,18 @@ public final class OrbitGlassChromeTest {
         String glass = code(source("OrbitGlass"));
         for (String expensive : new String[]{
                 "Bitmap", "RenderScript", "ScriptIntrinsicBlur", "RenderEffect",
-                "setRenderEffect", "drawingCache", "PixelCopy", "Canvas", "saveLayer",
+                "setRenderEffect", "drawingCache", "PixelCopy", "new Canvas(", "saveLayer",
                 "LAYER_TYPE_SOFTWARE", "setBackgroundBlurRadius"}) {
             assertFalse("floating chrome must not reach for " + expensive,
                     glass.contains(expensive));
         }
+        // The material became a custom Drawable in v0.8.0.0-beta.5, so it is handed the system's own
+        // Canvas in draw() - which is how every Drawable works and costs nothing. What stays banned is
+        // allocating one of its own: `new Canvas(bitmap)` is an offscreen buffer, and an offscreen
+        // buffer per control per frame is the expense this test exists to prevent.
+        assertTrue("a Drawable is allowed to be given a canvas to draw into",
+                glass.contains("void draw(Canvas"));
+        assertFalse("but never to allocate a buffer of its own", glass.contains("createBitmap"));
         assertFalse("and must not fade a whole list every frame either",
                 glass.contains("FadingEdge"));
     }
@@ -550,19 +562,20 @@ public final class OrbitGlassChromeTest {
      * everywhere and there is no second path to rot.
      */
     @Test public void everySupportedAndroidVersionGetsTheSameGlass() {
-        // Liquid Orbit Glass, at both API levels, with the same number of layers on each. The
-        // material became a LayerDrawable in v0.8.0.0-beta.4; what this test is actually protecting
-        // is that there is one material rather than a rich one on new Android and a plain one on
-        // API 29, and that is asserted more strongly now than when it was a single fill.
-        LayerDrawable glass = OrbitGlass.surfaceDrawable(context);
-        assertEquals("the liquid material is five layers on every supported level",
-                5, glass.getNumberOfLayers());
-        for (int i = 0; i < glass.getNumberOfLayers(); i++) {
-            assertTrue("every layer is a gradient, so every level draws the same way",
-                    glass.getDrawable(i) instanceof GradientDrawable);
-        }
-        assertTrue(OrbitGlass.interactive(context) instanceof RippleDrawable);
-        assertTrue(OrbitGlass.scrimDrawable(context) instanceof GradientDrawable);
+        // One material, drawn the same way on both API levels. It became a single bounds-aware
+        // drawable in v0.8.0.0-beta.5, because a stack of gradients can only size a highlight as a
+        // share of whatever it lands on - which is how a wide search field ended up looking like
+        // chrome. What this test protects is unchanged: there is one treatment, not a rich one on new
+        // Android and a plain one on API 29.
+        OrbitGlass.GlassDrawable glass =
+                OrbitGlass.surfaceDrawable(context, OrbitGlass.Palette.live(context),
+                        OrbitGlass.RADIUS_DP);
+        assertNotNull("the material must resolve at every supported level", glass.finish());
+        assertEquals("and it must be the material the live theme asks for",
+                OrbitThemeStore.activeMaterial(context), glass.finish().material);
+        assertTrue(OrbitFloatingSurface.interactive(context) instanceof RippleDrawable);
+        assertTrue("the scrim beneath it is still a plain gradient on every level",
+                OrbitGlass.scrimDrawable(context) instanceof GradientDrawable);
         assertFalse("no API-level branch to keep working",
                 code(source("OrbitGlass")).contains("SDK_INT"));
         assertFalse(code(source("OrbitGlass")).contains("VERSION_CODES"));
@@ -619,9 +632,11 @@ public final class OrbitGlassChromeTest {
         assertTrue("a resting selector is Orbit glass",
                 type.getBackground() instanceof RippleDrawable);
         Drawable resting = ((RippleDrawable) type.getBackground()).getDrawable(0);
-        assertTrue("a resting selector wears the liquid material", resting instanceof LayerDrawable);
-        assertNotNull("its translucency is a gradient body, not a flat fill",
-                OrbitGlass.bodyOf((LayerDrawable) resting).getColors());
+        assertTrue("a resting selector wears Orbit's glass material",
+                resting instanceof OrbitGlass.GlassDrawable);
+        OrbitGlass.Finish finish = ((OrbitGlass.GlassDrawable) resting).finish();
+        assertTrue("its translucency is a body with depth, not a flat fill",
+                finish.bodyAlpha < 255 && finish.bodyTop != finish.bodyFoot);
 
         Prefs.setVaultFilter(context, OrbitVaultFilter.NONE
                 .withType(OrbitVaultFilter.Type.LINKS));

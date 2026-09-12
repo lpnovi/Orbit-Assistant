@@ -258,7 +258,10 @@ public final class OrbitThemeFileCodec {
                 // would reject every one of them for describing an appearance that was correct
                 // when it was written. A file without it gets Orbit's own shipped values, which is
                 // exactly what its author was looking at.
-                OrbitProStyle.fromJson(json.optJSONObject("pro")));
+                OrbitProStyle.fromJson(json.optJSONObject("pro")),
+                // Optional for the same reason and read the same way. A file from before materials
+                // existed is a Liquid theme, because Liquid is what that file's author was looking at.
+                json.optString("material", OrbitTheme.MATERIAL_DEFAULT));
     }
 
     /**

@@ -420,7 +420,7 @@ public class MainActivity extends Activity {
         LinearLayout searchBox = new LinearLayout(this);
         searchBox.setGravity(Gravity.CENTER_VERTICAL);
         searchBox.setPadding(UiKit.dp(this, 12), 0, UiKit.dp(this, 12), 0);
-        OrbitGlass.floatControl(searchBox);
+        OrbitFloatingSurface.floatControl(searchBox);
         ImageButton searchIcon = new ImageButton(this);
         searchIcon.setImageResource(com.orbit.assistant.R.drawable.ic_search);
         searchIcon.setImageTintList(ColorStateList.valueOf(UiKit.MUTED));

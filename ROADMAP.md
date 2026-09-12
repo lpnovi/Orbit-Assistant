@@ -410,8 +410,28 @@ Shipped in `0.8.0.0-beta.4`, the release where Orbit Pro became visual:
 - **Solid backgrounds stay free**, along with the Background color control itself and every
   existing preset, saved theme, custom color, and theme import and export
 
+Shipped in `0.8.0.0-beta.5`, after physical testing of Beta 4 on a Galaxy S25 Ultra:
+
+- **Three floating surface materials, free.** Solid, Frosted and Liquid, chosen in the Colors card.
+  Orbit had floating glass before Orbit Pro existed, so the material itself is free for everyone and
+  it is only the advanced tuning of it that is premium
+- **Frosted, the new soft material.** Translucent, slightly milky and deliberately quiet, drawn
+  without any backdrop capture or blur
+- **Liquid refined.** The highlight geometry is derived from a control's height rather than its shape,
+  so a full-width search field gets a local glint and a bounded edge rather than the broad white band
+  Beta 4 drew across it, and the body keeps far more of the theme's own surface colour
+- **Solid, for themes that do not want glass at all.** An opaque Orbit surface with one step of tonal
+  depth and the usual hairline, rather than a flat panel
+- **One central material resolver.** `OrbitFloatingSurface` decides Solid against glass, `OrbitGlass`
+  still renders the glass, and no screen contains a material branch of its own
+- **AMOLED explains itself.** Theme Studio says why true black hides a background effect, the
+  background sample is labelled rather than merely black, and the configuration is never touched
+- **Linear gradient strength.** A premium control from a gentle colour cast to the full two-colour
+  sweep, applied by moving the far endpoint towards the base rather than fading the whole page
+
 Planned, in order:
 
+- Orbit Deck Pro, the next major premium category
 - Theme Studio Pro backgrounds, further: per-surface profiles and background images
 - Theme Studio Pro typography and further message styling, including separate bubble shapes
 - Orbit Deck Pro

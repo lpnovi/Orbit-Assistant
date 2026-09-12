@@ -615,8 +615,8 @@ public final class ThemeStudioProTest {
         // The glass half of the same rule, now in the sample that owns it. Both Theme Studio
         // previews are held to it, so neither can start resolving a draft differently from the app.
         String glassSample = readSource("GlassStylePreview.java");
-        assertTrue("the glass sample must draw with OrbitGlass's own drawable",
-                glassSample.contains("OrbitGlass.surfaceDrawable("));
+        assertTrue("the glass sample must draw with the shared floating-surface resolver",
+                glassSample.contains("OrbitFloatingSurface.surfaceDrawable("));
         assertFalse("and must not read the live app's styling either",
                 glassSample.contains("OrbitProStyle.live("));
         assertFalse("nor may the message sample",

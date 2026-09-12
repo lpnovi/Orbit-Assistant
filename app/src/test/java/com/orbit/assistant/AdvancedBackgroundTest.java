@@ -11,6 +11,9 @@ import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.view.View;
+
+import org.json.JSONObject;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -656,6 +659,308 @@ public final class AdvancedBackgroundTest {
         assertTrue("as must the conversation, which had no such check at all before",
                 ThemeStudioProTest.readSourceFile("ChatActivity.java")
                         .contains("UiKit.structuralAppearanceSignature(this)"));
+    }
+
+    // ---- 35 to 42. AMOLED says why -----------------------------------------------------------------
+
+    /**
+     * 35, 36, 37, 38 and 39. Suppression is a state Orbit reports, not one a person has to deduce.
+     *
+     * <p>v0.8.0.0-beta.4 got the behaviour right and the communication wrong. Turning AMOLED on
+     * correctly hid a configured gradient, and the only way to find out why was to guess. So there are
+     * now two facts rather than one: whether an effect is being drawn, and whether one is configured and
+     * hidden. The second is what Theme Studio shows, and it is only true for the combination that
+     * actually causes it.
+     */
+    @Test public void amoledSuppressionIsAStateOrbitCanReport() {
+        asPro();
+        OrbitTheme plain = OrbitTheme.orbitDefault();
+        for (boolean amoled : new boolean[]{false, true}) {
+            OrbitTheme solid = plain.withAmoled(amoled);
+            assertFalse("Solid has nothing to suppress, AMOLED or not",
+                    OrbitBackground.hiddenByAmoled(OrbitBackground.Page.of(
+                            OrbitThemeTokens.resolve(context, solid), solid.pro)));
+        }
+
+        for (OrbitProStyle configured : new OrbitProStyle[]{
+                linear(OrbitProStyle.DIRECTION_TOP_BOTTOM), glow()}) {
+            OrbitTheme lit = plain.withPro(configured);
+            assertFalse("nothing to explain while AMOLED is off",
+                    OrbitBackground.hiddenByAmoled(OrbitBackground.Page.of(
+                            OrbitThemeTokens.resolve(context, lit), configured)));
+
+            OrbitTheme black = lit.withAmoled(true);
+            assertTrue(configured.backgroundModeLabel() + " must report itself as hidden",
+                    OrbitBackground.hiddenByAmoled(OrbitBackground.Page.of(
+                            OrbitThemeTokens.resolve(context, black), configured)));
+        }
+
+        // And the live reading agrees with the resolved one, which is what Theme Studio and the pages
+        // each look at.
+        assertTrue(OrbitThemeStore.applyActive(context,
+                plain.withPro(glow()).withAmoled(true)));
+        UiKit.syncTheme(context);
+        assertTrue(OrbitBackground.hiddenByAmoled(context));
+        assertFalse("and a suppressed effect is not a drawn one",
+                OrbitBackground.effectDraws(context));
+    }
+
+    /** A Free device is not told about a suppression it could not see anyway. */
+    @Test public void freeIsNotToldAboutASuppressedPremiumEffect() {
+        asFree();
+        OrbitTheme black = OrbitTheme.orbitDefault().withPro(glow()).withAmoled(true);
+        assertFalse("Free draws no effect, so there is nothing for AMOLED to be hiding",
+                OrbitBackground.hiddenByAmoled(OrbitBackground.Page.of(
+                        OrbitThemeTokens.resolve(context, black),
+                        OrbitProStyle.resolve(context, black.pro))));
+    }
+
+    /**
+     * 40. The background sample says why it is black rather than merely being black.
+     *
+     * <p>The failure this closes is a preview that looks broken. A true-black sample with a configured
+     * glow behind it is indistinguishable from a sample that failed to draw, and the difference matters
+     * because one of them is Orbit working correctly.
+     */
+    @Test public void theBackgroundSampleReportsAHiddenEffect() {
+        asPro();
+        BackgroundStylePreview sample = new BackgroundStylePreview(context);
+        OrbitProStyle configured = glow();
+
+        sample.render(OrbitThemeTokens.resolve(context,
+                OrbitTheme.orbitDefault().withPro(configured)), configured);
+        assertFalse("a visible effect needs no label",
+                describes(sample).contains(OrbitBackground.amoledHiddenLabel()));
+
+        OrbitTheme black = OrbitTheme.orbitDefault().withPro(configured).withAmoled(true);
+        sample.render(OrbitThemeTokens.resolve(context, black), configured);
+        assertTrue("a hidden one must say so on the sample itself",
+                describes(sample).contains(OrbitBackground.amoledHiddenLabel()));
+        assertTrue("and in the announcement, for somebody who cannot see the label",
+                String.valueOf(sample.getContentDescription()).toLowerCase(java.util.Locale.US)
+                        .contains("amoled"));
+
+        // The wording Orbit uses is restrained and explains the fix rather than reporting a fault.
+        String note = OrbitBackground.amoledSuppressionNote();
+        assertTrue(note.contains("true black"));
+        assertTrue("it must say how to see the effect", note.contains("Turn AMOLED off"));
+        for (String alarming : new String[]{"Error", "error", "Warning", "warning", "failed",
+                "invalid", "!"}) {
+            assertFalse("this is expected behaviour, not a fault: " + alarming,
+                    note.contains(alarming));
+        }
+    }
+
+    /** Every label a hidden sample shows, so the assertion above reads the real views. */
+    private static String describes(View root) {
+        StringBuilder out = new StringBuilder();
+        collectText(root, out);
+        return out.toString();
+    }
+
+    private static void collectText(View view, StringBuilder into) {
+        if (view instanceof android.widget.TextView) {
+            CharSequence text = ((android.widget.TextView) view).getText();
+            if (text != null && view.getVisibility() == View.VISIBLE) into.append(text).append(' ');
+        }
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) collectText(group.getChildAt(i), into);
+        }
+    }
+
+    /**
+     * 41 and 42. Configuring an effect under AMOLED is allowed, kept, and revealed on the way out.
+     *
+     * <p>The controls stay live on purpose. Somebody preparing a theme they will use with AMOLED off
+     * should be able to build it now, and disabling the switch has to reveal exactly what they built
+     * rather than something reconstructed from defaults.
+     */
+    @Test public void anEffectStaysEditableAndExactUnderAmoled() {
+        asPro();
+        OrbitProStyle configured = glow()
+                .withBackgroundEffectColor("#5B3FCF")
+                .withGlowStrength(72)
+                .withGlowSize(84)
+                .withGlowPosition(OrbitProStyle.GLOW_BOTTOM);
+        OrbitTheme black = OrbitTheme.orbitDefault().withPro(configured).withAmoled(true);
+        assertTrue(OrbitThemeStore.applyActive(context, black));
+
+        OrbitProStyle stored = OrbitThemeStore.activeProStyle(context);
+        assertTrue("every value must survive being stored under AMOLED", stored.same(configured));
+
+        // Edited while hidden, and still exact.
+        OrbitProStyle edited = stored.withGlowSize(40);
+        assertTrue(OrbitThemeStore.applyActive(context,
+                OrbitThemeStore.active(context).withPro(edited)));
+        assertTrue(OrbitThemeStore.activeProStyle(context).same(edited));
+
+        assertTrue(OrbitThemeStore.applyActive(context,
+                OrbitThemeStore.active(context).withAmoled(false)));
+        UiKit.syncTheme(context);
+        assertTrue("and turning AMOLED off reveals precisely that",
+                OrbitThemeStore.activeProStyle(context).same(edited));
+        assertTrue(OrbitBackground.effectDraws(context));
+        assertFalse(OrbitBackground.hiddenByAmoled(context));
+    }
+
+    // ---- 43 to 51. gradient strength ---------------------------------------------------------------
+
+    /**
+     * 43, 46, 47 and 49. The default is the maximum, which is what Beta 4 drew.
+     *
+     * <p>A compatibility decision rather than a taste one. Every gradient a tester has already built was
+     * a full-strength one, and reading an absent key as anything less would quietly weaken all of them.
+     */
+    @Test public void gradientStrengthDefaultsToTheBetaFourGradient() {
+        assertEquals(OrbitProStyle.GRADIENT_STRENGTH_MAX, OrbitProStyle.GRADIENT_STRENGTH_DEFAULT);
+        assertEquals(OrbitProStyle.GRADIENT_STRENGTH_MAX, OrbitProStyle.DEFAULT.gradientStrength);
+        assertTrue("and that default is still an unremarkable theme",
+                OrbitProStyle.DEFAULT.isDefault());
+
+        // A Beta 4 premium block, which named ten values and not this one.
+        JSONObject pro = betaFourPro();
+        OrbitProStyle read = OrbitProStyle.fromJson(pro);
+        assertEquals(OrbitProStyle.GRADIENT_STRENGTH_MAX, read.gradientStrength);
+
+        // At full strength the far endpoint is the effect colour itself, exactly as Beta 4 drew it.
+        OrbitProStyle full = linear(OrbitProStyle.DIRECTION_TOP_BOTTOM);
+        int base = 0xFF0A0714;
+        assertEquals("full strength must reach the effect colour untouched",
+                0xFF2A2060 | 0xFF000000,
+                full.gradientEndColor(context, UiKit.DEFAULT_ACCENT, base) | 0xFF000000);
+
+        assertEquals(OrbitProStyle.GRADIENT_STRENGTH_MIN,
+                OrbitProStyle.DEFAULT.withGradientStrength(-5).gradientStrength);
+        assertEquals(OrbitProStyle.GRADIENT_STRENGTH_MAX,
+                OrbitProStyle.DEFAULT.withGradientStrength(4000).gradientStrength);
+        assertTrue("the floor must still be a visible gradient rather than nothing",
+                OrbitProStyle.GRADIENT_STRENGTH_MIN > 0);
+    }
+
+    private static JSONObject betaFourPro() {
+        try {
+            return new JSONObject()
+                    .put("bubbleRadius", 20)
+                    .put("bubbleOutline", OrbitProStyle.OUTLINE_SUBTLE)
+                    .put("glassOpacity", 194)
+                    .put("glassTint", 118)
+                    .put("glassEdge", 140)
+                    .put("backgroundMode", OrbitProStyle.BACKGROUND_LINEAR)
+                    .put("backgroundEffectColor", "#242A66")
+                    .put("gradientDirection", OrbitProStyle.DIRECTION_BOTTOM_TOP)
+                    .put("glowStrength", 45)
+                    .put("glowSize", 60)
+                    .put("glowPosition", OrbitProStyle.GLOW_TOP);
+        } catch (Exception e) {
+            throw new AssertionError("could not build a Beta 4 premium block", e);
+        }
+    }
+
+    /**
+     * 48. A low strength lands nearer the page's own colour than a high one.
+     *
+     * <p>Asserted as distance in colour rather than as an opacity, because that is the mechanism: the far
+     * endpoint is pulled back towards the base instead of the whole page being faded, which is what keeps
+     * a weak gradient looking deliberate and keeps the system bars agreeing with the page.
+     */
+    @Test public void lowStrengthStaysNearTheBackgroundColour() {
+        asPro();
+        int base = 0xFF0A0714;
+        OrbitProStyle weak = linear(OrbitProStyle.DIRECTION_TOP_BOTTOM)
+                .withGradientStrength(OrbitProStyle.GRADIENT_STRENGTH_MIN);
+        OrbitProStyle mid = weak.withGradientStrength(55);
+        OrbitProStyle full = weak.withGradientStrength(OrbitProStyle.GRADIENT_STRENGTH_MAX);
+
+        double weakDistance = distance(base, weak.gradientEndColor(context, UiKit.DEFAULT_ACCENT, base));
+        double midDistance = distance(base, mid.gradientEndColor(context, UiKit.DEFAULT_ACCENT, base));
+        double fullDistance = distance(base, full.gradientEndColor(context, UiKit.DEFAULT_ACCENT, base));
+
+        assertTrue("a weak gradient must stay close to the page", weakDistance < midDistance);
+        assertTrue("and a full one must travel furthest", midDistance < fullDistance);
+        assertTrue("but a weak one must still be visibly a gradient", weakDistance > 0);
+
+        // And it is the far endpoint that moves, never the base the page starts from.
+        for (OrbitProStyle style : new OrbitProStyle[]{weak, mid, full}) {
+            GradientDrawable drawn = (GradientDrawable) page(
+                    OrbitTheme.orbitDefault().withBackground("#0A0714").withPro(style));
+            int[] colors = drawn.getColors();
+            assertNotNull(colors);
+            assertEquals(base | 0xFF000000, colors[0] | 0xFF000000);
+            assertEquals("and every rendered page stays fully opaque",
+                    255, Color.alpha(colors[1]));
+        }
+    }
+
+    private static double distance(int a, int b) {
+        double dr = Color.red(a) - Color.red(b);
+        double dg = Color.green(a) - Color.green(b);
+        double db = Color.blue(a) - Color.blue(b);
+        return Math.sqrt(dr * dr + dg * dg + db * db);
+    }
+
+    /**
+     * 44, 45, 50 and 51. Strength persists, round-trips, and changes nothing else.
+     *
+     * <p>The last part is the one worth asserting explicitly: a new slider that quietly reset a
+     * direction or a glow value would be the kind of fault somebody finds a week later.
+     */
+    @Test public void gradientStrengthPersistsWithoutDisturbingAnythingElse() throws Exception {
+        asPro();
+        OrbitProStyle configured = linear(OrbitProStyle.DIRECTION_BL_TR)
+                .withGlowStrength(70).withGlowSize(80).withGlowPosition(OrbitProStyle.GLOW_BOTTOM)
+                .withGradientStrength(42);
+        OrbitTheme themed = OrbitTheme.orbitDefault().withPro(configured);
+        assertTrue(OrbitThemeStore.applyActive(context, themed));
+        assertEquals(42, OrbitThemeStore.activeProStyle(context).gradientStrength);
+        assertTrue(OrbitThemeStore.activeProStyle(context).same(configured));
+
+        OrbitTheme back = OrbitThemeFileCodec.decode(OrbitThemeFileCodec.encode(themed));
+        assertNotNull(back);
+        assertEquals("it must survive a file", 42, back.pro.gradientStrength);
+        assertTrue(back.pro.same(configured));
+
+        // Moving only strength moves only strength.
+        OrbitProStyle moved = configured.withGradientStrength(88);
+        assertEquals(configured.gradientDirection, moved.gradientDirection);
+        assertEquals(configured.backgroundEffectColor, moved.backgroundEffectColor);
+        assertEquals(configured.backgroundMode, moved.backgroundMode);
+        assertEquals(configured.glowStrength, moved.glowStrength);
+        assertEquals(configured.glowSize, moved.glowSize);
+        assertEquals(configured.glowPosition, moved.glowPosition);
+        assertEquals(configured.glassOpacity, moved.glassOpacity);
+        assertFalse("while still counting as a different appearance", moved.same(configured));
+
+        // And strength never touches the direction the gradient runs in.
+        for (int direction = 0; direction < OrbitProStyle.DIRECTION_COUNT; direction++) {
+            OrbitProStyle style = configured.withGradientDirection(direction);
+            assertEquals(OrbitBackground.orientation(direction),
+                    ((GradientDrawable) page(OrbitTheme.orbitDefault().withPro(style)))
+                            .getOrientation());
+            assertEquals(OrbitBackground.orientation(direction),
+                    ((GradientDrawable) page(OrbitTheme.orbitDefault()
+                            .withPro(style.withGradientStrength(20)))).getOrientation());
+        }
+    }
+
+    /** Strength is premium, because Linear itself is. */
+    @Test public void gradientStrengthIsPremium() {
+        asFree();
+        OrbitTheme themed = OrbitTheme.orbitDefault().withPro(
+                linear(OrbitProStyle.DIRECTION_TOP_BOTTOM).withGradientStrength(40));
+        assertTrue(OrbitThemeStore.applyActive(context, themed));
+        UiKit.syncTheme(context);
+        assertFalse("Free draws no gradient at all, weak or otherwise",
+                OrbitBackground.effectDraws(context));
+        assertEquals("but the strength is kept", 40,
+                OrbitThemeStore.activeProStyle(context).gradientStrength);
+        assertEquals("and resolves to Orbit's own value while Free",
+                OrbitProStyle.GRADIENT_STRENGTH_DEFAULT,
+                OrbitProStyle.live(context).gradientStrength);
+
+        asPro();
+        assertEquals("returning to Pro brings it back", 40,
+                OrbitProStyle.live(context).gradientStrength);
     }
 
     // ---- 44. cost ----------------------------------------------------------------------------------

@@ -112,13 +112,15 @@ public final class OrbitBackground {
 
     public static Drawable drawableFor(Context c, Page page) {
         if (!effectDraws(page)) return new ColorDrawable(page.base);
-        int effect = page.style.backgroundEffectColor(c, page.accent);
         if (page.style.backgroundMode == OrbitProStyle.BACKGROUND_LINEAR) {
+            // Strength moves the far endpoint towards the base rather than fading the whole gradient,
+            // so the page stays a solid coherent thing at every setting and the system bars, which are
+            // painted in the base colour, go on agreeing with it. OrbitProStyle owns that arithmetic.
             return new GradientDrawable(orientation(page.style.gradientDirection),
-                    new int[]{page.base, effect});
+                    new int[]{page.base, page.style.gradientEndColor(c, page.accent, page.base)});
         }
-        return new GlowDrawable(page.base, effect, page.style.glowAlpha(),
-                page.style.glowRadiusShare(), page.style.glowCenterY());
+        return new GlowDrawable(page.base, page.style.backgroundEffectColor(c, page.accent),
+                page.style.glowAlpha(), page.style.glowRadiusShare(), page.style.glowCenterY());
     }
 
     /**
@@ -186,11 +188,44 @@ public final class OrbitBackground {
      */
     public static int effectivePageColor(Context c, Page page) {
         if (!effectDraws(page)) return page.base;
-        int effect = page.style.backgroundEffectColor(c, page.accent);
         if (page.style.backgroundMode == OrbitProStyle.BACKGROUND_LINEAR) {
-            return UiKit.blend(page.base, effect, 0.5f);
+            return UiKit.blend(page.base,
+                    page.style.gradientEndColor(c, page.accent, page.base), 0.5f);
         }
-        return UiKit.blend(effect, page.base, page.style.glowAlpha());
+        return UiKit.blend(page.style.backgroundEffectColor(c, page.accent), page.base,
+                page.style.glowAlpha());
+    }
+
+    /**
+     * Whether a background effect is configured but suppressed because AMOLED wants a black page.
+     *
+     * <p>Separated from {@link #effectDraws} because "no effect is drawn" and "an effect is configured
+     * and hidden" are different facts and Theme Studio has to say the second one out loud. The reason a
+     * gradient vanishes when AMOLED goes on is obvious once somebody tells you and completely opaque
+     * until they do, which is exactly the kind of thing a person should not have to discover.
+     */
+    public static boolean hiddenByAmoled(Context c) {
+        return hiddenByAmoled(Page.live(c));
+    }
+
+    static boolean hiddenByAmoled(Page page) {
+        return page.amoled && page.style.hasBackgroundEffect();
+    }
+
+    /** The one sentence Theme Studio shows when AMOLED is hiding a configured effect. */
+    public static String amoledSuppressionNote() {
+        return "AMOLED uses true black, so background effects are hidden. "
+                + "Turn AMOLED off to see this effect.";
+    }
+
+    /** The short label the background sample carries when it is black for that reason. */
+    public static String amoledHiddenLabel() {
+        return "Hidden by AMOLED";
+    }
+
+    /** What Orbit says once, as a toast, when an effect is chosen while AMOLED is already on. */
+    public static String amoledToast() {
+        return "AMOLED keeps the page true black.";
     }
 
     // ---- the glow ---------------------------------------------------------------------------------

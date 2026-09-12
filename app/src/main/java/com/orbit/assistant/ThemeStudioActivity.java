@@ -128,6 +128,35 @@ public final class ThemeStudioActivity extends Activity {
     private TextView glowSizeValue;
     private OrbitSegmented glowPositionSegment;
     private TextView amoledBackgroundNote;
+    private OrbitSlider gradientStrengthSlider;
+    private TextView gradientStrengthValue;
+
+    /**
+     * The free material selector, which lives in the Colors card rather than in the Pro section.
+     *
+     * <p>Held here with the rest of the stable controls even though it is not premium, because it is
+     * synchronized by the same pass: selecting a preset moves it, and Revert has to move it back.
+     */
+    private OrbitSegmented materialSegment;
+    private TextView materialNote;
+    /**
+     * The three glass sliders and the line that replaces them, so Solid can hide them without
+     * destroying them.
+     *
+     * <p>Visibility, never construction. Switching to Solid and back has to return the same three
+     * sliders holding the same three values, which is both the Beta 3 interaction rule and the
+     * promise that choosing Solid does not discard a person's glass tuning.
+     */
+    private LinearLayout glassControls;
+    private TextView noGlassNote;
+    /**
+     * Whether Orbit has already said out loud that AMOLED is keeping the page black.
+     *
+     * <p>Once per visit to this screen. The note in the Background tool is always there to be read;
+     * the toast is for the moment somebody picks Linear or Glow while AMOLED is on and would otherwise
+     * watch nothing happen. Saying it again on every slider movement would be noise.
+     */
+    private boolean amoledToastShown;
 
     /**
      * The preset cards currently on screen, so selection can be re-marked without rebuilding them.
@@ -371,7 +400,12 @@ public final class ThemeStudioActivity extends Activity {
     private void syncAllToDraft() {
         renderColourRows();
         syncAmoledSwitch();
+        syncMaterial();
         syncProValues();
+        // Free too, because the material lives outside the Pro section but decides what is inside it:
+        // the glass sliders only apply while a glass material is chosen, and syncProValues returns
+        // early when the Pro controls do not exist.
+        syncBackgroundVisibility();
         syncPreviews();
         syncPresetSelection();
     }
@@ -417,13 +451,13 @@ public final class ThemeStudioActivity extends Activity {
         glassEdgeSlider.setValue(style.glassEdge);
         glowStrengthSlider.setValue(style.glowStrength);
         glowSizeSlider.setValue(style.glowSize);
+        gradientStrengthSlider.setValue(style.gradientStrength);
         // Neither segmented control notifies from setSelected, for the same reason OrbitSlider does
         // not: this runs after a preset selection, and a control that reported its own
         // synchronization as a user choice would edit the draft it was being synchronized to.
         backgroundModeSegment.setSelected(style.backgroundMode);
         glowPositionSegment.setSelected(style.glowPosition);
         syncProLabels();
-        syncBackgroundVisibility();
     }
 
     /** The value word beside each premium control. */
@@ -437,6 +471,7 @@ public final class ThemeStudioActivity extends Activity {
         glassEdgeValue.setText(style.glassEdgeLabel());
         glowStrengthValue.setText(style.glowStrengthLabel());
         glowSizeValue.setText(style.glowSizeLabel());
+        gradientStrengthValue.setText(style.gradientStrengthLabel());
         directionValue.setText(style.directionLabel());
 
         int effect = style.backgroundEffectColor(this, OrbitThemeTokens.resolve(this, draft).accent);
@@ -466,8 +501,25 @@ public final class ThemeStudioActivity extends Activity {
                 style.backgroundMode == OrbitProStyle.BACKGROUND_LINEAR ? View.VISIBLE : View.GONE);
         glowControls.setVisibility(
                 style.backgroundMode == OrbitProStyle.BACKGROUND_GLOW ? View.VISIBLE : View.GONE);
-        boolean suppressed = draft.amoled && style.hasBackgroundEffect();
+        // Asked of the renderer rather than recomputed, so this note and the page it describes cannot
+        // disagree about whether an effect is being suppressed.
+        boolean suppressed = OrbitBackground.hiddenByAmoled(
+                OrbitBackground.Page.of(OrbitThemeTokens.resolve(this, draft), style));
         amoledBackgroundNote.setVisibility(suppressed ? View.VISIBLE : View.GONE);
+
+        // The three glass sliders apply to whichever glass is selected, and there is no glass in Solid.
+        // Hidden rather than disabled, with a line saying the values are kept: a row of greyed-out
+        // sliders is a screen telling somebody they did something wrong, and they have not.
+        boolean glass = draft.isGlass();
+        glassControls.setVisibility(glass ? View.VISIBLE : View.GONE);
+        noGlassNote.setVisibility(glass ? View.GONE : View.VISIBLE);
+    }
+
+    /** Moves the free material selector and its description onto the draft. */
+    private void syncMaterial() {
+        if (materialSegment == null) return;
+        materialSegment.setSelected(OrbitTheme.materialIndex(draft.material));
+        materialNote.setText(OrbitFloatingSurface.materialDescription(draft.material));
     }
 
     /**
@@ -606,7 +658,9 @@ public final class ThemeStudioActivity extends Activity {
         rebuildPresetGallery();
         renderColourRows();
         syncAmoledSwitch();
+        syncMaterial();
         syncProValues();
+        syncBackgroundVisibility();
         syncPreviews();
         syncPresetSelection();
         return root;
@@ -789,7 +843,45 @@ public final class ThemeStudioActivity extends Activity {
                 "Uses pure black for the page. Cards keep their own color so they stay visible.",
                 amoledSwitch);
         card.addView(amoledRow, matchWrap(14));
+
+        // The free floating-surface material, inside the Colors card rather than in a card of its own.
+        //
+        // Where this sits is a product decision rather than a layout one. It is a free theme setting,
+        // so it belongs with the other free theme settings; and it is one row, so giving it a card
+        // between Presets and Orbit Pro would have put a third major heading on the screen for a single
+        // choice and disturbed the Colors, Presets, Orbit Pro ordering that v0.8.0.0-beta.3 settled.
+        // It goes last in this card because it is the one control here that is not a colour.
+        card.addView(dividerNote("Floating controls",
+                "The material Orbit's floating search and filter controls are made of."),
+                matchWrap(16));
+        materialSegment = new OrbitSegmented(this);
+        materialSegment.setTitle("Floating controls");
+        String[] materials = OrbitTheme.materials();
+        String[] labels = new String[materials.length];
+        for (int i = 0; i < materials.length; i++) labels[i] = OrbitTheme.materialLabel(materials[i]);
+        materialSegment.setOptions(labels);
+        materialSegment.setSelected(OrbitTheme.materialIndex(draft.material));
+        materialSegment.setOnSelectListener((view, index) ->
+                edit(draft.withMaterial(OrbitTheme.materials()[index])));
+        card.addView(materialSegment, matchWrap(8));
+
+        materialNote = UiKit.text(this,
+                OrbitFloatingSurface.materialDescription(draft.material), 12, UiKit.MUTED, false);
+        materialNote.setLineSpacing(0, 1.15f);
+        card.addView(materialNote, matchWrap(6));
         return card;
+    }
+
+    /** A small heading and supporting line for a group inside an existing card. */
+    private LinearLayout dividerNote(String title, String description) {
+        LinearLayout group = new LinearLayout(this);
+        group.setOrientation(LinearLayout.VERTICAL);
+        group.addView(UiKit.text(this, title, 14.5f, UiKit.TEXT, true));
+        TextView note = UiKit.text(this, description, 12, UiKit.MUTED, false);
+        note.setLineSpacing(0, 1.15f);
+        group.addView(note, matchWrap(2));
+        group.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        return group;
     }
 
     private void renderColourRows() {
@@ -1151,6 +1243,10 @@ public final class ThemeStudioActivity extends Activity {
         glowSizeValue = null;
         glowPositionSegment = null;
         amoledBackgroundNote = null;
+        gradientStrengthSlider = null;
+        gradientStrengthValue = null;
+        glassControls = null;
+        noGlassNote = null;
     }
 
     /**
@@ -1226,21 +1322,27 @@ public final class ThemeStudioActivity extends Activity {
         proBody.addView(messages, matchWrap(14));
 
         LinearLayout glass = toolPanel();
-        glass.addView(toolTitle("Liquid Glass"), matchWrap(0));
+        glass.addView(toolTitle("Glass"), matchWrap(0));
         glassPreview = new GlassStylePreview(this);
         glass.addView(glassPreview, matchWrap(10));
 
+        // The three sliders live in their own container so Solid can hide the group rather than each
+        // control, and so the line that explains their absence can take their place without either of
+        // them being built twice.
+        glassControls = new LinearLayout(this);
+        glassControls.setOrientation(LinearLayout.VERTICAL);
+
         glassOpacityValue = valueLabel(draft.pro.glassOpacityLabel());
         glassOpacitySlider = new OrbitSlider(this);
-        glass.addView(proControl("Glass opacity", glassOpacityValue, glassOpacitySlider,
+        glassControls.addView(proControl("Glass opacity", glassOpacityValue, glassOpacitySlider,
                 OrbitProStyle.GLASS_OPACITY_MIN, OrbitProStyle.GLASS_OPACITY_MAX,
                 draft.pro.glassOpacity,
                 v -> OrbitProStyle.DEFAULT.withGlassOpacity(v).glassOpacityLabel(),
-                (v, settled) -> editPro(draft.pro.withGlassOpacity(v), settled)), matchWrap(14));
+                (v, settled) -> editPro(draft.pro.withGlassOpacity(v), settled)), matchWrap(4));
 
         glassTintValue = valueLabel(draft.pro.glassTintLabel());
         glassTintSlider = new OrbitSlider(this);
-        glass.addView(proControl("Glass tint", glassTintValue, glassTintSlider,
+        glassControls.addView(proControl("Glass tint", glassTintValue, glassTintSlider,
                 OrbitProStyle.GLASS_TINT_MIN, OrbitProStyle.GLASS_TINT_MAX,
                 draft.pro.glassTint,
                 OrbitProStyle::strengthLabel,
@@ -1248,11 +1350,16 @@ public final class ThemeStudioActivity extends Activity {
 
         glassEdgeValue = valueLabel(draft.pro.glassEdgeLabel());
         glassEdgeSlider = new OrbitSlider(this);
-        glass.addView(proControl("Glass edge", glassEdgeValue, glassEdgeSlider,
+        glassControls.addView(proControl("Glass edge", glassEdgeValue, glassEdgeSlider,
                 OrbitProStyle.GLASS_EDGE_MIN, OrbitProStyle.GLASS_EDGE_MAX,
                 draft.pro.glassEdge,
                 OrbitProStyle::strengthLabel,
                 (v, settled) -> editPro(draft.pro.withGlassEdge(v), settled)), matchWrap(12));
+        glass.addView(glassControls, matchWrap(10));
+
+        noGlassNote = UiKit.text(this, OrbitFloatingSurface.noGlassNote(), 12, UiKit.MUTED, false);
+        noGlassNote.setLineSpacing(0, 1.15f);
+        glass.addView(noGlassNote, matchWrap(10));
         proBody.addView(glass, matchWrap(14));
 
         proBody.addView(buildBackgroundTool(), matchWrap(14));
@@ -1284,14 +1391,12 @@ public final class ThemeStudioActivity extends Activity {
                 OrbitProStyle.backgroundModeLabel(OrbitProStyle.BACKGROUND_LINEAR),
                 OrbitProStyle.backgroundModeLabel(OrbitProStyle.BACKGROUND_GLOW)});
         backgroundModeSegment.setSelected(draft.pro.backgroundMode);
-        backgroundModeSegment.setOnSelectListener(
-                (view, index) -> editPro(draft.pro.withBackgroundMode(index), true));
+        backgroundModeSegment.setOnSelectListener((view, index) -> chooseBackgroundMode(index));
         panel.addView(backgroundModeSegment, matchWrap(12));
 
         // The note that explains why a configured effect is not on screen. Held rather than added and
         // removed, so turning AMOLED on does not change the height of this panel.
-        amoledBackgroundNote = UiKit.text(this,
-                "Background effects are hidden while AMOLED is on. Your settings are kept.",
+        amoledBackgroundNote = UiKit.text(this, OrbitBackground.amoledSuppressionNote(),
                 12, UiKit.MUTED, false);
         amoledBackgroundNote.setLineSpacing(0, 1.15f);
         panel.addView(amoledBackgroundNote, matchWrap(10));
@@ -1303,6 +1408,18 @@ public final class ThemeStudioActivity extends Activity {
         directionValue = UiKit.text(this, draft.pro.directionLabel(), 14, UiKit.TEXT, true);
         directionRow = selectorRow("Direction", directionValue, v -> chooseDirection(v));
         linearControls.addView(directionRow, matchWrap(10));
+
+        // How far the gradient actually travels. The v0.8.0.0-beta.4 gradient was all or nothing, and
+        // most pages want a colour cast rather than a two-colour sweep - so this is the control that
+        // makes Linear usable on an everyday theme rather than only on a showcase one.
+        gradientStrengthValue = valueLabel(draft.pro.gradientStrengthLabel());
+        gradientStrengthSlider = new OrbitSlider(this);
+        linearControls.addView(proControl("Gradient strength", gradientStrengthValue,
+                gradientStrengthSlider,
+                OrbitProStyle.GRADIENT_STRENGTH_MIN, OrbitProStyle.GRADIENT_STRENGTH_MAX,
+                draft.pro.gradientStrength,
+                OrbitProStyle::gradientStrengthLabel,
+                (v, settled) -> editPro(draft.pro.withGradientStrength(v), settled)), matchWrap(12));
         panel.addView(linearControls, matchWrap(10));
 
         glowControls = new LinearLayout(this);
@@ -1476,6 +1593,23 @@ public final class ThemeStudioActivity extends Activity {
             }
         }
         return out;
+    }
+
+    /**
+     * Picks a background mode, and says once if AMOLED is going to keep the page black anyway.
+     *
+     * <p>The inline note in the panel is the durable explanation and is always there to be read. This
+     * toast exists for one specific moment: choosing Linear or Glow while AMOLED is on, where the
+     * honest feedback is that nothing visibly happened. Shown once per visit to this screen rather
+     * than on every adjustment, because a person who has been told is not helped by being told again
+     * while they drag a slider.
+     */
+    private void chooseBackgroundMode(int mode) {
+        editPro(draft.pro.withBackgroundMode(mode), true);
+        if (!amoledToastShown && draft.amoled && draft.pro.hasBackgroundEffect()) {
+            amoledToastShown = true;
+            Toast.makeText(this, OrbitBackground.amoledToast(), Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void chooseDirection(View anchor) {

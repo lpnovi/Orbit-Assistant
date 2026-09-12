@@ -437,20 +437,25 @@ public final class OrbitThemeFileTest {
     @Test public void aThemeFileCarriesNothingButAppearance() throws Exception {
         JSONObject json = new JSONObject(
                 OrbitThemeFileCodec.encode(OrbitTheme.builtIn(OrbitTheme.ID_NOVA_AMOLED)));
-        // Twelve since Orbit Pro: the eleven a theme has always had, plus the premium styling
-        // block. Advanced backgrounds went inside that block rather than beside it, so the document
-        // itself is exactly as wide as it was and an older Orbit still meets one key it does not
-        // know instead of seven.
-        assertEquals(12, json.length());
-        assertTrue("the premium block is the only addition", json.has("pro"));
+        // Thirteen: the eleven a theme has always had, the premium styling block, and the free
+        // floating-surface material. The material is a top-level key rather than a premium one on
+        // purpose - it is a free appearance decision, and burying it inside the premium block would be
+        // the first step towards it becoming a premium one.
+        assertEquals(13, json.length());
+        assertTrue("the premium block is one of the two additions", json.has("pro"));
+        assertTrue("and the free material is the other", json.has("material"));
+        assertTrue("stored as a stable token rather than a display string",
+                json.get("material") instanceof String);
+        assertEquals(OrbitTheme.builtIn(OrbitTheme.ID_NOVA_AMOLED).material,
+                json.getString("material"));
         JSONObject pro = json.getJSONObject("pro");
-        // Eleven since advanced backgrounds: the five that described a bubble and the glass, plus
-        // six describing the page. Still nothing but appearance - bounded numbers and one colour
-        // token in exactly the vocabulary the theme's own colour fields use.
-        assertEquals("and it carries eleven appearance values and nothing else", 11, pro.length());
+        // Twelve: the five that described a bubble and the glass, six describing the page, and gradient
+        // strength. Still nothing but appearance - bounded numbers and one colour token in exactly the
+        // vocabulary the theme's own colour fields use.
+        assertEquals("and it carries twelve appearance values and nothing else", 12, pro.length());
         for (String field : new String[]{"bubbleRadius", "bubbleOutline", "glassOpacity",
                 "glassTint", "glassEdge", "backgroundMode", "gradientDirection",
-                "glowStrength", "glowSize", "glowPosition"}) {
+                "glowStrength", "glowSize", "glowPosition", "gradientStrength"}) {
             assertTrue("a premium block must describe " + field, pro.has(field));
             assertTrue(field + " must be a plain number", pro.get(field) instanceof Integer);
         }

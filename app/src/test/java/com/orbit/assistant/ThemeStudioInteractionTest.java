@@ -191,8 +191,8 @@ public final class ThemeStudioInteractionTest {
                 messageSource.contains("setCornerRadius") || messageSource.contains("setStroke"));
 
         String glassSource = ThemeStudioProTest.readSourceFile("GlassStylePreview.java");
-        assertTrue("the glass sample must be drawn by OrbitGlass",
-                glassSource.contains("OrbitGlass.surfaceDrawable("));
+        assertTrue("the glass sample must be drawn by the shared floating-surface resolver",
+                glassSource.contains("OrbitFloatingSurface.surfaceDrawable("));
         assertFalse("and must not hand-roll a translucent rectangle",
                 glassSource.contains("GradientDrawable"));
         controller.pause().stop().destroy();
@@ -541,13 +541,13 @@ public final class ThemeStudioInteractionTest {
         // and exactly what a scan of the whole screen would trip over.
         List<String> titles = new ArrayList<>();
         for (String text : textsIn((View) field(activity, "proBody"))) {
-            if (text.equals("Message style") || text.equals("Liquid Glass")
+            if (text.equals("Message style") || text.equals("Glass")
                     || text.equals("Background")) {
                 if (!titles.contains(text)) titles.add(text);
             }
         }
         assertEquals("the three tools must appear in order of increasing scope",
-                List.of("Message style", "Liquid Glass", "Background"), titles);
+                List.of("Message style", "Glass", "Background"), titles);
 
         // And the sample sits above the controls that change it, not at the top of the page.
         int sampleAt = indexOfDescendant(root, sample);
@@ -733,8 +733,8 @@ public final class ThemeStudioInteractionTest {
         invoke(activity, "edit", new Class<?>[]{OrbitTheme.class},
                 draft(activity).withAmoled(true));
         assertEquals("now it has to say so", View.VISIBLE, note.getVisibility());
-        assertTrue("and say the settings are kept",
-                textsIn(note).toString().contains("kept"));
+        assertTrue("and say how to see the effect again",
+                textsIn(note).toString().contains("Turn AMOLED off"));
         assertTrue("while the configuration really is kept",
                 draft(activity).pro.backgroundMode == OrbitProStyle.BACKGROUND_GLOW);
 
@@ -744,6 +744,158 @@ public final class ThemeStudioInteractionTest {
         assertEquals("and the glow returns", OrbitProStyle.BACKGROUND_GLOW,
                 draft(activity).pro.backgroundMode);
         controller.pause().stop().destroy();
+    }
+
+    // ---- the free material selector ----------------------------------------------------------------
+
+    /**
+     * The material selector is in the Colors card, is free, and does not disturb the section order.
+     *
+     * <p>Where it sits is the product decision this test protects. It is a free theme setting, so it
+     * belongs with the free theme settings; and it is one row, so giving it a card of its own between
+     * Presets and Orbit Pro would have put a third major heading on the screen for a single choice and
+     * undone the ordering v0.8.0.0-beta.3 settled on the device.
+     */
+    @Test public void theMaterialSelectorIsFreeAndLivesWithTheColours() {
+        ActivityController<ThemeStudioActivity> controller = openFree();
+        ThemeStudioActivity activity = controller.get();
+
+        OrbitSegmented selector = (OrbitSegmented) field(activity, "materialSegment");
+        assertNotNull("a Free device must get the material selector", selector);
+        assertEquals("with all three materials", 3, OrbitTheme.materials().length);
+        assertEquals(OrbitTheme.materialIndex(draft(activity).material), selector.selectedIndex());
+
+        // Inside the Colors card, above Presets, and with no fourth card added.
+        View root = activity.getWindow().getDecorView();
+        assertTrue("the selector must come before the Presets heading",
+                indexOfDescendant(root, selector) < indexOfDescendant(root,
+                        findText(root, "Presets")));
+        assertEquals("and the section order must be untouched",
+                List.of("Colors", "Presets", "Orbit Pro"), sectionOrder(activity));
+
+        // And no premium controls came with it.
+        assertTrue("Free must still build no premium sliders",
+                findAll((View) field(activity, "proBody"), OrbitSlider.class).isEmpty());
+        controller.pause().stop().destroy();
+    }
+
+    /** Choosing a material is a draft edit like any other, and only Apply commits it. */
+    @Test public void choosingAMaterialIsDraftOnlyUntilApply() {
+        ActivityController<ThemeStudioActivity> controller = openFree();
+        ThemeStudioActivity activity = controller.get();
+
+        OrbitSegmented selector = (OrbitSegmented) field(activity, "materialSegment");
+        String appliedBefore = OrbitThemeStore.activeMaterial(context);
+
+        int solid = OrbitTheme.materialIndex(OrbitTheme.MATERIAL_SOLID);
+        selector.segmentAt(solid).performClick();
+        assertEquals("the draft must have moved",
+                OrbitTheme.MATERIAL_SOLID, draft(activity).material);
+        assertEquals("but Orbit must still be drawing what it was",
+                appliedBefore, OrbitThemeStore.activeMaterial(context));
+
+        invoke(activity, "applyDraft");
+        assertEquals("Apply commits it", OrbitTheme.MATERIAL_SOLID,
+                OrbitThemeStore.activeMaterial(context));
+        controller.pause().stop().destroy();
+    }
+
+    /**
+     * Solid hides the three glass sliders without destroying them, and says why.
+     *
+     * <p>The Beta 3 rule applied to a free choice. Switching to Solid and back has to return the same
+     * three sliders holding the same three values, because the alternative is a person losing tuning
+     * they spent time on by trying a material out.
+     */
+    @Test public void solidHidesTheGlassSlidersWithoutLosingThem() {
+        ActivityController<ThemeStudioActivity> controller = openPro();
+        ThemeStudioActivity activity = controller.get();
+
+        OrbitSlider opacity = (OrbitSlider) field(activity, "glassOpacitySlider");
+        OrbitSlider tint = (OrbitSlider) field(activity, "glassTintSlider");
+        OrbitSlider edge = (OrbitSlider) field(activity, "glassEdgeSlider");
+        View glassControls = (View) field(activity, "glassControls");
+        View note = (View) field(activity, "noGlassNote");
+        assertNotNull(glassControls);
+        assertNotNull(note);
+
+        drag(slider(activity, "glassTintSlider"), 0.1f, 0.8f);
+        int tunedTint = tint.getValue();
+        assertEquals(View.VISIBLE, glassControls.getVisibility());
+        assertEquals(View.GONE, note.getVisibility());
+
+        chooseMaterial(activity, OrbitTheme.MATERIAL_SOLID);
+        assertEquals("Solid hides them", View.GONE, glassControls.getVisibility());
+        assertEquals("and says so", View.VISIBLE, note.getVisibility());
+        assertTrue("in words that promise the values are kept",
+                textsIn(note).toString().contains("kept"));
+
+        chooseMaterial(activity, OrbitTheme.MATERIAL_FROSTED);
+        assertEquals("Frosted brings them back", View.VISIBLE, glassControls.getVisibility());
+        assertEquals(View.GONE, note.getVisibility());
+        assertSame("as the same objects", opacity, field(activity, "glassOpacitySlider"));
+        assertSame(tint, field(activity, "glassTintSlider"));
+        assertSame(edge, field(activity, "glassEdgeSlider"));
+        assertEquals("holding the same value", tunedTint, tint.getValue());
+        assertEquals("and the draft still carries it", tunedTint, draft(activity).pro.glassTint);
+        controller.pause().stop().destroy();
+    }
+
+    /** The gradient strength slider behaves like every other Beta 3 slider. */
+    @Test public void theGradientStrengthSliderKeepsEveryBetaThreeGuarantee() {
+        ActivityController<ThemeStudioActivity> controller = openPro();
+        ThemeStudioActivity activity = controller.get();
+
+        chooseBackgroundMode(activity, OrbitProStyle.BACKGROUND_LINEAR);
+        OrbitSlider strength = (OrbitSlider) field(activity, "gradientStrengthSlider");
+        assertNotNull("Linear must offer a strength control", strength);
+        assertEquals("starting at the Beta 4 gradient",
+                OrbitProStyle.GRADIENT_STRENGTH_DEFAULT, strength.getValue());
+
+        OrbitSlider direction = (OrbitSlider) field(activity, "glowStrengthSlider");
+        int unrelatedBefore = direction.getValue();
+
+        drag(slider(activity, "gradientStrengthSlider"), 0.9f, 0.25f);
+        int afterMove = strength.getValue();
+        assertTrue("the drag must have moved it",
+                afterMove < OrbitProStyle.GRADIENT_STRENGTH_DEFAULT);
+        assertEquals("and lifting the finger must not resample it",
+                afterMove, draft(activity).pro.gradientStrength);
+        assertSame("the slider must not be recreated", strength,
+                field(activity, "gradientStrengthSlider"));
+        assertEquals("and no unrelated slider may move", unrelatedBefore, direction.getValue());
+
+        // Programmatic synchronization never reports itself as a user edit.
+        List<Integer> reported = new ArrayList<>();
+        strength.setOnValueChangeListener((view, value, settled) -> reported.add(value));
+        strength.setValue(OrbitProStyle.GRADIENT_STRENGTH_MIN);
+        strength.setValue(OrbitProStyle.GRADIENT_STRENGTH_MAX);
+        assertTrue("setValue must never notify", reported.isEmpty());
+        controller.pause().stop().destroy();
+    }
+
+    /** Selecting a preset moves the free material selector too, once and without callbacks. */
+    @Test public void selectingAPresetSynchronizesTheMaterialSelector() {
+        ActivityController<ThemeStudioActivity> controller = openPro();
+        ThemeStudioActivity activity = controller.get();
+        OrbitSegmented selector = (OrbitSegmented) field(activity, "materialSegment");
+
+        for (String id : new String[]{OrbitTheme.ID_AURORA, OrbitTheme.ID_NEBULA_GLASS,
+                OrbitTheme.ID_SIGNAL_VIOLET}) {
+            OrbitTheme preset = OrbitTheme.builtIn(id);
+            invoke(activity, "selectPreset", new Class<?>[]{OrbitTheme.class}, preset);
+            assertSame("the selector must not be replaced", selector,
+                    field(activity, "materialSegment"));
+            assertEquals(preset.name + " must move the selector to its own material",
+                    OrbitTheme.materialIndex(preset.material), selector.selectedIndex());
+            assertEquals(preset.material, draft(activity).material);
+        }
+        controller.pause().stop().destroy();
+    }
+
+    private void chooseMaterial(ThemeStudioActivity activity, String material) {
+        invoke(activity, "edit", new Class<?>[]{OrbitTheme.class},
+                draft(activity).withMaterial(material));
     }
 
     /** Selects a background mode the way the segmented control does, through the draft edit path. */

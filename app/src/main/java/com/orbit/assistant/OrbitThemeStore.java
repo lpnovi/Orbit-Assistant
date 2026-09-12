@@ -73,7 +73,34 @@ public final class OrbitThemeStore {
                 p.getString(Prefs.THEME_SURFACE, OrbitTheme.CLASSIC),
                 p.getString(Prefs.THEME_BACKGROUND, OrbitTheme.CLASSIC),
                 p.getBoolean(Prefs.AMOLED_MODE, false),
-                activeProStyle(c));
+                activeProStyle(c),
+                activeMaterial(c));
+    }
+
+    /**
+     * Which material the active theme's floating controls are made of.
+     *
+     * <p>Absent on every install that predates v0.8.0.0-beta.5, and the two answers to that absence
+     * are both correct for different themes.
+     *
+     * <p>A theme of the user's own gets {@link OrbitTheme#MATERIAL_DEFAULT}, which is Liquid, because
+     * Liquid is what the previous release drew and a person who built their own appearance must not
+     * find it changed by an update.
+     *
+     * <p>A theme that <em>is</em> one of Orbit's shipped presets takes that preset's material, because
+     * the preset is the definition of that appearance rather than a snapshot of it. Without this rule
+     * every install sitting on Signal Violet or Aurora would stop matching the preset it is named
+     * after the moment those presets chose a material, and Theme Studio would quietly re-label a
+     * theme the user never edited as "Your theme". The preset's own material is a deliberate design
+     * decision about that preset, so adopting it is more faithful than pinning Liquid over it.
+     */
+    public static String activeMaterial(Context c) {
+        if (c == null) return OrbitTheme.MATERIAL_DEFAULT;
+        SharedPreferences p = Prefs.get(c);
+        String stored = p.getString(Prefs.THEME_MATERIAL, "");
+        if (stored != null && !stored.trim().isEmpty()) return OrbitTheme.normalizeMaterial(stored);
+        OrbitTheme preset = OrbitTheme.builtIn(p.getString(Prefs.THEME_ID, ""));
+        return preset != null ? preset.material : OrbitTheme.MATERIAL_DEFAULT;
     }
 
     /**
@@ -105,7 +132,9 @@ public final class OrbitThemeStore {
                         OrbitProStyle.GRADIENT_DIRECTION_DEFAULT),
                 p.getInt(Prefs.THEME_PRO_GLOW_STRENGTH, OrbitProStyle.GLOW_STRENGTH_DEFAULT),
                 p.getInt(Prefs.THEME_PRO_GLOW_SIZE, OrbitProStyle.GLOW_SIZE_DEFAULT),
-                p.getInt(Prefs.THEME_PRO_GLOW_POSITION, OrbitProStyle.GLOW_POSITION_DEFAULT));
+                p.getInt(Prefs.THEME_PRO_GLOW_POSITION, OrbitProStyle.GLOW_POSITION_DEFAULT),
+                p.getInt(Prefs.THEME_PRO_GRADIENT_STRENGTH,
+                        OrbitProStyle.GRADIENT_STRENGTH_DEFAULT));
     }
 
     /**
@@ -128,6 +157,9 @@ public final class OrbitThemeStore {
                 .putString(Prefs.THEME_SURFACE, theme.surface)
                 .putString(Prefs.THEME_BACKGROUND, theme.background)
                 .putBoolean(Prefs.AMOLED_MODE, theme.amoled)
+                // Free, so written and read like any other theme colour rather than through the
+                // entitlement gate the premium keys below pass through.
+                .putString(Prefs.THEME_MATERIAL, theme.material)
                 // Written whatever the entitlement is. Storing a premium value on a Free device
                 // costs nothing and is not a leak: it is the user's own setting, it does not draw,
                 // and it is what makes entitlement reversible instead of destructive.
@@ -142,6 +174,7 @@ public final class OrbitThemeStore {
                 .putInt(Prefs.THEME_PRO_GLOW_STRENGTH, theme.pro.glowStrength)
                 .putInt(Prefs.THEME_PRO_GLOW_SIZE, theme.pro.glowSize)
                 .putInt(Prefs.THEME_PRO_GLOW_POSITION, theme.pro.glowPosition)
+                .putInt(Prefs.THEME_PRO_GRADIENT_STRENGTH, theme.pro.gradientStrength)
                 .commit();
         UiKit.syncTheme(c);
         return true;
@@ -295,15 +328,20 @@ public final class OrbitThemeStore {
         // value while a shipped preset was selected silently reset all five premium settings to
         // Orbit's own. On the device that was the sliders jumping back the instant a drag ended,
         // which looked like a broken control rather than lost data.
+        // The material is carried through for exactly the reason theme.pro is, one line below where
+        // that lesson was learned. These overloads default it, so omitting it here would mean choosing
+        // Solid while a shipped preset was selected silently snapped the material back to Liquid the
+        // instant the draft was re-labelled - which is the Beta 2 premium-styling fault again, in a
+        // free setting this time.
         if (theme.builtIn || OrbitTheme.isBuiltInId(theme.id)) {
             return OrbitTheme.custom("Your theme", theme.accent, theme.userBubble,
                     theme.assistantBubble, theme.surface, theme.background, theme.amoled,
-                    theme.pro);
+                    theme.pro, theme.material);
         }
         if (!Prefs.THEME_ID_CUSTOM.equals(theme.id)) {
             return new OrbitTheme(Prefs.THEME_ID_CUSTOM, "Your theme", false, theme.accent,
                     theme.userBubble, theme.assistantBubble, theme.surface, theme.background,
-                    theme.amoled, theme.pro);
+                    theme.amoled, theme.pro, theme.material);
         }
         return theme;
     }

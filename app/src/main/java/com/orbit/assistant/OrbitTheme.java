@@ -80,7 +80,30 @@ public final class OrbitTheme {
     /** True for the presets Orbit ships, which cannot be renamed, edited in place, or deleted. */
     public final boolean builtIn;
 
-    // ---- the six decisions -------------------------------------------------------------------
+    // ---- floating surface material -------------------------------------------------------------
+
+    /**
+     * A clean opaque floating surface. Orbit's traditional chrome, with no glass in it at all.
+     *
+     * <p>Not a downgrade and not an absence. Some themes read better with controls that are plainly
+     * surfaces rather than translucent panes, and until v0.8.0.0-beta.5 Orbit had no way to say so.
+     */
+    public static final String MATERIAL_SOLID = "solid";
+    /** Soft translucent glass. Subdued, slightly milky, and the quietest of the three. */
+    public static final String MATERIAL_FROSTED = "frosted";
+    /** Richer dimensional glass, with a local reflection and accent refraction. */
+    public static final String MATERIAL_LIQUID = "liquid";
+    /**
+     * What a theme that predates this choice is drawn with.
+     *
+     * <p>Liquid, because that is the material v0.8.0.0-beta.4 drew and this choice must not change
+     * how an existing theme looks. A person who wants Frosted is one tap away from it in the Colors
+     * card; a person who wanted nothing to change gets nothing changing, which is the promise every
+     * release in this line has been held to.
+     */
+    public static final String MATERIAL_DEFAULT = MATERIAL_LIQUID;
+
+    // ---- the seven decisions -----------------------------------------------------------------
 
     public final String accent;
     public final String userBubble;
@@ -88,6 +111,19 @@ public final class OrbitTheme {
     public final String surface;
     public final String background;
     public final boolean amoled;
+    /**
+     * Which material Orbit's floating controls are made of. Free, and deliberately so.
+     *
+     * <p>Orbit had floating glass before Orbit Pro existed, so the glass itself cannot move behind an
+     * entitlement - taking a shipped free visual feature away would be the one thing this project has
+     * promised never to do. Choosing between Solid, Frosted and Liquid is therefore free for everyone,
+     * and it is {@link OrbitProStyle} that holds the advanced tuning of whichever glass is chosen.
+     *
+     * <p>On the theme rather than beside it for the same reason every other appearance value is: a
+     * theme is one complete look, and a material stored as a loose device preference would not be
+     * saved, previewed, exported or applied with the theme it belongs to.
+     */
+    public final String material;
 
     /**
      * The advanced styling Orbit Pro adds, always present and never null.
@@ -105,9 +141,24 @@ public final class OrbitTheme {
                 OrbitProStyle.DEFAULT);
     }
 
+    /**
+     * The material is last rather than beside {@code amoled}, where it belongs conceptually.
+     *
+     * <p>Deliberate. Every existing caller passes these fields positionally, and inserting one in the
+     * middle of nine strings and a boolean is a change the compiler cannot catch: a theme built with
+     * its surface and its background the wrong way round still compiles. Appending it keeps every
+     * existing call site correct by construction and leaves exactly one overload to read.
+     */
     OrbitTheme(String id, String name, boolean builtIn, String accent, String userBubble,
                String assistantBubble, String surface, String background, boolean amoled,
                OrbitProStyle pro) {
+        this(id, name, builtIn, accent, userBubble, assistantBubble, surface, background, amoled,
+                pro, MATERIAL_DEFAULT);
+    }
+
+    OrbitTheme(String id, String name, boolean builtIn, String accent, String userBubble,
+               String assistantBubble, String surface, String background, boolean amoled,
+               OrbitProStyle pro, String material) {
         this.id = normalizeId(id);
         this.name = normalizeName(name);
         this.builtIn = builtIn;
@@ -119,6 +170,7 @@ public final class OrbitTheme {
         this.background = normalizeSurface(background);
         this.amoled = amoled;
         this.pro = pro == null ? OrbitProStyle.DEFAULT : pro;
+        this.material = normalizeMaterial(material);
     }
 
     /** A custom theme with a freshly generated identity. */
@@ -132,8 +184,64 @@ public final class OrbitTheme {
     public static OrbitTheme custom(String name, String accent, String userBubble,
                                     String assistantBubble, String surface, String background,
                                     boolean amoled, OrbitProStyle pro) {
+        return custom(name, accent, userBubble, assistantBubble, surface, background, amoled, pro,
+                MATERIAL_DEFAULT);
+    }
+
+    public static OrbitTheme custom(String name, String accent, String userBubble,
+                                    String assistantBubble, String surface, String background,
+                                    boolean amoled, OrbitProStyle pro, String material) {
         return new OrbitTheme(newId(), name, false, accent, userBubble, assistantBubble,
-                surface, background, amoled, pro);
+                surface, background, amoled, pro, material);
+    }
+
+    /**
+     * One of the three materials, or Liquid when the value is not one Orbit knows.
+     *
+     * <p>The same rule every other token here follows. A theme file naming a material from some later
+     * Orbit, or a preference edited by hand, produces a usable appearance rather than a crash - and it
+     * produces the one that matches what a theme without the field at all would get.
+     */
+    public static String normalizeMaterial(String value) {
+        if (value == null) return MATERIAL_DEFAULT;
+        String trimmed = value.trim().toLowerCase(java.util.Locale.US);
+        if (MATERIAL_SOLID.equals(trimmed)) return MATERIAL_SOLID;
+        if (MATERIAL_FROSTED.equals(trimmed)) return MATERIAL_FROSTED;
+        if (MATERIAL_LIQUID.equals(trimmed)) return MATERIAL_LIQUID;
+        return MATERIAL_DEFAULT;
+    }
+
+    /** True when this material is glass at all, and therefore has anything for Pro to tune. */
+    public static boolean isGlass(String material) {
+        return !MATERIAL_SOLID.equals(normalizeMaterial(material));
+    }
+
+    public boolean isGlass() {
+        return isGlass(material);
+    }
+
+    /** What each material is called. The selector shows these; storage never does. */
+    public static String materialLabel(String material) {
+        String value = normalizeMaterial(material);
+        if (MATERIAL_SOLID.equals(value)) return "Solid";
+        if (MATERIAL_FROSTED.equals(value)) return "Frosted";
+        return "Liquid";
+    }
+
+    public String materialLabel() {
+        return materialLabel(material);
+    }
+
+    /** The three materials, in the order the selector offers them: plainest first. */
+    public static String[] materials() {
+        return new String[]{MATERIAL_SOLID, MATERIAL_FROSTED, MATERIAL_LIQUID};
+    }
+
+    public static int materialIndex(String material) {
+        String value = normalizeMaterial(material);
+        String[] all = materials();
+        for (int i = 0; i < all.length; i++) if (all[i].equals(value)) return i;
+        return all.length - 1;
     }
 
     public static String newId() {
@@ -144,43 +252,49 @@ public final class OrbitTheme {
 
     public OrbitTheme withAccent(String value) {
         return new OrbitTheme(id, name, builtIn, value, userBubble, assistantBubble,
-                surface, background, amoled, pro);
+                surface, background, amoled, pro, material);
     }
 
     public OrbitTheme withUserBubble(String value) {
         return new OrbitTheme(id, name, builtIn, accent, value, assistantBubble,
-                surface, background, amoled, pro);
+                surface, background, amoled, pro, material);
     }
 
     public OrbitTheme withAssistantBubble(String value) {
         return new OrbitTheme(id, name, builtIn, accent, userBubble, value,
-                surface, background, amoled, pro);
+                surface, background, amoled, pro, material);
     }
 
     public OrbitTheme withSurface(String value) {
         return new OrbitTheme(id, name, builtIn, accent, userBubble, assistantBubble,
-                value, background, amoled, pro);
+                value, background, amoled, pro, material);
     }
 
     public OrbitTheme withBackground(String value) {
         return new OrbitTheme(id, name, builtIn, accent, userBubble, assistantBubble,
-                surface, value, amoled, pro);
+                surface, value, amoled, pro, material);
     }
 
     public OrbitTheme withAmoled(boolean value) {
         return new OrbitTheme(id, name, builtIn, accent, userBubble, assistantBubble,
-                surface, background, value, pro);
+                surface, background, value, pro, material);
+    }
+
+    /** The same theme with its floating controls made of something else. */
+    public OrbitTheme withMaterial(String value) {
+        return new OrbitTheme(id, name, builtIn, accent, userBubble, assistantBubble,
+                surface, background, amoled, pro, value);
     }
 
     /** The same theme wearing a different advanced styling layer. */
     public OrbitTheme withPro(OrbitProStyle value) {
         return new OrbitTheme(id, name, builtIn, accent, userBubble, assistantBubble,
-                surface, background, amoled, value);
+                surface, background, amoled, value, material);
     }
 
     public OrbitTheme withName(String value) {
         return new OrbitTheme(id, value, builtIn, accent, userBubble, assistantBubble,
-                surface, background, amoled, pro);
+                surface, background, amoled, pro, material);
     }
 
     /**
@@ -192,7 +306,7 @@ public final class OrbitTheme {
      */
     public OrbitTheme asCustomNamed(String newName) {
         return new OrbitTheme(newId(), newName, false, accent, userBubble, assistantBubble,
-                surface, background, amoled, pro);
+                surface, background, amoled, pro, material);
     }
 
     /**
@@ -211,6 +325,7 @@ public final class OrbitTheme {
                 && surface.equals(other.surface)
                 && background.equals(other.background)
                 && amoled == other.amoled
+                && material.equals(other.material)
                 && pro.same(other.pro);
     }
 
@@ -240,6 +355,10 @@ public final class OrbitTheme {
         out.put("surface", surface);
         out.put("background", background);
         out.put("amoled", amoled);
+        // A free appearance value, so it sits with the other free ones rather than inside the premium
+        // block. A v0.8.0.0-beta.4 file has no such key and reads back as Liquid, which is the
+        // material that release drew.
+        out.put("material", material);
         // Always written, even at its defaults. A theme document that omitted it would be
         // indistinguishable from one written before premium styling existed, and the two deserve
         // the same treatment on import but not the same guarantee on export: a person exporting a
@@ -273,7 +392,8 @@ public final class OrbitTheme {
                 json.optBoolean("amoled", false),
                 // Absent in every file written before this release, which is exactly the case the
                 // defaults are chosen to serve: an older theme comes back looking the way it did.
-                OrbitProStyle.fromJson(json.optJSONObject("pro")));
+                OrbitProStyle.fromJson(json.optJSONObject("pro")),
+                json.optString("material", MATERIAL_DEFAULT));
     }
 
     // ---- token handling ----------------------------------------------------------------------
@@ -477,7 +597,12 @@ public final class OrbitTheme {
         // opposite of what Orbit looks like.
         out.add(new OrbitTheme(ID_SIGNAL_VIOLET, "Signal Violet", true,
                 "#9070FF", "#2E2160", "#17142A", "#141221", "#000000", true,
-                OrbitProStyle.of(14, OrbitProStyle.OUTLINE_SUBTLE, 206, 130, 135)));
+                OrbitProStyle.of(14, OrbitProStyle.OUTLINE_SUBTLE, 206, 130, 135),
+                // Frosted rather than Liquid. Signal Violet is the restrained one - squared bubbles,
+                // a hairline, a true-black page - and soft translucent chrome is what that restraint
+                // looks like on a floating control. It is also how this preset demonstrates that the
+                // material is a real choice rather than a single house style.
+                MATERIAL_FROSTED));
 
         // The glass one. Nebula's family of colours, pushed into the floating chrome rather than
         // the conversation: a more translucent surface, more of the accent in it, and a brighter
@@ -500,7 +625,10 @@ public final class OrbitTheme {
                 OrbitProStyle.of(20, OrbitProStyle.OUTLINE_SUBTLE, 194, 118, 140)
                         .withBackgroundMode(OrbitProStyle.BACKGROUND_LINEAR)
                         .withBackgroundEffectColor("#242A66")
-                        .withGradientDirection(OrbitProStyle.DIRECTION_BOTTOM_TOP)));
+                        .withGradientDirection(OrbitProStyle.DIRECTION_BOTTOM_TOP),
+                // Frosted, because the gradient is the thing to look at here. A reflective control
+                // over a graded page competes with it; a soft translucent one lets the page through.
+                MATERIAL_FROSTED));
 
         // Nova Ultra: the glow one, and deliberately not Signal Violet with the light turned up.
         // Signal Violet is a true-black page with a bright violet on it; this is a near-black one
@@ -516,7 +644,10 @@ public final class OrbitTheme {
                         .withBackgroundEffectColor("#5B3FCF")
                         .withGlowStrength(55)
                         .withGlowSize(70)
-                        .withGlowPosition(OrbitProStyle.GLOW_TOP)));
+                        .withGlowPosition(OrbitProStyle.GLOW_TOP),
+                // Liquid, because a glow is exactly what dimensional glass has to work with: light
+                // behind a translucent body is what makes depth legible rather than decorative.
+                MATERIAL_LIQUID));
         return Collections.unmodifiableList(out);
     }
 

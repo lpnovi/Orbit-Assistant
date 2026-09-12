@@ -90,12 +90,13 @@ public final class BackgroundStylePreview extends FrameLayout {
         // The AMOLED explanation, and the only thing in this view that ever changes visibility. It
         // has to be a held child rather than something added and removed, or turning AMOLED on would
         // change the height of the sample and move the controls under the user's finger.
-        note = UiKit.text(c, "", 11, UiKit.MUTED, false);
+        note = UiKit.text(c, "", 10.5f, UiKit.MUTED, false);
         note.setGravity(Gravity.CENTER);
-        note.setPadding(UiKit.dp(c, 10), UiKit.dp(c, 4), UiKit.dp(c, 10), UiKit.dp(c, 6));
+        note.setPadding(UiKit.dp(c, 8), UiKit.dp(c, 3), UiKit.dp(c, 8), UiKit.dp(c, 4));
         FrameLayout.LayoutParams noteLp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM);
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM | Gravity.END);
+        noteLp.setMargins(0, 0, UiKit.dp(c, 10), UiKit.dp(c, 10));
         addView(note, noteLp);
     }
 
@@ -113,10 +114,15 @@ public final class BackgroundStylePreview extends FrameLayout {
         cardTitle.setTextColor(tokens.text);
         cardBody.setTextColor(tokens.muted);
 
-        boolean hidden = tokens.theme != null && tokens.theme.amoled
-                && resolved.hasBackgroundEffect();
-        note.setText(hidden ? "Background effects are hidden while AMOLED is on." : "");
+        // Asked of the renderer rather than recomputed here, so the sample cannot decide it is hidden
+        // on different grounds from the page it is a sample of.
+        boolean hidden = OrbitBackground.hiddenByAmoled(page);
+        note.setText(hidden ? OrbitBackground.amoledHiddenLabel() : "");
         note.setTextColor(tokens.muted);
+        // A chip rather than bare text. A muted sentence on a true-black sample reads as an empty
+        // preview with a caption; a small enclosed label reads as the sample telling you its state.
+        note.setBackground(hidden
+                ? UiKit.rounded(UiKit.withAlpha(tokens.surface2, 235), 8, c) : null);
         note.setVisibility(hidden ? VISIBLE : GONE);
 
         setContentDescription(describe(resolved, hidden));

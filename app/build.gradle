@@ -32,8 +32,8 @@ android {
         applicationId 'com.orbit.assistant'
         minSdk 29
         targetSdk 35
-        versionCode 791
-        versionName "0.8.0.0-beta.4"
+        versionCode 792
+        versionName "0.8.0.0-beta.5"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         // No ABI filter is needed here any more: with the inference runtime moved into the

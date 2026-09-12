@@ -329,7 +329,7 @@ public final class OrbitVaultActivity extends Activity {
         searchInput.setPadding(UiKit.dp(this, 14), 0, UiKit.dp(this, 14), 0);
         // Orbit's floating glass, from v0.7.8.4-beta.6, and the same call Chats makes: the search
         // field is a surface lying over the page rather than a box cut into it.
-        OrbitGlass.floatControl(searchInput);
+        OrbitFloatingSurface.floatControl(searchInput);
         searchInput.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
             @Override public void onTextChanged(CharSequence s, int a, int b, int c) { refresh(); }
@@ -687,7 +687,7 @@ public final class OrbitVaultActivity extends Activity {
         // description all do - so a selector reads correctly with the glass and without it.
         box.setBackground(chosen
                 ? UiKit.ripple(UiKit.accent(this), UiKit.onAccent(this), 16, this)
-                : OrbitGlass.interactive(this, 16));
+                : OrbitFloatingSurface.interactive(this, 16));
         box.setElevation(UiKit.dp(this, OrbitGlass.RESTING_ELEVATION_DP));
         box.setContentDescription(description + (chosen ? " Currently filtering." : ""));
         box.setOnClickListener(onClick);

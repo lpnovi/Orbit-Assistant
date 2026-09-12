@@ -107,6 +107,16 @@ public final class Prefs {
     public static final String THEME_PRO_GLOW_STRENGTH = "theme_pro_glow_strength";
     public static final String THEME_PRO_GLOW_SIZE = "theme_pro_glow_size";
     public static final String THEME_PRO_GLOW_POSITION = "theme_pro_glow_position";
+    /** How far a linear background travels towards its effect colour. Added in v0.8.0.0-beta.5. */
+    public static final String THEME_PRO_GRADIENT_STRENGTH = "theme_pro_gradient_strength";
+    /**
+     * The active theme's floating-surface material, added in v0.8.0.0-beta.5.
+     *
+     * <p>A free appearance value, so it sits with the other free theme keys rather than among the
+     * {@code THEME_PRO_*} ones. Absent on every install before this release, and
+     * {@link OrbitThemeStore#activeMaterial} decides what that absence means.
+     */
+    public static final String THEME_MATERIAL = "theme_material";
     /** The id an appearance that matches no shipped preset is recorded under. */
     public static final String THEME_ID_CUSTOM = "custom";
     public static final String QUICK_SETTINGS_ROUTINE_ID = "quick_settings_routine_id";
@@ -250,7 +260,7 @@ public final class Prefs {
             MODEL, REASONING, INTELLIGENCE_MODE, ACCENT, USER_BUBBLE_COLOR,
             ASSISTANT_BUBBLE_COLOR, CHAT_TEXT_SIZE, WEATHER_LOCATION, WEATHER_UNITS, APP_FONT,
             QUICK_SETTINGS_ROUTINE_ID, PAGE_TRANSITION,
-            THEME_SURFACE, THEME_BACKGROUND, THEME_ID, THEME_NAME,
+            THEME_SURFACE, THEME_BACKGROUND, THEME_ID, THEME_NAME, THEME_MATERIAL,
             THEME_PRO_BACKGROUND_EFFECT_COLOR));
     private static final Set<String> BACKUP_BOOLEAN_KEYS = new HashSet<>(Arrays.asList(
             SCREEN_CONTEXT, SCREENSHOT, CONTEXT_CHIPS, ATTACH_SCREEN_BY_DEFAULT,
@@ -270,7 +280,8 @@ public final class Prefs {
                     THEME_PRO_BUBBLE_RADIUS, THEME_PRO_BUBBLE_OUTLINE,
                     THEME_PRO_GLASS_OPACITY, THEME_PRO_GLASS_TINT, THEME_PRO_GLASS_EDGE,
                     THEME_PRO_BACKGROUND_MODE, THEME_PRO_GRADIENT_DIRECTION,
-                    THEME_PRO_GLOW_STRENGTH, THEME_PRO_GLOW_SIZE, THEME_PRO_GLOW_POSITION));
+                    THEME_PRO_GLOW_STRENGTH, THEME_PRO_GLOW_SIZE, THEME_PRO_GLOW_POSITION,
+                    THEME_PRO_GRADIENT_STRENGTH));
 
     public static SharedPreferences get(Context context) {
         return context.getSharedPreferences(FILE, Context.MODE_PRIVATE);

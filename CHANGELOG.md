@@ -842,6 +842,14 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.0.0-beta.5**: Surface materials, and a visual polish pass over glass and backgrounds.
+  - Orbit's floating controls now come in three materials: Solid, Frosted and Liquid. Choosing one is free.
+  - Frosted is the new soft option: translucent and quiet, and the cleanest choice for everyday use.
+  - Liquid keeps its depth but is much more restrained, so it belongs with your theme instead of standing apart from it.
+  - Wide controls like the Chats search bar no longer carry a broad white highlight across the top.
+  - Theme Studio now explains that true black AMOLED hides background effects, instead of leaving you to work it out.
+  - Linear gradients gain a Strength control, from a gentle color cast to the full two-color sweep.
+  - Advanced glass sliders stay Orbit Pro, and your settings are kept when you switch to Solid.
 - **v0.8.0.0-beta.4**: Liquid Orbit Glass and advanced backgrounds, the most visual Orbit Pro release so far.
   - Orbit's floating controls are now Liquid Glass: a see-through body, light catching the top curve, and accent gathering at the edges.
   - Glass opacity, tint and edge all reach much further, so the difference between subtle and dramatic is now obvious.

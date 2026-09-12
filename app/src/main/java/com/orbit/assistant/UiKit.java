@@ -190,6 +190,7 @@ public final class UiKit {
                 // Theme Studio still painting the previous gradient - or none at all - until the next
                 // cold start. The effective styling is used, so a Free device never rebuilds a screen
                 // because a stored premium value moved.
+                "|material=" + materialSignature(c) +
                 "|pro=" + proStyleSignature(c);
     }
 
@@ -220,6 +221,7 @@ public final class UiKit {
                 // moment it is built, and a screen sitting underneath Theme Studio has to rebuild
                 // to pick up a change. The effective value is used, so a device that cannot draw
                 // premium styling never rebuilds because a stored premium value moved.
+                "|material=" + materialSignature(c) +
                 "|pro=" + proStyleSignature(c);
     }
 
@@ -234,7 +236,19 @@ public final class UiKit {
                 // because this reads the effective styling rather than the stored styling.
                 + "." + style.backgroundMode + "." + style.backgroundEffectColor
                 + "." + style.gradientDirection + "." + style.glowStrength
-                + "." + style.glowSize + "." + style.glowPosition;
+                + "." + style.glowSize + "." + style.glowPosition
+                + "." + style.gradientStrength;
+    }
+
+    /**
+     * The free floating-surface material, as part of the appearance a built screen has baked in.
+     *
+     * <p>Separate from {@link #proStyleSignature} because it is free: a Free device must rebuild when
+     * it changes, and that signature deliberately reports the effective premium styling, which on a
+     * Free device never moves.
+     */
+    private static String materialSignature(Context c) {
+        return OrbitThemeStore.activeMaterial(c);
     }
 
     /**
