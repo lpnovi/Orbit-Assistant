@@ -96,9 +96,15 @@ public final class OrbitFloatingSurface {
 
     /** The same surface for something that is tapped, with Orbit's own ripple over it. */
     public static Drawable interactive(Context c, float radiusDp) {
+        return interactive(c, OrbitGlass.Palette.live(c), radiusDp);
+    }
+
+    /** Centralized material rendering for a control with resolved per-control overrides. */
+    public static Drawable interactive(Context c, OrbitGlass.Palette palette, float radiusDp) {
+        OrbitGlass.Palette value = palette == null ? OrbitGlass.Palette.live(c) : palette;
         return new RippleDrawable(
-                ColorStateList.valueOf(UiKit.withAlpha(UiKit.accent(c), 56)),
-                surfaceDrawable(c, radiusDp),
+                ColorStateList.valueOf(UiKit.withAlpha(value.accent(), 56)),
+                surfaceDrawable(c, value, radiusDp),
                 UiKit.rounded(Color.WHITE, radiusDp, c));
     }
 

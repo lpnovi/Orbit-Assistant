@@ -296,16 +296,15 @@ public final class DeckLayoutStoreTest {
     }
 
     @Test public void aDeckCannotGrowWithoutBound() {
+        List<DeckTile> before = DeckLayoutStore.layout(context);
         List<DeckTile> many = new ArrayList<>();
         for (int i = 0; i < DeckLayoutStore.MAX_TILES + 10; i++) {
             many.add(DeckTile.of(DeckTileRegistry.TYPE_PROMPT, DeckTile.Size.STANDARD)
                     .withConfig(DeckTile.CONFIG_PROMPT, "p" + i));
         }
-        DeckLayoutStore.save(context, many);
-        assertEquals(DeckLayoutStore.MAX_TILES, DeckLayoutStore.layout(context).size());
-        assertFalse("and a further add is refused rather than silently dropped",
-                DeckLayoutStore.add(context, DeckTile.of(DeckTileRegistry.TYPE_SETTINGS,
-                        DeckTile.Size.STANDARD)));
+        assertFalse("an over-limit normal save is rejected, never silently truncated",
+                DeckLayoutStore.save(context, many));
+        assertEquals("the prior layout stays intact", before, DeckLayoutStore.layout(context));
     }
 
     // ---- duplicates -------------------------------------------------------------------------------

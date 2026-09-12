@@ -842,6 +842,13 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.0.0-beta.6**: A more organized Orbit Deck, plus per-tile styling for Orbit Pro.
+  - Large tiles use real two-row space and show useful secondary information where the tile supports it.
+  - Free section headers divide the ordered Deck without owning or deleting the tiles that follow them.
+  - Free one-level folders keep tiles together, with rename, reorder, move-in, and move-out controls.
+  - Sizes, sections, folders, rearranging, and normal Deck editing remain completely Free.
+  - Orbit Pro adds per-tile accent, Solid, Frosted or Liquid material, icon treatment, and label visibility.
+  - Stored Pro appearance returns exactly after switching from Free back to Pro Preview.
 - **v0.8.0.0-beta.5**: Surface materials, and a visual polish pass over glass and backgrounds.
   - Orbit's floating controls now come in three materials: Solid, Frosted and Liquid. Choosing one is free.
   - Frosted is the new soft option: translucent and quiet, and the cleanest choice for everyday use.

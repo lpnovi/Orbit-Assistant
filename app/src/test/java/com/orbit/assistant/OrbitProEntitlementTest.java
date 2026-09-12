@@ -297,9 +297,9 @@ public final class OrbitProEntitlementTest {
      * unlock, so the inverse is what protects the product rule now: the callers are enumerated, and
      * adding one is a deliberate edit to this list rather than something that happens quietly.
      *
-     * <p>All three are Theme Studio Pro, which is new capability that has never been free. Nothing
-     * that existed before it appears here, and the free theme model, the file codec and the token
-     * resolver are asserted elsewhere to not consult entitlement at all.
+     * <p>The callers are the Theme Studio and Deck appearance boundaries. Both are new premium
+     * capability; Deck sizing, sections, folders, movement, actions, and all free theme behavior
+     * are exercised separately without entitlement.
      */
     @Test public void onlyNewPremiumCapabilityIsGatedByEntitlement() {
         List<String> callers = new ArrayList<>();
@@ -310,10 +310,10 @@ public final class OrbitProEntitlementTest {
             if (body.contains("OrbitProEntitlement.hasPro(")) callers.add(name);
         }
         Collections.sort(callers);
-        assertEquals("the entitlement gates exactly these, and they are all Theme Studio Pro: "
+        assertEquals("the entitlement gates exactly the premium appearance boundaries: "
                         + callers,
-                java.util.Arrays.asList("OrbitProStyle.java", "OrbitThemeStore.java",
-                        "ThemeStudioActivity.java"),
+                java.util.Arrays.asList("DeckActivity.java", "DeckTileAppearance.java",
+                        "OrbitProStyle.java", "OrbitThemeStore.java", "ThemeStudioActivity.java"),
                 callers);
     }
 

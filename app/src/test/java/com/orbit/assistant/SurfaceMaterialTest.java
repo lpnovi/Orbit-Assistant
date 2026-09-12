@@ -405,7 +405,7 @@ public final class SurfaceMaterialTest {
     @Test public void noScreenBranchesOnTheMaterial() {
         List<String> allowed = List.of("OrbitTheme.java", "OrbitFloatingSurface.java",
                 "OrbitGlass.java", "ThemeStudioActivity.java", "GlassStylePreview.java",
-                "OrbitThemeStore.java");
+                "OrbitThemeStore.java", "DeckActivity.java");
         List<String> offenders = new ArrayList<>();
         for (Path source : ThemeStudioProTest.mainSources()) {
             String name = source.getFileName().toString();

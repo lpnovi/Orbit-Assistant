@@ -302,6 +302,11 @@ public final class OrbitGlass {
             return new Palette(accent, background, surface, surface2, style, value);
         }
 
+        /** The same centralized material with a per-control accent. */
+        public Palette withAccent(int value) {
+            return new Palette(value, background, surface, surface2, style, material);
+        }
+
         public String material() {
             return material;
         }

@@ -76,10 +76,17 @@ public final class DeckGridLayout extends ViewGroup {
     public static final class LayoutParams extends ViewGroup.LayoutParams {
         /** How many columns this tile occupies. Clamped to the grid's column count. */
         public int span = 1;
+        /** Actual vertical grid footprint. Zero is a natural-height full-width structural row. */
+        public int rowSpan = 1;
 
         public LayoutParams(int span) {
+            this(span, 1);
+        }
+
+        public LayoutParams(int span, int rowSpan) {
             super(MATCH_PARENT, WRAP_CONTENT);
             this.span = Math.max(1, span);
+            this.rowSpan = Math.max(0, rowSpan);
         }
     }
 
@@ -90,6 +97,7 @@ public final class DeckGridLayout extends ViewGroup {
     private int columns = 2;
     private int spacing;
     private int minRowHeight;
+    private int measuredRowHeight;
 
     /** Where each child was last laid out, so a move can be animated from where it actually was. */
     private final Map<View, Point> lastPositions = new HashMap<>();
@@ -212,33 +220,60 @@ public final class DeckGridLayout extends ViewGroup {
      */
     private List<Slot> slotsFor(List<View> arrangement, int cell) {
         List<Slot> out = new ArrayList<>();
-        List<View> visible = visibleIn(arrangement);
-        int index = 0;
-        int y = getPaddingTop();
-        while (index < visible.size()) {
-            int start = index;
-            int column = 0;
-            int height = 0;
-            // Which tiles share this row, and how tall the row has to be for all of them.
-            while (index < visible.size()) {
-                View child = visible.get(index);
-                int span = spanOf(child);
-                if (column > 0 && column + span > columns) break;
-                height = Math.max(height, Math.max(minRowHeight, child.getMeasuredHeight()));
-                column += span;
-                index++;
-                if (column >= columns) break;
+        List<boolean[]> occupied = new ArrayList<>();
+        int segmentTop = getPaddingTop();
+        int rowHeight = Math.max(minRowHeight, measuredRowHeight);
+        int cursorRow = 0;
+        int cursorColumn = 0;
+        for (View child : visibleIn(arrangement)) {
+            int rows = rowSpanOf(child);
+            if (rows == 0) {
+                int usedRows = occupied.size();
+                int y = segmentTop + usedRows * (rowHeight + spacing);
+                int width = cell * columns + spacing * (columns - 1);
+                int height = Math.max(1, child.getMeasuredHeight());
+                out.add(new Slot(child, getPaddingLeft(), y, width, height));
+                segmentTop = y + height + spacing;
+                occupied.clear();
+                cursorRow = 0;
+                cursorColumn = 0;
+                continue;
             }
-            int x = getPaddingLeft();
-            for (int i = start; i < index; i++) {
-                View child = visible.get(i);
-                int width = cell * spanOf(child) + spacing * (spanOf(child) - 1);
-                out.add(new Slot(child, x, y, width, height));
-                x += width + spacing;
+            int span = spanOf(child);
+            int row = cursorRow;
+            int column = cursorColumn;
+            boolean found = false;
+            while (!found) {
+                ensureRows(occupied, row + rows);
+                for (; column + span <= columns; column++) {
+                    if (fits(occupied, row, column, rows, span)) { found = true; break; }
+                }
+                if (!found) { row++; column = 0; }
             }
-            y += height + spacing;
+            for (int r = row; r < row + rows; r++) {
+                for (int c = column; c < column + span; c++) occupied.get(r)[c] = true;
+            }
+            int x = getPaddingLeft() + column * (cell + spacing);
+            int y = segmentTop + row * (rowHeight + spacing);
+            int width = cell * span + spacing * (span - 1);
+            int height = rowHeight * rows + spacing * (rows - 1);
+            out.add(new Slot(child, x, y, width, height));
+            cursorRow = row;
+            cursorColumn = column + span;
+            if (cursorColumn >= columns) { cursorRow++; cursorColumn = 0; }
         }
         return out;
+    }
+
+    private void ensureRows(List<boolean[]> occupied, int count) {
+        while (occupied.size() < count) occupied.add(new boolean[columns]);
+    }
+
+    private boolean fits(List<boolean[]> occupied, int row, int column, int rows, int span) {
+        for (int r = row; r < row + rows; r++) {
+            for (int c = column; c < column + span; c++) if (occupied.get(r)[c]) return false;
+        }
+        return true;
     }
 
     private List<View> visibleIn(List<View> arrangement) {
@@ -263,15 +298,35 @@ public final class DeckGridLayout extends ViewGroup {
         return Math.max(1, Math.min(columns, span));
     }
 
+    private int rowSpanOf(View child) {
+        ViewGroup.LayoutParams params = child.getLayoutParams();
+        int span = params instanceof LayoutParams ? ((LayoutParams) params).rowSpan : 1;
+        return Math.max(0, Math.min(2, span));
+    }
+
     // ---- measurement ------------------------------------------------------------------------------
 
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         int width = MeasureSpec.getSize(widthSpec);
         int cell = cellWidth(width);
+        measuredRowHeight = minRowHeight;
         for (View child : visibleChildren()) {
             int childWidth = cell * spanOf(child) + spacing * (spanOf(child) - 1);
             child.measure(MeasureSpec.makeMeasureSpec(Math.max(0, childWidth), MeasureSpec.EXACTLY),
                     MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
+            int rows = rowSpanOf(child);
+            if (rows > 0) {
+                int needed = Math.max(0, child.getMeasuredHeight() - spacing * (rows - 1));
+                measuredRowHeight = Math.max(measuredRowHeight, (needed + rows - 1) / rows);
+            }
+        }
+        for (View child : visibleChildren()) {
+            int rows = rowSpanOf(child);
+            if (rows == 0) continue;
+            int childWidth = cell * spanOf(child) + spacing * (spanOf(child) - 1);
+            int childHeight = measuredRowHeight * rows + spacing * (rows - 1);
+            child.measure(MeasureSpec.makeMeasureSpec(Math.max(0, childWidth), MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(childHeight, MeasureSpec.EXACTLY));
         }
         int bottom = getPaddingTop();
         for (Slot slot : slotsFor(order, cell)) bottom = Math.max(bottom, slot.y + slot.height);
@@ -462,7 +517,10 @@ public final class DeckGridLayout extends ViewGroup {
 
         int best = current;
         float bestDistance = Float.MAX_VALUE;
-        for (int index : fittingInsertionIndices(rest, span)) {
+        List<Integer> candidates = rowSpanOf(dragging) == 1
+                ? fittingInsertionIndices(rest, span) : new ArrayList<>();
+        if (candidates.isEmpty()) for (int i = 0; i <= rest.size(); i++) candidates.add(i);
+        for (int index : candidates) {
             List<View> candidate = new ArrayList<>(rest);
             candidate.add(index, dragging);
             Slot placed = null;
@@ -596,7 +654,7 @@ public final class DeckGridLayout extends ViewGroup {
     }
 
     /**
-     * Each visible tile's logical placement as {@code {row, startColumn, span}}, in display order.
+     * Each visible tile's logical placement as {@code {row, startColumn, columnSpan, rowSpan}}.
      *
      * <p>Rectangles alone cannot express the thing a wide tile's drag kept getting wrong. A grid
      * with a hole beside a half-placed span has no overlapping rectangles at all, so a pixel-level
@@ -613,7 +671,7 @@ public final class DeckGridLayout extends ViewGroup {
             if (slot.y != lastY) { row++; lastY = slot.y; }
             int column = cell + spacing > 0
                     ? Math.round((slot.x - getPaddingLeft()) / (float) (cell + spacing)) : 0;
-            out.add(new int[]{row, column, spanOf(slot.child)});
+            out.add(new int[]{row, column, spanOf(slot.child), rowSpanOf(slot.child)});
         }
         return out;
     }
@@ -632,9 +690,12 @@ public final class DeckGridLayout extends ViewGroup {
             int row = placement[0];
             int column = placement[1];
             int span = placement[2];
+            int rows = placement.length > 3 ? Math.max(1, placement[3]) : 1;
             if (row < 0 || column < 0 || span < 1 || column + span > columns) return false;
-            for (int c = column; c < column + span; c++) {
-                if (claimed.put(row + ":" + c, Boolean.TRUE) != null) return false;
+            for (int r = row; r < row + rows; r++) {
+                for (int c = column; c < column + span; c++) {
+                    if (claimed.put(r + ":" + c, Boolean.TRUE) != null) return false;
+                }
             }
         }
         return true;

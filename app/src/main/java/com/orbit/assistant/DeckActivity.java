@@ -81,6 +81,8 @@ public final class DeckActivity extends Activity {
     private TextView firstRunHint;
     private FrameLayout root;
     private FrameLayout sheetHost;
+    private DeckGridLayout folderGrid;
+    private String openFolderId;
 
     private boolean editing;
     private DeckTileView carriedTile;
@@ -369,12 +371,20 @@ public final class DeckActivity extends Activity {
     /** Rebuilds the grid from storage. Cheap, local, and the only path that draws tiles. */
     private void refresh() {
         if (grid == null) return;
-        List<DeckTile> tiles = DeckLayoutStore.layout(this);
+        DeckLayout deck = DeckLayoutStore.deck(this);
 
         grid.removeAllViews();
-        for (DeckTile tile : tiles) grid.addView(tileView(tile), gridParams(tile));
+        for (DeckItem item : deck.items) {
+            View view;
+            if (item instanceof DeckTileItem) view = tileView(((DeckTileItem) item).tile);
+            else if (item instanceof DeckSection) view = sectionView((DeckSection) item);
+            else if (item instanceof DeckFolder) view = folderView((DeckFolder) item);
+            else continue;
+            view.setTag(item.id);
+            grid.addView(view, gridParams(item));
+        }
 
-        boolean empty = tiles.isEmpty();
+        boolean empty = deck.items.isEmpty();
         grid.setVisibility(empty ? View.GONE : View.VISIBLE);
         deckHeadingRow.setVisibility(empty ? View.GONE : View.VISIBLE);
         emptyBlock.setVisibility(empty ? View.VISIBLE : View.GONE);
@@ -383,11 +393,15 @@ public final class DeckActivity extends Activity {
                 ? View.VISIBLE : View.GONE);
 
         headerSubtitle.setText(editing ? "Editing" : "Your shortcuts");
-        renderSuggestions(tiles);
+        renderSuggestions(deck.allTiles());
     }
 
-    private DeckGridLayout.LayoutParams gridParams(DeckTile tile) {
-        return new DeckGridLayout.LayoutParams(tile.size == DeckTile.Size.WIDE ? 2 : 1);
+    private DeckGridLayout.LayoutParams gridParams(DeckItem item) {
+        if (item instanceof DeckSection) return new DeckGridLayout.LayoutParams(grid.columns(), 0);
+        if (item instanceof DeckFolder) return new DeckGridLayout.LayoutParams(1, 1);
+        DeckTile tile = ((DeckTileItem) item).tile;
+        if (tile.size == DeckTile.Size.LARGE) return new DeckGridLayout.LayoutParams(2, 2);
+        return new DeckGridLayout.LayoutParams(tile.size == DeckTile.Size.WIDE ? 2 : 1, 1);
     }
 
     private DeckTileView tileView(DeckTile tile) {
@@ -398,6 +412,55 @@ public final class DeckActivity extends Activity {
         // without releasing and touching the rebuilt tile a second time.
         installDrag(view);
         return view;
+    }
+
+    private View sectionView(DeckSection section) {
+        TextView view = sectionLabel(section.title.toUpperCase(Locale.US));
+        view.setPadding(UiKit.dp(this, 3), UiKit.dp(this, 12), UiKit.dp(this, 3), UiKit.dp(this, 8));
+        view.setAccessibilityHeading(true);
+        view.setContentDescription(section.title + ", section heading"
+                + (editing ? ", editing. Double tap for options." : ""));
+        view.setFocusable(true);
+        view.setOnClickListener(v -> { if (editing) showStructuralOptions(section, v); });
+        view.setOnLongClickListener(v -> { if (!editing) setEditing(true); showStructuralOptions(section, v); return true; });
+        return view;
+    }
+
+    private View folderView(DeckFolder folder) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setGravity(Gravity.CENTER_HORIZONTAL);
+        card.setBackground(OrbitFloatingSurface.interactive(this, 22));
+        int pad = UiKit.dp(this, 14);
+        card.setPadding(pad, pad, pad, pad);
+        UiKit.pressScale(card);
+
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(R.drawable.ic_deck);
+        icon.setImageTintList(ColorStateList.valueOf(UiKit.accent(this)));
+        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        card.addView(icon, new LinearLayout.LayoutParams(UiKit.dp(this, 38), UiKit.dp(this, 38)));
+        TextView title = UiKit.text(this, folder.title, 15, UiKit.TEXT, true);
+        title.setGravity(Gravity.CENTER);
+        title.setPadding(0, UiKit.dp(this, 12), 0, 0);
+        title.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        card.addView(title);
+        String count = folder.tiles.size() == 1 ? "1 tile" : folder.tiles.size() + " tiles";
+        TextView meta = UiKit.text(this, count, 12, UiKit.MUTED, false);
+        meta.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        card.addView(meta);
+        card.setContentDescription(folder.title + ", folder, " + count
+                + (editing ? ", editing. Double tap for options." : ""));
+        card.setFocusable(true);
+        card.setOnClickListener(v -> {
+            if (editing) showStructuralOptions(folder, v); else openFolder(folder.id);
+        });
+        card.setOnLongClickListener(v -> {
+            if (!editing) setEditing(true);
+            showStructuralOptions(folder, v);
+            return true;
+        });
+        return card;
     }
 
     private DeckTileView.Listener tileListener() {
@@ -564,17 +627,18 @@ public final class DeckActivity extends Activity {
         buildHeaderControls();
         headerSubtitle.setText(editing ? "Editing" : "Your shortcuts");
         for (View child : grid.orderedChildren()) {
-            if (!(child instanceof DeckTileView)) continue;
-            DeckTileView view = (DeckTileView) child;
-            view.setEditing(editing);
+            if (child instanceof DeckTileView) ((DeckTileView) child).setEditing(editing);
         }
-        renderSuggestions(DeckLayoutStore.layout(this));
+        renderSuggestions(DeckLayoutStore.allTiles(this));
         syncBackHandler();
     }
 
     private void showDeckOptions(View anchor) {
-        UiKit.showOrbitMenu(this, anchor, new String[]{"Add tile", "Reset Deck"}, -1, (index, label) -> {
+        UiKit.showOrbitMenu(this, anchor,
+                new String[]{"Add tile", "Add section", "Add folder", "Reset Deck"}, -1, (index, label) -> {
             if (index == 0) openAddSheet();
+            else if (index == 1) createSection();
+            else if (index == 2) createFolder();
             else confirmReset();
         });
     }
@@ -611,21 +675,29 @@ public final class DeckActivity extends Activity {
             actions.add(() -> configure(tile));
         }
         if (definition != null && definition.sizes.size() > 1) {
-            boolean wide = tile.size == DeckTile.Size.WIDE;
-            labels.add(wide ? "Make standard" : "Make wide");
-            actions.add(() -> resize(tile, wide ? DeckTile.Size.STANDARD : DeckTile.Size.WIDE));
+            labels.add("Size");
+            actions.add(() -> showSizeChooser(tile, view));
         }
+        labels.add(OrbitProEntitlement.hasPro(this) ? "Appearance · Pro" : "Appearance");
+        actions.add(() -> openAppearanceEditor(tile));
         labels.add("Rename");
         actions.add(() -> openRenameSheet(tile));
 
+        String folderId = folderForTile(tile.instanceId);
         int index = indexOf(tile);
+        int containerSize = folderId == null ? DeckLayoutStore.deck(this).items.size()
+                : DeckLayoutStore.deck(this).folder(folderId).tiles.size();
         if (index > 0) {
             labels.add("Move before");
             actions.add(() -> move(tile, index - 1));
         }
-        if (index >= 0 && index < DeckLayoutStore.layout(this).size() - 1) {
+        if (index >= 0 && index < containerSize - 1) {
             labels.add("Move after");
             actions.add(() -> move(tile, index + 1));
+        }
+        if (!folders().isEmpty() || folderId != null) {
+            labels.add("Move to folder");
+            actions.add(() -> openMoveTileSheet(tile));
         }
         labels.add("Remove");
         actions.add(() -> removeTile(tile));
@@ -635,22 +707,38 @@ public final class DeckActivity extends Activity {
     }
 
     private int indexOf(DeckTile tile) {
-        List<DeckTile> tiles = DeckLayoutStore.layout(this);
-        for (int i = 0; i < tiles.size(); i++) {
-            if (tiles.get(i).instanceId.equals(tile.instanceId)) return i;
+        DeckLayout deck = DeckLayoutStore.deck(this);
+        String folderId = folderForTile(tile.instanceId);
+        if (folderId != null) {
+            List<DeckTile> tiles = deck.folder(folderId).tiles;
+            for (int i = 0; i < tiles.size(); i++) if (tiles.get(i).instanceId.equals(tile.instanceId)) return i;
+            return -1;
         }
+        for (int i = 0; i < deck.items.size(); i++) if (deck.items.get(i).id.equals(tile.instanceId)) return i;
         return -1;
     }
 
     private void move(DeckTile tile, int target) {
-        List<DeckTile> tiles = new ArrayList<>(DeckLayoutStore.layout(this));
+        DeckLayout deck = DeckLayoutStore.deck(this);
+        String folderId = folderForTile(tile.instanceId);
         int from = indexOf(tile);
-        if (from < 0 || target < 0 || target >= tiles.size()) return;
-        DeckTile moved = tiles.remove(from);
-        tiles.add(target, moved);
-        List<String> order = new ArrayList<>();
-        for (DeckTile item : tiles) order.add(item.instanceId);
-        DeckLayoutStore.applyOrder(this, order);
+        if (folderId != null) {
+            List<DeckTile> tiles = new ArrayList<>(deck.folder(folderId).tiles);
+            if (from < 0 || target < 0 || target >= tiles.size()) return;
+            DeckTile moved = tiles.remove(from);
+            tiles.add(target, moved);
+            List<String> order = new ArrayList<>();
+            for (DeckTile item : tiles) order.add(item.instanceId);
+            DeckLayoutStore.applyFolderOrder(this, folderId, order);
+        } else {
+            if (from < 0 || target < 0 || target >= deck.items.size()) return;
+            List<DeckItem> items = new ArrayList<>(deck.items);
+            DeckItem moved = items.remove(from);
+            items.add(target, moved);
+            List<String> order = new ArrayList<>();
+            for (DeckItem item : items) order.add(item.id);
+            DeckLayoutStore.applyItemOrder(this, order);
+        }
         refresh();
         grid.animateNextLayout();
     }
@@ -666,16 +754,126 @@ public final class DeckActivity extends Activity {
 
     private void removeTile(DeckTile tile) {
         if (!DeckLayoutStore.remove(this, tile.instanceId)) return;
+        if (sheetOpen()) closeSheet();
         refresh();
         grid.animateNextLayout();
     }
 
+    private List<DeckFolder> folders() {
+        List<DeckFolder> out = new ArrayList<>();
+        for (DeckItem item : DeckLayoutStore.deck(this).items) if (item instanceof DeckFolder) out.add((DeckFolder) item);
+        return out;
+    }
+
+    private String folderForTile(String tileId) {
+        for (DeckFolder folder : folders()) {
+            for (DeckTile tile : folder.tiles) if (tile.instanceId.equals(tileId)) return folder.id;
+        }
+        return null;
+    }
+
+    private void createSection() {
+        if (!DeckLayoutStore.addSection(this, "New section")) { toast("Your Deck has enough sections."); return; }
+        DeckSection added = null;
+        for (DeckItem item : DeckLayoutStore.deck(this).items) if (item instanceof DeckSection) added = (DeckSection) item;
+        refresh();
+        if (added != null) openStructuralRenameSheet(added);
+    }
+
+    private void createFolder() {
+        if (!DeckLayoutStore.addFolder(this, "New folder")) { toast("Your Deck has enough folders."); return; }
+        DeckFolder added = null;
+        for (DeckFolder folder : folders()) added = folder;
+        refresh();
+        if (added != null) openStructuralRenameSheet(added);
+    }
+
+    private void showStructuralOptions(DeckItem item, View anchor) {
+        DeckLayout deck = DeckLayoutStore.deck(this);
+        int index = -1;
+        for (int i = 0; i < deck.items.size(); i++) if (deck.items.get(i).id.equals(item.id)) index = i;
+        List<String> labels = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        if (item instanceof DeckFolder) {
+            labels.add("Open folder"); actions.add(() -> openFolder(item.id));
+            labels.add("Add from Deck"); actions.add(() -> openAddToFolderSheet(item.id));
+        }
+        labels.add("Rename"); actions.add(() -> openStructuralRenameSheet(item));
+        if (index > 0) { int target = index - 1; labels.add("Move before"); actions.add(() -> moveItem(item.id, target)); }
+        if (index >= 0 && index < deck.items.size() - 1) { int target = index + 1; labels.add("Move after"); actions.add(() -> moveItem(item.id, target)); }
+        labels.add("Remove");
+        actions.add(() -> {
+            if (item instanceof DeckFolder) confirmRemoveFolder((DeckFolder) item);
+            else { DeckLayoutStore.removeSection(this, item.id); refresh(); }
+        });
+        UiKit.showOrbitMenu(this, anchor, labels.toArray(new String[0]), -1,
+                (choice, label) -> { if (choice >= 0 && choice < actions.size()) actions.get(choice).run(); });
+    }
+
+    private void moveItem(String id, int target) {
+        List<DeckItem> items = new ArrayList<>(DeckLayoutStore.deck(this).items);
+        int from = -1;
+        for (int i = 0; i < items.size(); i++) if (items.get(i).id.equals(id)) from = i;
+        if (from < 0 || target < 0 || target >= items.size()) return;
+        DeckItem moved = items.remove(from);
+        items.add(target, moved);
+        List<String> ids = new ArrayList<>();
+        for (DeckItem item : items) ids.add(item.id);
+        DeckLayoutStore.applyItemOrder(this, ids);
+        refresh();
+        grid.animateNextLayout();
+    }
+
+    private void openStructuralRenameSheet(DeckItem item) {
+        String current = item instanceof DeckSection ? ((DeckSection) item).title : ((DeckFolder) item).title;
+        LinearLayout column = openSheet(item instanceof DeckSection ? "Rename section" : "Rename folder", "Changes save immediately");
+        EditText name = new EditText(this);
+        name.setText(current);
+        name.setHint(item instanceof DeckSection ? "Section name" : "Folder name");
+        styleField(name, false);
+        column.addView(name, fieldLp(UiKit.dp(this, 48)));
+        Button save = primaryButton("Save");
+        column.addView(save, fieldLp(UiKit.dp(this, 48)));
+        save.setOnClickListener(v -> {
+            DeckLayoutStore.renameItem(this, item.id, name.getText().toString());
+            closeSheet(); syncBackHandler(); refresh();
+        });
+    }
+
+    private void confirmRemoveFolder(DeckFolder folder) {
+        if (folder.tiles.isEmpty()) {
+            DeckLayoutStore.removeFolderMovingChildren(this, folder.id);
+            refresh();
+            return;
+        }
+        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
+                .setTitle("Remove " + folder.title + "?")
+                .setMessage("Move its " + folder.tiles.size() + " tiles back to your Deck. No tile will be deleted.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Move tiles and remove", (d, w) -> {
+                    DeckLayoutStore.removeFolderMovingChildren(this, folder.id);
+                    refresh();
+                }).create();
+        UiKit.styleOrbitDialog(dialog, this, true);
+        dialog.show();
+    }
+
+    private Button primaryButton(String label) {
+        Button button = new Button(this);
+        button.setText(label);
+        button.setAllCaps(false);
+        button.setTextSize(15);
+        button.setTextColor(UiKit.onAccent(this));
+        button.setBackground(UiKit.ripple(UiKit.accent(this), UiKit.onAccent(this), 18, this));
+        button.setMinHeight(0); button.setMinimumHeight(0); button.setStateListAnimator(null);
+        UiKit.pressScale(button);
+        return button;
+    }
+
     private void persistOrder(List<View> ordered) {
         List<String> ids = new ArrayList<>();
-        for (View child : ordered) {
-            if (child instanceof DeckTileView) ids.add(((DeckTileView) child).tile().instanceId);
-        }
-        DeckLayoutStore.applyOrder(this, ids);
+        for (View child : ordered) if (child.getTag() instanceof String) ids.add((String) child.getTag());
+        DeckLayoutStore.applyItemOrder(this, ids);
     }
 
     // ---- dragging ---------------------------------------------------------------------------------
@@ -861,7 +1059,290 @@ public final class DeckActivity extends Activity {
             DeckTileView view = (DeckTileView) child;
             view.apply(DeckTileResolver.resolve(this, view.tile(), live));
         }
-        if (!editing) renderSuggestions(DeckLayoutStore.layout(this));
+        if (!editing) renderSuggestions(DeckLayoutStore.allTiles(this));
+    }
+
+    // ---- folders ---------------------------------------------------------------------------------
+
+    private void openFolder(String folderId) {
+        DeckFolder folder = DeckLayoutStore.deck(this).folder(folderId);
+        if (folder == null) return;
+        openFolderId = folderId;
+        LinearLayout column = openSheet(folder.title,
+                folder.tiles.size() == 1 ? "1 tile" : folder.tiles.size() + " tiles");
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        Button add = primaryButton("Add from Deck");
+        add.setOnClickListener(v -> openAddToFolderSheet(folderId));
+        actions.addView(add, new LinearLayout.LayoutParams(0, UiKit.dp(this, 44), 1f));
+        Button rename = primaryButton("Rename");
+        rename.setOnClickListener(v -> openStructuralRenameSheet(folder));
+        LinearLayout.LayoutParams renameLp = new LinearLayout.LayoutParams(0, UiKit.dp(this, 44), 1f);
+        renameLp.leftMargin = UiKit.dp(this, 8);
+        actions.addView(rename, renameLp);
+        column.addView(actions, rowLp());
+
+        if (folder.tiles.isEmpty()) {
+            column.addView(emptyNote("This folder is empty. Add an existing tile from your Deck."));
+            return;
+        }
+        folderGrid = new DeckGridLayout(this);
+        folderGrid.setColumns(Math.min(3, DeckGridLayout.columnsForWidth(contentWidthDp())));
+        folderGrid.setSpacing(UiKit.dp(this, 10));
+        folderGrid.setMinRowHeight(UiKit.dp(this, 112));
+        folderGrid.setOnReorderListener(ordered -> {
+            List<String> ids = new ArrayList<>();
+            for (View child : ordered) if (child instanceof DeckTileView) ids.add(((DeckTileView) child).tile().instanceId);
+            DeckLayoutStore.applyFolderOrder(this, folderId, ids);
+        });
+        for (DeckTile tile : folder.tiles) {
+            DeckTileView view = folderTileView(tile);
+            folderGrid.addView(view, tileGridParams(tile));
+        }
+        column.addView(folderGrid, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+    }
+
+    private DeckGridLayout.LayoutParams tileGridParams(DeckTile tile) {
+        if (tile.size == DeckTile.Size.LARGE) return new DeckGridLayout.LayoutParams(2, 2);
+        return new DeckGridLayout.LayoutParams(tile.size == DeckTile.Size.WIDE ? 2 : 1, 1);
+    }
+
+    private DeckTileView folderTileView(DeckTile tile) {
+        DeckTileView view = new DeckTileView(this, tile, DeckTileResolver.resolve(this, tile, live),
+                new DeckTileView.Listener() {
+                    @Override public void onTileTapped(DeckTile value, DeckTileView tileView) {
+                        if (editing) showTileOptions(value, tileView); else runTile(value, tileView);
+                    }
+                    @Override public void onTileLongPressed(DeckTile value, DeckTileView tileView) {
+                        if (!editing) setEditing(true);
+                        showTileOptions(value, tileView);
+                    }
+                    @Override public void onTileRemoveTapped(DeckTile value, DeckTileView tileView) { removeTile(value); }
+                });
+        view.setEditing(editing);
+        installFolderDrag(view);
+        return view;
+    }
+
+    /** The existing Deck drag interaction, scoped to the open folder's own grid. */
+    private void installFolderDrag(DeckTileView view) {
+        final float[] down = new float[2];
+        final boolean[] pressed = {false};
+        final boolean[] dragging = {false};
+        final boolean[] longPressed = {false};
+        final int slop = ViewConfiguration.get(this).getScaledTouchSlop();
+        final Runnable[] pickup = new Runnable[1];
+        pickup[0] = () -> {
+            if (!pressed[0] || dragging[0] || carriedTile != null || folderGrid == null) return;
+            longPressed[0] = true;
+            if (!editing) { setEditing(true); view.setEditing(true); }
+            dragging[0] = true;
+            carriedTile = view;
+            view.setCarried(true);
+            folderGrid.beginDrag(view);
+            view.getParent().requestDisallowInterceptTouchEvent(true);
+            UiKit.haptic(view, HapticFeedbackConstants.LONG_PRESS);
+        };
+        view.setOnTouchListener((v, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    down[0] = event.getRawX(); down[1] = event.getRawY();
+                    pressed[0] = true; dragging[0] = false; longPressed[0] = false;
+                    if (!editing) view.postDelayed(pickup[0], ViewConfiguration.getLongPressTimeout());
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    float dx = event.getRawX() - down[0];
+                    float dy = event.getRawY() - down[1];
+                    if (editing && !dragging[0] && Math.hypot(dx, dy) > slop) pickup[0].run();
+                    if (dragging[0] && folderGrid != null) folderGrid.updateDrag(dx, dy);
+                    return true;
+                case MotionEvent.ACTION_UP:
+                    pressed[0] = false; view.removeCallbacks(pickup[0]);
+                    if (dragging[0] && folderGrid != null) {
+                        dragging[0] = false; view.setCarried(false); carriedTile = null;
+                        boolean changed = folderGrid.endDrag();
+                        view.getParent().requestDisallowInterceptTouchEvent(false);
+                        if (changed) UiKit.haptic(view, HapticFeedbackConstants.CLOCK_TICK);
+                        return true;
+                    }
+                    if (!longPressed[0]) v.performClick();
+                    return true;
+                case MotionEvent.ACTION_CANCEL:
+                    pressed[0] = false; view.removeCallbacks(pickup[0]);
+                    if (dragging[0] && folderGrid != null) {
+                        dragging[0] = false; folderGrid.cancelDrag(); view.setCarried(false); carriedTile = null;
+                        view.getParent().requestDisallowInterceptTouchEvent(false);
+                    }
+                    return true;
+                default: return true;
+            }
+        });
+    }
+
+    private void openAddToFolderSheet(String folderId) {
+        DeckFolder folder = DeckLayoutStore.deck(this).folder(folderId);
+        if (folder == null) return;
+        LinearLayout column = openSheet("Add to " + folder.title, "Move an existing root tile into this folder");
+        List<DeckTile> rootTiles = DeckLayoutStore.layout(this);
+        if (rootTiles.isEmpty()) { column.addView(emptyNote("There are no root tiles to move.")); return; }
+        for (DeckTile tile : rootTiles) {
+            DeckTileResolver.Resolved resolved = DeckTileResolver.resolve(this, tile, live);
+            column.addView(pickerRow(resolved.iconRes, resolved.title, resolved.subtitle,
+                    resolved.appIcon, () -> {
+                        if (!DeckLayoutStore.moveTile(this, tile.instanceId, folderId)) {
+                            toast("That folder is full."); return;
+                        }
+                        closeSheet(); refresh(); openFolder(folderId);
+                    }), rowLp());
+        }
+    }
+
+    private void openMoveTileSheet(DeckTile tile) {
+        String currentFolder = folderForTile(tile.instanceId);
+        LinearLayout column = openSheet("Move tile", "Moving keeps the same tile and settings");
+        if (currentFolder != null) {
+            column.addView(pickerRow(R.drawable.ic_deck, "My Deck", "Move out of the folder", null, () -> {
+                DeckLayoutStore.moveTile(this, tile.instanceId, null);
+                closeSheet(); syncBackHandler(); refresh();
+            }), rowLp());
+        }
+        for (DeckFolder folder : folders()) {
+            if (folder.id.equals(currentFolder)) continue;
+            String count = folder.tiles.size() == 1 ? "1 tile" : folder.tiles.size() + " tiles";
+            column.addView(pickerRow(R.drawable.ic_deck, folder.title, count, null, () -> {
+                if (!DeckLayoutStore.moveTile(this, tile.instanceId, folder.id)) { toast("That folder is full."); return; }
+                closeSheet(); syncBackHandler(); refresh();
+            }), rowLp());
+        }
+    }
+
+    private void showSizeChooser(DeckTile tile, View anchor) {
+        DeckTileRegistry.Definition definition = DeckTileRegistry.definition(tile.type);
+        if (definition == null) return;
+        List<DeckTile.Size> sizes = new ArrayList<>();
+        List<String> labels = new ArrayList<>();
+        for (DeckTile.Size size : DeckTile.Size.values()) {
+            if (!definition.supports(size)) continue;
+            sizes.add(size);
+            labels.add(size == DeckTile.Size.STANDARD ? "Standard" : size == DeckTile.Size.WIDE ? "Wide" : "Large");
+        }
+        int selected = sizes.indexOf(tile.size);
+        UiKit.showOrbitMenu(this, anchor, labels.toArray(new String[0]), selected,
+                (index, label) -> { if (index >= 0 && index < sizes.size()) resize(tile, sizes.get(index)); });
+    }
+
+    // ---- Orbit Pro tile appearance ---------------------------------------------------------------
+
+    private void openAppearanceEditor(DeckTile tile) {
+        if (!OrbitProEntitlement.hasPro(this)) {
+            LinearLayout column = openSheet("Tile appearance · Orbit Pro",
+                    "Per-tile accent, material, icon, and label choices are part of Orbit Pro.");
+            column.addView(emptyNote("Enable Pro Preview in Diagnostics to try these controls. Your Deck organization remains Free."));
+            return;
+        }
+        DeckTile current = tileById(tile.instanceId);
+        if (current == null) return;
+        LinearLayout column = openSheet("Tile appearance · Pro", "Changes save immediately");
+
+        FrameLayout preview = new FrameLayout(this);
+        preview.setPadding(0, UiKit.dp(this, 4), 0, UiKit.dp(this, 14));
+        column.addView(preview, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, current.size == DeckTile.Size.LARGE
+                        ? UiKit.dp(this, 260) : UiKit.dp(this, 150)));
+        renderAppearancePreview(preview, current.instanceId);
+
+        View accentRow = pickerRow(R.drawable.ic_tune, "Tile accent",
+                DeckTileAppearance.INHERIT.equals(current.appearance.accent)
+                        ? "Inherit" : OrbitPalette.labelFor(current.appearance.accent), null,
+                () -> chooseTileAccent(current.instanceId, preview));
+        column.addView(accentRow, rowLp());
+
+        column.addView(sectionLabel("SURFACE TREATMENT"));
+        OrbitSegmented material = new OrbitSegmented(this);
+        material.setTitle("Surface treatment");
+        material.setOptions(new String[]{"Inherit", "Solid", "Frosted", "Liquid"});
+        String[] materialKeys = {DeckTileAppearance.INHERIT, OrbitTheme.MATERIAL_SOLID,
+                OrbitTheme.MATERIAL_FROSTED, OrbitTheme.MATERIAL_LIQUID};
+        material.setSelected(indexOf(materialKeys, current.appearance.material));
+        material.setOnSelectListener((v, index) -> updateTileAppearance(current.instanceId,
+                tileById(current.instanceId).appearance.withMaterial(materialKeys[index]), preview));
+        column.addView(material, rowLp());
+
+        column.addView(sectionLabel("ICON TREATMENT"));
+        OrbitSegmented icon = new OrbitSegmented(this);
+        icon.setTitle("Icon treatment");
+        icon.setOptions(new String[]{"Inherit", "Accent", "Monochrome"});
+        String[] iconKeys = {DeckTileAppearance.INHERIT, DeckTileAppearance.ICON_ACCENT,
+                DeckTileAppearance.ICON_MONOCHROME};
+        icon.setSelected(indexOf(iconKeys, current.appearance.iconTreatment));
+        icon.setOnSelectListener((v, index) -> updateTileAppearance(current.instanceId,
+                tileById(current.instanceId).appearance.withIconTreatment(iconKeys[index]), preview));
+        column.addView(icon, rowLp());
+
+        column.addView(sectionLabel("LABEL VISIBILITY"));
+        OrbitSegmented label = new OrbitSegmented(this);
+        label.setTitle("Label visibility");
+        label.setOptions(new String[]{"Show", "Hide"});
+        label.setSelected(current.appearance.showLabel ? 0 : 1);
+        label.setOnSelectListener((v, index) -> updateTileAppearance(current.instanceId,
+                tileById(current.instanceId).appearance.withShowLabel(index == 0), preview));
+        column.addView(label, rowLp());
+    }
+
+    private void chooseTileAccent(String tileId, View anchor) {
+        DeckTile tile = tileById(tileId);
+        if (tile == null) return;
+        String[] keys = UiKit.accentKeys();
+        List<String> labels = new ArrayList<>();
+        List<Integer> colors = new ArrayList<>();
+        labels.add("Inherit"); colors.add(UiKit.accent(this));
+        for (int i = 0; i < keys.length; i++) { labels.add(UiKit.accentLabels()[i]); colors.add(UiKit.accentForName(this, keys[i])); }
+        labels.add("Custom color…"); colors.add(DeckTileAppearance.INHERIT.equals(tile.appearance.accent)
+                ? UiKit.accent(this) : UiKit.accentForName(this, tile.appearance.accent));
+        int selected = DeckTileAppearance.INHERIT.equals(tile.appearance.accent) ? 0 : indexOf(keys, tile.appearance.accent) + 1;
+        int[] values = new int[colors.size()];
+        for (int i = 0; i < colors.size(); i++) values[i] = colors.get(i);
+        UiKit.showOrbitColorMenu(this, anchor, labels.toArray(new String[0]), values, selected, (index, label) -> {
+            if (index == 0) updateTileAppearance(tileId, tileById(tileId).appearance.withAccent(DeckTileAppearance.INHERIT), anchor);
+            else if (index <= keys.length) updateTileAppearance(tileId, tileById(tileId).appearance.withAccent(keys[index - 1]), anchor);
+            else {
+                List<Integer> suggestions = new ArrayList<>();
+                for (String key : keys) suggestions.add(UiKit.accentForName(this, key));
+                OrbitColorPicker.show(this, "Tile accent", values[values.length - 1], suggestions,
+                        color -> updateTileAppearance(tileId, tileById(tileId).appearance.withAccent(OrbitPalette.tokenFor(color)), anchor));
+            }
+        });
+    }
+
+    private int indexOf(String[] values, String value) {
+        for (int i = 0; i < values.length; i++) if (values[i].equals(value)) return i;
+        return 0;
+    }
+
+    private DeckTile tileById(String id) {
+        for (DeckTile tile : DeckLayoutStore.allTiles(this)) if (tile.instanceId.equals(id)) return tile;
+        return null;
+    }
+
+    private void updateTileAppearance(String tileId, DeckTileAppearance appearance, View preview) {
+        if (!OrbitProEntitlement.hasPro(this) || appearance == null) return;
+        if (!DeckLayoutStore.updateAppearance(this, tileId, appearance)) return;
+        refresh();
+        if (preview instanceof FrameLayout) renderAppearancePreview((FrameLayout) preview, tileId);
+    }
+
+    private void renderAppearancePreview(FrameLayout preview, String tileId) {
+        DeckTile tile = tileById(tileId);
+        if (tile == null) return;
+        preview.removeAllViews();
+        DeckTileView view = new DeckTileView(this, tile, DeckTileResolver.resolve(this, tile, live), null);
+        view.setContentDescription("Live preview. " + view.getContentDescription());
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                tile.size == DeckTile.Size.STANDARD ? UiKit.dp(this, 170) : ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER);
+        preview.addView(view, lp);
     }
 
     // ---- sheets -----------------------------------------------------------------------------------
@@ -954,6 +1435,8 @@ public final class DeckActivity extends Activity {
         if (sheetHost == null) return;
         sheetHost.removeAllViews();
         sheetHost.setVisibility(View.GONE);
+        folderGrid = null;
+        openFolderId = null;
     }
 
     // ---- add flow ---------------------------------------------------------------------------------
@@ -1470,4 +1953,8 @@ public final class DeckActivity extends Activity {
 
     /** Rebuilds from storage, as a resume does. */
     void refreshForTest() { refresh(); }
+
+    void openFolderForTest(String id) { openFolder(id); }
+    DeckGridLayout folderGridForTest() { return folderGrid; }
+    boolean sheetOpenForTest() { return sheetOpen(); }
 }

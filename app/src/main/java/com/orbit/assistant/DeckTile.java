@@ -24,16 +24,22 @@ import java.util.UUID;
  */
 public final class DeckTile {
 
-    /** How much of the grid one tile occupies. Deliberately two choices, not free resizing. */
+    /** How much of the grid one tile occupies. Discrete supported footprints, not free scaling. */
     public enum Size {
         /** One grid column. */
         STANDARD,
-        /** Two grid columns, and the only size that earns a second line of metadata. */
-        WIDE;
+        /** Two grid columns and one row. */
+        WIDE,
+        /** Two columns and two actual grid rows. */
+        LARGE;
 
-        public String key() { return this == WIDE ? "wide" : "standard"; }
+        public String key() {
+            if (this == LARGE) return "large";
+            return this == WIDE ? "wide" : "standard";
+        }
 
         public static Size fromKey(String key) {
+            if ("large".equals(key)) return LARGE;
             return "wide".equals(key) ? WIDE : STANDARD;
         }
     }
@@ -80,9 +86,15 @@ public final class DeckTile {
     public final String instanceId;
     public final String type;
     public final Size size;
+    public final DeckTileAppearance appearance;
     private final Map<String, String> config;
 
     DeckTile(String instanceId, String type, Size size, Map<String, String> config) {
+        this(instanceId, type, size, config, DeckTileAppearance.DEFAULT);
+    }
+
+    DeckTile(String instanceId, String type, Size size, Map<String, String> config,
+             DeckTileAppearance appearance) {
         this.instanceId = instanceId == null || instanceId.trim().isEmpty()
                 ? newInstanceId() : instanceId.trim();
         this.type = type == null ? "" : type.trim();
@@ -95,6 +107,7 @@ public final class DeckTile {
             }
         }
         this.config = Collections.unmodifiableMap(copy);
+        this.appearance = appearance == null ? DeckTileAppearance.DEFAULT : appearance;
     }
 
     public static String newInstanceId() {
@@ -138,7 +151,7 @@ public final class DeckTile {
     }
 
     public DeckTile withSize(Size newSize) {
-        return new DeckTile(instanceId, type, newSize, config);
+        return new DeckTile(instanceId, type, newSize, config, appearance);
     }
 
     /**
@@ -152,12 +165,16 @@ public final class DeckTile {
         Map<String, String> next = new LinkedHashMap<>(config);
         if (value == null || value.isEmpty()) next.remove(key);
         else next.put(key, value);
-        return new DeckTile(instanceId, type, size, next);
+        return new DeckTile(instanceId, type, size, next, appearance);
+    }
+
+    public DeckTile withAppearance(DeckTileAppearance value) {
+        return new DeckTile(instanceId, type, size, config, value);
     }
 
     /** A copy under a fresh instance id, used when the same kind of tile is added twice. */
     DeckTile withNewInstanceId() {
-        return new DeckTile(newInstanceId(), type, size, config);
+        return new DeckTile(newInstanceId(), type, size, config, appearance);
     }
 
     /**
@@ -196,7 +213,8 @@ public final class DeckTile {
         if (!(other instanceof DeckTile)) return false;
         DeckTile that = (DeckTile) other;
         return instanceId.equals(that.instanceId) && type.equals(that.type)
-                && size == that.size && config.equals(that.config);
+                && size == that.size && config.equals(that.config)
+                && appearance.equals(that.appearance);
     }
 
     @Override public int hashCode() {

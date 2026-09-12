@@ -46,6 +46,8 @@ public final class DeckTileView extends FrameLayout {
     private final TextView title;
     private final TextView subtitle;
     private final View removeBadge;
+    private final DeckTileAppearance appearance;
+    private final int tileAccent;
 
     private boolean editing;
     /** The pick-up lift, kept apart from the grid's slide. See {@link #setCarried(boolean)}. */
@@ -55,6 +57,9 @@ public final class DeckTileView extends FrameLayout {
                         Listener listener) {
         super(c);
         this.tile = tile;
+        this.appearance = tile.appearance.effective(c);
+        this.tileAccent = DeckTileAppearance.INHERIT.equals(appearance.accent)
+                ? UiKit.accent(c) : UiKit.accentForName(c, appearance.accent);
 
         int radius = 22;
         boolean usable = resolved.usable();
@@ -63,7 +68,15 @@ public final class DeckTileView extends FrameLayout {
                 // An unusable tile recedes rather than shouting. It is still legible, still
                 // readable by TalkBack, and still exactly where the user put it.
                 : UiKit.blend(UiKit.SURFACE, UiKit.BG, 0.6f);
-        setBackground(UiKit.ripple(fill, UiKit.accent(c), radius, c));
+        if (usable) {
+            String material = DeckTileAppearance.INHERIT.equals(appearance.material)
+                    ? OrbitGlass.Palette.live(c).material() : appearance.material;
+            OrbitGlass.Palette palette = OrbitGlass.Palette.live(c)
+                    .withAccent(tileAccent).asMaterial(material);
+            setBackground(OrbitFloatingSurface.interactive(c, palette, radius));
+        } else {
+            setBackground(UiKit.ripple(fill, tileAccent, radius, c));
+        }
         setClipToOutline(false);
         UiKit.pressScale(this);
 
@@ -80,7 +93,7 @@ public final class DeckTileView extends FrameLayout {
         // ---- icon well ----------------------------------------------------------------------
         FrameLayout well = new FrameLayout(c);
         int wellTone = usable
-                ? UiKit.blend(UiKit.accent(c), UiKit.SURFACE_3, 0.16f)
+                ? UiKit.blend(tileAccent, UiKit.SURFACE_3, 0.16f)
                 : UiKit.blend(UiKit.MUTED, UiKit.SURFACE_2, 0.10f);
         well.setBackground(UiKit.rounded(wellTone, 13, c));
         icon = new ImageView(c);
@@ -161,13 +174,19 @@ public final class DeckTileView extends FrameLayout {
         } else {
             icon.setImageResource(resolved.iconRes);
             icon.setImageTintList(ColorStateList.valueOf(resolved.usable()
-                    ? UiKit.accent(getContext()) : UiKit.MUTED));
+                    ? iconColor() : UiKit.MUTED));
+        }
+
+        if (resolved.appIcon != null && !DeckTileAppearance.INHERIT.equals(appearance.iconTreatment)) {
+            icon.setImageTintList(ColorStateList.valueOf(iconColor()));
         }
 
         UiKit.swapText(title, resolved.title);
 
+        title.setVisibility(appearance.showLabel ? VISIBLE : GONE);
         boolean showSubtitle = !resolved.subtitle.isEmpty()
-                && (tile.size == DeckTile.Size.WIDE || resolved.liveState);
+                && (tile.size == DeckTile.Size.WIDE || tile.size == DeckTile.Size.LARGE
+                || resolved.liveState);
         subtitle.setVisibility(showSubtitle ? VISIBLE : GONE);
         if (showSubtitle) UiKit.swapText(subtitle, resolved.subtitle);
 
@@ -176,10 +195,17 @@ public final class DeckTileView extends FrameLayout {
         icon.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         title.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         subtitle.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        String size = tile.size == DeckTile.Size.LARGE ? ", large tile"
+                : tile.size == DeckTile.Size.WIDE ? ", wide tile" : "";
         setContentDescription(editing
-                ? resolved.contentDescription + ", editing. Double tap for options."
-                : resolved.contentDescription);
+                ? resolved.contentDescription + size + ", editing. Double tap for options."
+                : resolved.contentDescription + size);
         setFocusable(true);
+    }
+
+    private int iconColor() {
+        return DeckTileAppearance.ICON_MONOCHROME.equals(appearance.iconTreatment)
+                ? UiKit.TEXT : tileAccent;
     }
 
     /** Switches this tile between ordinary and editing presentation. */
@@ -255,6 +281,9 @@ public final class DeckTileView extends FrameLayout {
 
     /** Whether the remove affordance is on screen. For tests. */
     public boolean removeVisible() { return removeBadge.getVisibility() == VISIBLE; }
+
+    /** Visible label state, separate from the title that remains exposed to accessibility. */
+    public boolean labelVisible() { return title.getVisibility() == VISIBLE; }
 
     /** The icon view, so its geometry can be asserted. */
     public ImageView iconView() { return icon; }

@@ -1029,7 +1029,7 @@ public final class DiagnosticsActivity extends Activity {
      * never what any of them asks.
      */
     private String deck(SharedPreferences d) {
-        java.util.List<DeckTile> tiles = DeckLayoutStore.layout(this);
+        java.util.List<DeckTile> tiles = DeckLayoutStore.allTiles(this);
         int unavailable = 0;
         for (DeckTile tile : tiles) {
             if (DeckTileResolver.resolve(this, tile).availability != DeckTile.Availability.AVAILABLE) {
@@ -1047,7 +1047,10 @@ public final class DiagnosticsActivity extends Activity {
                 "\n  Smart suggestions: " + (Prefs.deckSuggestions(this) ? "enabled" : "disabled") +
                 "\n  Layout: " + (DeckLayoutStore.configured(this) ? "customized" : "defaults") +
                 "\n  Schema version: " + DeckLayoutStore.SCHEMA_VERSION +
-                "\n  Tiles: " + tiles.size() +
+                "\n  Root tiles: " + DeckLayoutStore.layout(this).size() +
+                "\n  Folder tiles: " + DeckLayoutStore.folderTileCount(this) +
+                "\n  Sections: " + DeckLayoutStore.sectionCount(this) +
+                "\n  Folders: " + DeckLayoutStore.folderCount(this) +
                 "\n  Unavailable tiles: " + unavailable +
                 "\n  Tile types: " + (types.length() == 0 ? "none" : types) +
                 "\n  Last tile run: " + (last.isEmpty() || updated == 0L

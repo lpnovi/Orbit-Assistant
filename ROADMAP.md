@@ -429,12 +429,29 @@ Shipped in `0.8.0.0-beta.5`, after physical testing of Beta 4 on a Galaxy S25 Ul
 - **Linear gradient strength.** A premium control from a gentle colour cast to the full two-colour
   sweep, applied by moving the far endpoint towards the base rather than fading the whole page
 
+Shipped in `0.8.0.0-beta.6`, the first major Orbit Deck expansion in the 0.8 line:
+
+- **Free Deck organization.** Large tiles, full-width section headers, one-level folders, rename,
+  rearrange, and moving existing tiles between root and folders are available without Orbit Pro
+- **A first-class Deck layout.** Tiles, section markers, and folders are stored as ordered structural
+  items, while action tiles keep their existing execution and configuration responsibility
+- **Safe schema-1 migration.** Existing order, size, stable identity, configuration, deliberate empty
+  layouts, and unknown configuration keys survive the move to schema 2 without duplication
+- **Real Large geometry.** Large tiles occupy two columns and two rows in the grid, with the same
+  deterministic packing used on phones and tablets
+- **Orbit Deck Pro appearance.** Individual action tiles can override accent, Solid, Frosted or
+  Liquid material, icon treatment, and visible label while retaining an accessible name
+- **Stored, not destroyed.** Free rendering ignores premium appearance without deleting it, and the
+  exact styling returns when Pro Preview is enabled again
+- **Beta 7 foundation only.** One self-contained layout can later become one entry in a saved-layout
+  collection without adding a layout switcher or multiple-layout UI in Beta 6
+
 Planned, in order:
 
-- Orbit Deck Pro, the next major premium category
+- **Beta 7: saved Deck layouts and deeper Deck Pro**, including layout rename, duplicate, delete,
+  presets, and quick switching
 - Theme Studio Pro backgrounds, further: per-surface profiles and background images
 - Theme Studio Pro typography and further message styling, including separate bubble shapes
-- Orbit Deck Pro
 - Vault Pro organization
 - Backup and export Pro
 - Appearance Pro extras
