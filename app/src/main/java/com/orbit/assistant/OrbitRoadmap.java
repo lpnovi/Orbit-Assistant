@@ -17,16 +17,8 @@ package com.orbit.assistant;
  */
 public final class OrbitRoadmap {
 
-    /**
-     * The active line: the optional paid layer that begins the {@code 0.8} series.
-     *
-     * <p>Smart Vault held this constant until {@code 0.8.0.0-beta.1} and was deliberately moved
-     * out of it rather than dropped. It is still planned, still a free Orbit feature, and still
-     * listed on both roadmaps; what changed is that it is no longer the thing being built next.
-     * Presenting it as current while the whole project had moved to Orbit Pro is exactly the
-     * drift this constant exists to prevent.
-     */
-    public static final String CURRENT = "Orbit Pro";
+    /** The next major milestone after the planned Orbit Deck Pro line completed in Beta 7. */
+    public static final String CURRENT = "Smart Vault";
 
     /**
      * Every milestone both roadmaps must agree about.

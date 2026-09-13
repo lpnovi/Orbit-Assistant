@@ -327,7 +327,7 @@ and shares does.
 Deliberately not in Beta 4: folders, tags, collections, smart collections, AI organization, semantic
 search, OCR, webpage extraction and summaries.
 
-## Current
+## Completed 0.8 Orbit Pro milestones
 
 ### `0.8` - Orbit Pro
 
@@ -446,25 +446,40 @@ Shipped in `0.8.0.0-beta.6`, the first major Orbit Deck expansion in the 0.8 lin
 - **Beta 7 foundation only.** One self-contained layout can later become one entry in a saved-layout
   collection without adding a layout switcher or multiple-layout UI in Beta 6
 
-Planned, in order:
+Shipped in `0.8.0.0-beta.7`, completing the currently planned Orbit Deck Pro expansion:
 
-- **Beta 7: saved Deck layouts and deeper Deck Pro**, including layout rename, duplicate, delete,
-  presets, and quick switching
-- Theme Studio Pro backgrounds, further: per-surface profiles and background images
-- Theme Studio Pro typography and further message styling, including separate bubble shapes
+- **Schema 3 saved layouts.** One local collection owns up to ten named, self-contained Deck layouts
+  and one stable active layout identity
+- **Exact Beta 6 migration.** The schema-2 Deck becomes `My Deck` without changing item order,
+  folders, sections, tile size, configuration, appearance, or any existing item identity
+- **Quick switching and full management.** Orbit Pro can switch directly from the Deck header, then
+  rename, duplicate, or delete layouts in the Deck layout manager
+- **Independent copies.** Duplicating a layout preserves its meaning and appearance while assigning
+  fresh layout, section, folder, and tile IDs to every copied item
+- **Blank and curated starts.** New layouts can be empty or use one of three safe Orbit templates,
+  and applying a template never overwrites the active Deck
+- **Free data preservation.** If Pro becomes unavailable, the active Deck remains fully editable and
+  every additional layout stays stored unchanged until Pro returns
+- **Deck input polish.** Name and prompt fields use IME-aware insets and a shared scrolling sheet so
+  focused input stays above the Android keyboard
+
+Planned after this completed line:
+
+- **Smart Vault, Free**, as the next major feature
 - Vault Pro organization
 - Backup and export Pro
-- Appearance Pro extras
-- Supporter and Orbit Labs extras
-- **A Google Play entitlement provider**, added last and behind the same boundary. Until it exists
-  there is no checkout, no billing library and nothing to buy, and every build resolves to Free
+- A Google Play entitlement provider for Play distribution and Billing, behind the existing
+  entitlement boundary
+- Until that provider exists, there is no checkout or billing library and nothing to buy
+- Other pre-1.0 polish, supporter ideas, and Orbit Labs exploration
 
 ## Next
 
 ### Smart Vault - still a free Orbit feature
 
-Deferred while Orbit Pro is the immediate focus. Not cancelled, and deliberately not a Pro feature:
-finding your own saved things is part of what the Vault is for, and the Vault is free.
+Smart Vault returns as the next major feature after the planned Deck Pro line. It is not cancelled
+and is deliberately not a Pro feature: finding your own saved things is part of what the Vault is
+for, and the Vault is free.
 
 - Semantic Vault search and natural-language retrieval
 - OCR for screenshots and images the user explicitly saved

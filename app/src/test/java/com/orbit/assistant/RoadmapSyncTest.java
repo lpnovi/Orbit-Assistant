@@ -108,7 +108,7 @@ public final class RoadmapSyncTest {
         int shipped = file.indexOf(RICH_ANSWERS);
         int current = file.indexOf(OrbitRoadmap.CURRENT);
         assertTrue("Rich Answers must still be recorded", shipped >= 0);
-        assertTrue("Orbit Pro is the active line", current > shipped);
+        assertTrue("Smart Vault is the active line after the completed Pro Betas", current > shipped);
         assertTrue("Rich Answers is recorded as Stable, not as current work",
                 file.indexOf("### `0.7.8.5` Stable") >= 0);
         assertTrue("and the Stable entry comes before the active plan",
@@ -129,7 +129,7 @@ public final class RoadmapSyncTest {
      */
     @Test public void orbitProIsRecordedAsAdditiveRatherThanAsAPaywall() {
         String file = markdown();
-        int at = file.indexOf("### `0.8` - " + OrbitRoadmap.CURRENT);
+        int at = file.indexOf("### `0.8` - Orbit Pro");
         assertTrue("Orbit Pro must have its own section in ROADMAP.md", at >= 0);
         // Bounded by the heading that follows rather than by a character count. The section grows
         // as each Beta records what it shipped, and a fixed window quietly stops covering the
@@ -157,18 +157,18 @@ public final class RoadmapSyncTest {
      * the same release that moved Smart Vault out of Current, and the honest version of that is
      * "later, and still free". The roadmap has to keep saying the second half.
      */
-    @Test public void smartVaultIsDeferredAndStaysFree() {
+    @Test public void smartVaultIsNextAndStaysFree() {
         String file = markdown();
-        int pro = file.indexOf("### `0.8` - " + OrbitRoadmap.CURRENT);
+        int pro = file.indexOf("### `0.8` - Orbit Pro");
         int vault = file.indexOf("### Smart Vault");
         assertTrue("Smart Vault must still be planned in ROADMAP.md", vault >= 0);
-        assertTrue("and must sit below the active Orbit Pro line", vault > pro);
+        assertTrue("and follows the completed Orbit Pro milestones", vault > pro);
         assertTrue("it is recorded as a free Orbit feature",
                 file.substring(vault, Math.min(file.length(), vault + 400)).contains("free"));
 
         String page = inApp();
         assertTrue("it is still offered on the in-app page", page.contains("Smart Vault"));
-        assertTrue("and still described as free there", page.contains("always free"));
+        assertTrue("and still described as Free there", page.contains("always Free"));
     }
 
     /**

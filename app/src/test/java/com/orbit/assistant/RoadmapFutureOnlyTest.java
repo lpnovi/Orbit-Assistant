@@ -1,6 +1,7 @@
 package com.orbit.assistant;
 
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import android.app.Activity;
@@ -79,6 +80,7 @@ public final class RoadmapFutureOnlyTest {
             "Rich Answers / Visual Web Results",
             "Settings search",
             "GPT-6 Astra",
+            "Deck layouts",
     };
 
     private String roadmapText() {
@@ -139,14 +141,10 @@ public final class RoadmapFutureOnlyTest {
      * is genuinely the current work, so it belongs at the top; and it cannot be bought, so the
      * entry must not read like an offer. The page has to say both.
      */
-    @Test public void orbitProIsPresentedAsUpcomingAndNotAsPurchasable() {
+    @Test public void smartVaultIsPresentedAsCurrentAndFree() {
         String text = roadmapText();
-        assertTrue("the page must say everything free today stays free",
-                text.contains("Everything free today stays free"));
-        assertTrue("and that nothing can be bought yet",
-                text.contains("nothing to buy yet"));
-        assertTrue("Theme Studio Pro is named as the first premium feature",
-                text.contains("Theme Studio Pro"));
+        assertTrue(text.contains("Smart Vault"));
+        assertTrue(text.contains("always Free"));
         String lower = text.toLowerCase();
         for (String selling : new String[]{"subscribe", "upgrade now", "purchase", "checkout"}) {
             assertFalse("a future-only page must never read like a checkout: " + selling,
@@ -161,13 +159,13 @@ public final class RoadmapFutureOnlyTest {
      * change a reader would misread as "it went behind Pro". The entry stays, below the active
      * line, and says out loud that it is free.
      */
-    @Test public void smartVaultIsStillListedAndStillFree() {
+    @Test public void smartVaultIsCurrentAndStillFree() {
         String text = roadmapText();
         int current = text.indexOf(OrbitRoadmap.CURRENT);
         int vault = text.indexOf("Smart Vault");
         assertTrue("Smart Vault is still real planned work", vault >= 0);
-        assertTrue("but no longer the active line", vault > current);
-        assertTrue("and it is still a free Orbit feature", text.contains("always free"));
+        assertEquals(current, vault);
+        assertTrue("and it is still a Free Orbit feature", text.contains("always Free"));
     }
 
     /**

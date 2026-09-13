@@ -1023,12 +1023,11 @@ public final class DiagnosticsActivity extends Activity {
     /**
      * Deck's shape, and nothing about its contents.
      *
-     * <p>Counts, preference states, a schema number, and the <em>type</em> of the last tile that
-     * was run. What a Prompt tile says, which Routine a Routine tile runs, and which app an App tile
-     * opens are all configuration, and none of it is reported here: this can say "3 prompt tiles",
-     * never what any of them asks.
+     * <p>Only counts, preference states, and the schema number are reported. Layout names, tile
+     * types, Prompt text, Routine ids, app packages, ordering, and appearance values stay private.
      */
     private String deck(SharedPreferences d) {
+        DeckLayout active = DeckLayoutStore.deck(this);
         java.util.List<DeckTile> tiles = DeckLayoutStore.allTiles(this);
         int unavailable = 0;
         for (DeckTile tile : tiles) {
@@ -1036,25 +1035,18 @@ public final class DiagnosticsActivity extends Activity {
                 unavailable++;
             }
         }
-        StringBuilder types = new StringBuilder();
-        for (java.util.Map.Entry<String, Integer> entry : DeckLayoutStore.typeCounts(this).entrySet()) {
-            if (types.length() > 0) types.append(", ");
-            types.append(entry.getKey()).append(" ").append(entry.getValue());
-        }
-        long updated = d.getLong("deck_updated", 0L);
-        String last = DiagnosticStore.lastDeckAction(this);
         return "\n  Chats shortcut: " + (Prefs.deckShortcut(this) ? "shown" : "hidden") +
                 "\n  Smart suggestions: " + (Prefs.deckSuggestions(this) ? "enabled" : "disabled") +
                 "\n  Layout: " + (DeckLayoutStore.configured(this) ? "customized" : "defaults") +
                 "\n  Schema version: " + DeckLayoutStore.SCHEMA_VERSION +
+                "\n  Saved layouts: " + DeckLayoutStore.layoutCount(this) +
+                "\n  Active items: " + active.items.size() +
+                "\n  Active tiles: " + tiles.size() +
                 "\n  Root tiles: " + DeckLayoutStore.layout(this).size() +
                 "\n  Folder tiles: " + DeckLayoutStore.folderTileCount(this) +
                 "\n  Sections: " + DeckLayoutStore.sectionCount(this) +
                 "\n  Folders: " + DeckLayoutStore.folderCount(this) +
-                "\n  Unavailable tiles: " + unavailable +
-                "\n  Tile types: " + (types.length() == 0 ? "none" : types) +
-                "\n  Last tile run: " + (last.isEmpty() || updated == 0L
-                        ? "none recorded" : last + " · " + stamp(updated));
+                "\n  Unavailable tiles: " + unavailable;
     }
 
     private String gestures(SharedPreferences d) {

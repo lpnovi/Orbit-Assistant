@@ -677,8 +677,9 @@ public final class ThemeStudioProTest {
         }
         java.util.Collections.sort(callers);
         assertEquals("the entitlement is asked in exactly these places: " + callers,
-                java.util.Arrays.asList("DeckActivity.java", "DeckTileAppearance.java",
-                        "OrbitProStyle.java", "OrbitThemeStore.java", "ThemeStudioActivity.java"),
+                java.util.Arrays.asList("DeckActivity.java", "DeckLayoutStore.java",
+                        "DeckTileAppearance.java", "OrbitProStyle.java", "OrbitThemeStore.java",
+                        "ThemeStudioActivity.java"),
                 callers);
     }
 

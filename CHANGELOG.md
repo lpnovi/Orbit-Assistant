@@ -842,6 +842,13 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.0.0-beta.7**: Saved Deck layouts and Deck input polish.
+  - Orbit Pro can keep up to ten complete saved Deck layouts and switch between them directly from Deck.
+  - Rename, duplicate, and delete layouts from an Orbit-native manager, with independent structure and appearance in every copy.
+  - Start with a genuinely blank Deck or one of three curated, user-neutral templates.
+  - Schema 2 Decks migrate without changing tile order, folders, sections, sizes, configuration, appearance, or stable item identities.
+  - Free Orbit keeps the active fully organizable Deck while additional Pro layouts remain stored safely for later.
+  - Section, folder, tile, prompt, and layout fields now stay above the Android keyboard in a reusable scroll-safe sheet.
 - **v0.8.0.0-beta.6**: A more organized Orbit Deck, plus per-tile styling for Orbit Pro.
   - Large tiles use real two-row space and show useful secondary information where the tile supports it.
   - Free section headers divide the ordered Deck without owning or deleting the tiles that follow them.

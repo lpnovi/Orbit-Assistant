@@ -95,32 +95,23 @@ public final class RoadmapActivity extends Activity {
         // Astra left this page when v0.7.8.5 reached Stable: a shipped feature belongs to What's
         // New, never here.
         //
-        // v0.8.0.0-beta.1 made Orbit Pro the active line and moved Smart Vault down to LATER. It
-        // was not removed: it is still planned, and it is still a free Orbit feature, which the
-        // entry says out loud so that deferring it is never mistaken for putting it behind Pro.
+        // v0.8.0.0-beta.7 completed the planned Deck Pro expansion, so Smart Vault returns to NOW.
+        // It remains a Free feature. The shipped Orbit Pro work belongs in What's New and the
+        // repository history rather than on this future-only page.
         //
         // Older entries were not deleted. Local device actions, branching conditions, the cooking
         // session, Orbit-managed timers, OpenRouter chat and the rest are all real unfinished work
         // and are still listed; they have simply stopped being presented as the next thing to
         // happen, which they had not been for several releases.
         addGroup(page, "NOW - 0.8", new String[][]{
-                {OrbitRoadmap.CURRENT, "An optional paid layer of advanced customization and "
-                        + "power-user extras, built on top of free Orbit. Everything free today "
-                        + "stays free. There is nothing to buy yet."},
-                // Theme Studio Pro started shipping in v0.8.0.0-beta.2 and is deliberately still
-                // here, because most of it is genuinely ahead: what has landed is message shape
-                // and glass, and the entry now says what is still owed rather than promising the
-                // part somebody already has. The moment the whole line is finished it leaves this
-                // page, the way every other shipped feature has.
-                {"Theme Studio Pro", "Deeper control over how Orbit looks, added on top of the "
-                        + "free theming everyone already has. Message shape and floating glass "
-                        + "have landed. Backgrounds, typography and further styling are still to "
-                        + "come."}
+                {OrbitRoadmap.CURRENT, "Making saved things easier to find and understand, with "
+                        + "optional semantic search, text read from images you saved, and richer "
+                        + "retrieval of saved pages. Always explicit, never automatic, and always Free."}
         });
         addGroup(page, "LATER", new String[][]{
-                {"Smart Vault", "Making saved things easier to find and understand, with optional "
-                        + "semantic search, text read from images you saved, and richer retrieval "
-                        + "of saved pages. Always explicit, never automatic, and always free."},
+                {"Vault Pro organization", "Optional advanced organization built on top of the Free Vault."},
+                {"Backup and export Pro", "Additional power-user backup and export controls without removing the Free backup path."},
+                {"Play distribution and Billing", "A real entitlement provider only when Orbit is ready for store distribution."},
                 {"Local device actions", "Growing what Orbit Local can act on by itself, beyond the first safe set of controls it understands today."},
                 {"Calendar awareness", "Orbit reading your day back to you, and changing or removing events it added for you."},
                 {"More branch points & conditions", "Several decision points in one Routine, and conditions beyond time and place."},
