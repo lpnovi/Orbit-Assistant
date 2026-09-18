@@ -10,8 +10,9 @@ Never paste a keystore, a password, or `orbit-signing.properties` into Play Cons
 - [ ] Test the API 36 GitHub debug build on the Galaxy S25 Ultra (PLAY_STORE.md section 13).
 - [x] Create the Play upload key and add the four `ORBIT_UPLOAD_*` lines to `orbit-signing.properties` (PLAY_STORE.md 5.1). Certificate SHA-256 `B0:0A:C8:FE:…:D2:FC:66`.
 - [ ] Back up the upload keystore and `orbit-signing.properties` together, privately and outside the repository.
-- [ ] Publish a privacy policy at a public URL. `docs/PRIVACY.md` describes Orbit's data handling but says it is not an attorney-reviewed privacy policy; Play needs a real policy page that names Orbit Assistant, what it accesses, and how to contact you.
-- [ ] Choose a public support email for the listing. Use Orbit's public identity, not a personal name.
+- [x] Write the privacy policy: [`docs/PRIVACY_POLICY.md`](PRIVACY_POLICY.md). It names Orbit Assistant, covers both editions, and gives the contact address. (`docs/PRIVACY.md` stays as the technical notes.)
+- [ ] Make it public by pushing it to `main`. Its URL will be `https://github.com/lpnovi/Orbit-Assistant/blob/main/docs/PRIVACY_POLICY.md`; open it in a private browser window to confirm it loads before using it.
+- [x] Public support and privacy email: `lpnovi.orbit@gmail.com` (Orbit's public identity, not a personal name).
 - [ ] Decide how Play reviewers reach AI chat (section 5, App access).
 - [ ] Choose the AI content report-delivery backend so the Report action can be built (PLAY_STORE.md section 7.2). Required before production, not before internal testing.
 
@@ -35,7 +36,7 @@ The Play edition is signed with its own Google-generated key. The GitHub release
 ## 4. App content declarations
 
 ### Privacy policy
-- [ ] The URL from section 1.
+- [ ] Enter `https://github.com/lpnovi/Orbit-Assistant/blob/main/docs/PRIVACY_POLICY.md` once it is public (section 1). If the policy ever changes what it says about a permission or data type, update Data safety to match.
 
 ### Ads
 - [ ] No, the app does not contain ads.
@@ -52,7 +53,7 @@ The Play edition is signed with its own Google-generated key. The GitHub release
 ### Data safety
 Answer from the code at the time you file it, not from this list. As of this document:
 - [ ] **Data is sent off the device** to the AI provider the user selects (ChatGPT account mode or the user's own relay): messages, and any attachments, screen content, notification context, or location the user includes in a request. Declare these as shared with a third party for app functionality.
-- [ ] Location (approximate and precise): weather, Saved Places, and Routine IF conditions, while Orbit is open. The initial Play edition does not access location in the background.
+- [ ] Location (approximate and precise): weather, Saved Places, and Routine IF conditions, while Orbit is open. The initial Play edition does not access location in the background. If the user turns on weather for their current location, the current coordinates are sent to Open-Meteo for the forecast; declare that as shared with a third party for app functionality.
 - [ ] Contacts, calendar, audio (voice input), photos (camera attachments), app activity (notifications, when Notification Intelligence is enabled): processed on the device for the features that use them, and included in an AI request only when the user sends one.
 - [ ] Data is encrypted in transit (HTTPS only; cleartext traffic is disabled).
 - [ ] Users can delete their data in the app (history, Memory, Vault, notification history) or by uninstalling. There is no Orbit account and no Orbit server.
@@ -92,7 +93,7 @@ Draft, adjust once the reviewer-access decision is made:
 - [ ] Feature graphic, 1024 x 500.
 - [ ] Phone screenshots, at least two. The existing `docs/assets/screenshots/` images are a starting point; check their sizes against Play's current limits.
 - [ ] Category: Productivity (recommended) or Tools.
-- [ ] Contact details: the public support email; website: the GitHub repository.
+- [ ] Contact details: email `lpnovi.orbit@gmail.com`; website: the GitHub repository; privacy policy: the URL above.
 
 ## 7. Internal testing
 

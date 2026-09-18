@@ -1,6 +1,6 @@
 # Privacy & trust notes
 
-These notes describe the current behavior of Orbit Assistant based on the public source and release system. They are intended to make technical data boundaries understandable; they are not an attorney-reviewed privacy policy.
+These notes describe the current behavior of Orbit Assistant based on the public source and release system. They are intended to make technical data boundaries understandable; they are not an attorney-reviewed privacy policy. The user-facing policy, which is also the Google Play privacy policy, is the [Orbit Assistant Privacy Policy](PRIVACY_POLICY.md).
 
 ## The short version
 
@@ -29,7 +29,7 @@ The selected provider determines where a request is processed and which capabili
 | Provider | Current boundary |
 | --- | --- |
 | **ChatGPT account mode** | Requests and selected context are sent through the connected ChatGPT account path. This is currently Orbit's fullest feature set. |
-| **Orbit Local** | Text generation runs through the separately installed Orbit Local component on the device. It requires no account and works offline after the model is installed. It never silently falls back to cloud processing. The compact model has fewer capabilities than cloud mode. |
+| **Orbit Local** (GitHub edition only) | Text generation runs through the separately installed Orbit Local component on the device. It requires no account and works offline after the model is installed. It never silently falls back to cloud processing. The compact model has fewer capabilities than cloud mode. |
 | **Private HTTPS relay** | Requests go to the HTTPS relay address configured by the user. The relay operator controls any onward provider processing and retention. Provider API credentials belong on that server, not in the Orbit APK. |
 | **OpenRouter** | Setup groundwork is visible, but the provider is not selectable and OpenRouter chat is not currently available. |
 
@@ -56,6 +56,7 @@ Controls for history, Memory, notification access and retention, app profiles, a
 - Notification Intelligence requires Android notification-listener access. Its retained history and per-app exclusions are managed locally. Relevant notification context may be included in a provider request when that feature is used.
 - Calendar writing requires Android Calendar permission and a confirmation that names the destination calendar. Orbit checks the result rather than treating an intent launch as proof that an event was added.
 - Weather, Saved Places, and location-triggered Routines use Android location access only when their related options are configured. Background location is required for location triggers that must work while Orbit is closed.
+- The Google Play edition does not request background location. Location-triggered Routines are not available there; weather, Saved Places, and Routine location conditions use location only while Orbit is in use.
 
 ## Attachments and documents
 
@@ -79,7 +80,9 @@ HTTPS Extension actions are bounded and restricted to validated public endpoints
 
 ## Updates and official builds
 
-Orbit checks public release data from `lpnovi/Orbit-Assistant`. Stable follows normal GitHub releases. Beta can also consider official prereleases. Orbit validates release labeling, the update manifest, asset location, package name, Android version code, APK SHA-256, and the permanent signing certificate.
+The Google Play edition is updated by Google Play and never downloads or installs app updates itself. It still reads public release notes from the repository for **What's New**. The rest of this section describes the GitHub edition.
+
+The GitHub edition checks public release data from `lpnovi/Orbit-Assistant`. Stable follows normal GitHub releases. Beta can also consider official prereleases. Orbit validates release labeling, the update manifest, asset location, package name, Android version code, APK SHA-256, and the permanent signing certificate.
 
 An update is not downloaded without user approval, and Orbit does not silently install it. After verification, Android's normal package installer owns the final confirmation.
 

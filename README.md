@@ -119,6 +119,8 @@ No assistant button on your phone? Orbit still works from its app icon, the **As
 
 ## Privacy and trust
 
+**[Orbit Assistant Privacy Policy](docs/PRIVACY_POLICY.md)**: what Orbit stores, what it sends and to whom, and how to delete it. It covers both the Google Play and GitHub editions.
+
 Orbit exposes powerful context and device capabilities, so control is part of the product, not an afterthought.
 
 - By default, Orbit offers the current screen but attaches it only when you tap **Use screen** or **Select area**. Screen text, screenshots, and automatic attachment behavior are configurable globally and per app. Sensitive app profiles disable automatic context, and an app can be set to never provide screen access.
@@ -126,10 +128,10 @@ Orbit exposes powerful context and device capabilities, so control is part of th
 - Cloud requests go to the provider you explicitly choose. Orbit Local generation stays on the device and does not silently fall back to a cloud provider.
 - ChatGPT credentials, OpenRouter's setup-only key, and Extension secrets use Android Keystore-backed encryption. Credentials and Extension secrets are excluded from Orbit backups. The optional private-relay access token has a documented compatibility caveat in the detailed privacy notes.
 - Orbit backups are created only through Android's file picker. They can contain personal data and are **not encrypted**, so keep them in a private location.
-- The updater reads public GitHub release data and never downloads without approval or installs without Android's installer confirmation.
+- The GitHub edition's updater reads public GitHub release data and never downloads without approval or installs without Android's installer confirmation. The Google Play edition is updated by Google Play only.
 - Orbit Extensions are declarative data. They cannot load executable code, APKs, scripts, arbitrary intents, local files, or Orbit's personal/context data.
 
-Read the factual [Privacy & trust notes](docs/PRIVACY.md) for the data paths, provider boundaries, backup behavior, and current limitations. Those notes explain product behavior; they are not a legal privacy policy. To report a security problem, see the [Security policy](SECURITY.md).
+For more technical detail, the [Privacy & trust notes](docs/PRIVACY.md) describe the data paths, provider boundaries, backup behavior, and current limitations. The [Privacy Policy](docs/PRIVACY_POLICY.md) is the user-facing policy. To report a security problem, see the [Security policy](SECURITY.md).
 
 ## Official downloads and release integrity
 

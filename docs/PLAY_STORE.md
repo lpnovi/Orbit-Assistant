@@ -316,4 +316,5 @@ Recommended shape when billing is built:
 - [x] Upload key created and configured, section 5.1 (back it up: **OWNER INPUT REQUIRED**)
 - [ ] Play Console app created with a **Google-generated** app signing key, upload certificate registered, section 5.2 (**OWNER INPUT REQUIRED**)
 - [x] `bundlePlay` rebuilt signed with the upload key
-- [ ] Privacy policy URL, Data safety, and permission declarations entered, [checklist](PLAY_CONSOLE_CHECKLIST.md) (**OWNER INPUT REQUIRED**)
+- [x] Privacy policy written: [`docs/PRIVACY_POLICY.md`](PRIVACY_POLICY.md)
+- [ ] Privacy policy pushed and public at `https://github.com/lpnovi/Orbit-Assistant/blob/main/docs/PRIVACY_POLICY.md`, then entered in Play Console with Data safety and the permission declarations, [checklist](PLAY_CONSOLE_CHECKLIST.md) (**OWNER INPUT REQUIRED**)
