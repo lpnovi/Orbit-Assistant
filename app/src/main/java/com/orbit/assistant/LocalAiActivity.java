@@ -61,8 +61,9 @@ public final class LocalAiActivity extends Activity {
      *
      * <p>The component is a separate APK that Orbit from GitHub installs from its own release. An
      * app distributed through Google Play may not install executable code from anywhere else, so
-     * until Orbit Local has a Play-delivered form the Play edition does not offer it. A component
-     * that is already installed and genuine keeps working.
+     * until Orbit Local has a Play-delivered form the Play edition does not offer it. The Play
+     * edition is also signed with a different key from the GitHub edition, so even a genuine
+     * component that is already installed cannot serve it; it can only be removed.
      */
     static final String PLAY_UNAVAILABLE =
             "Orbit Local isn't available in the Google Play edition of Orbit yet.";
@@ -570,6 +571,7 @@ public final class LocalAiActivity extends Activity {
     }
 
     private String componentDetails(OrbitLocalComponent.State state) {
+        if (!OrbitDistribution.supportsOrbitLocal()) return playComponentDetails(state);
         String size = componentSizeText();
         switch (state) {
             case INSTALLED:
@@ -577,16 +579,31 @@ public final class LocalAiActivity extends Activity {
                         + "\nVersion " + OrbitVersion.displayName(
                                 OrbitLocalComponent.installedVersionName(this));
             case UPDATE_REQUIRED:
-                if (!OrbitDistribution.installsOrbitLocalComponent()) {
-                    return "The installed component was built for a different version of Orbit, and "
-                            + "Orbit from Google Play cannot update it. You can uninstall it here.";
-                }
                 return "The installed component was built for a different version of Orbit. Update it to use Orbit Local again.";
             case UNTRUSTED:
                 return "A package named Orbit Local is installed but was not published by Orbit, so it will not be used. Remove it, then install Orbit Local from here.";
             default:
-                if (!OrbitDistribution.installsOrbitLocalComponent()) return PLAY_UNAVAILABLE;
                 return "Required to run AI privately on this device · " + size;
+        }
+    }
+
+    /**
+     * The Google Play edition's whole view of the component.
+     *
+     * <p>Orbit from Google Play is signed with a different key from Orbit on GitHub, and the
+     * component only serves an Orbit carrying the GitHub certificate, so no installed component
+     * can ever work with it. What is left to offer is removing one that is present.
+     */
+    static String playComponentDetails(OrbitLocalComponent.State state) {
+        switch (state) {
+            case NOT_INSTALLED:
+                return PLAY_UNAVAILABLE;
+            case UNTRUSTED:
+                return "A package named Orbit Local is installed but was not published by Orbit, "
+                        + "so it will not be used. You can remove it here.";
+            default:
+                return "An Orbit Local component from the GitHub edition of Orbit is installed. "
+                        + "The Google Play edition can't use it. You can uninstall it here.";
         }
     }
 
@@ -604,6 +621,20 @@ public final class LocalAiActivity extends Activity {
             addPrimaryAction(actions, working);
             return;
         }
+        if (!OrbitDistribution.supportsOrbitLocal()) {
+            // Nothing to set up or update in the Play edition; see playComponentDetails. Only a
+            // component that is actually present can be removed, through Android's own flow.
+            if (state == OrbitLocalComponent.State.UNTRUSTED) {
+                Button remove = dangerButton("Remove untrusted component");
+                remove.setOnClickListener(v -> removeOrbitLocal(SCOPE_COMPONENT));
+                addPrimaryAction(actions, remove);
+            } else if (state != OrbitLocalComponent.State.NOT_INSTALLED) {
+                Button uninstall = dangerButton("Uninstall component");
+                uninstall.setOnClickListener(v -> confirmUninstallComponent());
+                addDestructiveAction(actions, uninstall);
+            }
+            return;
+        }
         switch (state) {
             case INSTALLED: {
                 // The component is a real installed package, so removing just it is a real thing
@@ -614,14 +645,6 @@ public final class LocalAiActivity extends Activity {
                 return;
             }
             case UPDATE_REQUIRED: {
-                if (!OrbitDistribution.installsOrbitLocalComponent()) {
-                    // Play cannot fetch a matching component. What it can honestly offer is
-                    // removing the one that no longer fits.
-                    Button uninstall = dangerButton("Uninstall component");
-                    uninstall.setOnClickListener(v -> confirmUninstallComponent());
-                    addDestructiveAction(actions, uninstall);
-                    return;
-                }
                 Button update = primaryButton("Update component");
                 update.setOnClickListener(v -> startComponentDownload());
                 addPrimaryAction(actions, update);
@@ -636,9 +659,6 @@ public final class LocalAiActivity extends Activity {
                 return;
             }
             default: {
-                // The Play edition never downloads the component APK, so it offers no setup button
-                // at all rather than one that could only fail. componentDetails says why.
-                if (!OrbitDistribution.installsOrbitLocalComponent()) return;
                 // Nothing installed at all: present one Orbit Local setup, not two technical
                 // downloads. The component always comes first, because a model without it cannot
                 // run and downloading 1.6 GB into that situation would be indefensible.

@@ -86,6 +86,10 @@ public final class OrbitLocalComponent {
     }
 
     public static boolean isUsable(Context context) {
+        // Never in the Google Play edition: it is signed with Google Play's key, not the GitHub
+        // release key the component requires of its caller, so binding would be refused anyway.
+        // Saying so here keeps every caller (provider, client, action router) from offering it.
+        if (!OrbitDistribution.supportsOrbitLocal()) return false;
         return state(context) == State.INSTALLED;
     }
 

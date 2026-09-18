@@ -117,6 +117,9 @@ final class OrbitLocalProvider implements AiProvider {
     }
 
     @Override public String statusDetail(Context context) {
+        if (!OrbitDistribution.supportsOrbitLocal()) {
+            return "Not available in the Google Play edition";
+        }
         if (!DeviceCapabilityCheck.allowsLocalAi(DeviceCapabilityCheck.assess(context))) {
             return "Not supported on this device";
         }

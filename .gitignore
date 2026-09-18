@@ -37,7 +37,8 @@ orbit-signing.properties
 *.pem
 *.key
 
-# Google Play App Signing enrollment output and Play Console credentials (docs/PLAY_STORE.md)
+# Key-export output and Play Console credentials. Orbit never exports its GitHub release key to
+# Google Play (docs/PLAY_STORE.md section 5); these stay ignored as a safety net.
 orbit-app-signing-key*
 encryption_public_key*
 pepk*.zip

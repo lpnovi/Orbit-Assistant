@@ -8,15 +8,20 @@ import android.net.Uri;
 /**
  * Which channel delivered this copy of Orbit, and what that channel allows.
  *
- * <p>Orbit is one application, {@code com.orbit.assistant}, signed with one permanent identity and
- * distributed two ways:
+ * <p>Orbit is one application, {@code com.orbit.assistant}, distributed two ways as two separately
+ * signed editions:
  *
  * <ul>
- *   <li><b>GitHub</b>: signed APKs from GitHub Releases, kept current by Orbit's own verified
- *       updater, with the optional Orbit Local component installed from the same release.
- *   <li><b>Google Play</b>: an App Bundle. Google Play delivers every update, and Orbit never
- *       downloads or installs an APK, neither its own nor Orbit Local's.
+ *   <li><b>GitHub</b>: APKs from GitHub Releases, signed with Orbit's permanent GitHub release key,
+ *       kept current by Orbit's own verified updater, with the optional Orbit Local component
+ *       installed from the same release.
+ *   <li><b>Google Play</b>: an App Bundle. Google Play signs it with its own Google-generated app
+ *       signing key and delivers every update. Orbit never downloads or installs an APK, neither
+ *       its own nor Orbit Local's.
  * </ul>
+ *
+ * <p>The two signatures differ on purpose, so neither edition can update the other. Moving between
+ * them is export a backup, uninstall, install the other edition, import the backup.
  *
  * <p>The answer comes from {@link OrbitEdition}, which is a different source file in each build
  * (see app/build.gradle), never from a preference, a server, or the installer package name. A
@@ -61,6 +66,18 @@ public final class OrbitDistribution {
     }
 
     /**
+     * Whether this edition can use an Orbit Local component at all.
+     *
+     * <p>The component is GitHub-only and serves only an Orbit signed with the GitHub release key:
+     * its bind permission is signature-level, and it checks Orbit's certificate on every call. The
+     * Play edition carries Google Play's signature instead, so a component left behind by a GitHub
+     * install can never serve it, and Orbit must not present one as usable.
+     */
+    public static boolean supportsOrbitLocal() {
+        return supportsOrbitLocal(current());
+    }
+
+    /**
      * Whether arrive/leave location triggers exist in this build.
      *
      * <p>They need background location, which the Google Play edition does not request. Its
@@ -98,6 +115,10 @@ public final class OrbitDistribution {
     }
 
     static boolean installsOrbitLocalComponent(Channel channel) {
+        return channel == Channel.GITHUB;
+    }
+
+    static boolean supportsOrbitLocal(Channel channel) {
         return channel == Channel.GITHUB;
     }
 

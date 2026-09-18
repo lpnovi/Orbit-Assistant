@@ -8,7 +8,7 @@ Never paste a keystore, a password, or `orbit-signing.properties` into Play Cons
 
 - [ ] Bump to the decided first Play version, `0.8.0.1` / 797 (PLAY_STORE.md section 9). Until then the tree is `0.8.0.0` / 796, which is already published on GitHub with different contents, and must not be uploaded.
 - [ ] Test the API 36 GitHub debug build on the Galaxy S25 Ultra (PLAY_STORE.md section 13).
-- [ ] Create the upload key and add the four `ORBIT_UPLOAD_*` lines to `orbit-signing.properties` (PLAY_STORE.md 5.1).
+- [ ] Create the Play upload key and add the four `ORBIT_UPLOAD_*` lines to `orbit-signing.properties` (PLAY_STORE.md 5.1). This is a new key, unrelated to the GitHub release key, and it is the next task after the groundwork is pushed.
 - [ ] Publish a privacy policy at a public URL. `docs/PRIVACY.md` describes Orbit's data handling but says it is not an attorney-reviewed privacy policy; Play needs a real policy page that names Orbit Assistant, what it accesses, and how to contact you.
 - [ ] Choose a public support email for the listing. Use Orbit's public identity, not a personal name.
 - [ ] Decide how Play reviewers reach AI chat (section 5, App access).
@@ -24,12 +24,12 @@ Never paste a keystore, a password, or `orbit-signing.properties` into Play Cons
 
 ## 3. App signing (do this before the first upload)
 
-- [ ] Choose to use **your own existing app signing key**. Never the Google-generated key.
-- [ ] Follow Play Console's PEPK instructions using the Orbit **release** keystore (PLAY_STORE.md 5.2).
-- [ ] Register the **upload** certificate (`orbit-upload-certificate.pem`).
-- [ ] Open **App integrity > App signing** and confirm the app signing key certificate SHA-256 is exactly `7D:AD:61:93:85:DF:F1:1E:C7:31:AA:55:5F:2B:44:8A:94:3C:73:91:81:3D:1A:94:DF:1C:B4:23:2E:CD:41:E3`.
-- [ ] Delete the PEPK output file from your PC once enrollment is confirmed.
-- [ ] Never request a signing key upgrade for this app.
+The Play edition is signed with its own Google-generated key. The GitHub release key is never given to Google (PLAY_STORE.md section 5).
+
+- [ ] When Play Console asks how the app should be signed, choose the **Google-generated app signing key**.
+- [ ] Do **not** choose any option that exports or uploads an existing key, and never run PEPK or any key-export tool on the Orbit GitHub release keystore.
+- [ ] Register the **upload** certificate (`orbit-upload-certificate.pem`), or let the first signed upload register it if Play Console offers that.
+- [ ] Note the Play app signing certificate SHA-256 from **App integrity > App signing** for your records. It is expected to differ from the GitHub certificate `7D:AD:…:41:E3`.
 
 ## 4. App content declarations
 
@@ -100,7 +100,7 @@ Draft, adjust once the reviewer-access decision is made:
 - [ ] Upload `app/build/outputs/bundle/play/app-play.aab` to Internal testing. Release name: the display version, for example `0.8.0.1`.
 - [ ] Release notes from PLAY_LISTING_DRAFT.md.
 - [ ] Install from the tester link on the Galaxy S25 Ultra and check: Diagnostics says `Distribution: Google Play`; About & updates shows the Google Play message and no update channel; Orbit Local shows it is not available in this edition; Automatic triggers offers time triggers only and explains that location triggers are not available; Saved Places can use the current location; the Side-button overlay, Back, sign-in, Routines, reminders, and Theme Studio work.
-- [ ] Confirm in Play Console that the delivered APK is signed with the Orbit certificate (App integrity).
+- [ ] Expect the Play install to refuse to go over a GitHub install of Orbit on the same phone, and the reverse. That is the intended dual-signature model; test on a phone without the GitHub edition, or move with a backup (PLAY_STORE.md section 9.1).
 
 ## 8. Closed testing
 
@@ -110,7 +110,7 @@ Draft, adjust once the reviewer-access decision is made:
 ## 9. Production
 
 - [ ] Only after: the AI content Report action exists with a real delivery backend, the privacy policy is live, and closed testing is complete where required.
-- [ ] Release the same version and commit that GitHub Stable ships.
+- [ ] Release the same version and commit that GitHub Stable ships where practical, so version numbers mean the same features in both stores. The two editions still cannot update each other.
 - [ ] Staged rollout, starting at 10 to 20 percent. Watch Android vitals (crashes and ANRs) before widening.
 
 ## 10. Orbit Pro (later, not now)
@@ -124,4 +124,4 @@ Draft, adjust once the reviewer-access decision is made:
 
 Separate from Play distribution. Android is starting to require that apps installed on certified devices, including sideloaded apps, come from a verified developer, beginning in some countries on 30 September 2026.
 
-- [ ] Check whether Orbit's GitHub APKs need to be registered, and register **both** `com.orbit.assistant` and `com.orbit.assistant.local` with the existing signing certificate if so. An app enrolled on Play is normally registered automatically; the Orbit Local component is not on Play.
+- [ ] Check whether Orbit's GitHub APKs need to be registered, and if so register **both** `com.orbit.assistant` and `com.orbit.assistant.local` with the GitHub release certificate `7D:AD:…:41:E3`. Play normally registers the Play edition automatically with its own Play signing key; confirm in the Android Developer Console that one package name can carry both the Play-registered key and the separate GitHub key, because Orbit deliberately uses two. The Orbit Local component is not on Play.

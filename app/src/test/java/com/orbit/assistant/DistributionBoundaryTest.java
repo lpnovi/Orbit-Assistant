@@ -165,6 +165,42 @@ public final class DistributionBoundaryTest {
         assertTrue(OrbitDistribution.supportsLocationTriggers(github));
     }
 
+    /** Orbit Local serves only the GitHub-signed edition. */
+    @Test public void orbitLocalIsUsableOnlyByTheGitHubEdition() {
+        assertTrue(OrbitDistribution.supportsOrbitLocal());
+        assertTrue(OrbitDistribution.supportsOrbitLocal(OrbitDistribution.Channel.GITHUB));
+        assertFalse(OrbitDistribution.supportsOrbitLocal(OrbitDistribution.Channel.PLAY));
+        String component = withoutComments(
+                read("app/src/main/java/com/orbit/assistant/OrbitLocalComponent.java"));
+        int usable = component.indexOf("public static boolean isUsable(Context context) {");
+        assertTrue(usable > 0);
+        assertTrue("the edition is checked before the component's state is even read",
+                component.indexOf("OrbitDistribution.supportsOrbitLocal()", usable)
+                        < component.indexOf("state(context)", usable));
+    }
+
+    /**
+     * The dual-signature model, stated the same way everywhere.
+     *
+     * <p>GitHub Orbit is signed with the GitHub release key, Play Orbit with a Google-generated
+     * Play key, and the GitHub key is never exported to Google. A document drifting back to the
+     * earlier same-key plan would send someone to upload the GitHub key to Play Console.
+     */
+    @Test public void theSigningDocumentsDescribeTwoSeparateKeys() {
+        for (String file : new String[]{"docs/PLAY_STORE.md", "docs/PLAY_CONSOLE_CHECKLIST.md",
+                "CLAUDE.md"}) {
+            String text = read(file);
+            assertTrue(file, text.contains("Google-generated"));
+            for (String stale : new String[]{"use your own existing app signing key",
+                    "Enroll the existing key", "same app-signing certificate",
+                    "enrolled with the existing key", "PEPK instructions using"}) {
+                assertFalse(file + " still says: " + stale, text.contains(stale));
+            }
+        }
+        assertTrue(read("docs/PLAY_STORE.md").contains("Neither edition can update or replace the other"));
+        assertTrue(read("app/build.gradle").contains("Google-generated app signing key"));
+    }
+
     // ---- the Play edition's sources carry no install path -----------------------------------------
 
     @Test public void thePlayManifestOverlayRemovesTheInstallPermission() {

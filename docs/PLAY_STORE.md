@@ -6,23 +6,25 @@ Tasks only the project owner can do are marked **OWNER INPUT REQUIRED**. The ste
 
 ## 1. One app, two channels
 
-Orbit is one Android application, `com.orbit.assistant`, signed with one permanent identity. It is distributed two ways.
+Orbit is one Android application, `com.orbit.assistant`, distributed two ways as two separately signed editions (section 5).
 
 | | GitHub edition | Google Play edition |
 | --- | --- | --- |
 | Artifact | Signed APK on GitHub Releases | Android App Bundle (AAB) uploaded to Play |
 | Gradle build type | `debug`, `release` (unchanged) | `play` |
 | Built by | `release.yml` / `candidate.yml` / `build-apk.yml`, `tools/build_orbit.ps1` | `gradlew bundlePlay`, locally for now |
-| Signed by | Orbit's permanent release key | Upload key; Play re-signs with Orbit's permanent key |
+| App signing key | Orbit's permanent GitHub release key | Google-generated Play app signing key, held by Google |
+| Uploads signed with | Not applicable | A separate Play upload key (not created yet) |
+| Can update the other edition | No | No |
 | App updates | Orbit's verified GitHub updater | Google Play only |
 | `REQUEST_INSTALL_PACKAGES` | Requested | **Not present** in the merged manifest |
 | Update channel (Stable / Beta) | In About & updates | Play testing tracks instead; no in-app channel |
-| Orbit Local component | Installed from the matching GitHub Release | Not installable from the Play edition (see section 6) |
+| Orbit Local component | Installed from the matching GitHub Release | Not available; a component from a GitHub install cannot be used (section 6) |
 | Location-triggered Routines (`ACCESS_BACKGROUND_LOCATION`) | Available | Not available; the permission is **not present** (section 7.1) |
 | Orbit Pro Preview (developer override) | Debug and Beta builds only | Never, on any track |
 | Diagnostics shows | `Distribution: GitHub` | `Distribution: Google Play` |
 
-Both editions are built from the same code except for one class, a two-line manifest overlay, and one resource file (section 2). Apart from the rows above, features, conversations, settings, and backups are identical, and so is the package name, so a person can move between editions (section 9).
+Both editions are built from the same code except for one class, a two-line manifest overlay, and one resource file (section 2). Apart from the rows above, features and the backup format are the same, so a person can move between editions with a backup, uninstall and reinstall (section 9.1). The editions cannot update each other.
 
 ## 2. The distribution boundary
 
@@ -91,31 +93,33 @@ A successful build does not prove Android 16 behaviour. The unit suite simulates
 
 ## 5. Signing model
 
-**OWNER INPUT REQUIRED for every step in this section.** Nothing here has been done.
+**Decided: the two editions are signed with different keys, on purpose.**
 
-Orbit's permanent release certificate:
+| | GitHub edition | Google Play edition |
+| --- | --- | --- |
+| App signing key | Orbit's existing permanent GitHub release key | A Google-generated app signing key, created, held and protected by Google Play (Play App Signing) |
+| Certificate | `7D:AD:61:93:85:DF:F1:1E:C7:31:AA:55:5F:2B:44:8A:94:3C:73:91:81:3D:1A:94:DF:1C:B4:23:2E:CD:41:E3` | Whatever Play Console shows under **App integrity > App signing** once the app exists. Not known yet, and deliberately different |
+| Who signs the delivered APK | `release.yml` in CI, from the `ORBIT_RELEASE_KEYSTORE_B64` secret | Google Play |
+| What Orbit's maintainer signs with | The release key (CI) | A separate **upload key**, only to prove an upload came from Orbit. Google checks it and re-signs with the Play key |
+| Updates | Orbit's GitHub updater, which pins the certificate above | Google Play only |
+| Orbit Local | Supported; it requires the certificate above | Not available (section 6) |
 
-```
-7D:AD:61:93:85:DF:F1:1E:C7:31:AA:55:5F:2B:44:8A:94:3C:73:91:81:3D:1A:94:DF:1C:B4:23:2E:CD:41:E3
-```
+What this means:
 
-The goal is that every Orbit APK on every phone, whether it came from GitHub or from Google Play, is signed by this one certificate. That is what lets updates cross channels, lets Orbit Local keep trusting Orbit, and keeps the certificate pin in `OrbitUpdater` and `release.yml` true.
+- The GitHub release key is **never** exported to Google, uploaded to Play Console, or used for Play. Nothing about the GitHub signing process changes: `release.yml`, `candidate.yml`, the certificate pin in `release.yml` and `OrbitUpdater`, and the Orbit Local trust checks all stay as they are.
+- The Play edition's certificate is Google's. Nothing in Orbit pins it, and nothing needs to: Google Play verifies its own updates.
+- Because the certificates differ, Android treats the two editions as incompatible installs of the same package name. **Neither edition can update or replace the other**, and Orbit makes no attempt to make them. Section 9 explains how a person moves between them.
+- Keeping the Play key with Google means Google can also upgrade it later if Play ever requires that; it has no effect on GitHub builds.
 
-The supported Google model for an app that already has its own key:
+### 5.1 The upload key (next task, not done yet)
 
-1. **App signing key** = Orbit's existing release key. You give Google an encrypted copy through Play App Signing's "use your existing key" enrollment (the PEPK tool). Google then signs every APK it delivers with it.
-2. **Upload key** = a new, separate key you create. You sign bundles with it before uploading. Google checks the upload signature, discards it, and re-signs with the app signing key. If the upload key is ever lost or leaked, Google can reset it; the app signing key is not affected.
-3. **GitHub releases** keep being signed by the same app signing key through `release.yml`, exactly as today.
-
-### 5.1 Create the upload key
-
-Run on your own PC, and store the keystore **outside the repository**, next to the release keystore:
+**OWNER INPUT REQUIRED.** No upload key exists yet. Creating it is the next task after this groundwork is pushed. For reference, it will be a new key, unrelated to the GitHub release key, created on your own PC and stored **outside the repository**:
 
 ```powershell
 keytool -genkeypair -v -keystore <path outside the repo>\orbit-upload.jks -alias orbit-upload -keyalg RSA -keysize 4096 -validity 10000
 ```
 
-Then add four lines to the existing, git-ignored `orbit-signing.properties`:
+Then four lines go into the existing, git-ignored `orbit-signing.properties`, which `app/build.gradle` reads for the `play` build type only:
 
 ```properties
 ORBIT_UPLOAD_STORE_FILE=<path outside the repo>\orbit-upload.jks
@@ -124,30 +128,25 @@ ORBIT_UPLOAD_STORE_PASSWORD=<your upload keystore password>
 ORBIT_UPLOAD_KEY_PASSWORD=<your upload key password>
 ```
 
-Export the upload **certificate** (public, safe to upload to Play Console):
+The upload **certificate** (public) is exported for Play Console with:
 
 ```powershell
 keytool -export -rfc -keystore <path outside the repo>\orbit-upload.jks -alias orbit-upload -file orbit-upload-certificate.pem
 ```
 
-### 5.2 Enroll the existing key in Play App Signing
+If the upload key is ever lost or leaked, Play Console can reset it. The Play app signing key is unaffected, because Google holds it.
 
-In Play Console, when the app's first release asks how it should be signed, choose to **use your own existing app signing key**, not the Google-generated key, and follow the PEPK instructions Play Console shows. Play Console supplies the `pepk.jar` download and an encryption public key for your account; the command has this shape:
+### 5.2 Play App Signing with a Google-generated key
 
-```powershell
-java -jar pepk.jar --keystore=<path to the Orbit release keystore> --alias=<release key alias> --output=orbit-app-signing-key.zip --include-cert --rsa-aes-encryption --encryption-key-path=<encryption key file from Play Console>
-```
+**OWNER INPUT REQUIRED.** When Play Console asks how the new app should be signed, choose the **Google-generated app signing key** (the default for new apps). Do not choose any option that uploads or exports an existing key. Register the upload certificate from 5.1, or let the first signed upload register it, as Play Console offers.
 
-Upload the resulting encrypted file where Play Console asks, and register the upload certificate from 5.1.
-
-Then confirm in Play Console under **App integrity > App signing** that the **app signing key certificate SHA-256** is exactly the value at the top of this section. If it is anything else, stop: do not release, because every existing Orbit user would be unable to move to or from the Play edition.
+Afterwards, record the Play app signing certificate SHA-256 from **App integrity > App signing** in your own notes. It is public and useful for support, but Orbit's code does not need it.
 
 ### 5.3 Rules that must never be broken
 
-- Never choose the Google-generated app signing key for Orbit.
-- Never accept a Play App Signing **key upgrade** or rotation for Orbit. It would give Play installs a different certificate from GitHub installs, and they would stop being able to update each other.
-- Never commit, print, email, or paste the release keystore, the upload keystore, their passwords, `orbit-signing.properties`, the PEPK output file, or the encryption key file. `.gitignore` already covers `*.jks`, `*.keystore`, and `orbit-signing.properties`; keep all of these outside the repository anyway.
-- Delete the PEPK output file once Play Console confirms the enrollment.
+- Never export, upload, or enroll the GitHub release key with Google Play, in any form. Never run PEPK or any other key-export tool on it.
+- Never sign a Play bundle with the GitHub release key. The `play` build type cannot use `ORBIT_RELEASE_*`, and a test enforces that.
+- Never commit, print, email, or paste the release keystore, the upload keystore, their passwords, or `orbit-signing.properties`. `.gitignore` covers `*.jks`, `*.keystore`, `*.pem`, and `orbit-signing.properties`; keep all of these outside the repository anyway.
 - The release key's CI copy stays in the `ORBIT_RELEASE_KEYSTORE_B64` secret. The upload key does not need to be in CI until Play uploads are automated, which is a separate decision.
 
 ## 6. Orbit Local
@@ -158,7 +157,7 @@ What is implemented now:
 
 - The Play edition never downloads the component and never hands it to Android. Both are refused in code and impossible at the platform level (no install permission, no APK FileProvider directory).
 - The Orbit Local screen and onboarding in the Play edition say **"Orbit Local isn't available in the Google Play edition of Orbit yet."** and show no setup button.
-- A genuine component that is **already installed** (for example, by someone who moved from the GitHub edition) keeps working, because it is signed with the same certificate. If it needs updating, the Play edition says it cannot update it and offers only **Uninstall component**.
+- A component left behind by a GitHub install is **never used** by the Play edition. It is signed with the GitHub release key, only serves an Orbit carrying that same certificate (its bind permission is signature-level), and the Play edition carries Google Play's signature. The Play edition therefore treats every installed component as unusable, says so, and offers only to uninstall it, through Android's own confirmation.
 - The GitHub edition is unchanged.
 
 **Decided for the initial Play release: option A.** Orbit Local is available through the GitHub edition only. The Play edition does not download, install, or update it, and there is no separate Play listing for it. Options B and C stay on record for later:
@@ -166,10 +165,10 @@ What is implemented now:
 | Option | What it means | Trade-offs |
 | --- | --- | --- |
 | A. Leave Orbit Local GitHub-only (current state) | Play users get cloud AI only | Simplest, zero policy risk. Play users who want offline AI must use the GitHub edition |
-| B. Publish Orbit Local as its own Play app | A second listing for `com.orbit.assistant.local`, enrolled with the same app signing key, installed from its Play page | Keeps today's architecture and signature trust. A second listing to maintain, a component with no launcher icon to explain, its own Play review and Data safety form, and its native libraries must meet Play's 16 KB page-size requirement |
+| B. Publish Orbit Local as its own Play app | A second listing for `com.orbit.assistant.local`, installed from its Play page | Keeps today's architecture, but not its trust model: two Play apps each get their own Google-generated key, so the signature-level link would need replacing (for example with Android's known-signer permissions pinned to the Play certificates). A second listing to maintain, a component with no launcher icon to explain, its own Play review and Data safety form, and its native libraries must meet Play's 16 KB page-size requirement |
 | C. Convert Orbit Local into a Play Feature Delivery module | The inference code becomes an on-demand module inside Orbit's own Play bundle | One listing and the smoothest install for Play users. A large rework of the component boundary and IPC, and the GitHub edition would need its own path for the same code |
 
-If Play users ask for offline AI later, B reuses everything that already works; C is the best long-term user experience but is a project in its own right.
+If Play users ask for offline AI later, C avoids the cross-app signing problem entirely and is the best long-term user experience, but it is a project in its own right. B needs its trust model redesigned for Play signing first.
 
 ## 7. Permissions and Play policy
 
@@ -215,7 +214,7 @@ What a Play user sees:
 
 What stays: precise and approximate location for Saved Places ("Use my current location"), weather, and Routine IF location conditions evaluated while Orbit is open. A Routine with a location IF condition that fires from a time trigger in the background is handed off rather than evaluated, exactly as on a GitHub install that has not granted background location.
 
-Moving between editions is safe. The Play edition never deletes, disables, or rewrites a saved location trigger. Move back to a GitHub build and the same triggers arm again once background location is granted.
+Saved configuration is safe across editions. The Play edition never deletes, disables, or rewrites a saved location trigger, including ones restored from a GitHub backup (section 9.1). Restore the same backup into a GitHub install and those triggers arm again once background location is granted.
 
 Re-enabling location triggers on Play later would need: the permission restored in the Play build, an in-app prominent disclosure in Play's required form, shown before every background request including on Android 10, and the Play Console background location declaration with a video. Draft disclosure wording:
 
@@ -251,22 +250,29 @@ Play's testing tracks replace the in-app Beta channel for Play users. The same B
 
 The published `v0.8.0.0` (versionCode 796) is not changed.
 
+Orbit keeps one version sequence so that "Orbit 0.8.0.1" means the same features whichever store it came from. Matching numbers do **not** make the two editions interchangeable: they are signed differently (section 5), so Android never lets one update or replace the other.
+
 Rules:
 
-1. **One version sequence for both channels.** Every release, Beta or Stable, is built once per channel from one tagged commit, and both artifacts carry identical `versionName` and `versionCode`. The `play` build type cannot override either; a test enforces it.
-2. **Every build that leaves the machine gets a new `versionCode`**, +1, as today. Play remembers every code ever uploaded to any track and refuses a repeat, so a code used for a Play upload is spent even if that release is abandoned.
+1. **One version sequence for both editions.** A release is built for each edition from one tagged commit, and both artifacts carry the same `versionName` and `versionCode`. The `play` build type cannot override either; a test enforces it.
+2. **Every build that leaves the machine gets a new `versionCode`**, +1, as today. Play remembers every code ever uploaded to any track and refuses a repeat, so a code used for a Play upload is spent even if that release is abandoned. GitHub never reuses one either.
 3. **Betas rank below the Stable that follows them**, as today: `0.8.1.0-beta.1` = 797, `-beta.2` = 798, `0.8.1.0` = 799. Betas go to GitHub prereleases and, optionally, a Play testing track. Play production receives Stable only.
-4. **Never upload the current tree as 796.** The API 36 build differs from the published 796. The first Play upload must use the next version, and the GitHub release of that version should come from the same commit.
-5. **Keep Play production and GitHub Stable on the same version.** If Play lags behind GitHub, a GitHub user cannot switch to the older Play build, because Android refuses a lower `versionCode`.
+4. **Never upload the current tree as 796.** The API 36 build differs from the published 796, and the first Play candidate is 0.8.0.1 / 797.
+5. Play may lag behind GitHub, or skip a GitHub-only release, without harming anyone: each edition's users only ever receive updates from their own store.
 
-What moving between channels looks like when both carry the same signing certificate:
+**Decided:** the next distributable candidate is `versionName 0.8.0.1`, `versionCode 797`, for both editions. It has not been bumped yet, and nothing is tagged or published.
 
-- **GitHub to Play:** installing Orbit's Play listing over a GitHub install is an ordinary update when the Play version is equal or higher. Data is kept, because it is the same app.
-- **Play to GitHub:** installing a GitHub APK of an equal or higher version is an ordinary update; the in-app GitHub updater then takes over.
-- **Lower version either way:** Android refuses it as a downgrade. The fix is to wait for the next release, never to reuse a number.
-- After a switch, which store Android credits with future updates can vary by Android version. That is expected and harmless while both carry the same certificate.
+### 9.1 Moving between the GitHub and Play editions
 
-**Decided:** the next distributable candidate is `versionName 0.8.0.1`, `versionCode 797`, for both channels. It has not been bumped yet, and nothing is tagged or published.
+Because the two editions are signed with different keys, Android refuses to install one over the other, whatever the version numbers. Moving from one to the other is a reinstall:
+
+1. **Export an Orbit backup** in the edition you are leaving (Settings > Personalization & data > **Export Orbit backup**), and keep the file somewhere private. Backups are not encrypted.
+2. **Uninstall** that edition. This removes its app data from the phone.
+3. **Install** the other edition, from GitHub Releases or from Google Play.
+4. **Import the backup** in the new edition (Settings > Personalization & data > **Restore Orbit backup**).
+5. **Re-grant what Android keeps per install:** runtime permissions, notification access, Do Not Disturb and settings access, exact alarms, and Orbit as the default digital assistant. Sign in to ChatGPT again: credentials and Extension secrets are deliberately never in backups.
+
+Things that do not carry over: the GitHub edition's update channel, Orbit Local, and the Orbit Deck layout (not part of backups yet). Location-triggered Routines restored into the Play edition are kept but shown as not available (section 7.1), and work again if the backup is later restored into a GitHub install.
 
 ## 10. Orbit Pro on Play
 
@@ -294,7 +300,6 @@ Recommended shape when billing is built:
 - The release keystore and its passwords (`ORBIT_RELEASE_*`)
 - The upload keystore and its passwords (`ORBIT_UPLOAD_*`)
 - `orbit-signing.properties`
-- PEPK output files and the Play encryption public key file
 - Play Console service-account JSON keys, if uploads are ever automated
 - Play Billing license keys or server credentials, when billing arrives
 - Any tester, reviewer, or ChatGPT account credentials
@@ -302,6 +307,7 @@ Recommended shape when billing is built:
 ## 12. Tests
 
 - `DistributionBoundaryTest` (runs in `testDebugUnitTest`, the GitHub edition): the GitHub edition keeps its endpoints, installer hand-off, and install permission; the package is `com.orbit.assistant` with no suffix or flavors; the `play` build type shares the version, is not debuggable, and never uses the release key; both modules target API 36; the application keeps legacy Back; unknown editions fail closed; the Play `OrbitEdition` source contains no GitHub endpoint or installer code; shared code reaches assets and the installer only through `OrbitEdition`; and every Pro Preview instruction goes through `lockedGuidance`.
+- `PlayLocationTriggersTest` and `PlayOrbitLocalSigningTest` (in `app/src/testPlay`, run by `testPlayUnitTest`): location triggers are never offered, armed, or requested on Play while saved ones are kept and foreground location works; and no Orbit Local component is ever presented as usable, only as removable.
 - `PlayEditionTest`, `PlayManifestTest`, `PlayFileProviderPathsTest` (in `app/src/testPlay`, run by `testPlayUnitTest` against the real Play variant): the Play build identifies as Play and is not debuggable; every GitHub operation is refused before any network or installer; no update check is scheduled; Orbit Local cannot be downloaded or installed; About & updates shows only the Play message and the Play listing action; Pro Preview is never available; Deck's locked Pro sheet says Pro cannot be bought yet and never mentions Pro Preview; the merged manifest lacks only `REQUEST_INSTALL_PACKAGES`; the merged FileProvider paths lack only the APK directories.
 
 `testPlayUnitTest` runs only the `Play*Test` classes; the shared suite describes the GitHub edition.
@@ -311,7 +317,7 @@ Recommended shape when billing is built:
 - [ ] Bump to `0.8.0.1` / 797 when the candidate is cut, section 9
 - [ ] Phone test of the API 36 GitHub debug build: Back on every screen type, Side-button overlay Back, onboarding, Screen Selection, attachment and PDF viewers, time and location Routines, reminders, notifications, widgets, Quick Settings tiles, Orbit Local, and an in-app update check
 - [ ] Phone test of the Play build (a universal APK from the bundle, or the internal-test install): no location trigger offered, time triggers and Saved Places "Use my current location" working, About & updates showing Google Play
-- [ ] Upload key created and configured, section 5.1 (**OWNER INPUT REQUIRED**)
-- [ ] Play Console app created, App Signing enrolled with the existing key, certificate confirmed, section 5.2 (**OWNER INPUT REQUIRED**)
+- [ ] Upload key created and configured, section 5.1 (the next task; **OWNER INPUT REQUIRED**)
+- [ ] Play Console app created with a **Google-generated** app signing key, upload certificate registered, section 5.2 (**OWNER INPUT REQUIRED**)
 - [ ] `bundlePlay` rebuilt signed with the upload key
 - [ ] Privacy policy URL, Data safety, and permission declarations entered, [checklist](PLAY_CONSOLE_CHECKLIST.md) (**OWNER INPUT REQUIRED**)

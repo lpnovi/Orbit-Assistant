@@ -4,7 +4,7 @@ Draft copy for Orbit Assistant's Google Play listing. **Not published.** Re-chec
 
 Ground rules, same as [LAUNCH_MATERIALS.md](LAUNCH_MATERIALS.md): no user counts, downloads, ratings, endorsements, press, certifications, or partnerships. No personal names. Do not promise Side-button support on every phone. Third-party names (ChatGPT, Samsung, Android) appear only to state compatibility, never in the app name, icon, or short description.
 
-Differences from the GitHub copy that matter here: the Play edition is updated by Google Play, Orbit Local (offline AI) is not available in the Play edition yet, and the initial Play edition has no location-triggered (arrive/leave) Routines. The Play listing must not offer either.
+Differences from the GitHub copy that matter here: the Play edition is updated by Google Play, Orbit Local (offline AI) is not available in the Play edition yet, and the initial Play edition has no location-triggered (arrive/leave) Routines. The Play listing must not offer either. The two editions are also signed differently, so the listing must not suggest that a Play install updates or replaces a GitHub install; moving between them is a backup, uninstall, and reinstall (PLAY_STORE.md section 9.1).
 
 ## App name (30 characters max)
 

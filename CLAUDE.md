@@ -116,7 +116,10 @@ release body.
 - The same certificate pin is compiled into `OrbitUpdater.java`. Both must stay in sync with the real
   keystore or in-app updates stop working.
 - Users install updates over existing installs. Preserving package identity, signing identity, and
-  monotonic version codes is the highest-priority constraint in this project.
+  monotonic version codes is the highest-priority constraint in this project. That applies within
+  each edition: the GitHub edition is signed with the release key above, the Play edition with a
+  Google-generated Play key. The two are intentionally different and never cross-update. Never
+  export or upload the GitHub release key to Google Play.
 
 ## Update system
 
@@ -129,7 +132,10 @@ optional background check, gated by the `update_notifications` preference.
 ## Two distribution channels
 
 Orbit ships as the GitHub edition (build types `debug`, `release`) and the Google Play edition
-(build type `play`). Same `com.orbit.assistant`, same version, same app-signing certificate.
+(build type `play`). Same `com.orbit.assistant` and version sequence, but deliberately different
+signing: the GitHub release key for GitHub, a Google-generated Play key for Play (uploads use a
+separate Play upload key). The editions cannot update each other; users move with a backup,
+uninstall, and reinstall. Orbit Local only serves the GitHub-signed edition.
 `app/src/github/.../OrbitEdition.java` is the only code with GitHub release endpoints and the APK
 installer hand-off; `app/src/play/.../OrbitEdition.java` has the same shape and refuses everything,
 and the Play manifest overlay removes `REQUEST_INSTALL_PACKAGES` and `ACCESS_BACKGROUND_LOCATION`

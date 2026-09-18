@@ -59,6 +59,9 @@ public final class OrbitLocalClient {
 
     /** The reason the component cannot be used right now, or "" when it can. */
     public static String unavailableReason(Context context) {
+        // The Play edition cannot use any component, whatever is installed; see
+        // OrbitDistribution.supportsOrbitLocal.
+        if (!OrbitDistribution.supportsOrbitLocal()) return LocalAiActivity.PLAY_UNAVAILABLE;
         switch (OrbitLocalComponent.state(context)) {
             case INSTALLED: return "";
             case UPDATE_REQUIRED: return UPDATE_REQUIRED;

@@ -25,9 +25,10 @@ def orbitReleaseSigningReady = [
 ].every { it != null && !it.isEmpty() }
 
 // The Google Play upload key. Deliberately a different set of values from ORBIT_RELEASE_*: the
-// release key is Orbit's permanent app-signing identity and signs every GitHub APK, while Play
-// receives bundles signed with a separate upload key and re-signs them with that same permanent
-// identity through Play App Signing. docs/PLAY_STORE.md explains the whole model.
+// release key is the GitHub edition's permanent app-signing identity and signs every GitHub APK.
+// Play receives bundles signed with this separate upload key and re-signs them with its own
+// Google-generated app signing key, so the Play edition's certificate is intentionally different
+// from the GitHub one. The release key is never given to Google. docs/PLAY_STORE.md section 5.
 def orbitUploadStoreFile = orbitSigningValue('ORBIT_UPLOAD_STORE_FILE')?.trim()
 def orbitUploadKeyAlias = orbitSigningValue('ORBIT_UPLOAD_KEY_ALIAS')?.trim()
 def orbitUploadStorePassword = orbitSigningValue('ORBIT_UPLOAD_STORE_PASSWORD')
@@ -84,7 +85,8 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
         // The Google Play edition: the same Orbit, the same com.orbit.assistant, the same version,
-        // distributed as an App Bundle through Google Play. `gradlew bundlePlay` builds it.
+        // distributed as an App Bundle through Google Play and signed by Google Play with its own
+        // key, never the GitHub release key. `gradlew bundlePlay` builds it.
         //
         // A build type rather than product flavors, on purpose. Flavors would rename every
         // existing task and output (assembleRelease, app-release.apk, app-debug.apk) that
