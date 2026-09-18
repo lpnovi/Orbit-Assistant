@@ -6,13 +6,13 @@ Never paste a keystore, a password, or `orbit-signing.properties` into Play Cons
 
 ## 1. Before opening Play Console
 
-- [ ] Decide the first Play version (PLAY_STORE.md section 9). The current tree is still `0.8.0.0` / 796, which is already published on GitHub with different contents, and must not be uploaded.
+- [ ] Bump to the decided first Play version, `0.8.0.1` / 797 (PLAY_STORE.md section 9). Until then the tree is `0.8.0.0` / 796, which is already published on GitHub with different contents, and must not be uploaded.
 - [ ] Test the API 36 GitHub debug build on the Galaxy S25 Ultra (PLAY_STORE.md section 13).
 - [ ] Create the upload key and add the four `ORBIT_UPLOAD_*` lines to `orbit-signing.properties` (PLAY_STORE.md 5.1).
 - [ ] Publish a privacy policy at a public URL. `docs/PRIVACY.md` describes Orbit's data handling but says it is not an attorney-reviewed privacy policy; Play needs a real policy page that names Orbit Assistant, what it accesses, and how to contact you.
 - [ ] Choose a public support email for the listing. Use Orbit's public identity, not a personal name.
 - [ ] Decide how Play reviewers reach AI chat (section 5, App access).
-- [ ] Decide the in-app AI content reporting design (PLAY_STORE.md section 7). Required before production.
+- [ ] Choose the AI content report-delivery backend so the Report action can be built (PLAY_STORE.md section 7.2). Required before production, not before internal testing.
 
 ## 2. Create the app
 
@@ -51,18 +51,14 @@ Never paste a keystore, a password, or `orbit-signing.properties` into Play Cons
 ### Data safety
 Answer from the code at the time you file it, not from this list. As of this document:
 - [ ] **Data is sent off the device** to the AI provider the user selects (ChatGPT account mode or the user's own relay): messages, and any attachments, screen content, notification context, or location the user includes in a request. Declare these as shared with a third party for app functionality.
-- [ ] Location (approximate and precise): weather and location Routines. Location-trigger checks run on the device.
+- [ ] Location (approximate and precise): weather, Saved Places, and Routine IF conditions, while Orbit is open. The initial Play edition does not access location in the background.
 - [ ] Contacts, calendar, audio (voice input), photos (camera attachments), app activity (notifications, when Notification Intelligence is enabled): processed on the device for the features that use them, and included in an AI request only when the user sends one.
 - [ ] Data is encrypted in transit (HTTPS only; cleartext traffic is disabled).
 - [ ] Users can delete their data in the app (history, Memory, Vault, notification history) or by uninstalling. There is no Orbit account and no Orbit server.
 - [ ] Orbit itself does not sell data and has no analytics or advertising SDKs.
 
 ### Sensitive permissions
-- [ ] **Location permissions (background).** Required. Before filing, Orbit's prominent disclosure must be updated (PLAY_STORE.md section 7) and shipped in the build under review. Declaration text:
-
-  > Orbit Assistant uses background location only for location-triggered Routines that the user creates: the user saves a place and chooses a Routine to run on arriving at or leaving it. Android's proximity alerts check this on the device while Orbit is closed. Without background location these Routines cannot run, so the feature asks for it only when the user sets one up, and the rest of Orbit works without it.
-
-  Video: a short screen recording showing Routines > Triggers > add a location trigger > the disclosure > the Android permission page > the Routine running on arrival.
+- [ ] **Location permissions (background):** not applicable to the initial Play release. The Play edition does not request `ACCESS_BACKGROUND_LOCATION` and does not offer location-triggered Routines (PLAY_STORE.md section 7.1). If Play Console asks about background location, the uploaded bundle is wrong; check it with `packagePlayUniversalApk`. Re-enabling it later needs the disclosure and declaration described in section 7.1.
 
 - [ ] **Contacts (`READ_CONTACTS`),** if Play Console prompts for it. Declaration text:
 
@@ -103,7 +99,7 @@ Draft, adjust once the reviewer-access decision is made:
 - [ ] Build `bundlePlay` signed with the upload key.
 - [ ] Upload `app/build/outputs/bundle/play/app-play.aab` to Internal testing. Release name: the display version, for example `0.8.0.1`.
 - [ ] Release notes from PLAY_LISTING_DRAFT.md.
-- [ ] Install from the tester link on the Galaxy S25 Ultra and check: Diagnostics says `Distribution: Google Play`; About & updates shows the Google Play message and no update channel; Orbit Local shows it is not available in this edition; the Side-button overlay, Back, sign-in, Routines, reminders, and Theme Studio work.
+- [ ] Install from the tester link on the Galaxy S25 Ultra and check: Diagnostics says `Distribution: Google Play`; About & updates shows the Google Play message and no update channel; Orbit Local shows it is not available in this edition; Automatic triggers offers time triggers only and explains that location triggers are not available; Saved Places can use the current location; the Side-button overlay, Back, sign-in, Routines, reminders, and Theme Studio work.
 - [ ] Confirm in Play Console that the delivered APK is signed with the Orbit certificate (App integrity).
 
 ## 8. Closed testing
@@ -113,7 +109,7 @@ Draft, adjust once the reviewer-access decision is made:
 
 ## 9. Production
 
-- [ ] Only after: the AI content reporting control exists, the background location disclosure is updated and declared, the privacy policy is live, and closed testing is complete where required.
+- [ ] Only after: the AI content Report action exists with a real delivery backend, the privacy policy is live, and closed testing is complete where required.
 - [ ] Release the same version and commit that GitHub Stable ships.
 - [ ] Staged rollout, starting at 10 to 20 percent. Watch Android vitals (crashes and ANRs) before widening.
 

@@ -617,12 +617,16 @@ public final class OnboardingActivity extends Activity {
         addCapability(automation, "Precise timing",
                 "Accurate reminders and Routine time triggers.", exact, v ->
                         CapabilityAccessHelper.openExactAlarmAccess(this));
-        boolean locationReady = RoutineLocationTriggerScheduler.ready(this);
-        automation.addView(capabilityRow("Location automation",
-                "Arrival and leave Routine triggers.",
-                CapabilityAccessHelper.locationAutomationStatus(this), locationReady, v ->
-                        CapabilityAccessHelper.setupLocationAutomation(this,
-                                REQ_ROUTINE_FINE_LOCATION, REQ_ROUTINE_BACKGROUND_LOCATION)));
+        // Arrive/leave triggers need background location, which the Google Play edition does not
+        // request, so a first run there is not asked to set up something it cannot use.
+        if (OrbitDistribution.supportsLocationTriggers()) {
+            boolean locationReady = RoutineLocationTriggerScheduler.ready(this);
+            automation.addView(capabilityRow("Location automation",
+                    "Arrival and leave Routine triggers.",
+                    CapabilityAccessHelper.locationAutomationStatus(this), locationReady, v ->
+                            CapabilityAccessHelper.setupLocationAutomation(this,
+                                    REQ_ROUTINE_FINE_LOCATION, REQ_ROUTINE_BACKGROUND_LOCATION)));
+        }
         addCapability(automation, "Trigger alerts",
                 "Visible handoffs when an automatic Routine needs attention.",
                 RoutineTriggerNotifier.notificationsAllowed(this), v ->

@@ -6,13 +6,25 @@
   Orbit from Google Play is updated by Google Play, and Play policy does not allow an app it
   distributes to install APKs from anywhere else. Removing REQUEST_INSTALL_PACKAGES means Android
   itself refuses any install attempt from this build, on top of OrbitEdition having no code that
-  makes one. PlayManifestTest checks the merged result.
+  makes one. PlayManifestTest checks the merged result, which must lack exactly the permissions
+  removed here.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission
         android:name="android.permission.REQUEST_INSTALL_PACKAGES"
+        tools:node="remove" />
+
+    <!--
+      The initial Google Play edition does not use background location. Its only consumer is
+      arrive/leave Routine triggers, which the Play edition does not offer
+      (OrbitDistribution.supportsLocationTriggers). Removing the permission means Android cannot
+      grant it, whatever is asked. Precise and approximate location stay, for Saved Places,
+      weather, and Routine IF conditions checked while Orbit is open.
+    -->
+    <uses-permission
+        android:name="android.permission.ACCESS_BACKGROUND_LOCATION"
         tools:node="remove" />
 
 </manifest>

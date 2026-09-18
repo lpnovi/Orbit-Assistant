@@ -4,7 +4,7 @@ Draft copy for Orbit Assistant's Google Play listing. **Not published.** Re-chec
 
 Ground rules, same as [LAUNCH_MATERIALS.md](LAUNCH_MATERIALS.md): no user counts, downloads, ratings, endorsements, press, certifications, or partnerships. No personal names. Do not promise Side-button support on every phone. Third-party names (ChatGPT, Samsung, Android) appear only to state compatibility, never in the app name, icon, or short description.
 
-Differences from the GitHub copy that matter here: the Play edition is updated by Google Play, and Orbit Local (offline AI) is not available in the Play edition yet, so the Play listing must not offer it.
+Differences from the GitHub copy that matter here: the Play edition is updated by Google Play, Orbit Local (offline AI) is not available in the Play edition yet, and the initial Play edition has no location-triggered (arrive/leave) Routines. The Play listing must not offer either.
 
 ## App name (30 characters max)
 
@@ -42,7 +42,7 @@ A REAL CHAT APP TOO
 Conversation history, image and file attachments, and a built-in PDF viewer you can ask questions about.
 
 ROUTINES AND SHORTCUTS
-Build multi-step Routines with conditions, and run them from a time or place trigger, a Quick Settings tile, or a home-screen widget. Custom Commands turn your own phrases into actions.
+Build multi-step Routines with conditions, and run them on a schedule, from a Quick Settings tile, or from a home-screen widget. Custom Commands turn your own phrases into actions.
 
 ORBIT DECK AND THEME STUDIO
 Orbit Deck is your own board of apps, prompts, and controls, with sections and folders. Theme Studio restyles the whole app: accent colours, AMOLED black, and Solid, Frosted, or Liquid surfaces, with a live preview and shareable theme files.
@@ -87,7 +87,7 @@ Short form for the Play Console "notes for reviewers" field:
 Orbit Assistant is a general-purpose AI assistant that the user can set as Android's default digital assistant (VoiceInteractionService), so it can open over other apps from the assistant gesture or, on Samsung phones, the Side button.
 
 Every sensitive capability is optional and requested only when the user turns on the feature that needs it:
-- Background location: location-triggered Routines (arrive/leave) that run while Orbit is closed, checked on the device with Android proximity alerts.
+- Location (while Orbit is open): weather, saved places, and location conditions inside a Routine. This edition does not request background location.
 - Contacts: resolving a spoken name ("call Alex") to a phone number, and finding the recipient of an on-screen SMS to prepare a reply.
 - Calendar: adding an event after the user confirms it, then reading it back to confirm it was added.
 - Notification listener: optional Notification Intelligence, enabled by the user in Android Settings.
@@ -105,7 +105,7 @@ This edition never downloads or installs APKs and does not request REQUEST_INSTA
 2. To use the assistant overlay: Settings > Apps > Default apps > Digital assistant app > Orbit Assistant (onboarding links here). Then long-press the Side button on a Samsung phone, or use the system assistant gesture.
 3. AI chat: Settings > Models & access > sign in with ChatGPT. [OWNER INPUT REQUIRED: test account details, or a note that the reviewer's own account is needed.]
 4. Without signing in you can test: Routines (Settings > Routines), Orbit Deck, Theme Studio, reminders, widgets, Quick Settings tiles, Orbit Vault, and the PDF viewer.
-5. Location Routine: Routines > Triggers > add a location trigger; Orbit explains background location before opening Android's permission page.
+5. Routines > a routine > Automatic triggers offers time triggers. This edition does not offer location-triggered Routines and says so on that screen.
 6. About & updates shows that updates are delivered by Google Play.
 ```
 

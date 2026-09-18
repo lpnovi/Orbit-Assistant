@@ -132,7 +132,8 @@ Orbit ships as the GitHub edition (build types `debug`, `release`) and the Googl
 (build type `play`). Same `com.orbit.assistant`, same version, same app-signing certificate.
 `app/src/github/.../OrbitEdition.java` is the only code with GitHub release endpoints and the APK
 installer hand-off; `app/src/play/.../OrbitEdition.java` has the same shape and refuses everything,
-and the Play manifest overlay removes `REQUEST_INSTALL_PACKAGES`. Ask `OrbitDistribution`, never
+and the Play manifest overlay removes `REQUEST_INSTALL_PACKAGES` and `ACCESS_BACKGROUND_LOCATION`
+(so location-triggered Routines are unavailable on Play; see `OrbitDistribution.supportsLocationTriggers`). Ask `OrbitDistribution`, never
 re-derive the channel. Never add a GitHub download, installer intent, or self-update path to shared
 code, and never let the Play edition install Orbit Local. See `docs/PLAY_STORE.md`.
 

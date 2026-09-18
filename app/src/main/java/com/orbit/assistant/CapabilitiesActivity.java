@@ -151,12 +151,17 @@ public final class CapabilitiesActivity extends Activity {
         page.addView(section("ROUTINE AUTOMATION"));
         LinearLayout automation = card();
         automation.addView(statusWithText("Time triggers", "Available", true));
-        automation.addView(statusWithText("Location triggers", "Available", true));
+        boolean locationTriggers = OrbitDistribution.supportsLocationTriggers();
+        automation.addView(statusWithText("Location triggers",
+                locationTriggers ? "Available" : "Not available", locationTriggers));
         automation.addView(routineAutomationAccessRow("Precise timing", true));
-        automation.addView(locationAutomationAccessRow());
+        // No location setup row in the Play edition: there is no background location to set up.
+        if (locationTriggers) automation.addView(locationAutomationAccessRow());
         automation.addView(routineAutomationAccessRow("Trigger alerts", false));
-        TextView automationNote = UiKit.text(this,
-                "Precise timing uses Android's Alarms & reminders access for time triggers and Orbit reminders. Location triggers require precise plus background location, while Trigger alerts let Orbit hand off any automatic routine that needs a visible app or confirmation.",
+        TextView automationNote = UiKit.text(this, locationTriggers
+                ? "Precise timing uses Android's Alarms & reminders access for time triggers and Orbit reminders. Location triggers require precise plus background location, while Trigger alerts let Orbit hand off any automatic routine that needs a visible app or confirmation."
+                : "Precise timing uses Android's Alarms & reminders access for time triggers and Orbit reminders, while Trigger alerts let Orbit hand off any automatic routine that needs a visible app or confirmation. "
+                        + OrbitDistribution.LOCATION_TRIGGERS_UNAVAILABLE,
                 12, UiKit.MUTED, false);
         automationNote.setPadding(0, UiKit.dp(this,10), 0, 0);
         automation.addView(automationNote);

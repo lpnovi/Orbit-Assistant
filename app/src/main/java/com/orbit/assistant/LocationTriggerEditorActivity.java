@@ -65,6 +65,12 @@ public final class LocationTriggerEditorActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         UiKit.syncTheme(this);
+        if (!OrbitDistribution.supportsLocationTriggers()) {
+            // Not reachable from the Play edition's screens; this keeps a stray intent from
+            // creating or re-enabling a trigger that could never run there.
+            finish();
+            return;
+        }
         routineId = getIntent().getStringExtra(EXTRA_ROUTINE_ID);
         triggerId = getIntent().getStringExtra(EXTRA_TRIGGER_ID);
         routine = RoutineStore.findById(this, routineId);

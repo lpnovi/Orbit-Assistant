@@ -18,10 +18,11 @@ Orbit is one Android application, `com.orbit.assistant`, signed with one permane
 | `REQUEST_INSTALL_PACKAGES` | Requested | **Not present** in the merged manifest |
 | Update channel (Stable / Beta) | In About & updates | Play testing tracks instead; no in-app channel |
 | Orbit Local component | Installed from the matching GitHub Release | Not installable from the Play edition (see section 6) |
+| Location-triggered Routines (`ACCESS_BACKGROUND_LOCATION`) | Available | Not available; the permission is **not present** (section 7.1) |
 | Orbit Pro Preview (developer override) | Debug and Beta builds only | Never, on any track |
 | Diagnostics shows | `Distribution: GitHub` | `Distribution: Google Play` |
 
-Both editions are built from the same code except for one class, one manifest line, and one resource file (section 2). Apart from the rows above, features, conversations, settings, and backups are identical, and so is the package name, so a person can move between editions (section 9).
+Both editions are built from the same code except for one class, a two-line manifest overlay, and one resource file (section 2). Apart from the rows above, features, conversations, settings, and backups are identical, and so is the package name, so a person can move between editions (section 9).
 
 ## 2. The distribution boundary
 
@@ -29,7 +30,7 @@ The Play edition does not contain a switched-off updater. It contains no updater
 
 - `app/src/github/java/.../OrbitEdition.java` is compiled into `debug` and `release`. It is the only code that knows Orbit's GitHub release endpoints and the only code that builds the intent handing an APK to Android's package installer.
 - `app/src/play/java/.../OrbitEdition.java` is compiled into `play` instead. Same shape, so the rest of Orbit compiles unchanged, but every method throws and it reports that installs are never possible.
-- `app/src/play/AndroidManifest.xml` removes `REQUEST_INSTALL_PACKAGES`, so Android itself would refuse an install request from the Play edition.
+- `app/src/play/AndroidManifest.xml` removes `REQUEST_INSTALL_PACKAGES`, so Android itself would refuse an install request from the Play edition. It also removes `ACCESS_BACKGROUND_LOCATION` (section 7.1).
 - `app/src/play/res/xml/file_paths.xml` drops the two APK directories from FileProvider, so the Play edition cannot even share an APK file with the installer.
 - `OrbitDistribution` answers "which channel is this?" from `OrbitEdition.ID`, never from a preference, a server, or the installer package name. An unknown value is treated as Play, the more restrictive channel.
 - `OrbitUpdater`, `OrbitUpdateWorker`, and `OrbitLocalInstaller` also refuse at their own entry points, so a refusal is immediate and explained rather than a network error.
@@ -160,7 +161,7 @@ What is implemented now:
 - A genuine component that is **already installed** (for example, by someone who moved from the GitHub edition) keeps working, because it is signed with the same certificate. If it needs updating, the Play edition says it cannot update it and offers only **Uninstall component**.
 - The GitHub edition is unchanged.
 
-**OWNER INPUT REQUIRED: choose the long-term Play option.**
+**Decided for the initial Play release: option A.** Orbit Local is available through the GitHub edition only. The Play edition does not download, install, or update it, and there is no separate Play listing for it. Options B and C stay on record for later:
 
 | Option | What it means | Trade-offs |
 | --- | --- | --- |
@@ -168,7 +169,7 @@ What is implemented now:
 | B. Publish Orbit Local as its own Play app | A second listing for `com.orbit.assistant.local`, enrolled with the same app signing key, installed from its Play page | Keeps today's architecture and signature trust. A second listing to maintain, a component with no launcher icon to explain, its own Play review and Data safety form, and its native libraries must meet Play's 16 KB page-size requirement |
 | C. Convert Orbit Local into a Play Feature Delivery module | The inference code becomes an on-demand module inside Orbit's own Play bundle | One listing and the smoothest install for Play users. A large rework of the component boundary and IPC, and the GitHub edition would need its own path for the same code |
 
-Recommendation: **A now, B later if Play users ask for offline AI.** B reuses everything that already works; C is the best long-term user experience but is a project in its own right.
+If Play users ask for offline AI later, B reuses everything that already works; C is the best long-term user experience but is a project in its own right.
 
 ## 7. Permissions and Play policy
 
@@ -177,8 +178,8 @@ Source: the merged manifest of the built Play bundle. See [PLAY_CONSOLE_CHECKLIS
 | Permission or access | Play edition | Why Orbit needs it | Play Console |
 | --- | --- | --- | --- |
 | `REQUEST_INSTALL_PACKAGES` | **Removed** | GitHub self-update and Orbit Local install only | Not applicable |
-| `ACCESS_BACKGROUND_LOCATION` | Kept | Location-triggered Routines (arrive/leave) that run while Orbit is closed | **Declaration + video required.** Prominent disclosure wording needs updating first (below) |
-| `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION` | Kept | Weather, Saved Places, location triggers | Data safety: location |
+| `ACCESS_BACKGROUND_LOCATION` | **Removed** for the initial Play release | Only location-triggered Routines use it, and the Play edition does not offer them (below) | No background location declaration or video |
+| `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION` | Kept | Weather, Saved Places, and Routine IF conditions, all while Orbit is open | Data safety: location |
 | `READ_CONTACTS` | Kept | Voice "call/text <name>" resolves a spoken name to a number; SMS reply finds the on-screen recipient. The Android Contact Picker cannot resolve a spoken name | Play now prompts READ_CONTACTS apps for a declaration; required for apps targeting API 37+ from January 2027 |
 | `READ_CALENDAR`, `WRITE_CALENDAR` | Kept | Adding a confirmed event, choosing a writable calendar, and reading it back to prove it was added | Data safety: calendar |
 | `SCHEDULE_EXACT_ALARM` | Kept | Time-triggered Routines and reminders at the minute the user chose; the user grants it in Android Settings | No declaration (that applies to `USE_EXACT_ALARM`, which Orbit does not use) |
@@ -191,13 +192,49 @@ Source: the merged manifest of the built Play bundle. See [PLAY_CONSOLE_CHECKLIS
 | Default assistant (`VoiceInteractionService`) | Kept | The Side-button overlay | Explain in reviewer notes |
 | `FOREGROUND_SERVICE` | Added by WorkManager | No foreground service types are declared or used | Answer "no" if Console asks about foreground service types |
 
-**Background location prominent disclosure.** Play requires an in-app disclosure shown before the permission request that says what is collected and that it is used while the app is closed. Orbit explains the requirement but not in Play's required form, and on Android 10 it requests background location without a dialog first. Before submitting the background location declaration, Orbit's three location-setup screens should show wording like:
+### 7.1 Location-triggered Routines in the Play edition
+
+The initial Play edition does not request background location, so arrive/leave Routine triggers are not available there. This is a distribution boundary like Orbit Local and self-updates, not a removed feature: the GitHub edition keeps location triggers exactly as they were.
+
+How the boundary is built:
+
+- `app/src/play/AndroidManifest.xml` removes `ACCESS_BACKGROUND_LOCATION`, so Android cannot grant it, whatever is asked.
+- `OrbitDistribution.supportsLocationTriggers()` is false in the Play edition. `RoutineLocationTriggerScheduler` then reports no background access, is never "ready", and never arms a proximity monitor. Scheduling still cancels first, so a monitor armed by an earlier GitHub install is removed on the first reschedule (at start-up, boot, or app update).
+- The proximity receiver disarms and ignores any stale event. It runs nothing and changes nothing.
+- The shared setup helper never requests background location or opens Android's permission page in the Play edition.
+
+What a Play user sees:
+
+- **Automatic triggers:** time triggers as usual. In place of the location setup card: *"Location-triggered Routines aren't currently available in the Google Play edition of Orbit. Time triggers work as usual."* There is no "New location trigger" button, and no empty location section.
+- **Saved location triggers** (for example, after moving from the GitHub edition) are still listed as *"Not available in the Google Play edition"*, with no on/off switch and only **Delete** in their menu.
+- **Capabilities** shows Location triggers as "Not available", with no setup row. **Onboarding** does not offer location automation.
+- **Routines list:** a location trigger is not counted as "on".
+- **AI Routine Builder:** a drafted location trigger is shown as not available, and the editor does not offer to set it up. The routine itself is saved and runs manually or from a time trigger.
+- The location triggers editor cannot be opened.
+- Nothing points the user to the GitHub edition or to sideloading.
+
+What stays: precise and approximate location for Saved Places ("Use my current location"), weather, and Routine IF location conditions evaluated while Orbit is open. A Routine with a location IF condition that fires from a time trigger in the background is handed off rather than evaluated, exactly as on a GitHub install that has not granted background location.
+
+Moving between editions is safe. The Play edition never deletes, disables, or rewrites a saved location trigger. Move back to a GitHub build and the same triggers arm again once background location is granted.
+
+Re-enabling location triggers on Play later would need: the permission restored in the Play build, an in-app prominent disclosure in Play's required form, shown before every background request including on Android 10, and the Play Console background location declaration with a video. Draft disclosure wording:
 
 > Orbit collects location data to run your arrive and leave Routines, even when Orbit is closed or not in use. Location is checked on this phone against the places you set and is not sent anywhere for this feature.
 
-**OWNER INPUT REQUIRED:** approve that wording (or edit it) so it can be implemented and verified in a Beta before the declaration is filed. Confirm the last sentence against the code at that time.
+### 7.2 AI-generated content reporting: production blocker
 
-**AI-generated content policy.** Play requires apps that generate content with AI to let users report or flag offensive AI output without leaving the app. Orbit has no such control today. **OWNER INPUT REQUIRED:** decide the design (for example, a Report action on each assistant reply). This must exist before production and is likely checked at review.
+Play's AI-Generated Content policy requires apps that produce generative AI output to let users report or flag offensive AI output without leaving the app. Orbit has no such control, and **none has been added**: a control that looked like reporting but delivered nothing would mislead users and reviewers. **This blocks production release.** Internal testing is not blocked. **OWNER INPUT REQUIRED:** choose the report-delivery backend (where a report goes and what it contains).
+
+The cleanest integration points already exist:
+
+- **`MessageActions`** builds the long-press menu for every assistant reply on both surfaces: the full chat (`ChatActivity`) and the Side-button overlay (`OrbitSession`). A **Report** entry belongs beside Copy, Save to Vault, and Regenerate: add a `REPORT_MENU_LABEL` and icon in `assistantLabels`/`assistantIcons`, and handle it in `showAssistantMenu`. One change covers both surfaces, and it is only offered on assistant replies.
+- **What travels:** `MessageActions.assistantCopyText(rawText)` is already the precise "visible words of this reply" boundary Copy and Save to Vault use: no hidden prompt, screen context, reasoning, or conversation. A report should start from the same text, plus a reason the user picks, and only with explicit confirmation of what is sent.
+- **Delivery:** a small `AiContentReportSender` interface with the backend behind it, following the provider pattern `OrbitProEntitlementProvider` uses, so the menu does not know where reports go. Whether it applies to both editions or only to Play is part of the backend decision; Play needs it, and nothing stops the GitHub edition offering it too.
+- **Tests:** the existing `MessageActions` menu tests pin the label arrays, so they document the change when it is made.
+
+### 7.3 Other policy notes
+
+None of the remaining permissions need a declaration beyond Data safety, except that Play Console now prompts apps holding `READ_CONTACTS` for a declaration (text in the checklist).
 
 ## 8. Testing on Play
 
@@ -229,7 +266,7 @@ What moving between channels looks like when both carry the same signing certifi
 - **Lower version either way:** Android refuses it as a downgrade. The fix is to wait for the next release, never to reuse a number.
 - After a switch, which store Android credits with future updates can vary by Android version. That is expected and harmless while both carry the same certificate.
 
-Recommended next version, **OWNER INPUT REQUIRED:** `0.8.0.1` (797) if the next release is only this API 36 and Play groundwork plus the Stable Pro-message fix, or `0.8.1.0-beta.1` (797) if it starts a new Beta line.
+**Decided:** the next distributable candidate is `versionName 0.8.0.1`, `versionCode 797`, for both channels. It has not been bumped yet, and nothing is tagged or published.
 
 ## 10. Orbit Pro on Play
 
@@ -271,8 +308,9 @@ Recommended shape when billing is built:
 
 ## 13. Before the first internal-test upload
 
-- [ ] A version bump, section 9 (**OWNER INPUT REQUIRED**)
+- [ ] Bump to `0.8.0.1` / 797 when the candidate is cut, section 9
 - [ ] Phone test of the API 36 GitHub debug build: Back on every screen type, Side-button overlay Back, onboarding, Screen Selection, attachment and PDF viewers, time and location Routines, reminders, notifications, widgets, Quick Settings tiles, Orbit Local, and an in-app update check
+- [ ] Phone test of the Play build (a universal APK from the bundle, or the internal-test install): no location trigger offered, time triggers and Saved Places "Use my current location" working, About & updates showing Google Play
 - [ ] Upload key created and configured, section 5.1 (**OWNER INPUT REQUIRED**)
 - [ ] Play Console app created, App Signing enrolled with the existing key, certificate confirmed, section 5.2 (**OWNER INPUT REQUIRED**)
 - [ ] `bundlePlay` rebuilt signed with the upload key

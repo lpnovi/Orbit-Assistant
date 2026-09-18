@@ -74,6 +74,22 @@ public final class DistributionBoundaryTest {
                 .contains("android.permission.REQUEST_INSTALL_PACKAGES"));
     }
 
+    /** Location-triggered Routines are unchanged in the GitHub edition. */
+    @Test public void theGitHubEditionKeepsBackgroundLocationTriggers() throws Exception {
+        Context context = RuntimeEnvironment.getApplication();
+        PackageInfo info = context.getPackageManager().getPackageInfo(
+                context.getPackageName(), PackageManager.GET_PERMISSIONS);
+        assertTrue(Arrays.asList(info.requestedPermissions)
+                .contains("android.permission.ACCESS_BACKGROUND_LOCATION"));
+        assertTrue(OrbitDistribution.supportsLocationTriggers());
+
+        org.robolectric.Shadows.shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(
+                android.Manifest.permission.ACCESS_FINE_LOCATION,
+                android.Manifest.permission.ACCESS_BACKGROUND_LOCATION);
+        assertTrue("the GitHub edition still reads Android's real answer",
+                RoutineLocationTriggerScheduler.hasBackgroundLocation(context));
+    }
+
     // ---- one application, one identity -----------------------------------------------------------
 
     @Test public void thePackageIsComOrbitAssistantInEveryEdition() {
@@ -139,12 +155,14 @@ public final class DistributionBoundaryTest {
         assertFalse(OrbitDistribution.selfUpdates(play));
         assertFalse(OrbitDistribution.installsOrbitLocalComponent(play));
         assertFalse(OrbitDistribution.allowsProPreview(play));
+        assertFalse(OrbitDistribution.supportsLocationTriggers(play));
         assertEquals("Google Play", OrbitDistribution.label(play));
 
         OrbitDistribution.Channel github = OrbitDistribution.Channel.GITHUB;
         assertTrue(OrbitDistribution.selfUpdates(github));
         assertTrue(OrbitDistribution.installsOrbitLocalComponent(github));
         assertTrue(OrbitDistribution.allowsProPreview(github));
+        assertTrue(OrbitDistribution.supportsLocationTriggers(github));
     }
 
     // ---- the Play edition's sources carry no install path -----------------------------------------
@@ -154,6 +172,17 @@ public final class DistributionBoundaryTest {
         Matcher m = Pattern.compile("<uses-permission\\s+android:name=\"android\\.permission"
                 + "\\.REQUEST_INSTALL_PACKAGES\"\\s+tools:node=\"remove\"\\s*/>").matcher(overlay);
         assertTrue(m.find());
+    }
+
+    @Test public void thePlayManifestOverlayRemovesBackgroundLocationAndNothingElse() {
+        String overlay = read("app/src/play/AndroidManifest.xml");
+        Matcher m = Pattern.compile("<uses-permission\\s+android:name=\"android\\.permission"
+                + "\\.ACCESS_BACKGROUND_LOCATION\"\\s+tools:node=\"remove\"\\s*/>").matcher(overlay);
+        assertTrue(m.find());
+        assertEquals("the overlay removes exactly two permissions", 2,
+                count(overlay, "tools:node=\"remove\""));
+        assertFalse(overlay.contains("ACCESS_FINE_LOCATION"));
+        assertFalse(overlay.contains("ACCESS_COARSE_LOCATION"));
     }
 
     @Test public void thePlayEditionHasNoGitHubEndpointAndNoInstallerHandOff() {

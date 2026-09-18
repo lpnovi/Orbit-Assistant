@@ -229,6 +229,9 @@ public final class RoutineTriggerDraft {
         if (context == null) return "";
         if (!resolved) return "Needs a location";
         if (isLocation()) {
+            if (!OrbitDistribution.supportsLocationTriggers()) {
+                return OrbitDistribution.LOCATION_TRIGGER_UNAVAILABLE_STATE;
+            }
             if (!RoutineLocationTriggerScheduler.hasBackgroundLocation(context))
                 return "Needs location access";
             if (!RoutineLocationTriggerScheduler.isLocationEnabled(context))

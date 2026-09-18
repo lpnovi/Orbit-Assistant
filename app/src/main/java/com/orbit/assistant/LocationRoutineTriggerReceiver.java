@@ -13,6 +13,12 @@ public final class LocationRoutineTriggerReceiver extends BroadcastReceiver {
     @Override public void onReceive(Context context, Intent intent) {
         if (context == null || intent == null) return;
         String id = intent.getStringExtra(EXTRA_TRIGGER_ID);
+        if (!OrbitDistribution.supportsLocationTriggers()) {
+            // A monitor left behind by a GitHub install. Disarm it and run nothing; the saved
+            // trigger itself is left exactly as it was.
+            RoutineLocationTriggerScheduler.cancel(context, id);
+            return;
+        }
         RoutineTriggerStore.Trigger trigger = RoutineTriggerStore.findById(context, id);
         if (trigger == null || !trigger.enabled || !RoutineTriggerStore.TYPE_LOCATION.equals(trigger.type)) return;
 

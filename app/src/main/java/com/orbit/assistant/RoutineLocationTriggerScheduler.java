@@ -12,7 +12,15 @@ import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
 
-/** Platform-location monitoring for arrive/leave Routine triggers. */
+/**
+ * Platform-location monitoring for arrive/leave Routine triggers.
+ *
+ * <p>GitHub edition only. In the Google Play edition, which does not request background location,
+ * nothing is ever armed and every readiness check answers false; see
+ * {@link OrbitDistribution#supportsLocationTriggers()}. Foreground location helpers here
+ * ({@link #hasFineLocation}, {@link #bestLastKnownLocation}, {@link #isLocationEnabled}) are shared
+ * with Saved Places, weather, and Routine IF conditions, and work in both editions.
+ */
 public final class RoutineLocationTriggerScheduler {
     private RoutineLocationTriggerScheduler() {}
 
@@ -22,6 +30,9 @@ public final class RoutineLocationTriggerScheduler {
 
     public static boolean hasBackgroundLocation(Context c) {
         if (c == null) return false;
+        // The Play edition does not request it at all. Answering false here, rather than asking
+        // Android, keeps every caller honest even on a device that reports something odd.
+        if (!OrbitDistribution.supportsLocationTriggers()) return false;
         if (Build.VERSION.SDK_INT < 29) return hasFineLocation(c);
         return c.checkSelfPermission(Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED;
     }
@@ -55,6 +66,7 @@ public final class RoutineLocationTriggerScheduler {
     }
 
     public static boolean ready(Context c) {
+        if (!OrbitDistribution.supportsLocationTriggers()) return false;
         return hasFineLocation(c) && hasBackgroundLocation(c) && isLocationEnabled(c);
     }
 
@@ -62,6 +74,9 @@ public final class RoutineLocationTriggerScheduler {
     public static synchronized boolean schedule(Context c, RoutineTriggerStore.Trigger trigger) {
         if (c == null || trigger == null || !RoutineTriggerStore.TYPE_LOCATION.equals(trigger.type)) return false;
         cancel(c, trigger.id);
+        // Cancelled first on purpose: a monitor armed by a GitHub install that was replaced from
+        // Google Play is removed here, and nothing new is armed in its place.
+        if (!OrbitDistribution.supportsLocationTriggers()) return false;
         if (!trigger.enabled || !ready(c)) return false;
         LocationManager lm = (LocationManager) c.getSystemService(Context.LOCATION_SERVICE);
         if (lm == null) return false;

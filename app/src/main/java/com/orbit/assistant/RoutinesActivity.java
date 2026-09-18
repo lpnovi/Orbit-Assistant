@@ -783,8 +783,11 @@ public class RoutinesActivity extends Activity {
         int enabled = 0;
         int enabledLocations = 0;
         long next = 0L;
+        boolean locationTriggers = OrbitDistribution.supportsLocationTriggers();
         for (RoutineTriggerStore.Trigger t : triggers) {
             if (!t.enabled) continue;
+            // A saved location trigger never runs in the Play edition, so it is not counted as on.
+            if (!locationTriggers && RoutineTriggerStore.TYPE_LOCATION.equals(t.type)) continue;
             enabled++;
             if (RoutineTriggerStore.TYPE_LOCATION.equals(t.type)) enabledLocations++;
             if (t.nextRunAt > 0 && (next == 0L || t.nextRunAt < next)) next = t.nextRunAt;

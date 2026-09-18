@@ -1263,6 +1263,12 @@ public class RoutineEditorActivity extends Activity {
         Toast.makeText(this, "Saved " + name, Toast.LENGTH_SHORT).show();
         // Only now, with a real saved routine, is a proposed trigger offered. It is still not
         // created here: the existing Automatic triggers screen stays the authority.
+        // A drafted location trigger has nowhere to go in the Play edition, whose builder preview
+        // already said so; the routine itself is saved and works manually.
+        if (draftTrigger != null && draftTrigger.isLocation()
+                && !OrbitDistribution.supportsLocationTriggers()) {
+            draftTrigger = null;
+        }
         if (draftTrigger != null) {
             String pendingRoutineId = routine.id;
             RoutineTriggerDraft proposed = draftTrigger;

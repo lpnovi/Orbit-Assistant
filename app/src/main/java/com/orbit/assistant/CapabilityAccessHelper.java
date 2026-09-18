@@ -111,6 +111,9 @@ public final class CapabilityAccessHelper {
     public static void setupLocationAutomation(Activity activity, int fineRequestCode,
                                                int backgroundRequestCode) {
         if (activity == null) return;
+        // Never in the Play edition: it has no background location to ask for. Screens there do
+        // not offer this at all; this is the backstop.
+        if (!OrbitDistribution.supportsLocationTriggers()) return;
         if (!RoutineLocationTriggerScheduler.hasFineLocation(activity)) {
             activity.requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION,
                     Manifest.permission.ACCESS_FINE_LOCATION}, fineRequestCode);
@@ -142,6 +145,7 @@ public final class CapabilityAccessHelper {
     }
 
     public static String locationAutomationStatus(Activity activity) {
+        if (!OrbitDistribution.supportsLocationTriggers()) return "Not available";
         if (RoutineLocationTriggerScheduler.ready(activity)) return "Ready";
         if (!RoutineLocationTriggerScheduler.hasFineLocation(activity)) return "Needs precise";
         if (!RoutineLocationTriggerScheduler.hasBackgroundLocation(activity)) return "Needs background";

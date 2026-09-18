@@ -39,6 +39,8 @@ public class RoutineTriggersActivity extends Activity {
     private RoutineStore.Routine routine;
     private LinearLayout timeTriggerList;
     private LinearLayout locationTriggerList;
+    /** The LOCATION TRIGGERS heading, hidden in the Play edition when there is nothing to show. */
+    private TextView locationSectionTitle;
     private LinearLayout precisionCard;
     private LinearLayout locationAccessCard;
 
@@ -105,8 +107,9 @@ public class RoutineTriggersActivity extends Activity {
         header.addView(titles, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         page.addView(header);
 
-        TextView intro = UiKit.text(this,
-                "Run this routine automatically on a schedule or when your phone arrives at or leaves a saved area. Every trigger keeps the routine's existing step order and uses Orbit's shared Action Engine.",
+        TextView intro = UiKit.text(this, OrbitDistribution.supportsLocationTriggers()
+                ? "Run this routine automatically on a schedule or when your phone arrives at or leaves a saved area. Every trigger keeps the routine's existing step order and uses Orbit's shared Action Engine."
+                : "Run this routine automatically on a schedule. Every trigger keeps the routine's existing step order and uses Orbit's shared Action Engine.",
                 14, UiKit.MUTED, false);
         intro.setLineSpacing(0, 1.13f);
         LinearLayout.LayoutParams introLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -123,18 +126,23 @@ public class RoutineTriggersActivity extends Activity {
         addTime.setOnClickListener(v -> openNewTimeTrigger());
         page.addView(addTime, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 50)));
 
-        Button addLocation = secondaryButton("+  New location trigger");
-        addLocation.setOnClickListener(v -> openNewLocationTrigger());
-        LinearLayout.LayoutParams locationAddLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 50));
-        locationAddLp.topMargin = UiKit.dp(this, 9);
-        page.addView(addLocation, locationAddLp);
+        // Only where location triggers exist. The Play edition explains their absence in
+        // locationAccessCard instead of offering a button that could never arm anything.
+        if (OrbitDistribution.supportsLocationTriggers()) {
+            Button addLocation = secondaryButton("+  New location trigger");
+            addLocation.setOnClickListener(v -> openNewLocationTrigger());
+            LinearLayout.LayoutParams locationAddLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 50));
+            locationAddLp.topMargin = UiKit.dp(this, 9);
+            page.addView(addLocation, locationAddLp);
+        }
 
         page.addView(sectionTitle("TIME TRIGGERS"));
         timeTriggerList = new LinearLayout(this);
         timeTriggerList.setOrientation(LinearLayout.VERTICAL);
         page.addView(timeTriggerList);
 
-        page.addView(sectionTitle("LOCATION TRIGGERS"));
+        locationSectionTitle = sectionTitle("LOCATION TRIGGERS");
+        page.addView(locationSectionTitle);
         locationTriggerList = new LinearLayout(this);
         locationTriggerList.setOrientation(LinearLayout.VERTICAL);
         page.addView(locationTriggerList);
@@ -148,7 +156,7 @@ public class RoutineTriggersActivity extends Activity {
     }
 
     private void openNewLocationTrigger() {
-        if (!canAddTrigger()) return;
+        if (!OrbitDistribution.supportsLocationTriggers() || !canAddTrigger()) return;
         startActivity(new Intent(this, LocationTriggerEditorActivity.class)
                 .putExtra(LocationTriggerEditorActivity.EXTRA_ROUTINE_ID, routineId));
     }
@@ -174,7 +182,15 @@ public class RoutineTriggersActivity extends Activity {
             else times.add(trigger);
         }
         renderTriggerGroup(timeTriggerList, times, false);
-        renderTriggerGroup(locationTriggerList, locations, true);
+        // In the Play edition an empty location section would invite something it cannot do.
+        // Saved location triggers, such as ones brought over from a GitHub install, are still
+        // listed so they can be seen and deleted, and nothing about them is changed.
+        boolean showLocations = OrbitDistribution.supportsLocationTriggers() || !locations.isEmpty();
+        if (locationSectionTitle != null) {
+            locationSectionTitle.setVisibility(showLocations ? View.VISIBLE : View.GONE);
+        }
+        locationTriggerList.setVisibility(showLocations ? View.VISIBLE : View.GONE);
+        if (showLocations) renderTriggerGroup(locationTriggerList, locations, true);
     }
 
     private void renderTriggerGroup(LinearLayout list, List<RoutineTriggerStore.Trigger> triggers, boolean location) {
@@ -240,6 +256,14 @@ public class RoutineTriggersActivity extends Activity {
     private void refreshLocationAccessCard() {
         if (locationAccessCard == null) return;
         locationAccessCard.removeAllViews();
+        if (!OrbitDistribution.supportsLocationTriggers()) {
+            locationAccessCard.addView(UiKit.text(this, "Location triggers", 14, UiKit.TEXT, true));
+            TextView unavailable = UiKit.text(this, OrbitDistribution.LOCATION_TRIGGERS_UNAVAILABLE,
+                    12, UiKit.MUTED, false);
+            unavailable.setPadding(0, UiKit.dp(this, 6), 0, 0);
+            locationAccessCard.addView(unavailable);
+            return;
+        }
         boolean fine = RoutineLocationTriggerScheduler.hasFineLocation(this);
         boolean background = RoutineLocationTriggerScheduler.hasBackgroundLocation(this);
         boolean locationOn = RoutineLocationTriggerScheduler.isLocationEnabled(this);
@@ -316,6 +340,19 @@ public class RoutineTriggersActivity extends Activity {
         text.addView(next);
         top.addView(text, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
+        if (RoutineTriggerStore.TYPE_LOCATION.equals(trigger.type)
+                && !OrbitDistribution.supportsLocationTriggers()) {
+            // A saved location trigger in the Play edition: no switch, because nothing it could
+            // switch on would ever run, and its stored on/off state is left for a GitHub install.
+            // Deleting it is the one thing that still means something.
+            ImageButton more = iconButton(R.drawable.ic_more, "Trigger options");
+            more.setOnClickListener(v -> UiKit.showOrbitMenu(this, more, new String[]{"Delete"}, -1,
+                    (index, label) -> confirmDelete(trigger)));
+            top.addView(more, new LinearLayout.LayoutParams(UiKit.dp(this, 44), UiKit.dp(this, 44)));
+            card.addView(top);
+            return card;
+        }
+
         OrbitSwitch enabled = new OrbitSwitch(this);
         enabled.setChecked(trigger.enabled, false);
         enabled.setContentDescription(trigger.enabled ? "Disable trigger" : "Enable trigger");
@@ -368,6 +405,9 @@ public class RoutineTriggersActivity extends Activity {
 
     private String triggerStateLabel(RoutineTriggerStore.Trigger trigger) {
         if (RoutineTriggerStore.TYPE_LOCATION.equals(trigger.type)) {
+            if (!OrbitDistribution.supportsLocationTriggers()) {
+                return OrbitDistribution.LOCATION_TRIGGER_UNAVAILABLE_STATE;
+            }
             if (!trigger.enabled) return "Off";
             if (!RoutineLocationTriggerScheduler.hasFineLocation(this)) return "Needs precise location access";
             if (!RoutineLocationTriggerScheduler.hasBackgroundLocation(this)) return "Needs background location access";

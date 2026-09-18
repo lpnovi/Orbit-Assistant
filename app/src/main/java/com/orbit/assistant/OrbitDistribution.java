@@ -60,6 +60,28 @@ public final class OrbitDistribution {
         return installsOrbitLocalComponent(current());
     }
 
+    /**
+     * Whether arrive/leave location triggers exist in this build.
+     *
+     * <p>They need background location, which the Google Play edition does not request. Its
+     * manifest removes the permission, so Android could not grant it even if asked; this is the
+     * rule every screen and the scheduler read so none of them offers, requests, or arms one.
+     * Saved location triggers are never deleted or switched off here: a GitHub build finds them
+     * exactly as they were.
+     */
+    public static boolean supportsLocationTriggers() {
+        return supportsLocationTriggers(current());
+    }
+
+    /** What the Play edition says wherever a location trigger would otherwise be offered. */
+    public static final String LOCATION_TRIGGERS_UNAVAILABLE =
+            "Location-triggered Routines aren't currently available in the Google Play edition of "
+                    + "Orbit. Time triggers work as usual.";
+
+    /** The short state shown on a saved location trigger in the Play edition. */
+    public static final String LOCATION_TRIGGER_UNAVAILABLE_STATE =
+            "Not available in the Google Play edition";
+
     /** A short name for Diagnostics. */
     public static String label() {
         return label(current());
@@ -76,6 +98,10 @@ public final class OrbitDistribution {
     }
 
     static boolean installsOrbitLocalComponent(Channel channel) {
+        return channel == Channel.GITHUB;
+    }
+
+    static boolean supportsLocationTriggers(Channel channel) {
         return channel == Channel.GITHUB;
     }
 

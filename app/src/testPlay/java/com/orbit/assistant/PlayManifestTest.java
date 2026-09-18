@@ -41,13 +41,24 @@ public final class PlayManifestTest {
         assertFalse(requested().contains("android.permission.REQUEST_INSTALL_PACKAGES"));
     }
 
-    /** Only that one permission differs from the GitHub edition. Nothing else was lost. */
+    @Test public void thePlayManifestDoesNotRequestBackgroundLocation() throws Exception {
+        assertFalse(requested().contains("android.permission.ACCESS_BACKGROUND_LOCATION"));
+    }
+
+    /** Foreground location is not collateral damage of removing background location. */
+    @Test public void foregroundLocationIsStillRequested() throws Exception {
+        assertTrue(requested().contains("android.permission.ACCESS_FINE_LOCATION"));
+        assertTrue(requested().contains("android.permission.ACCESS_COARSE_LOCATION"));
+    }
+
+    /** Only those two permissions differ from the GitHub edition. Nothing else was lost. */
     @Test public void everyOtherPermissionIsKept() throws Exception {
         Matcher m = Pattern.compile("<uses-permission android:name=\"([^\"]+)\"")
                 .matcher(DistributionBoundaryTest.read("app/src/main/AndroidManifest.xml"));
         List<String> expected = new ArrayList<>();
         while (m.find()) expected.add(m.group(1));
-        expected.remove("android.permission.REQUEST_INSTALL_PACKAGES");
+        assertTrue(expected.remove("android.permission.REQUEST_INSTALL_PACKAGES"));
+        assertTrue(expected.remove("android.permission.ACCESS_BACKGROUND_LOCATION"));
         assertTrue(expected.size() > 15);
         for (String permission : expected) {
             assertTrue("the Play edition must keep " + permission, requested().contains(permission));
