@@ -9,6 +9,16 @@ canonical record of what actually shipped.
 
 ## Shipped / Stable
 
+### `0.8.0.0` Stable - Orbit Deck organization and surface materials
+
+Released from the tested Beta 8 line with no product-behavior changes. Solid, Frosted and Liquid
+surface materials, free Deck organization with large tiles, section headers and one-level folders,
+keyboard-safe Deck fields, and the Theme Studio material preview are now Stable. The Orbit Pro
+entitlement foundation ships with it, and a Stable build always resolves to Free: advanced Theme
+Studio styling, per-tile Deck appearance and saved Deck layouts are complete, but they stay stored
+and unused on Stable until a real entitlement provider exists. The full record of the line is under
+Completed 0.8 Orbit Pro milestones below.
+
 ### `0.7.8.5` Stable - Rich Answers / Visual Web Results
 
 Released from the tested Beta 9 line with no product-behaviour changes. Sourced web images

@@ -14,7 +14,7 @@ Keep the current images in this order:
 | 4 | `documents.png` | A fictional Orbit test PDF page in the viewer with the Ask Orbit entry point | Work with documents |
 | 5 | `theme-studio.jpg` | The Theme Studio live preview and color controls | Make Orbit yours |
 
-The README labels Theme Studio as a Beta feature. Replace its image later if the interface changes materially, but do not fabricate a newer state.
+Replace the Theme Studio image later if the interface changes materially, but do not fabricate a newer state.
 
 ## Capture specifications
 

@@ -842,6 +842,13 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.0.0**: A more organized Orbit Deck and new surface materials are now Stable.
+  - Choose Solid, Frosted, or Liquid for Orbit's floating controls in Theme Studio, free for everyone.
+  - Organize Orbit Deck with large tiles, section headers, and one-level folders, all free.
+  - Rename, rearrange, and move tiles in and out of folders without losing their settings.
+  - Deck name and prompt fields now stay above the keyboard while you type.
+  - The Theme Studio preview shows your chosen material exactly as Deck draws it.
+  - Groundwork for Orbit Pro is included, but nothing that was free has moved behind it and there is nothing to buy.
 - **v0.8.0.0-beta.8**: Theme Studio preview polish.
   - The Deck tile in the Theme Studio preview now shows your selected Solid, Frosted, or Liquid material.
   - Switching materials updates the preview instantly, matching how real Deck tiles look.

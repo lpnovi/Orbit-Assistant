@@ -45,7 +45,7 @@ No signing key or release credential is stored in the repository or included in 
 
 ## Local data
 
-Depending on enabled features, Orbit's app-private storage can contain conversation history, attachments retained with history, Memory entries, reminders, saved places, Routines, Custom Commands, app profiles, notification configuration/history, Extensions, and preferences.
+Depending on enabled features, Orbit's app-private storage can contain conversation history, attachments retained with history, Memory entries, reminders, saved places, Routines, Custom Commands, app profiles, notification configuration/history, Orbit Vault items and the pictures saved with them, Extensions, and preferences.
 
 Controls for history, Memory, notification access and retention, app profiles, attachments, and other capabilities are available in Orbit and Android Settings. Removing Android permission prevents future access through that permission; it does not necessarily erase data already saved by a feature, so use the matching Orbit management screen when you also want stored data removed.
 
@@ -65,7 +65,7 @@ Document viewing and PDF text search run locally. **Ask Orbit about this page** 
 
 Orbit Backup & Restore uses Android's system file picker. Orbit writes the backup to the location the user selects and does not upload it to an Orbit-operated backup service.
 
-Backups can include chats, retained conversation images, Memory, Routines and triggers, safe Extension manifests and non-secret setup, Custom Commands, reminders, saved places, app profiles, notification configuration, and personalization. Credentials, Extension secrets, Android permission grants, default-assistant status, and Beta-channel enrollment are excluded. The user's Deck layout is not currently part of the portable backup.
+Backups can include chats, retained conversation images, Memory, Orbit Vault items and their saved pictures, Routines and triggers, safe Extension manifests and non-secret setup, Custom Commands, reminders, saved places, app profiles, notification configuration, and personalization. Credentials, Extension secrets, Android permission grants, default-assistant status, and Beta-channel enrollment are excluded. The user's Deck layout is not currently part of the portable backup.
 
 **Backup files are not encrypted.** Anyone who can read the file may be able to read personal content inside it. Store it privately and inspect it before sharing.
 

@@ -185,20 +185,19 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * Orbit Pro continues the 0.8 line, and continues it as a Beta.
+     * The 0.8.0.0 line reaches Stable after eight Betas.
      *
-     * <p>The guard runs in the prerelease direction again, and Beta 3 is the clearest case for it
-     * yet: this release exists because physical testing of Beta 2 found Theme Studio Pro stiff and
-     * jumpy, so the line is demonstrably still being corrected against a real device. The developer
-     * Free / Pro Preview override testers use to reach the feature at all is legal only on a Beta,
-     * so shipping this version name as Stable would publish work that is still under repair and
-     * remove the only way to check it in the same act.
+     * <p>The guard runs in the Stable direction. Beta 8 is the tested behavior and passed the
+     * pre-Stable audit unchanged, so this build must carry Stable metadata rather than prerelease
+     * metadata, and the changelog entry the release workflow builds its notes from must exist for
+     * the Stable version name. A Stable release build never offers the Pro Preview override, so every Pro
+     * feature in this build resolves to Free.
      */
-    @Test public void thisReleaseIsOrbitProBetaThree() {
-        assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
-                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
-        assertTrue(OrbitVersion.installedIsBeta());
+    @Test public void thisReleaseIsOrbitDeckAndMaterialsStable() {
+        assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
+                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.installedIsBeta());
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
     }
 

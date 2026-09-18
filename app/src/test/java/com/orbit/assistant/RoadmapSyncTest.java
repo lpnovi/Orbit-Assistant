@@ -113,6 +113,10 @@ public final class RoadmapSyncTest {
                 file.indexOf("### `0.7.8.5` Stable") >= 0);
         assertTrue("and the Stable entry comes before the active plan",
                 file.indexOf("### `0.7.8.5` Stable") < current);
+        assertTrue("the 0.8.0.0 line is recorded as Stable too",
+                file.indexOf("### `0.8.0.0` Stable") >= 0);
+        assertTrue("above the active plan as well",
+                file.indexOf("### `0.8.0.0` Stable") < current);
 
         String page = inApp();
         assertTrue("the in-app page leads with the active line",
