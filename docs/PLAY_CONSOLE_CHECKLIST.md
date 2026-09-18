@@ -6,9 +6,10 @@ Never paste a keystore, a password, or `orbit-signing.properties` into Play Cons
 
 ## 1. Before opening Play Console
 
-- [ ] Bump to the decided first Play version, `0.8.0.1` / 797 (PLAY_STORE.md section 9). Until then the tree is `0.8.0.0` / 796, which is already published on GitHub with different contents, and must not be uploaded.
+- [x] Bump to the first Play version, `0.8.0.1` / 797 (PLAY_STORE.md section 9). Never upload a 796 build: 0.8.0.0 / 796 is already published on GitHub with different contents.
 - [ ] Test the API 36 GitHub debug build on the Galaxy S25 Ultra (PLAY_STORE.md section 13).
-- [ ] Create the Play upload key and add the four `ORBIT_UPLOAD_*` lines to `orbit-signing.properties` (PLAY_STORE.md 5.1). This is a new key, unrelated to the GitHub release key, and it is the next task after the groundwork is pushed.
+- [x] Create the Play upload key and add the four `ORBIT_UPLOAD_*` lines to `orbit-signing.properties` (PLAY_STORE.md 5.1). Certificate SHA-256 `B0:0A:C8:FE:…:D2:FC:66`.
+- [ ] Back up the upload keystore and `orbit-signing.properties` together, privately and outside the repository.
 - [ ] Publish a privacy policy at a public URL. `docs/PRIVACY.md` describes Orbit's data handling but says it is not an attorney-reviewed privacy policy; Play needs a real policy page that names Orbit Assistant, what it accesses, and how to contact you.
 - [ ] Choose a public support email for the listing. Use Orbit's public identity, not a personal name.
 - [ ] Decide how Play reviewers reach AI chat (section 5, App access).
@@ -28,7 +29,7 @@ The Play edition is signed with its own Google-generated key. The GitHub release
 
 - [ ] When Play Console asks how the app should be signed, choose the **Google-generated app signing key**.
 - [ ] Do **not** choose any option that exports or uploads an existing key, and never run PEPK or any key-export tool on the Orbit GitHub release keystore.
-- [ ] Register the **upload** certificate (`orbit-upload-certificate.pem`), or let the first signed upload register it if Play Console offers that.
+- [ ] Register the **upload** certificate (`orbit-play-upload-certificate.pem`, SHA-256 `B0:0A:C8:FE:…:D2:FC:66`), or let the first signed upload register it if Play Console offers that.
 - [ ] Note the Play app signing certificate SHA-256 from **App integrity > App signing** for your records. It is expected to differ from the GitHub certificate `7D:AD:…:41:E3`.
 
 ## 4. App content declarations
@@ -96,7 +97,7 @@ Draft, adjust once the reviewer-access decision is made:
 ## 7. Internal testing
 
 - [ ] Create an email list of internal testers.
-- [ ] Build `bundlePlay` signed with the upload key.
+- [x] Build `bundlePlay` signed with the upload key (0.8.0.1 / 797).
 - [ ] Upload `app/build/outputs/bundle/play/app-play.aab` to Internal testing. Release name: the display version, for example `0.8.0.1`.
 - [ ] Release notes from PLAY_LISTING_DRAFT.md.
 - [ ] Install from the tester link on the Galaxy S25 Ultra and check: Diagnostics says `Distribution: Google Play`; About & updates shows the Google Play message and no update channel; Orbit Local shows it is not available in this edition; Automatic triggers offers time triggers only and explains that location triggers are not available; Saved Places can use the current location; the Side-button overlay, Back, sign-in, Routines, reminders, and Theme Studio work.

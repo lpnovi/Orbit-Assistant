@@ -185,15 +185,13 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * The 0.8.0.0 line reaches Stable after eight Betas.
+     * 0.8.0.1 is a Stable maintenance release that follows 0.8.0.0 directly.
      *
-     * <p>The guard runs in the Stable direction. Beta 8 is the tested behavior and passed the
-     * pre-Stable audit unchanged, so this build must carry Stable metadata rather than prerelease
-     * metadata, and the changelog entry the release workflow builds its notes from must exist for
-     * the Stable version name. A Stable release build never offers the Pro Preview override, so every Pro
-     * feature in this build resolves to Free.
+     * <p>It must carry Stable metadata rather than prerelease metadata, and the changelog entry the
+     * release workflow builds its notes from must exist for the Stable version name. A Stable
+     * release build never offers the Pro Preview override, so every Pro feature resolves to Free.
      */
-    @Test public void thisReleaseIsOrbitDeckAndMaterialsStable() {
+    @Test public void thisReleaseIsTheAndroid16MaintenanceStable() {
         assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
                 OrbitVersion.isStable(BuildConfig.VERSION_NAME));
         assertFalse(OrbitVersion.isBeta(BuildConfig.VERSION_NAME));

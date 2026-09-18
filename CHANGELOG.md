@@ -842,6 +842,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.0.1**: A maintenance release that brings Orbit up to Android 16.
+  - Orbit now targets Android 16, and Back behaves exactly as before on every screen and in the Side-button overlay.
+  - Locked Orbit Pro features now say that Pro isn't available for purchase yet, instead of pointing to a control Stable doesn't have.
+  - Diagnostics now shows whether this copy of Orbit came from GitHub or Google Play.
+  - Updates, Orbit Local, and location-triggered Routines work exactly as before in the GitHub edition.
 - **v0.8.0.0**: A more organized Orbit Deck and new surface materials are now Stable.
   - Choose Solid, Frosted, or Liquid for Orbit's floating controls in Theme Studio, free for everyone.
   - Organize Orbit Deck with large tiles, section headers, and one-level folders, all free.

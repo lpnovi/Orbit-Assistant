@@ -14,7 +14,7 @@ Orbit is one Android application, `com.orbit.assistant`, distributed two ways as
 | Gradle build type | `debug`, `release` (unchanged) | `play` |
 | Built by | `release.yml` / `candidate.yml` / `build-apk.yml`, `tools/build_orbit.ps1` | `gradlew bundlePlay`, locally for now |
 | App signing key | Orbit's permanent GitHub release key | Google-generated Play app signing key, held by Google |
-| Uploads signed with | Not applicable | A separate Play upload key (not created yet) |
+| Uploads signed with | Not applicable | A separate Play upload key (section 5.1) |
 | Can update the other edition | No | No |
 | App updates | Orbit's verified GitHub updater | Google Play only |
 | `REQUEST_INSTALL_PACKAGES` | Requested | **Not present** in the merged manifest |
@@ -111,30 +111,26 @@ What this means:
 - Because the certificates differ, Android treats the two editions as incompatible installs of the same package name. **Neither edition can update or replace the other**, and Orbit makes no attempt to make them. Section 9 explains how a person moves between them.
 - Keeping the Play key with Google means Google can also upgrade it later if Play ever requires that; it has no effect on GitHub builds.
 
-### 5.1 The upload key (next task, not done yet)
+### 5.1 The upload key
 
-**OWNER INPUT REQUIRED.** No upload key exists yet. Creating it is the next task after this groundwork is pushed. For reference, it will be a new key, unrelated to the GitHub release key, created on your own PC and stored **outside the repository**:
+**Created on 2026-09-18.** A new RSA 4096 key, unrelated to the GitHub release key, valid until 2054:
 
-```powershell
-keytool -genkeypair -v -keystore <path outside the repo>\orbit-upload.jks -alias orbit-upload -keyalg RSA -keysize 4096 -validity 10000
-```
+| | |
+| --- | --- |
+| Alias | `orbit-play-upload` |
+| Keystore | PKCS12, stored on the maintainer's PC **outside the repository**, never committed |
+| Public certificate | `orbit-play-upload-certificate.pem`, beside the keystore; this is the file to register in Play Console |
+| Upload certificate SHA-256 | `B0:0A:C8:FE:16:CF:30:2C:6F:F8:75:9A:A6:7E:90:21:10:79:F3:88:CE:91:41:43:D4:C0:92:6B:68:D2:FC:66` |
 
-Then four lines go into the existing, git-ignored `orbit-signing.properties`, which `app/build.gradle` reads for the `play` build type only:
+The four `ORBIT_UPLOAD_*` values live only in the git-ignored `orbit-signing.properties`, which `app/build.gradle` reads for the `play` build type only. Store file paths there use forward slashes, because a backslash is an escape character in a `.properties` file.
 
-```properties
-ORBIT_UPLOAD_STORE_FILE=<path outside the repo>\orbit-upload.jks
-ORBIT_UPLOAD_KEY_ALIAS=orbit-upload
-ORBIT_UPLOAD_STORE_PASSWORD=<your upload keystore password>
-ORBIT_UPLOAD_KEY_PASSWORD=<your upload key password>
-```
+**OWNER INPUT REQUIRED:** back up the upload keystore and `orbit-signing.properties` together, somewhere private and outside the repository. The password exists nowhere else. If the upload key is ever lost or leaked, Play Console can reset it after you register a new upload certificate. The Play app signing key is unaffected, because Google holds it.
 
-The upload **certificate** (public) is exported for Play Console with:
+To re-create the public certificate from the keystore later:
 
 ```powershell
-keytool -export -rfc -keystore <path outside the repo>\orbit-upload.jks -alias orbit-upload -file orbit-upload-certificate.pem
+keytool -exportcert -rfc -storetype PKCS12 -keystore <upload keystore> -alias orbit-play-upload -file orbit-play-upload-certificate.pem
 ```
-
-If the upload key is ever lost or leaked, Play Console can reset it. The Play app signing key is unaffected, because Google holds it.
 
 ### 5.2 Play App Signing with a Google-generated key
 
@@ -260,7 +256,7 @@ Rules:
 4. **Never upload the current tree as 796.** The API 36 build differs from the published 796, and the first Play candidate is 0.8.0.1 / 797.
 5. Play may lag behind GitHub, or skip a GitHub-only release, without harming anyone: each edition's users only ever receive updates from their own store.
 
-**Decided:** the next distributable candidate is `versionName 0.8.0.1`, `versionCode 797`, for both editions. It has not been bumped yet, and nothing is tagged or published.
+**Decided:** the next distributable candidate is `versionName 0.8.0.1`, `versionCode 797`, for both editions. The tree is now at 0.8.0.1 / 797. Nothing is tagged or published.
 
 ### 9.1 Moving between the GitHub and Play editions
 
@@ -314,10 +310,10 @@ Recommended shape when billing is built:
 
 ## 13. Before the first internal-test upload
 
-- [ ] Bump to `0.8.0.1` / 797 when the candidate is cut, section 9
+- [x] Bump to `0.8.0.1` / 797, section 9
 - [ ] Phone test of the API 36 GitHub debug build: Back on every screen type, Side-button overlay Back, onboarding, Screen Selection, attachment and PDF viewers, time and location Routines, reminders, notifications, widgets, Quick Settings tiles, Orbit Local, and an in-app update check
 - [ ] Phone test of the Play build (a universal APK from the bundle, or the internal-test install): no location trigger offered, time triggers and Saved Places "Use my current location" working, About & updates showing Google Play
-- [ ] Upload key created and configured, section 5.1 (the next task; **OWNER INPUT REQUIRED**)
+- [x] Upload key created and configured, section 5.1 (back it up: **OWNER INPUT REQUIRED**)
 - [ ] Play Console app created with a **Google-generated** app signing key, upload certificate registered, section 5.2 (**OWNER INPUT REQUIRED**)
-- [ ] `bundlePlay` rebuilt signed with the upload key
+- [x] `bundlePlay` rebuilt signed with the upload key
 - [ ] Privacy policy URL, Data safety, and permission declarations entered, [checklist](PLAY_CONSOLE_CHECKLIST.md) (**OWNER INPUT REQUIRED**)
