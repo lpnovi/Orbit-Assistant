@@ -7,7 +7,6 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.Signature;
 import android.net.Uri;
-import android.provider.Settings;
 import android.util.Log;
 
 import androidx.core.content.FileProvider;
@@ -31,12 +30,14 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 
-/** Public GitHub Release update discovery, download, and fail-closed APK verification. */
+/**
+ * Public GitHub Release update discovery, download, and fail-closed APK verification.
+ *
+ * <p>GitHub edition only. In the Google Play edition every entry point refuses (see
+ * {@link OrbitDistribution}), and Google Play delivers Orbit's updates instead.
+ */
 public final class OrbitUpdater {
     private static final String TAG = "OrbitUpdater";
-    private static final String REPOSITORY = "lpnovi/Orbit-Assistant";
-    private static final String LATEST_RELEASE_API =
-            "https://api.github.com/repos/" + REPOSITORY + "/releases/latest";
     /**
      * How many recent releases the Beta channel looks at.
      *
@@ -53,10 +54,6 @@ public final class OrbitUpdater {
      * from turning one update check into a dozen requests.
      */
     private static final int MAX_MANIFEST_FETCHES = 4;
-    private static final String RELEASES_LIST_API =
-            "https://api.github.com/repos/" + REPOSITORY + "/releases?per_page=" + BETA_SCAN_PAGE_SIZE;
-    private static final String RELEASE_DOWNLOAD_BASE =
-            "https://github.com/" + REPOSITORY + "/releases/download/";
     private static final String UPDATE_MANIFEST_NAME = "orbit-update.json";
     private static final String PACKAGE_NAME = "com.orbit.assistant";
     private static final String CERTIFICATE_SHA256 =
@@ -190,6 +187,7 @@ public final class OrbitUpdater {
      * Stable release rather than another Beta.
      */
     static CheckResult checkNow(Context context, String channel) throws Exception {
+        requireSelfUpdates();
         cleanupAbandonedDownloads(context, null);
         String resolved = Prefs.normalizeChannel(channel);
         Release parsed = Prefs.CHANNEL_BETA.equals(resolved)
@@ -214,7 +212,7 @@ public final class OrbitUpdater {
     /** The Stable path, byte for byte the behaviour Orbit has always had. */
     private static Release findLatestStableRelease() throws Exception {
         log("check_started", "latest_stable_release");
-        JSONObject releaseJson = readJson(LATEST_RELEASE_API, MAX_JSON_BYTES);
+        JSONObject releaseJson = readJson(OrbitEdition.latestReleaseApi(), MAX_JSON_BYTES);
         if (releaseJson.optBoolean("draft", true) || releaseJson.optBoolean("prerelease", true)) {
             throw new UpdateException("The latest GitHub release is not a stable published release.");
         }
@@ -238,7 +236,7 @@ public final class OrbitUpdater {
      */
     private static Release findBestBetaChannelRelease() throws Exception {
         log("check_started", "beta_channel_release_scan");
-        JSONArray releases = readJsonArray(RELEASES_LIST_API, MAX_RELEASE_LIST_BYTES);
+        JSONArray releases = readJsonArray(OrbitEdition.releasesListApi(BETA_SCAN_PAGE_SIZE), MAX_RELEASE_LIST_BYTES);
         java.util.List<JSONObject> shortlist = shortlist(releases, Prefs.CHANNEL_BETA);
 
         java.util.List<Release> valid = new java.util.ArrayList<>();
@@ -361,6 +359,8 @@ public final class OrbitUpdater {
     }
 
     public static Release loadCachedAvailable(Context context) {
+        // Nothing GitHub offered can be installed by a Play build, so nothing cached is "available".
+        if (!OrbitDistribution.selfUpdates()) return null;
         String raw = Prefs.get(context).getString(PREF_CACHED_RELEASE, "");
         if (raw.isEmpty()) return null;
         boolean beta = Prefs.betaChannel(context);
@@ -416,6 +416,11 @@ public final class OrbitUpdater {
 
     public static DownloadHandle downloadAsync(Context context, Release release,
                                                DownloadCallback callback) {
+        if (!OrbitDistribution.selfUpdates()) {
+            DownloadHandle refused = new DownloadHandle();
+            callback.onError(OrbitDistribution.PLAY_REFUSAL, false);
+            return refused;
+        }
         Context app = context.getApplicationContext();
         DownloadHandle handle = new DownloadHandle();
         EXECUTOR.execute(() -> download(app, release, handle, callback));
@@ -480,16 +485,15 @@ public final class OrbitUpdater {
     }
 
     public static boolean canRequestPackageInstalls(Context context) {
-        return context.getPackageManager().canRequestPackageInstalls();
+        return OrbitEdition.canRequestPackageInstalls(context);
     }
 
     public static void openUnknownSourcesSettings(Activity activity) {
-        Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                Uri.parse("package:" + activity.getPackageName()));
-        activity.startActivity(intent);
+        OrbitEdition.openUnknownSourcesSettings(activity);
     }
 
     public static void launchPackageInstaller(Activity activity, File apk, Release release) throws Exception {
+        requireSelfUpdates();
         validateReleaseFields(release);
         File root = updateDirectory(activity).getCanonicalFile();
         File candidate = apk.getCanonicalFile();
@@ -499,9 +503,7 @@ public final class OrbitUpdater {
         }
         Uri uri = FileProvider.getUriForFile(
                 activity, activity.getPackageName() + ".fileprovider", candidate);
-        Intent install = new Intent(Intent.ACTION_VIEW)
-                .setDataAndType(uri, "application/vnd.android.package-archive")
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        Intent install = OrbitEdition.apkInstallerIntent(uri);
         boolean saved = Prefs.get(activity).edit()
                 .putLong(PREF_PENDING_INSTALL_CODE, release.versionCode)
                 .putString(PREF_PENDING_INSTALL_FILE, candidate.getName())
@@ -768,7 +770,7 @@ public final class OrbitUpdater {
         if (!OrbitVersion.isValidTag(tag) || !assetName.matches("^[A-Za-z0-9._-]+$")) {
             throw new UpdateException("The Orbit release asset reference is malformed.");
         }
-        return RELEASE_DOWNLOAD_BASE + tag + "/" + assetName;
+        return OrbitEdition.releaseDownloadBase() + tag + "/" + assetName;
     }
 
     private static File updateDirectory(Context context) {
@@ -817,6 +819,17 @@ public final class OrbitUpdater {
     private static String compactNotes(String notes) {
         String value = notes == null ? "" : notes.trim();
         return value.length() <= 6000 ? value : value.substring(0, 6000).trim() + "…";
+    }
+
+    /**
+     * The distribution gate. Every path that would reach GitHub for Orbit's own APK, or hand one to
+     * Android, passes through here first. In the Play edition it always refuses, and even past it
+     * {@link OrbitEdition} has no GitHub endpoint or installer hand-off to offer.
+     */
+    private static void requireSelfUpdates() throws UpdateException {
+        if (!OrbitDistribution.selfUpdates()) {
+            throw new UpdateException(OrbitDistribution.PLAY_REFUSAL);
+        }
     }
 
     private static String userMessage(Exception e, String fallback) {

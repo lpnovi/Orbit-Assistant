@@ -43,6 +43,8 @@ import java.util.List;
  *
  * <p>That rule protects the future Google Play line as much as it protects today's, which is why
  * eligibility is a property of the running build rather than something a preference can assert.
+ * The Google Play edition goes further and never offers the override at all, whatever its version
+ * name, because Orbit Pro will be sold there; see {@link OrbitDistribution#allowsProPreview}.
  *
  * <h2>Not a DRM system</h2>
  *
@@ -99,7 +101,28 @@ public final class OrbitProEntitlement {
      * preference it must ignore.
      */
     public static boolean previewAvailable() {
-        return previewAvailable(BuildConfig.DEBUG, BuildConfig.VERSION_NAME);
+        return OrbitDistribution.allowsProPreview(OrbitDistribution.current())
+                && previewAvailable(BuildConfig.DEBUG, BuildConfig.VERSION_NAME);
+    }
+
+    /**
+     * What a locked Pro surface tells the person, given what a tester would be told.
+     *
+     * <p>The single place that decides it, so no screen can direct a Stable or Google Play user to
+     * a developer control that their build does not have. Where the preview override exists, the
+     * screen's own instruction is returned unchanged. Everywhere else the answer is the truth:
+     * Orbit Pro cannot be bought yet. When Google Play Billing arrives, this is where that sentence
+     * becomes the way to buy it, and no Pro screen has to change.
+     */
+    public static String lockedGuidance(String previewInstruction) {
+        return lockedGuidance(previewAvailable(), previewInstruction);
+    }
+
+    /** Shown wherever Orbit Pro is locked and there is no way to unlock it yet. */
+    static final String NOT_YET_PURCHASABLE = "Orbit Pro isn't available for purchase yet.";
+
+    static String lockedGuidance(boolean previewAllowed, String previewInstruction) {
+        return previewAllowed ? previewInstruction : NOT_YET_PURCHASABLE;
     }
 
     // ---- the decisions, separated from the build they run in ---------------------------------------

@@ -136,8 +136,8 @@ function Ensure-AndroidSdk {
     $answers | & $sdkManager "--sdk_root=$SdkRoot" --licenses | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "Android SDK license step failed (exit code $LASTEXITCODE)." }
 
-    Write-Step "Installing Android API 35 and Build Tools 35.0.0"
-    & $sdkManager "--sdk_root=$SdkRoot" "platform-tools" "platforms;android-35" "build-tools;35.0.0" | Out-Host
+    Write-Step "Installing Android API 36 and Build Tools 35.0.0"
+    & $sdkManager "--sdk_root=$SdkRoot" "platform-tools" "platforms;android-36" "build-tools;35.0.0" | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "Android SDK package installation failed (exit code $LASTEXITCODE)." }
 
     return $sdkManager

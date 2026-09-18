@@ -37,6 +37,12 @@ orbit-signing.properties
 *.pem
 *.key
 
+# Google Play App Signing enrollment output and Play Console credentials (docs/PLAY_STORE.md)
+orbit-app-signing-key*
+encryption_public_key*
+pepk*.zip
+play-service-account*.json
+
 # OS/editor temporary files
 .DS_Store
 Thumbs.db

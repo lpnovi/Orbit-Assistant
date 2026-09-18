@@ -29,6 +29,8 @@ Both surfaces share conversation history, appearance, preferences, and the actio
 | `CHANGELOG.md` | Canonical version-by-version history (also the source of release notes) |
 | `ROADMAP.md` | Completed and future direction, surfaced in-app via `RoadmapActivity` |
 | `docs/EXTENSIONS.md` | Public Extensions v1/v2 schema and security model |
+| `docs/PLAY_STORE.md` | Google Play edition: build, signing, versioning, policy (plus `PLAY_CONSOLE_CHECKLIST.md`, `PLAY_LISTING_DRAFT.md`) |
+| `app/src/github/`, `app/src/play/`, `app/src/testPlay/` | Per-channel `OrbitEdition`, Play manifest/resource overlays, Play-variant tests |
 | `server/` | Optional private OpenAI API relay (Flask + Dockerfile), not part of the APK |
 
 ## Build
@@ -52,7 +54,11 @@ Direct Gradle (for tests or targeted tasks) needs the environment set manually â
   pinned in `tools/build_orbit.ps1`
 
 Useful tasks: `assembleDebug`, `testDebugUnitTest`. `assembleRelease` deliberately fails unless all
-four `ORBIT_RELEASE_*` values are present.
+four `ORBIT_RELEASE_*` values are present. `bundlePlay` builds the Google Play App Bundle
+(`app/build/outputs/bundle/play/app-play.aab`), signed with the separate `ORBIT_UPLOAD_*` key when
+configured and unsigned otherwise. `testPlayUnitTest` runs only the `Play*Test` classes in
+`app/src/testPlay` against the Play variant. Unit tests simulate API 35 by default
+(`app/src/test/resources/robolectric.properties`): Robolectric needs Java 21 to simulate API 36.
 
 ## Windows / Gradle process cleanup
 
@@ -119,6 +125,16 @@ release body.
 versionCode, APK SHA-256, and certificate SHA-256 before handing the file to Android's installer.
 Orbit never downloads or installs silently. `OrbitUpdateWorker` / `OrbitUpdateNotifier` handle the
 optional background check, gated by the `update_notifications` preference.
+
+## Two distribution channels
+
+Orbit ships as the GitHub edition (build types `debug`, `release`) and the Google Play edition
+(build type `play`). Same `com.orbit.assistant`, same version, same app-signing certificate.
+`app/src/github/.../OrbitEdition.java` is the only code with GitHub release endpoints and the APK
+installer hand-off; `app/src/play/.../OrbitEdition.java` has the same shape and refuses everything,
+and the Play manifest overlay removes `REQUEST_INSTALL_PACKAGES`. Ask `OrbitDistribution`, never
+re-derive the channel. Never add a GitHub download, installer intent, or self-update path to shared
+code, and never let the Play edition install Orbit Local. See `docs/PLAY_STORE.md`.
 
 ## Major components
 

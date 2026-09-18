@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Google Play edition's FileProvider roots: app/src/main/res/xml/file_paths.xml without the two
+  APK directories.
+
+  Orbit's update APKs (updates/) and the Orbit Local component APK (orbit-local/) are GitHub-edition
+  downloads that exist only to be handed to Android's package installer. The Play edition never
+  downloads either, so it exposes neither: FileProvider refuses to create a URI for anything outside
+  these roots. Everything else must match the main file exactly, which PlayFileProviderPathsTest
+  checks, so a directory added there cannot silently go missing here.
+-->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Photos captured through Orbit's attachment picker. -->
+    <cache-path name="orbit_picker_camera" path="orbit_picker_camera/" />
+</paths>

@@ -154,6 +154,8 @@ public class MainActivity extends Activity {
     private void checkForForegroundUpdate() {
         // A completed update is acknowledged first; the newer-release check resumes next launch.
         if (maybeShowPostUpdatePrompt()) return;
+        // Google Play offers the Play edition's updates itself; Orbit never checks GitHub there.
+        if (!OrbitDistribution.selfUpdates()) return;
         if (!Prefs.updateNotifications(this) || isFinishing() || isDestroyed()) return;
         OrbitUpdater.Release cached = OrbitUpdater.loadCachedAvailable(this);
         if (cached != null && !OrbitUpdater.wasNotified(this, cached.versionCode)) {

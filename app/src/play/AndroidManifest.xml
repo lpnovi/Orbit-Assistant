@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Google Play edition's manifest overlay. Merged over app/src/main/AndroidManifest.xml for the
+  play build type only; the GitHub debug and release builds never see it.
+
+  Orbit from Google Play is updated by Google Play, and Play policy does not allow an app it
+  distributes to install APKs from anywhere else. Removing REQUEST_INSTALL_PACKAGES means Android
+  itself refuses any install attempt from this build, on top of OrbitEdition having no code that
+  makes one. PlayManifestTest checks the merged result.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission
+        android:name="android.permission.REQUEST_INSTALL_PACKAGES"
+        tools:node="remove" />
+
+</manifest>

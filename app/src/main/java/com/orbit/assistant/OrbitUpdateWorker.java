@@ -13,7 +13,11 @@ import androidx.work.WorkerParameters;
 
 import java.util.concurrent.TimeUnit;
 
-/** Lightweight, network-constrained stable-release check. Never downloads an APK. */
+/**
+ * Lightweight, network-constrained stable-release check. Never downloads an APK.
+ *
+ * <p>GitHub edition only: in the Google Play edition it is never scheduled and does nothing if run.
+ */
 public final class OrbitUpdateWorker extends Worker {
     private static final String UNIQUE_WORK = "orbit-stable-update-check";
     private static final long MIN_CHECK_SPACING_MS = 20L * 60L * 60L * 1000L;
@@ -23,6 +27,12 @@ public final class OrbitUpdateWorker extends Worker {
     }
 
     public static void schedule(Context context) {
+        if (!OrbitDistribution.selfUpdates()) {
+            // Google Play updates the Play edition. A check scheduled by a GitHub install that was
+            // later replaced from Play survives in WorkManager, so it is removed rather than left.
+            WorkManager.getInstance(context.getApplicationContext()).cancelUniqueWork(UNIQUE_WORK);
+            return;
+        }
         Constraints constraints = new Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build();
@@ -37,6 +47,7 @@ public final class OrbitUpdateWorker extends Worker {
 
     @NonNull @Override public Result doWork() {
         Context context = getApplicationContext();
+        if (!OrbitDistribution.selfUpdates()) return Result.success();
         if (System.currentTimeMillis() - OrbitUpdater.lastCheckMs(context) < MIN_CHECK_SPACING_MS) {
             return Result.success();
         }

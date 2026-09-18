@@ -639,7 +639,9 @@ public final class DeckActivity extends Activity {
         if (!OrbitProEntitlement.hasPro(this)) {
             LinearLayout column = openSheet("Deck layouts · Orbit Pro",
                     "Multiple saved Decks and layout templates are part of Orbit Pro.");
-            column.addView(emptyNote("Your active Deck and all Free organization tools remain fully available. Enable Pro Preview in Diagnostics to try saved layouts."));
+            column.addView(emptyNote("Your active Deck and all Free organization tools remain fully available. "
+                    + OrbitProEntitlement.lockedGuidance(
+                            "Enable Pro Preview in Diagnostics to try saved layouts.")));
             return;
         }
         DeckCollection collection = DeckLayoutStore.collection(this);
@@ -1507,7 +1509,9 @@ public final class DeckActivity extends Activity {
         if (!OrbitProEntitlement.hasPro(this)) {
             LinearLayout column = openSheet("Tile appearance · Orbit Pro",
                     "Per-tile accent, material, icon, and label choices are part of Orbit Pro.");
-            column.addView(emptyNote("Enable Pro Preview in Diagnostics to try these controls. Your Deck organization remains Free."));
+            column.addView(emptyNote(OrbitProEntitlement.lockedGuidance(
+                    "Enable Pro Preview in Diagnostics to try these controls.")
+                    + " Your Deck organization remains Free."));
             return;
         }
         DeckTile current = tileById(expectedLayoutId, tile.instanceId);

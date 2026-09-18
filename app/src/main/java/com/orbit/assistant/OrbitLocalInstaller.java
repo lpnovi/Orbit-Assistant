@@ -38,12 +38,13 @@ import java.util.concurrent.Executors;
  *
  * <p>Fail-closed throughout. A checksum, package, version, signer count, or certificate that does
  * not match deletes the download and reports it; nothing is ever installed "best effort".
+ *
+ * <p>GitHub edition only. The Google Play edition refuses both the download and the hand-off to
+ * Android (see {@link OrbitDistribution}), and its {@link OrbitEdition} has neither a GitHub asset
+ * URL nor an installer intent to give.
  */
 public final class OrbitLocalInstaller {
     private static final String TAG = "OrbitLocalInstaller";
-    private static final String REPOSITORY = "lpnovi/Orbit-Assistant";
-    private static final String RELEASE_DOWNLOAD_BASE =
-            "https://github.com/" + REPOSITORY + "/releases/download/";
     /** Orbit's permanent release certificate. The component must carry the same one. */
     private static final String CERTIFICATE_SHA256 = OrbitLocalComponent.CERTIFICATE_SHA256;
     private static final long MAX_APK_BYTES = 200L * 1024L * 1024L;
@@ -89,6 +90,12 @@ public final class OrbitLocalInstaller {
 
     /** Downloads and fully verifies the component APK for this Orbit release. */
     public static void downloadAsync(Context context, Callback callback) {
+        if (!OrbitDistribution.installsOrbitLocalComponent()) {
+            // The Play edition never fetches the component APK. Said once, synchronously, and
+            // nothing is queued, downloaded, or written.
+            callback.onError(OrbitDistribution.PLAY_REFUSAL);
+            return;
+        }
         Context app = context.getApplicationContext();
         EXECUTOR.execute(() -> {
             File output = null;
@@ -312,6 +319,9 @@ public final class OrbitLocalInstaller {
      * deliberately matches it rather than inventing a second mechanism.
      */
     public static void launchInstaller(Activity activity, File apk) throws Exception {
+        if (!OrbitDistribution.installsOrbitLocalComponent()) {
+            throw new InstallException(OrbitDistribution.PLAY_REFUSAL);
+        }
         InstallStage stage = InstallStage.APK_MISSING;
         try {
             if (apk == null || !apk.isFile()) throw new InstallException(stage.message);
@@ -330,9 +340,7 @@ public final class OrbitLocalInstaller {
             Uri uri = FileProvider.getUriForFile(
                     activity, fileProviderAuthority(activity), candidate);
 
-            Intent install = new Intent(Intent.ACTION_VIEW)
-                    .setDataAndType(uri, APK_MIME_TYPE)
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            Intent install = OrbitEdition.apkInstallerIntent(uri);
 
             stage = InstallStage.NO_INSTALLER;
             if (install.resolveActivity(activity.getPackageManager()) == null) {
@@ -464,7 +472,7 @@ public final class OrbitLocalInstaller {
         if (!OrbitVersion.isValidTag(tag) || !assetName.matches("^[A-Za-z0-9._-]+$")) {
             throw new InstallException("The Orbit Local asset reference is malformed.");
         }
-        return RELEASE_DOWNLOAD_BASE + tag + "/" + assetName;
+        return OrbitEdition.releaseDownloadBase() + tag + "/" + assetName;
     }
 
     private static JSONObject readJson(String url, int limit) throws Exception {

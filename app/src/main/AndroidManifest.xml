@@ -35,7 +35,7 @@
       Required before Orbit may ask Android to remove the optional Orbit Local component.
 
       Android has demanded this of any app targeting API 28 or above since Android 9; Orbit targets
-      35. Without it the platform's uninstaller logs the refusal and finishes without ever drawing
+      36. Without it the platform's uninstaller logs the refusal and finishes without ever drawing
       its confirmation, while startActivity returns as though all was well. That is exactly what
       v0.7.7.5 did on a Galaxy S25 Ultra: Orbit's dialog closed, Android's never opened, and the
       component stayed installed with nothing reported.
@@ -97,6 +97,7 @@
     <application
         android:name=".OrbitApplication"
         android:allowBackup="false"
+        android:enableOnBackInvokedCallback="false"
         android:icon="@drawable/ic_orbit"
         android:label="@string/app_name"
         android:roundIcon="@drawable/ic_orbit"
@@ -104,6 +105,16 @@
         android:theme="@style/Theme.Orbit"
         android:usesCleartextTraffic="false">
 
+        <!--
+          android:enableOnBackInvokedCallback="false" on <application> is the Android 16 (API 36)
+          migration, and it changes nothing that was working. Before API 36 an undeclared screen
+          defaulted to false; from API 36 it defaults to true, which would silently stop
+          onBackPressed on every LOCAL screen below, on the bridges, and on the Side-button overlay
+          window (OrbitSession.onBackPressed), which is not an Activity and so takes the
+          application-level value. Declaring the old default keeps every one of them exactly as
+          it was, while each migrated activity still opts in with its own "true", which Android
+          lets override the application value.
+        -->
         <!--
           android:enableOnBackInvokedCallback is declared per activity, and only on the ones that
           have actually been migrated to Orbit's shared back navigation. It is not a decoration: a

@@ -6,7 +6,7 @@ These instructions are for inspecting and producing a local **debug** build. Off
 
 - Git
 - JDK 17
-- Android SDK with API 35 installed
+- Android SDK with API 36 (Android 16) installed
 - A 64-bit operating system supported by the Android build tools
 
 Orbit's Gradle wrapper downloads the pinned Gradle distribution on first use. Dependency downloads require an internet connection.
@@ -63,6 +63,16 @@ The component APK is written below `local/build/outputs/apk/debug/`. A compatibl
 Debug APKs use a developer debug key. They do not share Orbit's official permanent release identity and normally cannot update an official installation in place. Keep source-built debug installs separate from important production data.
 
 Release builds deliberately fail unless all required signing values are provided. Do not request, copy, or commit the project's private keystore or signing credentials.
+
+## Google Play App Bundle
+
+The Google Play edition is the `play` build type. It is built as an App Bundle rather than an APK:
+
+```bash
+./gradlew bundlePlay
+```
+
+The bundle is written to `app/build/outputs/bundle/play/`. It is unsigned unless the maintainer's upload key is configured. See [PLAY_STORE.md](PLAY_STORE.md) for how the two distribution channels differ.
 
 ## Project layout
 

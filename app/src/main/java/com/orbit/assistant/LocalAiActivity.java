@@ -56,6 +56,17 @@ public final class LocalAiActivity extends Activity {
     /** Only the component and the model Android takes with it. Legacy Orbit data is left alone. */
     private static final String SCOPE_COMPONENT = "component";
 
+    /**
+     * What the Google Play edition says where it would otherwise offer to install the component.
+     *
+     * <p>The component is a separate APK that Orbit from GitHub installs from its own release. An
+     * app distributed through Google Play may not install executable code from anywhere else, so
+     * until Orbit Local has a Play-delivered form the Play edition does not offer it. A component
+     * that is already installed and genuine keeps working.
+     */
+    static final String PLAY_UNAVAILABLE =
+            "Orbit Local isn't available in the Google Play edition of Orbit yet.";
+
     private final Handler main = new Handler(Looper.getMainLooper());
     private LinearLayout cards;
     private String appearanceSignature;
@@ -566,10 +577,15 @@ public final class LocalAiActivity extends Activity {
                         + "\nVersion " + OrbitVersion.displayName(
                                 OrbitLocalComponent.installedVersionName(this));
             case UPDATE_REQUIRED:
+                if (!OrbitDistribution.installsOrbitLocalComponent()) {
+                    return "The installed component was built for a different version of Orbit, and "
+                            + "Orbit from Google Play cannot update it. You can uninstall it here.";
+                }
                 return "The installed component was built for a different version of Orbit. Update it to use Orbit Local again.";
             case UNTRUSTED:
                 return "A package named Orbit Local is installed but was not published by Orbit, so it will not be used. Remove it, then install Orbit Local from here.";
             default:
+                if (!OrbitDistribution.installsOrbitLocalComponent()) return PLAY_UNAVAILABLE;
                 return "Required to run AI privately on this device · " + size;
         }
     }
@@ -598,6 +614,14 @@ public final class LocalAiActivity extends Activity {
                 return;
             }
             case UPDATE_REQUIRED: {
+                if (!OrbitDistribution.installsOrbitLocalComponent()) {
+                    // Play cannot fetch a matching component. What it can honestly offer is
+                    // removing the one that no longer fits.
+                    Button uninstall = dangerButton("Uninstall component");
+                    uninstall.setOnClickListener(v -> confirmUninstallComponent());
+                    addDestructiveAction(actions, uninstall);
+                    return;
+                }
                 Button update = primaryButton("Update component");
                 update.setOnClickListener(v -> startComponentDownload());
                 addPrimaryAction(actions, update);
@@ -612,6 +636,9 @@ public final class LocalAiActivity extends Activity {
                 return;
             }
             default: {
+                // The Play edition never downloads the component APK, so it offers no setup button
+                // at all rather than one that could only fail. componentDetails says why.
+                if (!OrbitDistribution.installsOrbitLocalComponent()) return;
                 // Nothing installed at all: present one Orbit Local setup, not two technical
                 // downloads. The component always comes first, because a model without it cannot
                 // run and downloading 1.6 GB into that situation would be indefensible.
@@ -858,6 +885,7 @@ public final class LocalAiActivity extends Activity {
         String size = LocalModelStore.formatBytes(LocalModelStore.MODEL_SIZE_BYTES);
         if (!componentReady) {
             String base = "Local AI model · about " + size;
+            if (!OrbitDistribution.installsOrbitLocalComponent()) return base + "\n" + PLAY_UNAVAILABLE;
             if (LocalModelStore.hasLegacyModel(this)) {
                 return base + "\nYou already have this model on the phone. Install the Orbit Local "
                         + "component and Orbit can move it across instead of downloading it again.";
@@ -1204,6 +1232,10 @@ public final class LocalAiActivity extends Activity {
                 ? "about 520 MB"
                 : LocalModelStore.formatBytes(status.actionModelSizeBytes);
         if (!componentReady) {
+            if (!OrbitDistribution.installsOrbitLocalComponent()) {
+                return "Lets Orbit Local understand phone commands it has no exact wording for, entirely "
+                        + "on the device. " + PLAY_UNAVAILABLE;
+            }
             return "Lets Orbit Local understand phone commands it has no exact wording for, entirely "
                     + "on the device. Install the Orbit Local component first.";
         }

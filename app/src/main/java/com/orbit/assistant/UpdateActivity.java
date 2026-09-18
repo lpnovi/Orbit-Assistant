@@ -51,6 +51,10 @@ public final class UpdateActivity extends Activity {
         OrbitUpdateWorker.schedule(this);
         OrbitUpdater.reconcilePendingInstall(this);
 
+        if (OrbitDistribution.isPlay()) {
+            showPlayState();
+            return;
+        }
         availableRelease = OrbitUpdater.loadCachedAvailable(this);
         if (availableRelease != null) showAvailableState(availableRelease, false);
         else showIdleState();
@@ -59,7 +63,8 @@ public final class UpdateActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         UiPresence.enter(this);
-        if (waitingForInstallPermission && readyApk != null && readyRelease != null &&
+        if (!OrbitDistribution.isPlay() && waitingForInstallPermission && readyApk != null
+                && readyRelease != null &&
                 OrbitUpdater.canRequestPackageInstalls(this)) {
             waitingForInstallPermission = false;
             verifyAndInstall();
@@ -103,7 +108,8 @@ public final class UpdateActivity extends Activity {
         titles.setOrientation(LinearLayout.VERTICAL);
         titles.setPadding(UiKit.dp(this, 13), 0, 0, 0);
         titles.addView(UiKit.text(this, "About & updates", 24, UiKit.TEXT, true));
-        titles.addView(UiKit.text(this, "Official Orbit releases", 13, UiKit.MUTED, false));
+        titles.addView(UiKit.text(this, OrbitDistribution.isPlay()
+                ? "Orbit from Google Play" : "Official Orbit releases", 13, UiKit.MUTED, false));
         header.addView(titles, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         page.addView(header);
@@ -177,16 +183,10 @@ public final class UpdateActivity extends Activity {
         whatsNewLp.setMargins(0, UiKit.dp(this, 10), 0, 0);
         card.addView(whatsNew, whatsNewLp);
 
-        card.addView(channelRow());
-
-        OrbitSwitch updateNotifications = new OrbitSwitch(this);
-        updateNotifications.setChecked(Prefs.updateNotifications(this), false);
-        updateNotifications.setOnCheckedChangeListener((button, checked) -> {
-            Prefs.get(this).edit().putBoolean(Prefs.UPDATE_NOTIFICATIONS, checked).apply();
-            if (!checked) OrbitUpdateNotifier.cancel(this);
-        });
-        card.addView(UiKit.switchRow(this, "Update notifications",
-                "Notify me when a new Orbit version is available", updateNotifications));
+        // The update channel and Orbit's own update notifications belong to the GitHub updater. In
+        // the Play edition Google Play owns both: its testing tracks are the Beta channel, and it
+        // notifies about updates itself. Showing either here would be a control that does nothing.
+        if (!OrbitDistribution.isPlay()) addGitHubUpdateControls(card);
         page.addView(card);
 
         TextView roadmapSection = UiKit.text(this, "ROADMAP", 12, UiKit.MUTED, true);
@@ -220,8 +220,9 @@ public final class UpdateActivity extends Activity {
         UiKit.pressScale(roadmap);
         page.addView(roadmap);
 
-        TextView privacy = UiKit.text(this,
-                "Orbit checks only the public lpnovi/Orbit-Assistant releases — stable releases, plus official Beta prereleases when you have joined the Beta channel. It sends no account credentials, never downloads without your approval, verifies the APK checksum, package, version and permanent signing certificate, then uses Android's normal installer. Every build is verified the same way, whichever channel it came from.",
+        TextView privacy = UiKit.text(this, OrbitDistribution.isPlay()
+                ? "This copy of Orbit was installed from Google Play, which delivers and verifies its updates. Orbit itself never downloads or installs app updates."
+                : "Orbit checks only the public lpnovi/Orbit-Assistant releases — stable releases, plus official Beta prereleases when you have joined the Beta channel. It sends no account credentials, never downloads without your approval, verifies the APK checksum, package, version and permanent signing certificate, then uses Android's normal installer. Every build is verified the same way, whichever channel it came from.",
                 12, UiKit.MUTED, false);
         privacy.setLineSpacing(0, 1.12f);
         LinearLayout.LayoutParams privacyLp = new LinearLayout.LayoutParams(
@@ -230,6 +231,38 @@ public final class UpdateActivity extends Activity {
         page.addView(privacy, privacyLp);
         UiKit.applyTypography(page);
         return scroll;
+    }
+
+    /** The GitHub edition's update channel and update-notification controls. */
+    private void addGitHubUpdateControls(LinearLayout card) {
+        card.addView(channelRow());
+
+        OrbitSwitch updateNotifications = new OrbitSwitch(this);
+        updateNotifications.setChecked(Prefs.updateNotifications(this), false);
+        updateNotifications.setOnCheckedChangeListener((button, checked) -> {
+            Prefs.get(this).edit().putBoolean(Prefs.UPDATE_NOTIFICATIONS, checked).apply();
+            if (!checked) OrbitUpdateNotifier.cancel(this);
+        });
+        card.addView(UiKit.switchRow(this, "Update notifications",
+                "Notify me when a new Orbit version is available", updateNotifications));
+    }
+
+    /**
+     * The Play edition's whole update story: Google Play does it.
+     *
+     * <p>The one action opens Orbit's Play listing, which is where Play offers an update that has
+     * not installed yet. Nothing here reaches GitHub.
+     */
+    private void showPlayState() {
+        hideDownloadProgress();
+        status.setText(OrbitDistribution.PLAY_UPDATES_MESSAGE);
+        status.setTextColor(UiKit.TEXT);
+        setAction("Open in Google Play", () -> {
+            if (!OrbitDistribution.openPlayListing(this)) {
+                status.setText("Google Play could not be opened on this device.");
+                status.setTextColor(UiKit.DANGER);
+            }
+        }, true);
     }
 
     private void showIdleState() {

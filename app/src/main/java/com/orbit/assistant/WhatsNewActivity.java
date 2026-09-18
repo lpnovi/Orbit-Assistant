@@ -157,7 +157,10 @@ public final class WhatsNewActivity extends Activity {
             retry.setVisibility(View.VISIBLE);
             return;
         }
-        if (ReleaseNotesRepository.isNewerThanCurrent(releases.get(0).versionName)) {
+        // The GitHub updater's prompt. A Play install is updated by Google Play, and a newer GitHub
+        // release is not necessarily on Play yet, so the Play edition never shows it.
+        if (!OrbitDistribution.isPlay()
+                && ReleaseNotesRepository.isNewerThanCurrent(releases.get(0).versionName)) {
             LinearLayout update = card();
             update.addView(UiKit.text(this,
                     "Update available · v" + releases.get(0).versionName, 15, UiKit.TEXT, true));
@@ -190,12 +193,31 @@ public final class WhatsNewActivity extends Activity {
         version.setPadding(0, UiKit.dp(this, 4), 0, UiKit.dp(this, 11));
         card.addView(version);
 
-        CharSequence notes = markdown(release.body);
+        CharSequence notes = markdown(OrbitDistribution.isPlay()
+                ? withoutApkFooter(release.body) : release.body);
         TextView body = UiKit.text(this, "", 13, UiKit.TEXT, false);
         body.setText(notes.length() == 0 ? "No release notes were provided." : notes);
         body.setLineSpacing(UiKit.dp(this, 2), 1.08f);
         card.addView(body);
         return card;
+    }
+
+    /**
+     * A release body without the GitHub download footer.
+     *
+     * <p>release.yml ends every GitHub Release with a sentence about verifying the attached APK. It
+     * describes the GitHub download, not the product, and in the Play edition there is no APK to
+     * verify, so the notes are shown without it.
+     */
+    static String withoutApkFooter(String body) {
+        if (body == null) return "";
+        StringBuilder out = new StringBuilder();
+        for (String line : body.replace("\r", "").split("\n", -1)) {
+            if (line.trim().startsWith("This APK is signed with")) continue;
+            if (out.length() > 0) out.append('\n');
+            out.append(line);
+        }
+        return out.toString().trim();
     }
 
     /** Small native Markdown subset: headings, bullets, bold, links-as-labels, and inline code. */

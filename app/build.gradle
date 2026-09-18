@@ -24,14 +24,29 @@ def orbitReleaseSigningReady = [
         orbitReleaseKeyPassword
 ].every { it != null && !it.isEmpty() }
 
+// The Google Play upload key. Deliberately a different set of values from ORBIT_RELEASE_*: the
+// release key is Orbit's permanent app-signing identity and signs every GitHub APK, while Play
+// receives bundles signed with a separate upload key and re-signs them with that same permanent
+// identity through Play App Signing. docs/PLAY_STORE.md explains the whole model.
+def orbitUploadStoreFile = orbitSigningValue('ORBIT_UPLOAD_STORE_FILE')?.trim()
+def orbitUploadKeyAlias = orbitSigningValue('ORBIT_UPLOAD_KEY_ALIAS')?.trim()
+def orbitUploadStorePassword = orbitSigningValue('ORBIT_UPLOAD_STORE_PASSWORD')
+def orbitUploadKeyPassword = orbitSigningValue('ORBIT_UPLOAD_KEY_PASSWORD')
+def orbitUploadSigningReady = [
+        orbitUploadStoreFile,
+        orbitUploadKeyAlias,
+        orbitUploadStorePassword,
+        orbitUploadKeyPassword
+].every { it != null && !it.isEmpty() }
+
 android {
     namespace 'com.orbit.assistant'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         applicationId 'com.orbit.assistant'
         minSdk 29
-        targetSdk 35
+        targetSdk 36
         versionCode 796
         versionName "0.8.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
@@ -50,6 +65,14 @@ android {
                 keyPassword orbitReleaseKeyPassword
             }
         }
+        playUpload {
+            if (orbitUploadSigningReady) {
+                storeFile file(orbitUploadStoreFile)
+                storePassword orbitUploadStorePassword
+                keyAlias orbitUploadKeyAlias
+                keyPassword orbitUploadKeyPassword
+            }
+        }
     }
 
     buildTypes {
@@ -59,6 +82,25 @@ android {
             }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        // The Google Play edition: the same Orbit, the same com.orbit.assistant, the same version,
+        // distributed as an App Bundle through Google Play. `gradlew bundlePlay` builds it.
+        //
+        // A build type rather than product flavors, on purpose. Flavors would rename every
+        // existing task and output (assembleRelease, app-release.apk, app-debug.apk) that
+        // release.yml, candidate.yml, build-apk.yml and tools/build_orbit.ps1 depend on. A build
+        // type leaves the GitHub edition's debug and release variants exactly as they were.
+        //
+        // Not initWith(release): that would copy the release signing config, and a Play bundle
+        // must be signed with the upload key or not at all. Without ORBIT_UPLOAD_* values the
+        // bundle is produced unsigned, which Play Console refuses to accept, so nothing unsigned
+        // can reach Play by accident.
+        play {
+            signingConfig orbitUploadSigningReady ? signingConfigs.playUpload : null
+            debuggable false
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            matchingFallbacks = ['release']
         }
     }
 
@@ -71,6 +113,14 @@ android {
         // One copy of the Orbit Local IPC contract, compiled into both sides. Duplicating the
         // .aidl files would let the two ends of the interface drift apart silently.
         main.aidl.srcDirs += ['../ipc']
+
+        // The distribution boundary. src/github holds the only code able to fetch Orbit APKs from
+        // GitHub Releases and hand an APK to Android's package installer; both GitHub variants
+        // compile it. The play build type compiles src/play instead, whose OrbitEdition has the
+        // same shape and refuses everything, so the Play bundle does not contain a self-update or
+        // external-install path at all rather than containing one that is switched off.
+        debug.java.srcDirs += ['src/github/java']
+        release.java.srcDirs += ['src/github/java']
     }
 
     testOptions {
@@ -90,6 +140,24 @@ afterEvaluate {
                 throw new GradleException('Release signing is not configured. Set all four ORBIT_RELEASE_* values in the ignored orbit-signing.properties file or environment variables.')
             }
         }
+    }
+    tasks.named('prePlayBuild').configure {
+        doFirst {
+            if (!orbitUploadSigningReady) {
+                logger.warn('Orbit Play bundle: no ORBIT_UPLOAD_* values are configured, so the bundle is UNSIGNED. ' +
+                        'Play Console will not accept it. See docs/PLAY_STORE.md.')
+            }
+        }
+    }
+}
+
+// The Play variant's unit tests are the Play-only checks in src/testPlay, named Play*Test. The
+// shared suite in src/test describes the GitHub edition (its updater, its component installer)
+// and runs as testDebugUnitTest; running it against the Play edition would fail exactly where the
+// Play edition is supposed to differ.
+tasks.withType(Test).configureEach {
+    if (name == 'testPlayUnitTest') {
+        filter.includeTestsMatching 'com.orbit.assistant.Play*Test'
     }
 }
 

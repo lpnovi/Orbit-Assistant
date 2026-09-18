@@ -173,6 +173,9 @@ public final class ComponentInstallHandoffTest {
     /**
      * Beta 2 changes only the component path. Orbit's own update installer keeps the mechanism it
      * has used for many releases, and the two remain deliberately identical.
+     *
+     * <p>Since the Google Play edition, the intent itself is built in the GitHub edition's
+     * OrbitEdition (src/github), which both installers call, so the mechanism is read from there.
      */
     @Test public void theMainUpdaterInstallerIsUnchanged() {
         java.nio.file.Path updater = java.nio.file.Paths.get("").toAbsolutePath();
@@ -184,9 +187,13 @@ public final class ComponentInstallHandoffTest {
             try {
                 String source = new String(java.nio.file.Files.readAllBytes(candidate),
                         java.nio.charset.StandardCharsets.UTF_8);
-                assertTrue(source.contains("Intent.ACTION_VIEW"));
-                assertTrue(source.contains("application/vnd.android.package-archive"));
-                assertTrue(source.contains("Intent.FLAG_GRANT_READ_URI_PERMISSION"));
+                String edition = new String(java.nio.file.Files.readAllBytes(directory.resolve(
+                        "app/src/github/java/com/orbit/assistant/OrbitEdition.java")),
+                        java.nio.charset.StandardCharsets.UTF_8);
+                assertTrue(source.contains("OrbitEdition.apkInstallerIntent(uri)"));
+                assertTrue(edition.contains("Intent.ACTION_VIEW"));
+                assertTrue(edition.contains("application/vnd.android.package-archive"));
+                assertTrue(edition.contains("Intent.FLAG_GRANT_READ_URI_PERMISSION"));
                 assertTrue(source.contains("FileProvider.getUriForFile"));
                 assertTrue("the updater still writes into the cache directory it declares",
                         source.contains("new File(context.getCacheDir(), \"updates\")"));

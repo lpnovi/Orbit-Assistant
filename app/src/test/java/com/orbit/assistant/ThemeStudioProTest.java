@@ -725,8 +725,8 @@ public final class ThemeStudioProTest {
         }
         assertTrue("the locked state explains the developer override instead",
                 readSource("ThemeStudioActivity.java").contains("Enable Pro Preview in Orbit Diagnostics"));
-        assertTrue("and only on a build that may honour one",
-                readSource("ThemeStudioActivity.java").contains("previewAvailable()"));
+        assertTrue("and only on a build that may honour one, which OrbitProEntitlement decides",
+                readSource("ThemeStudioActivity.java").contains("OrbitProEntitlement.lockedGuidance("));
     }
 
     /**

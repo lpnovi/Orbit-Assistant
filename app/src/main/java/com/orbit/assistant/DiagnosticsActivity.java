@@ -229,6 +229,7 @@ public final class DiagnosticsActivity extends Activity {
         SharedPreferences d = DiagnosticStore.prefs(this);
         long autoUpdatedMs = d.getLong("auto_updated", 0L);
         return "Orbit version: " + versionLabel() +
+                "\nDistribution: " + OrbitDistribution.label() +
                 "\nProvider: " + AiProviders.active(this).displayName() +
                 "\nChatGPT: " + accountStatus() +
                 "\nDefault mode: " + Prefs.modeLabel(this) +

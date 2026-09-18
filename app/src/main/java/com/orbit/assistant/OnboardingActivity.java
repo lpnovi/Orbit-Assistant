@@ -367,6 +367,14 @@ public final class OnboardingActivity extends Activity {
         }
 
         if (!supported) return card;
+        if (!ready && !OrbitDistribution.installsOrbitLocalComponent()) {
+            // A setup button here would lead to a screen that cannot set anything up.
+            TextView unavailable = UiKit.text(this, LocalAiActivity.PLAY_UNAVAILABLE,
+                    12, UiKit.MUTED, false);
+            unavailable.setLineSpacing(0, 1.12f);
+            card.addView(unavailable);
+            return card;
+        }
 
         Button action = primaryButton(active ? "Orbit Local active"
                 : ready ? "Use Orbit Local" : "Set up Orbit Local");

@@ -364,10 +364,8 @@ public final class ThemeStudioActivity extends Activity {
      * never mention a developer preview that it would refuse to honour anyway.
      */
     private String proUnavailableNote() {
-        return OrbitProEntitlement.previewAvailable()
-                ? "Orbit Pro Preview is off. Enable Pro Preview in Orbit Diagnostics to test "
-                        + "advanced styling."
-                : "Orbit Pro is not available on this device.";
+        return OrbitProEntitlement.lockedGuidance("Orbit Pro Preview is off. "
+                + "Enable Pro Preview in Orbit Diagnostics to test advanced styling.");
     }
 
     // ---- synchronizing the screen to the draft ------------------------------------------------

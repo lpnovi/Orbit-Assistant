@@ -266,9 +266,15 @@ public final class OrbitDialogContractTest {
                 receiver.contains("new AlertDialog.Builder"));
         assertFalse("Orbit must not try to paint Android's package-installer window",
                 receiver.contains("styleOrbitDialog"));
-        assertTrue(updater.contains("Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES"));
+        // The GitHub edition builds both system hand-offs in OrbitEdition (src/github); the
+        // installers still launch them themselves. The Play edition has neither.
+        String gitHubEdition = ComponentUninstallTest.readRepositoryFile(
+                "app/src/github/java/com/orbit/assistant/OrbitEdition.java");
+        assertTrue(gitHubEdition.contains("Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES"));
+        assertTrue(gitHubEdition.contains("new Intent(Intent.ACTION_VIEW)"));
+        assertTrue(updater.contains("OrbitEdition.openUnknownSourcesSettings(activity)"));
         assertTrue(updater.contains("activity.startActivity(install)"));
-        assertTrue(componentInstaller.contains("new Intent(Intent.ACTION_VIEW)"));
+        assertTrue(componentInstaller.contains("OrbitEdition.apkInstallerIntent(uri)"));
         assertTrue(componentInstaller.contains("activity.startActivity(install)"));
         assertTrue(pickerBridge.contains("Intent.ACTION_OPEN_DOCUMENT"));
         assertTrue(pickerBridge.contains("requestPermissions("));
