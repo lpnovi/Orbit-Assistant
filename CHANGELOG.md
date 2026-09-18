@@ -842,6 +842,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.0.0-beta.8**: Theme Studio preview polish.
+  - The Deck tile in the Theme Studio preview now shows your selected Solid, Frosted, or Liquid material.
+  - Switching materials updates the preview instantly, matching how real Deck tiles look.
+  - Free users now see their material choice in the preview, not only in Deck itself.
+  - Custom colors, AMOLED true black, Orbit Pro glass tuning, and saved themes all behave exactly as before.
 - **v0.8.0.0-beta.7**: Saved Deck layouts and Deck input polish.
   - Orbit Pro can keep up to ten complete saved Deck layouts and switch between them directly from Deck.
   - Rename, duplicate, and delete layouts from an Orbit-native manager, with independent structure and appearance in every copy.

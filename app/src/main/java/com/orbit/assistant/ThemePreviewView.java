@@ -162,9 +162,15 @@ public final class ThemePreviewView extends LinearLayout {
         cardTitle.setTextColor(tokens.text);
         cardSubtitle.setTextColor(tokens.muted);
 
-        tile.setBackground(UiKit.outlined(tokens.surface2,
-                UiKit.withAlpha(tokens.accent, 52), UiKit.RADIUS_CARD, c));
-        tile.setContentDescription("Deck tile, " + OrbitColorName.of(tokens.surface2));
+        // The Deck tile is made of the draft's material, drawn by the resolver a real Deck tile
+        // uses. It was a flat outlined rectangle until v0.8.0.0-beta.8, so switching between Solid,
+        // Frosted and Liquid changed every Deck tile in Orbit and left this one exactly as it was.
+        // The palette is the draft's, and its styling is the entitlement-resolved one above, so Pro
+        // glass tuning moves this tile only where it would move the real ones.
+        tile.setBackground(OrbitFloatingSurface.surfaceDrawable(c,
+                OrbitGlass.Palette.of(tokens, style), UiKit.RADIUS_CARD));
+        tile.setContentDescription("Deck tile, " + OrbitTheme.materialLabel(material()) + ", "
+                + OrbitColorName.of(tokens.surface2));
         tileMark.setImageTintList(ColorStateList.valueOf(tokens.accent));
         tileLabel.setTextColor(tokens.text);
     }
@@ -172,6 +178,12 @@ public final class ThemePreviewView extends LinearLayout {
     /** The tokens this preview is currently showing, for the screens and tests that ask. */
     public OrbitThemeTokens tokens() {
         return tokens;
+    }
+
+    /** The draft's floating-surface material, as the preview's Deck tile is drawing it. */
+    private String material() {
+        return tokens == null || tokens.theme == null
+                ? OrbitTheme.MATERIAL_DEFAULT : tokens.theme.material;
     }
 
     private String describe() {
