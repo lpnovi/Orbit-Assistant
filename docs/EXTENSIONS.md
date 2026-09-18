@@ -53,10 +53,10 @@ Schema v2 retains the same identity and action model while allowing a top-level 
 
 Setup field types are:
 
-- `text` — non-secret text, optionally backed up.
-- `url` — a public HTTPS URL, optionally backed up and revalidated before use.
-- `secret` — an opaque credential encrypted with Android Keystore-backed AES/GCM.
-- `secret_url` — a credential-bearing public HTTPS URL, encrypted and shown only as a safe configured-host status after saving.
+- `text`: non-secret text, optionally backed up.
+- `url`: a public HTTPS URL, optionally backed up and revalidated before use.
+- `secret`: an opaque credential encrypted with Android Keystore-backed AES/GCM.
+- `secret_url`: a credential-bearing public HTTPS URL, encrypted and shown only as a safe configured-host status after saving.
 
 Every field has a stable ID and label, with optional description, `required`, `maxLength`, and a non-secret `default`. Secret fields cannot declare defaults. Credential-like fields must use a secure type. If Keystore encryption fails, Orbit saves no plaintext fallback and reports that the configuration could not be saved securely.
 
@@ -114,11 +114,11 @@ The repository retains a generic schema sample at [`examples/orbit-extensions/ex
 
 Orbit publishes five ordinary manifests for practical use and as references:
 
-- **Orbit Web Tools** (`com.orbit.extensions.web-tools`) — opens Orbit's public Releases, repository, and Issues pages. File: [`orbit-web-tools.orbitext`](../examples/orbit-extensions/orbit-web-tools.orbitext).
-- **Developer Tools** (`com.orbit.extensions.developer-tools`) — opens official Android and GitHub Actions documentation and includes one bounded, unauthenticated HTTPS GET request to GitHub's public Zen endpoint. File: [`developer-tools.orbitext`](../examples/orbit-extensions/developer-tools.orbitext).
-- **Quick Links** (`com.orbit.extensions.quick-links`) — opens neutral public search, maps, and reference destinations. File: [`quick-links.orbitext`](../examples/orbit-extensions/quick-links.orbitext).
-- **Discord Webhook** (`com.orbit.extensions.discord-webhook`) — schema v2; securely stores one user-provided webhook URL and sends a Routine-configured message through the generic HTTPS template engine. File: [`discord-webhook.orbitext`](../examples/orbit-extensions/discord-webhook.orbitext).
-- **ntfy Notifications** (`com.orbit.extensions.ntfy`) — schema v2; configures a public ntfy server/topic and sends a title, message, and finite priority choice through the same generic engine. File: [`ntfy-notifications.orbitext`](../examples/orbit-extensions/ntfy-notifications.orbitext).
+- **Orbit Web Tools** (`com.orbit.extensions.web-tools`): opens Orbit's public Releases, repository, and Issues pages. File: [`orbit-web-tools.orbitext`](../examples/orbit-extensions/orbit-web-tools.orbitext).
+- **Developer Tools** (`com.orbit.extensions.developer-tools`): opens official Android and GitHub Actions documentation and includes one bounded, unauthenticated HTTPS GET request to GitHub's public Zen endpoint. File: [`developer-tools.orbitext`](../examples/orbit-extensions/developer-tools.orbitext).
+- **Quick Links** (`com.orbit.extensions.quick-links`): opens neutral public search, maps, and reference destinations. File: [`quick-links.orbitext`](../examples/orbit-extensions/quick-links.orbitext).
+- **Discord Webhook** (`com.orbit.extensions.discord-webhook`): schema v2; securely stores one user-provided webhook URL and sends a Routine-configured message through the generic HTTPS template engine. File: [`discord-webhook.orbitext`](../examples/orbit-extensions/discord-webhook.orbitext).
+- **ntfy Notifications** (`com.orbit.extensions.ntfy`): schema v2; configures a public ntfy server/topic and sends a title, message, and finite priority choice through the same generic engine. File: [`ntfy-notifications.orbitext`](../examples/orbit-extensions/ntfy-notifications.orbitext).
 
 These files are not bundled installed defaults, a marketplace, or executable plugins. Current releases package read-only copies so users can start the normal review from **First-party extensions** without manually downloading GitHub files. The repository copies remain available for developers and reference. First-party and external installs use the same parser, validation, review, private storage, Routine catalog, Action Engine, enable/disable/remove behavior, and safe unavailable state. Authors can use the same format to create their own declarative extensions without adding arbitrary code or Orbit-data access.
 

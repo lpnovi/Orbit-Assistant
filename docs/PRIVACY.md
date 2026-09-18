@@ -18,6 +18,8 @@ Orbit can receive screen text and screenshots through its Android assistant sess
 
 Apps recognized or marked as sensitive do not attach screen context automatically and do not provide screenshots. A profile can disable screen access entirely. Screen Selection sends only the region the user chooses as the visual attachment, although any separately enabled screen-text context follows its own setting.
 
+Out of the box, attaching the current screen by default is off: the overlay offers the screen, and it is attached only when the user taps **Use screen** or **Select area**. The user can turn on attach-by-default globally or for specific apps.
+
 Screen context is part of an active assistant or attachment workflow, not a general-purpose continuous screen recording feature. Review the context chip or attachment before sending whenever the screen contains private material.
 
 ## AI providers and network requests
@@ -87,4 +89,4 @@ Official release pages also include standalone SHA-256 files so a downloaded APK
 
 GitHub Issues are public. Do not include tokens, account identifiers, private screen content, notification text, backup files, or unredacted diagnostics in an Issue.
 
-The repository owner still needs to choose and publish a private security-reporting route before a broad public launch. Until that policy exists, use a public Issue only for a sanitized product-level report that contains no sensitive details.
+For a suspected security vulnerability, follow the [Security policy](../SECURITY.md), which describes how to reach the maintainer without posting details publicly. Use a public Issue only for a sanitized product-level report that contains no sensitive details.

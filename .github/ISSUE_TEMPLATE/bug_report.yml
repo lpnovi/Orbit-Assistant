@@ -6,13 +6,13 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping improve Orbit. GitHub Issues are public. Remove account details, notifications, private screen content, tokens, backup files, and other personal information before submitting.
+        Thanks for helping improve Orbit. GitHub Issues are public, so please remove account details, tokens, notification text, private screen content, and other personal information first. Crop or blur screenshots, and never attach Orbit backup files or unredacted Diagnostics output. For a security problem, follow the [Security policy](https://github.com/lpnovi/Orbit-Assistant/blob/main/SECURITY.md) instead.
   - type: input
     id: orbit_version
     attributes:
       label: Orbit version
       description: Find this in Orbit under About & updates.
-      placeholder: 0.7.8.2
+      placeholder: 0.8.0.0
     validations:
       required: true
   - type: dropdown

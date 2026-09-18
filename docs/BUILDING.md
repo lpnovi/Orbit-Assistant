@@ -32,6 +32,22 @@ On macOS or Linux:
 
 The APK is written below `app/build/outputs/apk/debug/`.
 
+Run the unit tests with:
+
+```bash
+./gradlew :app:testDebugUnitTest
+```
+
+On Windows, `BUILD_ORBIT.cmd` (a wrapper around `tools/build_orbit.ps1`) can also produce a debug APK. It locates or downloads JDK 17, the Android SDK packages, and Gradle for you, and writes `Orbit-Assistant-v<version>-debug.apk` to the repository root.
+
+## Building with GitHub Actions (forks)
+
+If you fork Orbit, the **Build Orbit APK** workflow (`.github/workflows/build-apk.yml`) builds a debug APK on every push to `main` and can also be started manually from the **Actions** tab. It installs JDK 17 and the required Android SDK packages itself and needs no secrets. The APK is attached to the workflow run as an artifact.
+
+GitHub disables Actions on new forks until you enable them in your fork's **Actions** tab.
+
+The **Release Orbit APK** workflow runs only for `v*` tags and requires the project's private signing secrets, so it will fail in a fork. That is expected; use the debug workflow instead.
+
 ## Optional Orbit Local component
 
 Orbit Local is a separate APK because its inference runtime and downloaded models are optional. Its native runtime currently targets 64-bit ARM Android devices (`arm64-v8a`). Build its debug APK with:

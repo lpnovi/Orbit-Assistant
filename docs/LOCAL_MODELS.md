@@ -9,7 +9,7 @@ Both are pinned in [`ComponentModelSpec`](../local/src/main/java/com/orbit/assis
 by exact byte count and SHA-256, and are verified before a downloaded file is ever promoted to being
 the model.
 
-## Chat model — since v0.7.7.0
+## Chat model (since v0.7.7.0)
 
 | | |
 | --- | --- |
@@ -25,7 +25,7 @@ the model.
 
 Used for Orbit Local chat, and for nothing else.
 
-## Device-action model — since v0.7.8.0 Beta 1
+## Device-action model (since v0.7.8.0 Beta 1)
 
 | | |
 | --- | --- |
