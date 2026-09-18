@@ -87,9 +87,30 @@ public final class OnboardingState {
 
         for (Map.Entry<String, ?> entry : Prefs.get(c).getAll().entrySet()) {
             String key = entry.getKey();
-            if (!COMPLETED_VERSION.equals(key) && !CURRENT_STEP.equals(key) &&
-                    !STARTED_VERSION.equals(key) && !ASK_TILE_CONFIRMED.equals(key) &&
-                    !STARTER_ROUTINE_ID.equals(key)) return true;
+            if (COMPLETED_VERSION.equals(key) || CURRENT_STEP.equals(key) ||
+                    STARTED_VERSION.equals(key) || ASK_TILE_CONFIRMED.equals(key) ||
+                    STARTER_ROUTINE_ID.equals(key)) continue;
+            if (isSelfInitialized(key, entry.getValue())) continue;
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * A preference Orbit writes by itself on a brand-new install, holding the value it writes.
+     *
+     * <p>Applying the theme, which Chats does before it asks this class anything, stamps the theme
+     * schema and names the untouched appearance "Orbit Default". Counting those as evidence of an
+     * earlier install made every fresh install skip onboarding. Only the exact fresh values are
+     * ignored: a theme the user actually chose or named still identifies an existing install.
+     */
+    private static boolean isSelfInitialized(String key, Object value) {
+        if (Prefs.THEME_SCHEMA.equals(key)) return true;
+        OrbitTheme fresh = OrbitTheme.orbitDefault();
+        if (Prefs.THEME_ID.equals(key)) return fresh.id.equals(value);
+        if (Prefs.THEME_NAME.equals(key)) return fresh.name.equals(value);
+        if (Prefs.THEME_SURFACE.equals(key) || Prefs.THEME_BACKGROUND.equals(key)) {
+            return OrbitTheme.CLASSIC.equals(value);
         }
         return false;
     }

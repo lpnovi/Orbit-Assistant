@@ -842,6 +842,11 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.0.2**: Fixes first-run setup and tablet layout on Chats and Orbit Vault.
+  - A fresh install of Orbit opens the welcome setup again the first time you launch it.
+  - People updating from an earlier Orbit still go straight to their chats, as before.
+  - On tablets, the search bar in Chats now lines up with the New chat button and your chat list.
+  - In Orbit Vault, search and the filters now span the same width as Save to Vault and your saved items.
 - **v0.8.0.1**: A maintenance release that brings Orbit up to Android 16.
   - Orbit now targets Android 16, and Back behaves exactly as before on every screen and in the Side-button overlay.
   - Locked Orbit Pro features now say that Pro isn't available for purchase yet, instead of pointing to a control Stable doesn't have.

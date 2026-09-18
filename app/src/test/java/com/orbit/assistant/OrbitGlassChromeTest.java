@@ -269,16 +269,22 @@ public final class OrbitGlassChromeTest {
         assertEquals(resting, vaultSearch.getElevation(), 0.01f);
     }
 
-    /** And both cap their floating controls at the same width, so a tablet gets one cluster. */
-    @Test public void everyFloatingControlSharesOneMaximumWidth() {
-        assertEquals(OrbitGlass.MAX_CONTROL_WIDTH_DP, OrbitVaultActivity.FILTERS_MAX_WIDTH_DP);
+    /**
+     * Both screens take their floating controls' width from one rule: the page's content column.
+     * The geometry at phone and tablet sizes is checked in FloatingControlWidthTest.
+     */
+    @Test public void everyFloatingControlSharesOneWidthRule() {
         assertFalse("the Vault must not keep its own cap arithmetic",
                 source("OrbitVaultActivity").contains("filterBarWidth"));
+        for (String screen : new String[]{"MainActivity", "OrbitVaultActivity"}) {
+            assertFalse(screen + " must not cap a floating control on its own",
+                    source(screen).contains("MAX_WIDTH_DP"));
+        }
         for (View search : new View[]{
                 chatsScreen().searchSurfaceForTest(),
                 vaultScreen().searchSurfaceForTest()}) {
-            assertEquals("on a phone a floating control is simply the page width",
-                    OrbitGlass.controlWidth(context), search.getLayoutParams().width);
+            assertEquals("a floating control spans its page's content column",
+                    OrbitGlass.controlWidth(), search.getLayoutParams().width);
         }
     }
 

@@ -151,20 +151,6 @@ public final class OrbitVaultActivity extends Activity {
     /** What the spoken swipe actions call one Vault card. */
     static final String SWIPE_SUBJECT = "saved item";
 
-    /**
-     * How wide a floating control on this page is allowed to become.
-     *
-     * <p>Never reached on a phone, where a control is simply the width of the screen. A Tab S9 Plus
-     * does reach it, and controls stretched across a whole tablet stop reading as a compact
-     * question and start reading as a toolbar.
-     *
-     * <p>Beta 5 capped the selector row and left the search field full width, which made the
-     * control cluster two different widths on a tablet and one width on a phone. The cap now comes
-     * from {@link OrbitGlass}, is the same number for every floating control on both this screen
-     * and Chats, and is where a future Orbit list screen will read it from too.
-     */
-    static final int FILTERS_MAX_WIDTH_DP = OrbitGlass.MAX_CONTROL_WIDTH_DP;
-
     /** How long a swiped-away item can be taken back before the deletion is carried out. */
     private static final long UNDO_WINDOW_MS = 5200L;
 
@@ -336,7 +322,7 @@ public final class OrbitVaultActivity extends Activity {
             @Override public void afterTextChanged(Editable s) {}
         });
         LinearLayout.LayoutParams searchLp = new LinearLayout.LayoutParams(
-                OrbitGlass.controlWidth(this), UiKit.dp(this, 46));
+                OrbitGlass.controlWidth(), UiKit.dp(this, 46));
         searchLp.setMargins(0, 0, 0, UiKit.dp(this, OrbitGlass.CONTROL_GAP_DP));
         root.addView(searchInput, searchLp);
 
@@ -351,7 +337,7 @@ public final class OrbitVaultActivity extends Activity {
         filterBar.setOrientation(LinearLayout.HORIZONTAL);
         filterBar.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams filterLp = new LinearLayout.LayoutParams(
-                OrbitGlass.controlWidth(this), ViewGroup.LayoutParams.WRAP_CONTENT);
+                OrbitGlass.controlWidth(), ViewGroup.LayoutParams.WRAP_CONTENT);
         filterLp.setMargins(0, 0, 0, UiKit.dp(this, OrbitGlass.CHROME_GAP_DP));
         root.addView(filterBar, filterLp);
 

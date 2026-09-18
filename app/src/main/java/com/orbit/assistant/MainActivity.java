@@ -440,7 +440,7 @@ public class MainActivity extends Activity {
         search.setPadding(UiKit.dp(this, 7), 0, 0, 0);
         searchBox.addView(search, new LinearLayout.LayoutParams(0, UiKit.dp(this, 48), 1));
         LinearLayout.LayoutParams searchLp = new LinearLayout.LayoutParams(
-                OrbitGlass.controlWidth(this), UiKit.dp(this, 52));
+                OrbitGlass.controlWidth(), UiKit.dp(this, 52));
         searchLp.bottomMargin = UiKit.dp(this, OrbitGlass.CHROME_GAP_DP);
         root.addView(searchBox, searchLp);
 

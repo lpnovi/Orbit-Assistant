@@ -256,7 +256,7 @@ Rules:
 4. **Never upload the current tree as 796.** The API 36 build differs from the published 796, and the first Play candidate is 0.8.0.1 / 797.
 5. Play may lag behind GitHub, or skip a GitHub-only release, without harming anyone: each edition's users only ever receive updates from their own store.
 
-**Decided:** the next distributable candidate is `versionName 0.8.0.1`, `versionCode 797`, for both editions. The tree is now at 0.8.0.1 / 797. Nothing is tagged or published.
+**Decided:** the first distributable candidate was `versionName 0.8.0.1`, `versionCode 797`, for both editions, uploaded to Play Internal Testing. The tree is now at 0.8.0.2 / 798. Nothing is tagged or published.
 
 ### 9.1 Moving between the GitHub and Play editions
 

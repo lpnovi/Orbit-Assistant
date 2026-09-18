@@ -100,8 +100,6 @@ public final class OrbitGlass {
     public static final float CHROME_GAP_DP = 6f;
     /** Padding inside the scrolled column, so the first heading rests clear of the scrim. */
     public static final float FEED_INSET_DP = 18f;
-    /** A floating control stops widening past this, so a tablet does not get an absurd search box. */
-    public static final int MAX_CONTROL_WIDTH_DP = 520;
 
     // The shares the shipped treatment is built from, before Orbit Pro scales any of them. These were
     // private constants with no reason to be anything else until Theme Studio Pro gave a person a way
@@ -813,15 +811,17 @@ public final class OrbitGlass {
     // ---- how wide a floating control is allowed to be ---------------------------------------------
 
     /**
-     * The whole width on a phone, capped on a tablet.
+     * The page's content column: the same bounds as the primary button above the controls and the
+     * list beneath them, inside the page's padding and window insets.
      *
-     * <p>Left-aligned rather than centred when it is capped, so a control starts where the page's
-     * content starts instead of floating in the middle away from everything it belongs to.
+     * <p>Until 0.8.0.2 this was capped at 520dp once the display was wider than that. On a real
+     * tablet that left Search and the Vault's selectors as a half-width island between a
+     * full-width button and a full-width list, and the cap measured the whole display rather than
+     * the window, so split screen got it wrong too. Every screen using floating glass lays its
+     * controls over its own content column, so the column is the width.
      */
-    public static int controlWidth(Context c) {
-        int available = c.getResources().getDisplayMetrics().widthPixels;
-        int capped = UiKit.dp(c, MAX_CONTROL_WIDTH_DP);
-        return capped >= available ? ViewGroup.LayoutParams.MATCH_PARENT : capped;
+    public static int controlWidth() {
+        return ViewGroup.LayoutParams.MATCH_PARENT;
     }
 
     // ---- scroll-linked depth ----------------------------------------------------------------------

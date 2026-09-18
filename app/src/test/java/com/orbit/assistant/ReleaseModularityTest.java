@@ -185,13 +185,13 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * 0.8.0.1 is a Stable maintenance release that follows 0.8.0.0 directly.
+     * 0.8.0.2 is a Stable fix release that follows 0.8.0.1 directly.
      *
      * <p>It must carry Stable metadata rather than prerelease metadata, and the changelog entry the
      * release workflow builds its notes from must exist for the Stable version name. A Stable
      * release build never offers the Pro Preview override, so every Pro feature resolves to Free.
      */
-    @Test public void thisReleaseIsTheAndroid16MaintenanceStable() {
+    @Test public void thisReleaseIsTheFirstRunAndTabletFixStable() {
         assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
                 OrbitVersion.isStable(BuildConfig.VERSION_NAME));
         assertFalse(OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
