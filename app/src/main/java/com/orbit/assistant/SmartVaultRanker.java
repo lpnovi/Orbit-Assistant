@@ -57,6 +57,8 @@ final class SmartVaultRanker {
         final String haystackLower;
         /** Text Orbit derived - recognised in a picture, read from a page - lower-cased. */
         final String derivedLower;
+        /** The same, with every run of whitespace one space, so a phrase can span OCR lines. */
+        final String derivedFlatLower;
         final String derivedOriginal;
         final Map<String, Integer> counts;
         final Set<String> titleTerms;
@@ -75,6 +77,7 @@ final class SmartVaultRanker {
             this.haystackLower = haystack == null ? "" : haystack.toLowerCase(Locale.ROOT);
             this.derivedOriginal = derived == null ? "" : derived;
             this.derivedLower = derivedOriginal.toLowerCase(Locale.ROOT);
+            this.derivedFlatLower = derivedLower.replaceAll("\\s+", " ");
             List<String> terms = SmartVaultText.terms(this.haystackLower + "\n" + derivedLower);
             this.counts = SmartVaultText.counts(terms);
             this.length = Math.max(1, terms.size());
@@ -94,15 +97,26 @@ final class SmartVaultRanker {
         final Reason reason;
         /** A short excerpt explaining the match, or empty when the card already shows why. */
         final String excerpt;
+        /**
+         * True when {@link #excerpt} contains the query exactly as typed. A result found by its
+         * words, or by meaning, never claims that.
+         */
+        final boolean exact;
         final float meaning;
         final int bestPassage;
 
         Result(String id, double score, Reason reason, String excerpt, float meaning,
                int bestPassage) {
+            this(id, score, reason, excerpt, false, meaning, bestPassage);
+        }
+
+        Result(String id, double score, Reason reason, String excerpt, boolean exact,
+               float meaning, int bestPassage) {
             this.id = id;
             this.score = score;
             this.reason = reason;
             this.excerpt = excerpt == null ? "" : excerpt;
+            this.exact = exact && !this.excerpt.isEmpty();
             this.meaning = meaning;
             this.bestPassage = bestPassage;
         }
@@ -118,6 +132,7 @@ final class SmartVaultRanker {
         List<Result> out = new ArrayList<>();
         String q = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
         if (q.isEmpty() || docs == null || docs.isEmpty()) return out;
+        String qFlat = q.replaceAll("\\s+", " ");
 
         List<String> qTerms = unique(SmartVaultText.terms(q));
         // The last word is still being typed unless the query ends in a space, so it also matches
@@ -162,7 +177,7 @@ final class SmartVaultRanker {
         for (int i = 0; i < docs.size(); i++) {
             Doc d = docs.get(i);
             boolean literal = d.haystackLower.contains(q);
-            boolean literalDerived = !literal && d.derivedLower.contains(q);
+            boolean literalDerived = !literal && d.derivedFlatLower.contains(qFlat);
             double bm25 = 0;
             int matched = 0;
             int titleHits = 0;
@@ -203,16 +218,19 @@ final class SmartVaultRanker {
             if (meaning[i] > MEANING_FLOOR) score += 300 * (meaning[i] - MEANING_FLOOR);
 
             String excerpt = "";
+            boolean exact = false;
             if (reason == Reason.RECOGNIZED) {
-                List<String> needles = new ArrayList<>();
-                needles.add(q);
-                needles.addAll(hitTerms);
-                excerpt = SmartVaultText.excerpt(d.derivedOriginal, needles, 120);
+                // The passage holding the query itself, or else the one where most of its words
+                // meet, rather than wherever the first of them happens to appear.
+                SmartVaultText.Match match =
+                        SmartVaultText.matchExcerpt(d.derivedOriginal, q, hitTerms, 120);
+                excerpt = match.excerpt;
+                exact = match.exact;
             } else if (reason == Reason.MEANING && bestPassage[i] >= 0
                     && bestPassage[i] < d.passages.size()) {
                 excerpt = clip(d.passages.get(bestPassage[i]), 120);
             }
-            out.add(new Result(d.id, score, reason, excerpt, meaning[i], bestPassage[i]));
+            out.add(new Result(d.id, score, reason, excerpt, exact, meaning[i], bestPassage[i]));
         }
 
         Map<String, Long> created = new HashMap<>();

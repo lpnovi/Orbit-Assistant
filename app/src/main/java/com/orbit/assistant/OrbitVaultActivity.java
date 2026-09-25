@@ -140,6 +140,8 @@ public final class OrbitVaultActivity extends Activity {
     /** Smart Vault's words on this screen (v0.8.1.0-beta.1). */
     static final String BEST_MATCHES_HEADING = "BEST MATCHES";
     static final String ASK_VAULT_LABEL = "Ask Vault";
+    /** The header shortcut's accessible name (v0.8.1.0-beta.2). */
+    static final String SMART_VAULT_SHORTCUT = "Smart Vault settings";
     static final String INTRO_TITLE = "New: Smart Vault";
     static final String INTRO_BODY = "Find saved things by what they mean, search text inside "
             + "screenshots, get suggested titles and topics, and ask questions about what you "
@@ -148,7 +150,46 @@ public final class OrbitVaultActivity extends Activity {
     static final String FULL_TITLE = "Your Vault is full";
     /** Why a result matched, under its preview, when the card does not already show it. */
     static final String MATCH_RECOGNIZED = "Found in text Orbit read";
+    /** Some of the words, not the phrase as typed (v0.8.1.0-beta.2). */
+    static final String MATCH_RECOGNIZED_WORDS = "Words found in text Orbit read";
     static final String MATCH_MEANING = "Similar meaning";
+
+    /**
+     * The line under a Smart Vault result saying why it is there, with the words that matched in
+     * bold. A meaning result quotes the passage it resembles but bolds nothing, because none of
+     * the query's words were found there and bold would say they were.
+     */
+    static CharSequence matchLine(SmartVaultRanker.Result reason, String query) {
+        String label;
+        if (reason.reason == SmartVaultRanker.Reason.MEANING) label = MATCH_MEANING;
+        else label = reason.exact ? MATCH_RECOGNIZED : MATCH_RECOGNIZED_WORDS;
+        if (reason.excerpt.isEmpty()) return label;
+        android.text.SpannableStringBuilder line =
+                new android.text.SpannableStringBuilder(label + ": ");
+        int start = line.length();
+        line.append(reason.excerpt);
+        if (reason.reason == SmartVaultRanker.Reason.MEANING) return line;
+        String lower = reason.excerpt.toLowerCase(java.util.Locale.ROOT);
+        List<String> needles = new ArrayList<>();
+        String phrase = query == null ? ""
+                : query.replaceAll("\\s+", " ").trim().toLowerCase(java.util.Locale.ROOT);
+        if (reason.exact) needles.add(phrase);
+        else needles.addAll(SmartVaultText.terms(phrase));
+        // The excerpt is already whitespace-flattened, so offsets agree.
+        String flatLower = lower.replaceAll("\\s+", " ");
+        for (String needle : needles) {
+            if (needle.length() < 2) continue;
+            for (int at = flatLower.indexOf(needle); at >= 0;
+                 at = flatLower.indexOf(needle, at + needle.length())) {
+                boolean wordStart = at == 0 || !Character.isLetterOrDigit(flatLower.charAt(at - 1));
+                if (!reason.exact && !wordStart) continue;
+                line.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+                        start + at, start + at + needle.length(),
+                        android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+        }
+        return line;
+    }
 
     static final String ACTION_PIN = "Pin";
     static final String ACTION_UNPIN = "Unpin";
@@ -300,6 +341,15 @@ public final class OrbitVaultActivity extends Activity {
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
         titleLp.setMargins(UiKit.dp(this, 14), 0, 0, 0);
         top.addView(titles, titleLp);
+
+        // Smart Vault's own settings, one tap from the Vault (v0.8.1.0-beta.2). Beside the sort
+        // control rather than in its menu, because sorting and Smart Vault are different
+        // questions. Settings keeps its own entry; this is a shortcut, not a move.
+        ImageButton smart = iconButton(R.drawable.ic_deck_sparkle, SMART_VAULT_SHORTCUT);
+        smart.setOnClickListener(v -> startActivity(new Intent(this, SmartVaultActivity.class)));
+        top.addView(smart, new LinearLayout.LayoutParams(UiKit.dp(this, 48), UiKit.dp(this, 48)));
+        View gap = new View(this);
+        top.addView(gap, new LinearLayout.LayoutParams(UiKit.dp(this, 8), 1));
 
         ImageButton sort = iconButton(R.drawable.ic_tune, "Sort saved items");
         sort.setOnClickListener(this::showSortMenu);
@@ -1111,10 +1161,9 @@ public final class OrbitVaultActivity extends Activity {
         SmartVaultRanker.Result reason = matchReasons == null ? null : matchReasons.get(item.id);
         if (reason != null && (reason.reason == SmartVaultRanker.Reason.RECOGNIZED
                 || reason.reason == SmartVaultRanker.Reason.MEANING)) {
-            String label = reason.reason == SmartVaultRanker.Reason.RECOGNIZED
-                    ? MATCH_RECOGNIZED : MATCH_MEANING;
-            TextView why = UiKit.text(this, reason.excerpt.isEmpty() ? label
-                    : label + ": " + reason.excerpt, 12, UiKit.accent(this), false);
+            TextView why = UiKit.text(this, "", 12, UiKit.accent(this), false);
+            why.setText(matchLine(reason, searchInput == null ? ""
+                    : searchInput.getText().toString()));
             why.setMaxLines(2);
             why.setEllipsize(android.text.TextUtils.TruncateAt.END);
             why.setPadding(0, UiKit.dp(this, 6), 0, 0);

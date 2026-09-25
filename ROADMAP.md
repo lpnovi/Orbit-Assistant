@@ -520,6 +520,18 @@ explicit, counted request.
   separate SQLite database that can be deleted and rebuilt at any time, and background results
   are compare-and-set against the item they were computed from
 
+#### `0.8.1.0-beta.2` - Smart Vault polish
+
+- **Consistent switches.** Smart Vault's switches animate and tick like every Orbit setting; the
+  page updates in place instead of rebuilding under the finger
+- **Model download progress.** A small accent progress ring with a percentage, and honest
+  Preparing, Waiting, Failed and Ready states
+- **Snippets that explain the match.** A result found in a picture shows the passage holding the
+  query, or where most of its words meet, and says so only when the exact phrase is there
+- **Vault shortcut** to Smart Vault settings in the Vault header; the Settings entry stays
+- **Regrouped settings page**: Search, Capture, AI suggestions, Saved items and Manage, with the
+  longer technical detail under Privacy details
+
 #### Still ahead in the 0.8.1 line
 
 - Suggestions from Orbit Local and the Relay provider (ChatGPT only in Beta 1)

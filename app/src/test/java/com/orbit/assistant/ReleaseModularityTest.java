@@ -185,13 +185,13 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * 0.8.1.0-beta.1 is the first Smart Vault Beta, on the way to Orbit 0.9.
+     * 0.8.1.0-beta.2 is the second Smart Vault Beta, on the way to Orbit 0.9.
      *
      * <p>It must carry Beta metadata, so the release workflow publishes it as a prerelease, and the
      * changelog entry the workflow builds its notes from must exist for the exact Beta version
      * name.
      */
-    @Test public void thisReleaseIsTheFirstSmartVaultBeta() {
+    @Test public void thisReleaseIsTheSecondSmartVaultBeta() {
         assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
                 OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
         assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));

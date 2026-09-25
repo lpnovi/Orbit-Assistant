@@ -842,6 +842,12 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.1.0-beta.2**: Smart Vault polish: smoother controls, clearer search results and a tidier settings page.
+  - Smart Vault's switches now slide and give the same light haptic tick as every other Orbit setting.
+  - The search model download shows a small progress ring with its percentage, and says when it is preparing, waiting or ready.
+  - Results found in a screenshot now show the passage that actually matched, with your words in bold.
+  - Open Smart Vault settings straight from the Vault with the new sparkle button beside Sort.
+  - The Smart Vault settings page is grouped into short sections, with fuller privacy details one tap away.
 - **v0.8.1.0-beta.1**: The first public Beta on the way to Orbit 0.9, introducing Smart Vault: free, optional, and off until you turn it on.
   - Vault search can rank by relevance, find words inside saved screenshots, and match by meaning with an on-device model you choose to download.
   - Orbit can suggest a title, summary and topics for saved items, and every suggestion can be kept, edited or removed. Your own titles and notes always win.

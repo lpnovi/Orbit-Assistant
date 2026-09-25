@@ -1,5 +1,6 @@
 package com.orbit.assistant;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -108,10 +109,36 @@ public final class ReleaseWorkflowAuditTest {
         contains(yaml, "\"${prerelease_args[@]}\"", "and must be passed to the publish command");
     }
 
-    @Test public void betaReleasesAreNotDrafts() {
+    /**
+     * A release is a draft only while its files upload, then published: a Beta must end as a
+     * published prerelease, never a draft left behind (v0.8.1.0-beta.2 made the uploads
+     * sequential, which is what gh itself does in parallel when handed files).
+     */
+    @Test public void aReleaseIsOnlyADraftWhileItsFilesUpload() {
         String yaml = workflow();
-        assertTrue("a Beta release must be a published prerelease, never a draft",
-                !yaml.contains("--draft"));
+        int create = yaml.indexOf("gh release create \"${RELEASE_TAG}\"");
+        int upload = yaml.indexOf("gh release upload \"${RELEASE_TAG}\"");
+        int publish = yaml.indexOf("gh release edit \"${RELEASE_TAG}\" --repo \"${GITHUB_REPOSITORY}\" --draft=false");
+        assertTrue("the release is created", create >= 0);
+        assertTrue("then its files are uploaded", upload > create);
+        assertTrue("then it is published, never left as a draft", publish > upload);
+        assertEquals("--draft appears once, on the create", yaml.indexOf("--draft \\"),
+                yaml.lastIndexOf("--draft \\"));
+    }
+
+    /** The files arrive, and so are listed, in the order Stable releases have been read in. */
+    @Test public void releaseFilesAreUploadedInTheEstablishedOrder() {
+        String yaml = workflow();
+        int loop = yaml.indexOf("for asset in");
+        assertTrue(loop >= 0);
+        String[] order = {"apk_path", "manifest_path", "checksum_path", "component_path",
+                "component_checksum_path"};
+        int at = loop;
+        for (String name : order) {
+            int next = yaml.indexOf("steps.verify.outputs." + name + " }}", at);
+            assertTrue(name + " follows the one before it", next > at);
+            at = next;
+        }
     }
 
     @Test public void theReleaseTitleUsesTheReadableBuildName() {

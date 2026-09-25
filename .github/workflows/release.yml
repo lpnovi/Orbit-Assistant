@@ -379,17 +379,29 @@ jobs:
           if [[ "${{ steps.source.outputs.prerelease_flag }}" == "true" ]]; then
             prerelease_args+=(--prerelease)
           fi
+          # The same three steps gh performs when given files - an unpublished draft, the uploads,
+          # then publish - with the uploads made one at a time. gh uploads in parallel, and GitHub
+          # lists assets in the order they arrived, so every release came out in a different order.
+          # Sequential uploads keep the order releases have always been read in: the APK, the
+          # update manifest, its checksum, then Orbit Local and its checksum. Nobody can see the
+          # release until every file is attached, and a failed upload leaves an unpublished draft
+          # rather than a public release with missing files.
           gh release create "${RELEASE_TAG}" \
-            "${{ steps.verify.outputs.apk_path }}" \
-            "${{ steps.verify.outputs.checksum_path }}" \
-            "${{ steps.verify.outputs.component_path }}" \
-            "${{ steps.verify.outputs.component_checksum_path }}" \
-            "${{ steps.verify.outputs.manifest_path }}" \
             --repo "${GITHUB_REPOSITORY}" \
             --verify-tag \
+            --draft \
             --title "Orbit Assistant v${{ steps.source.outputs.display_name }}" \
             --notes-file "${{ steps.notes.outputs.notes_path }}" \
             "${prerelease_args[@]}"
+          for asset in \
+            "${{ steps.verify.outputs.apk_path }}" \
+            "${{ steps.verify.outputs.manifest_path }}" \
+            "${{ steps.verify.outputs.checksum_path }}" \
+            "${{ steps.verify.outputs.component_path }}" \
+            "${{ steps.verify.outputs.component_checksum_path }}"; do
+            gh release upload "${RELEASE_TAG}" "${asset}" --repo "${GITHUB_REPOSITORY}"
+          done
+          gh release edit "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --draft=false
 
       - name: Remove temporary release keystore
         if: always()

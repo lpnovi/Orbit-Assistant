@@ -71,9 +71,25 @@ final class SmartVaultModel {
     private static final String KEY_DONE = "done_bytes";
     private static final String KEY_ERROR = "error";
     private static final String KEY_RUNNING = "running";
+    /** When the download was asked for, and when the worker last showed signs of life. */
+    private static final String KEY_REQUESTED_AT = "requested_at";
+    private static final String KEY_HEARTBEAT = "heartbeat";
+    /** Set when Android stopped the worker or it is retrying, cleared when it runs again. */
+    private static final String KEY_WAITING = "waiting";
     private static final String VERIFIED_MARKER = ".verified";
 
     enum State { MISSING, DOWNLOADING, READY, FAILED }
+
+    /**
+     * What the Smart Vault screen says about the model (v0.8.1.0-beta.2). A finer view of
+     * {@link State#DOWNLOADING}: asked for but not started, moving, or waiting to continue.
+     */
+    enum Phase { MISSING, PREPARING, DOWNLOADING, WAITING, FAILED, READY }
+
+    /** Before the worker has started, how long "Preparing" is believed. */
+    static final long START_GRACE_MS = 20_000L;
+    /** A running download that has not reported for this long is waiting, not downloading. */
+    static final long STALL_MS = 30_000L;
 
     private static SmartVaultEmbedder embedder;
 
@@ -104,6 +120,74 @@ final class SmartVaultModel {
         return State.MISSING;
     }
 
+    static Phase phase(Context c) {
+        return phase(c, System.currentTimeMillis());
+    }
+
+    /**
+     * The model's state as the user should read it at {@code now}.
+     *
+     * <p>Only the worker's own reports count as "downloading". A download Android paused, a worker
+     * waiting for a connection, or one whose process was closed mid-way all stop reporting, and
+     * after {@link #STALL_MS} the screen says it is waiting rather than claiming progress that is
+     * not happening. WorkManager keeps the job, so it continues by itself.
+     */
+    static Phase phase(Context c, long now) {
+        State state = state(c);
+        if (state == State.READY) return Phase.READY;
+        if (state == State.FAILED) return Phase.FAILED;
+        if (state == State.MISSING) return Phase.MISSING;
+        SharedPreferences p = prefs(c);
+        long heartbeat = p.getLong(KEY_HEARTBEAT, 0L);
+        if (heartbeat <= 0L) {
+            long requested = p.getLong(KEY_REQUESTED_AT, 0L);
+            // No request time means a download begun by an older Orbit: say it is waiting.
+            return requested <= 0L || now - requested > START_GRACE_MS
+                    ? Phase.WAITING : Phase.PREPARING;
+        }
+        if (p.getBoolean(KEY_WAITING, false) || now - heartbeat > STALL_MS) return Phase.WAITING;
+        return p.getLong(KEY_DONE, 0L) <= 0L ? Phase.PREPARING : Phase.DOWNLOADING;
+    }
+
+    /** The worker is alive and has {@code done} bytes verified or received. */
+    static void recordProgress(Context c, long done, long now) {
+        prefs(c).edit().putBoolean(KEY_WAITING, false).putLong(KEY_DONE, done)
+                .putLong(KEY_HEARTBEAT, now).apply();
+    }
+
+    /** Android paused the worker or it is retrying; the job is kept and continues later. */
+    static void markWaiting(Context c) {
+        prefs(c).edit().putBoolean(KEY_WAITING, true).apply();
+    }
+
+    /** Bytes received so far, for "12 of 30 MB". */
+    static long doneBytes(Context c) {
+        return Math.max(0L, Math.min(TOTAL_BYTES, prefs(c).getLong(KEY_DONE, 0L)));
+    }
+
+    /**
+     * Makes sure a download the screen believes is running really has a job behind it. Keeps an
+     * existing job untouched, so this never restarts one that is already going.
+     */
+    static void ensureScheduled(Context c) {
+        if (state(c) != State.DOWNLOADING) return;
+        try {
+            WorkManager.getInstance(c.getApplicationContext())
+                    .enqueueUniqueWork(UNIQUE_WORK, ExistingWorkPolicy.KEEP, downloadRequest());
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static OneTimeWorkRequest downloadRequest() {
+        Constraints constraints = new Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .setRequiresStorageNotLow(true)
+                .build();
+        return new OneTimeWorkRequest.Builder(DownloadWorker.class)
+                .setConstraints(constraints)
+                .build();
+    }
+
     static String error(Context c) {
         return prefs(c).getString(KEY_ERROR, "");
     }
@@ -122,17 +206,11 @@ final class SmartVaultModel {
     static void requestDownload(Context c) {
         if (isReady(c)) return;
         prefs(c).edit().putBoolean(KEY_RUNNING, true).putString(KEY_ERROR, "")
-                .putLong(KEY_DONE, 0L).apply();
+                .putLong(KEY_DONE, 0L).putLong(KEY_HEARTBEAT, 0L).putBoolean(KEY_WAITING, false)
+                .putLong(KEY_REQUESTED_AT, System.currentTimeMillis()).apply();
         try {
-            Constraints constraints = new Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
-                    .setRequiresStorageNotLow(true)
-                    .build();
-            OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(DownloadWorker.class)
-                    .setConstraints(constraints)
-                    .build();
             WorkManager.getInstance(c.getApplicationContext())
-                    .enqueueUniqueWork(UNIQUE_WORK, ExistingWorkPolicy.KEEP, request);
+                    .enqueueUniqueWork(UNIQUE_WORK, ExistingWorkPolicy.KEEP, downloadRequest());
         } catch (Exception e) {
             prefs(c).edit().putBoolean(KEY_RUNNING, false)
                     .putString(KEY_ERROR, "Orbit could not schedule the download.").apply();
@@ -189,6 +267,7 @@ final class SmartVaultModel {
             File target = new File(d, asset.name);
             if (target.length() == asset.size && sha256(target).equalsIgnoreCase(asset.sha256)) {
                 done += asset.size;
+                if (listener != null) listener.onProgress(done);
                 continue;
             }
             File part = new File(d, asset.name + ".part");
@@ -208,6 +287,8 @@ final class SmartVaultModel {
             target.delete();
             if (!part.renameTo(target)) return "Orbit could not store the model.";
             done += asset.size;
+            // The small vocabulary finishes below the reporting step, so report each file whole.
+            if (listener != null) listener.onProgress(done);
         }
         try {
             if (!new File(d, VERIFIED_MARKER).createNewFile() && !new File(d, VERIFIED_MARKER).exists()) {
@@ -295,7 +376,10 @@ final class SmartVaultModel {
                 prefs(c).edit().putBoolean(KEY_RUNNING, false).apply();
                 return Result.success();
             }
-            String error = download(c, done -> prefs(c).edit().putLong(KEY_DONE, done).apply());
+            // A fresh start: progress is re-reported from what is already verified, so a download
+            // resumed after Orbit was closed never shows the previous run's figure as current.
+            recordProgress(c, 0L, System.currentTimeMillis());
+            String error = download(c, done -> recordProgress(c, done, System.currentTimeMillis()));
             if (error.isEmpty()) {
                 prefs(c).edit().putBoolean(KEY_RUNNING, false).putString(KEY_ERROR, "")
                         .putLong(KEY_DONE, TOTAL_BYTES).apply();
@@ -303,10 +387,18 @@ final class SmartVaultModel {
                 return Result.success();
             }
             if (getRunAttemptCount() < 3 && error.startsWith("No connection")) {
+                markWaiting(c);
                 return Result.retry();
             }
             prefs(c).edit().putBoolean(KEY_RUNNING, false).putString(KEY_ERROR, error).apply();
             return Result.failure();
+        }
+
+        @Override public void onStopped() {
+            // Android paused the job (the connection went, or storage ran low). It is kept and
+            // continues later, so the screen says it is waiting rather than downloading.
+            markWaiting(getApplicationContext());
+            super.onStopped();
         }
     }
 }
