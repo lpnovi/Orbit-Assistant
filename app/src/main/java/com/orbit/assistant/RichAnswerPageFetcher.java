@@ -166,15 +166,45 @@ final class RichAnswerPageFetcher {
     }
 
     private static PageResult fetchOverNetwork(String pageUrl) {
+        return fetchMarkup(pageUrl, PAGE_PARSER);
+    }
+
+    /**
+     * What a caller does with a page's markup, or with the reason there is none.
+     *
+     * <p>The one network path is shared: Rich Answers turns markup into pictures, and Smart Vault
+     * (v0.8.1.0-beta.1) turns it into readable text for a saved link. Both get exactly the same URL
+     * policy, public-host check on every hop, redirect revalidation and byte ceiling.
+     */
+    interface MarkupParser<T> {
+        T parse(String html, String finalUrl, int status, String contentType, int redirects);
+
+        T failed(RichAnswerTrace.Reason reason, String url, int status, String contentType,
+                 int redirects);
+    }
+
+    private static final MarkupParser<PageResult> PAGE_PARSER = new MarkupParser<PageResult>() {
+        @Override public PageResult parse(String html, String finalUrl, int status,
+                                          String contentType, int redirects) {
+            return RichAnswerPageFetcher.parse(html, finalUrl, status, contentType, redirects);
+        }
+
+        @Override public PageResult failed(RichAnswerTrace.Reason reason, String url, int status,
+                                           String contentType, int redirects) {
+            return PageResult.failed(reason, url, status, contentType, redirects);
+        }
+    };
+
+    static <T> T fetchMarkup(String pageUrl, MarkupParser<T> parser) {
         String current = pageUrl == null ? "" : pageUrl.trim();
         if (!RichAnswerUrlPolicy.isFetchablePageUrl(current)) {
-            return PageResult.failed(RichAnswerTrace.Reason.UNSAFE_URL, current, 0, "", 0);
+            return parser.failed(RichAnswerTrace.Reason.UNSAFE_URL, current, 0, "", 0);
         }
         for (int redirect = 0; redirect <= RichAnswerUrlPolicy.MAX_REDIRECTS; redirect++) {
             // Every hop, not just the first. What a name resolved to a moment ago is not what the
             // next hop resolves to, and one check at the top is what an SSRF chain relies on.
             if (!RichAnswerUrlPolicy.resolvesToPublicHost(current)) {
-                return PageResult.failed(RichAnswerTrace.Reason.PRIVATE_HOST, current, 0, "", redirect);
+                return parser.failed(RichAnswerTrace.Reason.PRIVATE_HOST, current, 0, "", redirect);
             }
             HttpURLConnection connection = null;
             try {
@@ -184,7 +214,7 @@ final class RichAnswerPageFetcher {
                 // and what the policy judges must never be two different strings.
                 String request = RichAnswerUrlPolicy.normalizedForRequest(current);
                 if (request.isEmpty()) {
-                    return PageResult.failed(RichAnswerTrace.Reason.UNSAFE_URL, current, 0, "", redirect);
+                    return parser.failed(RichAnswerTrace.Reason.UNSAFE_URL, current, 0, "", redirect);
                 }
                 connection = (HttpURLConnection) URI.create(request).toURL().openConnection();
                 connection.setInstanceFollowRedirects(false);
@@ -213,31 +243,31 @@ final class RichAnswerPageFetcher {
                     String next = RichAnswerUrlPolicy.redirectTarget(
                             current, connection.getHeaderField("Location"));
                     if (next.isEmpty()) {
-                        return PageResult.failed(
+                        return parser.failed(
                                 RichAnswerTrace.Reason.REDIRECT_REJECTED, current, status, type, redirect);
                     }
                     current = next;
                     continue;
                 }
                 if (status < 200 || status >= 300) {
-                    return PageResult.failed(
+                    return parser.failed(
                             RichAnswerTrace.Reason.HTTP_ERROR, current, status, type, redirect);
                 }
                 if (!looksLikeHtml(type)) {
-                    return PageResult.failed(
+                    return parser.failed(
                             RichAnswerTrace.Reason.NOT_HTML, current, status, type, redirect);
                 }
                 String html = readBounded(connection.getInputStream(), MAX_BYTES);
-                return parse(html, current, status, type, redirect);
+                return parser.parse(html, current, status, type, redirect);
             } catch (java.net.SocketTimeoutException e) {
-                return PageResult.failed(RichAnswerTrace.Reason.TIMEOUT, current, 0, "", redirect);
+                return parser.failed(RichAnswerTrace.Reason.TIMEOUT, current, 0, "", redirect);
             } catch (Exception ignored) {
-                return PageResult.failed(RichAnswerTrace.Reason.NETWORK, current, 0, "", redirect);
+                return parser.failed(RichAnswerTrace.Reason.NETWORK, current, 0, "", redirect);
             } finally {
                 if (connection != null) connection.disconnect();
             }
         }
-        return PageResult.failed(RichAnswerTrace.Reason.REDIRECT_REJECTED, current, 0, "",
+        return parser.failed(RichAnswerTrace.Reason.REDIRECT_REJECTED, current, 0, "",
                 RichAnswerUrlPolicy.MAX_REDIRECTS);
     }
 

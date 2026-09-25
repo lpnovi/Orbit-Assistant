@@ -358,7 +358,8 @@ public final class SettingsSearchIndex {
         out.add(new Entry("Orbit Vault",
                 "The things you have chosen to keep.",
                 S_DATA, "data", KEY_VAULT,
-                "vault", "saved", "saved stuff", "keep", "collection", "clips", "bookmarks"));
+                "vault", "saved", "saved stuff", "keep", "collection", "clips", "bookmarks",
+                "smart vault", "text in pictures", "search by meaning", "topics"));
         out.add(new Entry("Weather",
                 "Default weather location and units.",
                 S_DATA, "data", KEY_WEATHER,

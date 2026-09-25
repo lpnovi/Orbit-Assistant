@@ -88,6 +88,7 @@ public final class OrbitNavigation {
         // "I changed my mind", which costs nothing: the message being written is still there,
         // untouched, because choosing nothing attaches nothing.
         put(OrbitVaultPickerActivity.class, Policy.PREDICTIVE, "Attach from Vault");
+        put(SmartVaultActivity.class, Policy.PREDICTIVE, "Smart Vault");
         put(AppsActivity.class, Policy.PREDICTIVE, "Apps");
         put(NotificationsActivity.class, Policy.PREDICTIVE, "Notifications");
         put(SavedPlacesActivity.class, Policy.PREDICTIVE, "Saved places");

@@ -36,7 +36,18 @@ public final class AiProviders {
     }
 
     /** The provider the user has made active. Unknown or unselectable ids fall back to ChatGPT. */
+    /** A provider tests put in place of the real ones; never set in production. */
+    private static volatile AiProvider testOverride;
+
+    static AiProvider installForTest(AiProvider provider) {
+        AiProvider previous = testOverride;
+        testOverride = provider;
+        return previous;
+    }
+
     public static AiProvider active(Context c) {
+        AiProvider override = testOverride;
+        if (override != null) return override;
         AiProvider chosen = byId(Prefs.provider(c));
         return chosen.selectable(c) ? chosen : CHATGPT;
     }

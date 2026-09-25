@@ -1276,6 +1276,29 @@ public final class UiKit {
      * selectedIndex < 0 creates a normal action menu; otherwise the active row
      * gets an accent dot and accent-tinted surface.
      */
+    /**
+     * Orbit's ordinary action button: the accent fill for the primary choice, an outlined
+     * surface for the secondary one. Shared by the Smart Vault screens (v0.8.1.0-beta.1) so they
+     * do not add another private copy of the same helper.
+     */
+    public static android.widget.Button button(Context c, String text, boolean primary) {
+        android.widget.Button b = new android.widget.Button(c);
+        b.setText(text);
+        b.setTextColor(primary ? onAccent(c) : TEXT);
+        b.setTextSize(14);
+        b.setAllCaps(false);
+        b.setSingleLine(true);
+        b.setPadding(dp(c, 14), 0, dp(c, 14), 0);
+        b.setBackground(primary
+                ? ripple(accent(c), onAccent(c), 15, c)
+                : rippleOutlined(SURFACE_2, withAlpha(accent(c), 60), accent(c), 15, c));
+        b.setMinHeight(0);
+        b.setMinimumHeight(0);
+        b.setStateListAnimator(null);
+        pressScale(b);
+        return b;
+    }
+
     public static void showOrbitMenu(Context c, View anchor, String[] labels,
                                      int selectedIndex, OrbitMenuChoice choice) {
         showOrbitMenuInternal(c, anchor, labels, null, selectedIndex, -1, choice);

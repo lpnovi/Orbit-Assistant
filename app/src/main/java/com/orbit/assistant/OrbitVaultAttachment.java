@@ -18,8 +18,11 @@ import android.graphics.Bitmap;
  * Ask Orbit and Attach from Vault are two controls that both end here.
  *
  * <p><b>One item, and only the one the user chose.</b> Nothing in this class can see the rest of
- * the Vault: it is handed a single item and reads that item's own fields. Neighbouring items, the
- * index, the user's searches and every other saved thing are unreachable from here by construction.
+ * the Vault: it is handed a single item and reads that item's own fields, plus - from
+ * v0.8.1.0-beta.1 - the text Smart Vault recognised in that same item's picture. Neighbouring
+ * items, the user's searches and every other saved thing are unreachable from here. Ask Vault,
+ * which deliberately carries several items, builds its attachment in {@link SmartVaultAsk} and
+ * still ends in the same composer.
  */
 public final class OrbitVaultAttachment {
 
@@ -48,7 +51,7 @@ public final class OrbitVaultAttachment {
     public static ComposerAttachment of(Context c, OrbitVaultItem item) {
         if (item == null) return null;
         Bitmap image = item.ownsMedia() ? OrbitVaultMedia.load(item.mediaPath) : null;
-        String context = contextTextFor(item, image != null);
+        String context = contextTextFor(item, image != null, recognizedText(c, item));
         if (context.trim().isEmpty() && image == null) return null;
         // The card's second line says which page this is, so the composer shows "Page 7 of 388"
         // under the document's name rather than making the user open the item to find out.
@@ -88,6 +91,32 @@ public final class OrbitVaultAttachment {
      * it, and a model told only "here is a URL" will happily describe a page nobody read.
      */
     public static String contextTextFor(OrbitVaultItem item, boolean imageAttached) {
+        return contextTextFor(item, imageAttached, "");
+    }
+
+    /**
+     * Text Smart Vault recognised in this item's picture, if it has any and it is current.
+     *
+     * <p>Read from the local index only, and only when Smart Vault exists on this device. Nothing
+     * is recognised here: attaching must stay instant.
+     */
+    static String recognizedText(Context c, OrbitVaultItem item) {
+        if (c == null || item == null || !SmartVault.wantsRecognition(item)
+                || !SmartVault.databaseExists(c)) {
+            return "";
+        }
+        try {
+            SmartVaultDb.Derived row = SmartVaultDb.get(c).derived(item.id, SmartVaultDb.KIND_OCR);
+            if (row == null) return "";
+            return row.basis.equals(SmartVault.derivedBasis(item, SmartVaultDb.KIND_OCR))
+                    ? row.text : "";
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    public static String contextTextFor(OrbitVaultItem item, boolean imageAttached,
+                                        String recognized) {
         if (item == null) return "";
         StringBuilder out = new StringBuilder(FRAMING).append("\n\n");
         out.append("Saved item type: ").append(item.typeLabel()).append('\n');
@@ -137,6 +166,13 @@ public final class OrbitVaultAttachment {
             out.append("\nSaved text:\n").append(item.body);
         }
 
+        if (item.hasCapturedText()) {
+            out.append("\n\nText that was on the screen when it was saved:\n")
+                    .append(item.capturedText);
+        }
+        if (recognized != null && !recognized.trim().isEmpty()) {
+            out.append("\n\nText Orbit recognised in the saved picture:\n").append(recognized.trim());
+        }
         if (item.hasNote()) {
             out.append("\n\nThe user's own note about why they saved it:\n").append(item.note);
         }

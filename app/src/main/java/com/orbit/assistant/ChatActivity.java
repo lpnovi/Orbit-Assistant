@@ -72,6 +72,9 @@ public class ChatActivity extends Activity {
      * reaches a provider only if the user writes something and presses Send.
      */
     public static final String EXTRA_VAULT_ITEM_ID = "orbit_vault_item_id";
+    /** Ask Vault (v0.8.1.0-beta.1): the saved items chosen for a question, and the question. */
+    public static final String EXTRA_ASK_VAULT_IDS = "orbit_ask_vault_ids";
+    public static final String EXTRA_ASK_VAULT_QUESTION = "orbit_ask_vault_question";
 
     /**
      * The stack any surface outside Chats must open a conversation with.
@@ -388,6 +391,7 @@ public class ChatActivity extends Activity {
     private void applyVaultItem() {
         Intent intent = getIntent();
         if (intent == null) return;
+        applyAskVault(intent);
         String id = intent.getStringExtra(EXTRA_VAULT_ITEM_ID);
         if (id == null || id.trim().isEmpty()) return;
         intent.removeExtra(EXTRA_VAULT_ITEM_ID);
@@ -1935,6 +1939,39 @@ public class ChatActivity extends Activity {
      * same limit, drawn by the same tray, removed by the same control, and sent by the same Send.
      * No request happens here.
      */
+    /**
+     * Stages Ask Vault's one attachment - the saved items the user saw listed - and puts the
+     * question in the composer. Nothing is sent: the user reads what is attached and presses Send,
+     * exactly as with any other attachment. The extras are removed first so a configuration change
+     * cannot stage the same question twice.
+     */
+    private void applyAskVault(Intent intent) {
+        String[] ids = intent.getStringArrayExtra(EXTRA_ASK_VAULT_IDS);
+        String question = intent.getStringExtra(EXTRA_ASK_VAULT_QUESTION);
+        if (ids == null || ids.length == 0) return;
+        intent.removeExtra(EXTRA_ASK_VAULT_IDS);
+        intent.removeExtra(EXTRA_ASK_VAULT_QUESTION);
+        ComposerAttachment attachment = SmartVaultAsk.attachment(this, question,
+                java.util.Arrays.asList(ids));
+        if (attachment == null) {
+            Toast.makeText(this, "Those saved items are no longer in your Vault",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        List<ComposerAttachment> staged = new ArrayList<>();
+        staged.add(attachment);
+        ComposerAttachments.AddResult added = composerAttachments.addAll(staged);
+        refreshAttachmentStrip(true);
+        if (added.accepted == 0) {
+            Toast.makeText(this, attachmentLimitMessage(), Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (input != null && question != null && input.getText().toString().trim().isEmpty()) {
+            input.setText(question.trim());
+            input.setSelection(input.length());
+        }
+    }
+
     private void attachVaultItem(String id) {
         attachVaultItems(id == null ? null : new String[]{id});
     }
@@ -2117,7 +2154,7 @@ public class ChatActivity extends Activity {
                 }
                 Intent intent = ScreenSelectionStore.editorIntent(this, sourcePath,
                         pendingScreenSelectionPackage, pendingScreenSelectionApp,
-                        pendingScreenSelectionAge, "");
+                        pendingScreenSelectionAge, "", pendingScreenSelectionText);
                 try { startActivityForResult(intent, REQ_SCREEN_SELECTION); }
                 catch (Exception e) {
                     screenSelectionOpening = false;

@@ -227,7 +227,7 @@ public final class ShareToOrbitActivity extends Activity {
         } else {
             saved = OrbitVaultStore.saveText(this, "", text, SOURCE_LABEL) != null;
         }
-        Toast.makeText(this, saved ? "Saved to Vault" : "Orbit could not save what was shared",
+        Toast.makeText(this, saved ? OrbitVaultStore.savedMessage(this) : OrbitVaultStore.saveFailureMessage(this, "Orbit could not save what was shared"),
                 Toast.LENGTH_SHORT).show();
     }
 

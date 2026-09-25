@@ -18,11 +18,29 @@ public final class ScreenSelectionStore {
     public static final String EXTRA_AGE_LABEL = "screen_selection_age_label";
     public static final String EXTRA_CALLBACK_TOKEN = "screen_selection_callback_token";
     public static final String EXTRA_PRECISE = "screen_selection_precise";
+    /**
+     * The text that was on the screen, for a full-screen Vault save (v0.8.1.0-beta.1). Bounded,
+     * so the extra always fits comfortably inside an Intent.
+     */
+    public static final String EXTRA_SCREEN_TEXT = "screen_selection_screen_text";
 
     private static final String DIRECTORY = "orbit_screen_selection";
     private static final long STALE_MS = 24L * 60L * 60L * 1000L;
 
     private ScreenSelectionStore() {}
+
+    public static Intent editorIntent(Context context, String sourcePath, String packageName,
+                                      String appLabel, String ageLabel, String callbackToken,
+                                      String screenText) {
+        Intent intent = editorIntent(context, sourcePath, packageName, appLabel, ageLabel,
+                callbackToken);
+        String text = screenText == null ? "" : screenText.trim();
+        if (text.length() > OrbitVaultItem.MAX_CAPTURED_CHARS) {
+            text = text.substring(0, OrbitVaultItem.MAX_CAPTURED_CHARS);
+        }
+        if (!text.isEmpty()) intent.putExtra(EXTRA_SCREEN_TEXT, text);
+        return intent;
+    }
 
     public static Intent editorIntent(Context context, String sourcePath, String packageName,
                                       String appLabel, String ageLabel, String callbackToken) {

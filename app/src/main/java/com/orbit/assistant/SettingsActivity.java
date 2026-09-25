@@ -69,6 +69,8 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     }
     private TextView assistantStatus;
     private Button assistantAction;
+    /** The Vault card's way into Smart Vault, hidden with the Vault itself. */
+    private Button smartVaultButton;
     private TextView quickRoutineSelection;
     private TextView chatGptStatus;
     private LinearLayout providerDetails;
@@ -1836,6 +1838,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
             "Save text, links, images and useful Orbit answers for later. Everything stays on this "
                     + "device, and Orbit uses a saved item only when you choose it yourself.";
     static final String VAULT_OPEN_LABEL = "Open Orbit Vault";
+    static final String SMART_VAULT_OPEN_LABEL = "Smart Vault";
     static final String VAULT_DELETE_LABEL = "Delete Vault data";
     static final String VAULT_DELETE_TITLE = "Delete all Vault data?";
     static final String VAULT_DELETE_MESSAGE =
@@ -1872,11 +1875,24 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
             // page saying it is switched off. Corrected here and now, because a switch whose
             // consequences only appear after leaving Settings does not read as connected to it.
             openVault.setVisibility(checked ? View.VISIBLE : View.GONE);
+            if (smartVaultButton != null) smartVaultButton.setVisibility(checked ? View.VISIBLE : View.GONE);
         });
         card.addView(UiKit.switchRow(this, VAULT_TOGGLE_LABEL, null, control));
 
         openVault.setVisibility(Prefs.vaultEnabled(this) ? View.VISIBLE : View.GONE);
         card.addView(openVault, openVaultLp);
+
+        // Smart Vault (v0.8.1.0-beta.1) has its own screen, because each of its privacy choices
+        // needs a sentence saying what leaves the phone, and five of those would bury this card.
+        Button smartVault = secondaryButton(Prefs.smartVaultEnabled(this)
+                ? SMART_VAULT_OPEN_LABEL + " · On" : SMART_VAULT_OPEN_LABEL);
+        smartVault.setOnClickListener(v -> startActivity(new Intent(this, SmartVaultActivity.class)));
+        LinearLayout.LayoutParams smartLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48));
+        smartLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
+        smartVault.setVisibility(Prefs.vaultEnabled(this) ? View.VISIBLE : View.GONE);
+        card.addView(smartVault, smartLp);
+        smartVaultButton = smartVault;
 
         Button deleteVault = dangerOutlineButton(VAULT_DELETE_LABEL);
         deleteVault.setOnClickListener(v -> confirmDeleteVaultData());

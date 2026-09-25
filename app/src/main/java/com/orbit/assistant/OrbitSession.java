@@ -1446,7 +1446,7 @@ public class OrbitSession extends VoiceInteractionSession {
                 }));
                 screenSelectionCallbackToken = token;
                 Intent intent = ScreenSelectionStore.editorIntent(context, sourcePath,
-                        sourcePackage, sourceApp, "", token);
+                        sourcePackage, sourceApp, "", token, screenText);
                 try { startAssistantActivity(intent); }
                 catch (Exception e) {
                     ScreenSelectionBridge.cancel(token);

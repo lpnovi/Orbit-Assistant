@@ -75,4 +75,18 @@ final class ChatGptProvider implements AiProvider {
         }
         ChatGptClient.plan(context, planningPrompt, intelligenceMode, callback);
     }
+
+    @Override public boolean supportsCompletion(Context context) {
+        return ChatGptAuth.isSignedIn(context);
+    }
+
+    /** Always the Fast model: a title and three topics never need a deep one. */
+    @Override public void complete(Context context, String instructions, String prompt,
+                                   AssistantClient.PlanCallback callback) {
+        if (!ChatGptAuth.isSignedIn(context)) {
+            callback.onError(SIGN_IN_ERROR);
+            return;
+        }
+        ChatGptClient.complete(context, instructions, prompt, Prefs.MODE_FAST, callback);
+    }
 }

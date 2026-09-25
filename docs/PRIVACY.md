@@ -35,6 +35,12 @@ The selected provider determines where a request is processed and which capabili
 
 Third-party provider terms and privacy practices apply to data sent to that provider. Orbit does not automatically switch a deliberately selected provider to another provider merely because a request fails.
 
+## Smart Vault
+
+Smart Vault (from v0.8.1.0-beta.1) is off until the user turns it on, and each network-facing part is its own switch. Local indexing, meaning search and text recognition run on the device. The meaning model (Model2Vec `potion-base-8M`, MIT) is downloaded once from Hugging Face at a pinned revision and rejected unless its SHA-256 matches the value compiled into Orbit. Text recognition uses Google ML Kit through Google Play services. "Read saved links" reuses the Rich Answers page fetcher with its public-host checks, redirect revalidation, size ceiling and cookie-free requests. AI suggestions send one item at a time to the active provider through a request with no history, screen, memory or tools, and treat the item's content as untrusted data. Existing items are sent only after an explicit, counted confirmation. Ask Vault never sends anything by itself: it stages one attachment in the normal composer.
+
+Smart Vault's index (recognised text, page text, meaning vectors and job state) is a separate database that can be deleted and rebuilt at any time and is not included in backups. Suggestions, topics and screen text captured with a full-screen Screen Selection save are part of the Vault item and travel with it.
+
 ## Credentials and secrets
 
 - ChatGPT account tokens are encrypted with an Android Keystore-backed key.

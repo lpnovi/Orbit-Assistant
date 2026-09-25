@@ -2,10 +2,14 @@ package com.orbit.assistant;
 
 import android.net.Uri;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.text.DateFormat;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -14,7 +18,8 @@ import java.util.Locale;
  * <p>Orbit Vault is not chat history and it is not Memory. A conversation is written because Orbit
  * answered; a memory is written because Orbit may need it later. A Vault item exists for exactly
  * one reason: somebody looked at something and decided to save it. Nothing in Orbit creates one on
- * its own, and nothing reads one back into a prompt.
+ * its own, and nothing reads one into a prompt unless the user asks: attaching an item, asking Orbit
+ * about it, using Ask Vault, or turning on Smart Vault suggestions for it (from v0.8.1.0-beta.1).
  *
  * <p>The type is a stable internal id, never the display word. "Link" is what the screen says and
  * may be rewritten tomorrow; {@code link} is what is on disk and must not be. Everything a screen
@@ -162,6 +167,28 @@ public final class OrbitVaultItem {
      * nothing that reads this field back can be handed a scheme that launches something.
      */
     public final String sourceUrl;
+    /**
+     * Text Orbit captured together with the item when it was saved, or empty.
+     *
+     * <p>Added in v0.8.1.0-beta.1 for full-screen Screen Selection saves: the words that were on
+     * the screen, read through the same screen context Orbit already uses, kept so the picture can
+     * be found by what it said. It is part of what was saved rather than something derived later,
+     * which is why it lives here and travels in backups, while text recognised from the picture is
+     * rebuildable and lives in Smart Vault's own index instead.
+     *
+     * <p>A cropped selection never carries it: the rest of the screen is exactly what the user
+     * chose not to keep. The user can remove it from the item at any time.
+     */
+    public final String capturedText;
+    /**
+     * Topics the user confirmed or typed themselves. Never written by Orbit on its own.
+     *
+     * <p>Orbit's proposals live in {@link #suggestions}; one only becomes a topic here when the
+     * user keeps it. Absent from every item written before v0.8.1.0-beta.1, which reads as none.
+     */
+    public final List<String> topics;
+    /** What Orbit suggested about this item, kept apart from the user's own fields, or null. */
+    final VaultSuggestions suggestions;
     public final long createdAt;
     public final long modifiedAt;
 
@@ -193,10 +220,23 @@ public final class OrbitVaultItem {
                 pinned, "", createdAt, modifiedAt);
     }
 
+    /** One item with no captured text, topics or suggestions: everything before v0.8.1.0. */
     public OrbitVaultItem(String id, String type, String title, String body, String source,
                           String note, String mediaPath, String documentName, int pageIndex,
                           int pageCount, boolean pinned, String sourceUrl, long createdAt,
                           long modifiedAt) {
+        this(id, type, title, body, source, note, mediaPath, documentName, pageIndex, pageCount,
+                pinned, sourceUrl, "", null, null, createdAt, modifiedAt);
+    }
+
+    OrbitVaultItem(String id, String type, String title, String body, String source,
+                   String note, String mediaPath, String documentName, int pageIndex,
+                   int pageCount, boolean pinned, String sourceUrl, String capturedText,
+                   List<String> topics, VaultSuggestions suggestions, long createdAt,
+                   long modifiedAt) {
+        this.capturedText = boundCaptured(capturedText);
+        this.topics = Collections.unmodifiableList(VaultTopics.clean(topics));
+        this.suggestions = suggestions == null || suggestions.isEmpty() ? null : suggestions;
         // Validated here rather than at each save site, so a hand-edited store or a restored
         // backup cannot put an intent: or file: address into a field a screen offers to open.
         this.sourceUrl = RichAnswerUrlPolicy.isOpenableWebUrl(sourceUrl)
@@ -245,7 +285,22 @@ public final class OrbitVaultItem {
      */
     OrbitVaultItem copyWith(String newTitle, String newBody, String newNote, long modifiedNow) {
         return new OrbitVaultItem(id, type, newTitle, newBody, source, newNote, mediaPath,
-                documentName, pageIndex, pageCount, pinned, sourceUrl, createdAt, modifiedNow);
+                documentName, pageIndex, pageCount, pinned, sourceUrl, capturedText, topics,
+                suggestions, createdAt, modifiedNow);
+    }
+
+    /**
+     * The same item with Smart Vault's parts replaced and everything the user saved untouched.
+     *
+     * <p>{@link #modifiedAt} is carried across when only suggestions change, because Orbit
+     * writing a suggestion is not the user editing their item. Confirming a topic or removing the
+     * captured text is a user edit, and the caller passes a new time for those.
+     */
+    OrbitVaultItem copySmart(String newCaptured, List<String> newTopics,
+                             VaultSuggestions newSuggestions, long modified) {
+        return new OrbitVaultItem(id, type, title, body, source, note, mediaPath, documentName,
+                pageIndex, pageCount, pinned, sourceUrl, newCaptured, newTopics, newSuggestions,
+                createdAt, modified);
     }
 
     /**
@@ -258,7 +313,65 @@ public final class OrbitVaultItem {
      */
     OrbitVaultItem copyPinned(boolean nowPinned) {
         return new OrbitVaultItem(id, type, title, body, source, note, mediaPath,
-                documentName, pageIndex, pageCount, nowPinned, sourceUrl, createdAt, modifiedAt);
+                documentName, pageIndex, pageCount, nowPinned, sourceUrl, capturedText, topics,
+                suggestions, createdAt, modifiedAt);
+    }
+
+    // ---- Smart Vault -------------------------------------------------------------------------------
+
+    /** Whether Orbit captured screen text with this item. */
+    public boolean hasCapturedText() { return !capturedText.isEmpty(); }
+
+    /** Whether the title on screen is Orbit's suggestion rather than one the user chose. */
+    public boolean titleIsSuggested() {
+        return title.isEmpty() && suggestions != null && !suggestions.title.isEmpty();
+    }
+
+    /** Orbit's suggested summary, or empty. */
+    public String suggestedSummary() { return suggestions == null ? "" : suggestions.summary; }
+
+    /** Orbit's proposed topics that the user has neither kept nor removed. */
+    public List<String> suggestedTopics() {
+        if (suggestions == null) return Collections.emptyList();
+        List<String> out = new ArrayList<>();
+        for (String topic : suggestions.topics) if (!topics.contains(topic)) out.add(topic);
+        return out;
+    }
+
+    /** Every topic this item currently answers to: the user's, then Orbit's open proposals. */
+    public List<String> allTopics() {
+        List<String> out = new ArrayList<>(topics);
+        for (String topic : suggestedTopics()) if (!out.contains(topic)) out.add(topic);
+        return out;
+    }
+
+    /**
+     * A fingerprint of what the user saved, and nothing about how it is displayed.
+     *
+     * <p>Background work records this before it starts and writes its result only if the item
+     * still has the same fingerprint afterwards, so a summary written about last week's version of
+     * a note can never land on the version the user has just edited. The title, the pin, topics
+     * and suggestions are deliberately outside it: renaming an item does not make its summary
+     * wrong, and Orbit's own writes must not invalidate each other.
+     */
+    public String contentFingerprint() {
+        String basis = type + "\u0000" + body + "\u0000" + note + "\u0000" + capturedText
+                + "\u0000" + mediaPath + "\u0000" + sourceUrl + "\u0000" + documentName
+                + "\u0000" + pageIndex;
+        try {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(basis.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder out = new StringBuilder();
+            for (int i = 0; i < 12; i++) out.append(String.format(Locale.US, "%02x", hash[i]));
+            return out.toString();
+        } catch (Exception e) {
+            return Integer.toHexString(basis.hashCode());
+        }
+    }
+
+    /** Whether Orbit's suggestions were written about exactly what is saved now. */
+    public boolean suggestionsAreCurrent() {
+        return suggestions != null && suggestions.basis.equals(contentFingerprint());
     }
 
     // ---- what a screen may ask ------------------------------------------------------------------
@@ -325,6 +438,9 @@ public final class OrbitVaultItem {
     /** The title to draw: what the user set, or a local fallback derived from the content. */
     public String displayTitle() {
         if (!title.isEmpty()) return title;
+        // Orbit's suggested title fills in only while the user has not named the item. It is never
+        // written into {@link #title}, so renaming or clearing it is always the user's last word.
+        if (suggestions != null && !suggestions.title.isEmpty()) return suggestions.title;
         // A saved page is named after the document and the page rather than after its first line.
         // "Chapter 4 continued" is what page 118 happens to start with; it is not what the user
         // would look for when they go back for the page they kept.
@@ -386,7 +502,11 @@ public final class OrbitVaultItem {
         // looks for a saved picture. The full address is not: a query string is not something
         // anyone searches for, and it would drown the words that matter.
         return (title + "\n" + body + "\n" + note + "\n" + source + "\n" + documentName
-                + "\n" + pageLabel() + "\n" + typeLabel() + "\n" + sourceHostLabel())
+                + "\n" + pageLabel() + "\n" + typeLabel() + "\n" + sourceHostLabel()
+                // Captured screen text, topics and Orbit's suggestions are all words somebody
+                // might remember an item by, so ordinary search reaches them too.
+                + "\n" + capturedText + "\n" + String.join("\n", allTopics())
+                + (suggestions == null ? "" : "\n" + suggestions.title + "\n" + suggestions.summary))
                 .toLowerCase(Locale.US);
     }
 
@@ -408,6 +528,11 @@ public final class OrbitVaultItem {
         if (pinned) out.put("pinned", true);
         // Same rule for the page behind a saved picture: written only when there is one.
         if (!sourceUrl.isEmpty()) out.put("sourceUrl", sourceUrl);
+        // Smart Vault's parts follow the same rule: written only when present, so a Vault that has
+        // never used them is the document every earlier build wrote.
+        if (!capturedText.isEmpty()) out.put("capturedText", capturedText);
+        if (!topics.isEmpty()) out.put("topics", new JSONArray(topics));
+        if (suggestions != null) out.put("suggestions", suggestions.toJson());
         // Written only for the type that has them, so a Vault of notes and links is byte-for-byte
         // the document Beta 2 wrote and an older build reading it finds nothing new.
         if (isDocumentPage()) {
@@ -443,6 +568,10 @@ public final class OrbitVaultItem {
                 // with no page behind it. Missing means none, and the constructor drops anything
                 // that is not an ordinary web address.
                 o.optString("sourceUrl", ""),
+                // Absent from every document written before v0.8.1.0-beta.1. Missing means none.
+                o.optString("capturedText", ""),
+                VaultSuggestions.strings(o.optJSONArray("topics")),
+                VaultSuggestions.fromJson(o.optJSONObject("suggestions")),
                 o.optLong("createdAt", 0L),
                 o.optLong("modifiedAt", 0L));
         return isStorable(item) ? item : null;
@@ -565,6 +694,14 @@ public final class OrbitVaultItem {
      * body arrives from a share or a paste and can be cut without anybody watching, which is why
      * that one announces itself.
      */
+    /** The most captured screen text one item keeps. A screen's worth, not a document's. */
+    public static final int MAX_CAPTURED_CHARS = 12000;
+
+    private static String boundCaptured(String value) {
+        String text = value == null ? "" : value.trim();
+        return text.length() <= MAX_CAPTURED_CHARS ? text : text.substring(0, MAX_CAPTURED_CHARS).trim();
+    }
+
     private static String boundNote(String value) {
         String text = value == null ? "" : value.trim();
         return text.length() <= MAX_NOTE_CHARS ? text : text.substring(0, MAX_NOTE_CHARS).trim();

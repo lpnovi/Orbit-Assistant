@@ -176,6 +176,9 @@ public final class OrbitBackupManager {
         // Only now, with the whole restore committed and no rollback left to serve, are the
         // previous Vault's picture files genuinely unreachable and safe to remove.
         OrbitVaultStore.pruneUnreferencedMedia(context);
+        // Smart Vault's index described the previous Vault. It is derived data, so it is swept and
+        // rebuilt from the restored items rather than carried in the backup.
+        SmartVault.onRestored(context);
     }
 
     private static JSONObject currentSnapshot(Context c) throws Exception {

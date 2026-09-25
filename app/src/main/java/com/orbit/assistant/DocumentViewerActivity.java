@@ -840,7 +840,7 @@ public final class DocumentViewerActivity extends Activity {
                 pageIndex, model.pageCount(), text, rendered, "");
         if (rendered != null && !rendered.isRecycled()) rendered.recycle();
         if (saved == null) {
-            Toast.makeText(this, "Orbit could not save this page", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, OrbitVaultStore.saveFailureMessage(this, "Orbit could not save this page"), Toast.LENGTH_SHORT).show();
             return;
         }
         UiKit.haptic(saveToVaultButton, HapticFeedbackConstants.CLOCK_TICK);

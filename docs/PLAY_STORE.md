@@ -252,11 +252,13 @@ Rules:
 
 1. **One version sequence for both editions.** A release is built for each edition from one tagged commit, and both artifacts carry the same `versionName` and `versionCode`. The `play` build type cannot override either; a test enforces it.
 2. **Every build that leaves the machine gets a new `versionCode`**, +1, as today. Play remembers every code ever uploaded to any track and refuses a repeat, so a code used for a Play upload is spent even if that release is abandoned. GitHub never reuses one either.
-3. **Betas rank below the Stable that follows them**, as today: `0.8.1.0-beta.1` = 797, `-beta.2` = 798, `0.8.1.0` = 799. Betas go to GitHub prereleases and, optionally, a Play testing track. Play production receives Stable only.
+3. **Betas rank below the Stable that follows them**, as today: `0.8.0.2` = 798, then `0.8.1.0-beta.1` = 799, `-beta.2` = 800, and so on, with the `0.8.1.0` Stable taking the next code after its last Beta. Betas go to GitHub prereleases and, optionally, a Play testing track. Play production receives Stable only.
 4. **Never upload the current tree as 796.** The API 36 build differs from the published 796, and the first Play candidate is 0.8.0.1 / 797.
 5. Play may lag behind GitHub, or skip a GitHub-only release, without harming anyone: each edition's users only ever receive updates from their own store.
 
 **Decided:** the first distributable candidate was `versionName 0.8.0.1`, `versionCode 797`, for both editions, uploaded to Play Internal Testing. The tree is now at 0.8.0.2 / 798. Nothing is tagged or published.
+
+**Smart Vault (0.8.1.0-beta.1, GitHub Beta only so far).** Before any Smart Vault build reaches a Play track, the Data safety form needs reviewing for: ML Kit text recognition through Google Play services (on-device; the play-services-mlkit-text-recognition library may send Google anonymous API usage metrics), the optional one-time model download from Hugging Face, optional reading of saved links, and optional AI suggestions that send item text to the chosen provider. The new dependency adds no permission.
 
 ### 9.1 Moving between the GitHub and Play editions
 

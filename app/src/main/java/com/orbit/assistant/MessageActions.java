@@ -131,7 +131,7 @@ final class MessageActions {
         String visible = assistantCopyText(rawText);
         if (visible.trim().isEmpty()) return;
         boolean saved = OrbitVaultStore.saveOrbitReply(c, visible) != null;
-        Toast.makeText(c, saved ? "Saved to Vault" : "Orbit could not save that reply",
+        Toast.makeText(c, saved ? OrbitVaultStore.savedMessage(c) : OrbitVaultStore.saveFailureMessage(c, "Orbit could not save that reply"),
                 Toast.LENGTH_SHORT).show();
     }
 

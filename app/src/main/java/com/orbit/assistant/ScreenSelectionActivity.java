@@ -263,15 +263,24 @@ public final class ScreenSelectionActivity extends Activity {
             Toast.makeText(this, "Orbit could not render this selection", Toast.LENGTH_LONG).show();
             return;
         }
+        // The words on the screen travel with a full-screen save, so the screenshot can be found
+        // by what it said. A crop keeps only what the user kept: the rest of the screen is exactly
+        // what they chose to leave out, so its text is never stored with the crop.
+        String screenText = "";
+        if (!editor.hasCrop() && getIntent() != null) {
+            String extra = getIntent().getStringExtra(ScreenSelectionStore.EXTRA_SCREEN_TEXT);
+            screenText = extra == null ? "" : extra;
+        }
         OrbitVaultItem saved = OrbitVaultStore.saveImage(this, result, "",
-                OrbitVaultSource.SCREEN_SELECTION);
+                OrbitVaultSource.SCREEN_SELECTION, "", screenText);
         if (!result.isRecycled()) result.recycle();
         if (saved == null) {
-            Toast.makeText(this, "Orbit could not save this selection", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, OrbitVaultStore.saveFailureMessage(this,
+                    "Orbit could not save this selection"), Toast.LENGTH_LONG).show();
             return;
         }
         performTick();
-        Toast.makeText(this, "Saved to Vault", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, OrbitVaultStore.savedMessage(this), Toast.LENGTH_SHORT).show();
     }
 
     private void complete(boolean useFullScreen) {

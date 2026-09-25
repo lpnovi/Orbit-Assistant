@@ -69,4 +69,24 @@ public interface AiProvider {
      */
     void plan(Context context, String planningPrompt, String intelligenceMode,
               AssistantClient.PlanCallback callback);
+
+    /** What a provider without structured completions says when asked for one. */
+    String COMPLETION_UNSUPPORTED =
+            "Your current AI provider can't write Smart Vault suggestions yet. ChatGPT can.";
+
+    /**
+     * Whether {@link #complete} can be asked right now. Smart Vault reads this before it spends
+     * anything, so a provider that cannot answer is reported once instead of failing per item.
+     */
+    default boolean supportsCompletion(Context context) { return false; }
+
+    /**
+     * One small non-streaming request with its own instructions, for structured background work
+     * such as Smart Vault suggestions. It carries no history, screen, memory or tools. Providers
+     * that cannot do it keep this default, which refuses honestly.
+     */
+    default void complete(Context context, String instructions, String prompt,
+                          AssistantClient.PlanCallback callback) {
+        callback.onError(COMPLETION_UNSUPPORTED);
+    }
 }

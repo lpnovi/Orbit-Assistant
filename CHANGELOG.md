@@ -842,6 +842,12 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.1.0-beta.1**: The first public Beta on the way to Orbit 0.9, introducing Smart Vault: free, optional, and off until you turn it on.
+  - Vault search can rank by relevance, find words inside saved screenshots, and match by meaning with an on-device model you choose to download.
+  - Orbit can suggest a title, summary and topics for saved items, and every suggestion can be kept, edited or removed. Your own titles and notes always win.
+  - Filter your Vault by topic, see related saves on each item, and use Ask Vault to answer a question from your saved items in an ordinary chat.
+  - Saving a full screen from Screen Selection now keeps the text that was on it, so you can search for it later.
+  - A full Vault no longer deletes your oldest item. It warns you early and pauses new saves instead.
 - **v0.8.0.2**: Fixes first-run setup and tablet layout on Chats and Orbit Vault.
   - A fresh install of Orbit opens the welcome setup again the first time you launch it.
   - People updating from an earlier Orbit still go straight to their chats, as before.

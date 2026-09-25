@@ -146,8 +146,9 @@ Never post signing keys, account tokens, diagnostic data containing private cont
 | Status | Examples |
 | --- | --- |
 | **Shipping in Stable** | Side-button/default-assistant access, full chat, attachments, screen context, Voice Beta, Android actions, Calendar writing, Routines, Extensions, widgets, Orbit Local, Orbit Deck with large tiles, sections and folders, Documents, Theme Studio with Solid, Frosted and Liquid surface materials, Orbit Vault / Quick Capture, Rich Answers with sourced web images inside answers, Settings search, and optional GPT-6 Astra for eligible ChatGPT accounts. |
+| **In Beta** | **Smart Vault**, free and optional, on the journey to Orbit 0.9: ranked Vault search, search by meaning with an on-device model, text read from saved pictures, suggested titles, summaries and topics, topic filters, related items, and Ask Vault. Every part is off until you turn it on, and nothing leaves your phone unless you choose it. |
 | **In development** | Orbit Pro, an optional paid layer of advanced customization and power-user extras built on top of free Orbit. Its first features, advanced Theme Studio styling and saved Deck layouts, are tested in Beta builds only; Stable builds never unlock them. Nothing that is free today moves behind it, and there is no checkout, no billing, and nothing to buy yet. |
-| **Planned or under consideration** | Smart Vault, which stays a free Orbit feature, along with Hybrid Auto routing, deeper local capabilities, and other work listed in the roadmap. OpenRouter chat remains deferred until it can be properly validated. |
+| **Planned or under consideration** | Vault Pro organization on top of the free Vault, Hybrid Auto routing, deeper local capabilities, and other work listed in the roadmap. OpenRouter chat remains deferred until it can be properly validated. |
 
 See [ROADMAP.md](ROADMAP.md) for the detailed development record and future direction, or [CHANGELOG.md](CHANGELOG.md) for shipped release history. Roadmap items are direction, not promised dates.
 

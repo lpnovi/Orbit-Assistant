@@ -48,8 +48,8 @@ android {
         applicationId 'com.orbit.assistant'
         minSdk 29
         targetSdk 36
-        versionCode 798
-        versionName "0.8.0.2"
+        versionCode 799
+        versionName "0.8.1.0-beta.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         // No ABI filter is needed here any more: with the inference runtime moved into the
@@ -168,6 +168,10 @@ dependencies {
     implementation "androidx.core:core:1.16.0"
     implementation "androidx.work:work-runtime:2.11.2"
     implementation "com.tom-roush:pdfbox-android:2.0.27.0"
+    // Smart Vault text recognition (v0.8.1.0-beta.1). The Google Play services form of ML Kit:
+    // the recognition model is delivered by Play services on first use instead of being bundled
+    // into every APK. Only called when the user turns on "Read text in pictures".
+    implementation "com.google.android.gms:play-services-mlkit-text-recognition:19.0.1"
     // Orbit Local's inference runtime deliberately does NOT live here. It ships in the
     // optional :local component so an Orbit install without local AI never carries it.
     // ReleaseModularityTest fails the build if tasks-genai returns to this module.

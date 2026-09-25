@@ -161,9 +161,385 @@ public final class OrbitVaultItemActivity extends Activity {
         if (item.isLink()) page.addView(linkCard(item), cardLp());
         else if (!item.body.isEmpty()) page.addView(bodyCard(item), cardLp());
 
+        // Smart Vault's text about the item: what was on the screen when it was saved (the
+        // user's, and removable), and what Orbit read in the picture or on the page (derived).
+        if (item.hasCapturedText()) page.addView(capturedTextCard(item), cardLp());
+        String recognized = OrbitVaultAttachment.recognizedText(this, item);
+        if (!recognized.isEmpty()) {
+            page.addView(derivedTextCard(RECOGNIZED_HEADING, recognized), cardLp());
+        }
+        String pageText = pageText(item);
+        if (!pageText.isEmpty()) page.addView(derivedTextCard(PAGE_TEXT_HEADING, pageText), cardLp());
+
         page.addView(noteCard(item), cardLp());
+        View smart = smartCard(item);
+        if (smart != null) page.addView(smart, cardLp());
         page.addView(detailsCard(item), cardLp());
         page.addView(actions(item));
+        View related = relatedSection(item);
+        if (related != null) page.addView(related);
+    }
+
+    // ---- Smart Vault on this screen (v0.8.1.0-beta.1) ---------------------------------------------
+
+    static final String SUGGESTED_HEADING = "Orbit suggested";
+    static final String TOPICS_HEADING = "Topics";
+    static final String CAPTURED_HEADING = "Text from the screen";
+    static final String RECOGNIZED_HEADING = "Text Orbit read in this picture";
+    static final String PAGE_TEXT_HEADING = "Text from the saved page";
+    static final String RELATED_HEADING = "RELATED IN YOUR VAULT";
+    static final String ACTION_SUGGEST = "Suggest details";
+    static final String ACTION_REGENERATE = "Suggest again";
+    static final String ACTION_CLEAR_SUGGESTIONS = "Remove suggestions";
+    static final String ACTION_ADD_TOPIC = "Add topic";
+
+    private String pageText(OrbitVaultItem item) {
+        if (!item.isLink() || !SmartVault.databaseExists(this)) return "";
+        try {
+            SmartVaultDb.Derived row = SmartVaultDb.get(this).derived(item.id,
+                    SmartVaultDb.KIND_PAGE);
+            if (row == null) return "";
+            return row.basis.equals(SmartVault.derivedBasis(item, SmartVaultDb.KIND_PAGE))
+                    ? row.text : "";
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /** Screen text saved with the item. It is part of the item, so the user can remove it. */
+    private View capturedTextCard(OrbitVaultItem item) {
+        LinearLayout card = (LinearLayout) derivedTextCard(CAPTURED_HEADING, item.capturedText);
+        Button remove = UiKit.button(this, "Remove screen text", false);
+        remove.setOnClickListener(v -> {
+            AlertDialog dialog = new AlertDialog.Builder(this)
+                    .setTitle("Remove screen text?")
+                    .setMessage("The text that was on the screen will be removed from this item. "
+                            + "The picture stays.")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Remove", (d, w) -> {
+                        OrbitVaultStore.clearCapturedText(this, item.id);
+                        rebuild();
+                    })
+                    .create();
+            UiKit.styleOrbitDialog(dialog, this, true);
+            dialog.show();
+        });
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 38));
+        lp.setMargins(0, UiKit.dp(this, 10), 0, 0);
+        card.addView(remove, lp);
+        return card;
+    }
+
+    /** A labelled, selectable block of text Orbit holds about the item, collapsed at first. */
+    private View derivedTextCard(String heading, String text) {
+        LinearLayout card = card();
+        card.addView(UiKit.text(this, heading, 12, UiKit.MUTED, true));
+        TextView body = UiKit.text(this, text, Prefs.chatTextSp(this, 13), UiKit.TEXT, false);
+        body.setLineSpacing(0, UiKit.CHAT_LINE_SPACING);
+        body.setTextIsSelectable(true);
+        body.setMaxLines(6);
+        body.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        body.setPadding(0, UiKit.dp(this, 7), 0, 0);
+        card.addView(body);
+        if (text.length() > 280) {
+            TextView more = UiKit.text(this, "Show all", 12, UiKit.accent(this), true);
+            more.setPadding(0, UiKit.dp(this, 8), 0, 0);
+            more.setOnClickListener(v -> {
+                boolean expanded = body.getMaxLines() == Integer.MAX_VALUE;
+                body.setMaxLines(expanded ? 6 : Integer.MAX_VALUE);
+                more.setText(expanded ? "Show all" : "Show less");
+            });
+            card.addView(more);
+        }
+        return card;
+    }
+
+    /**
+     * Orbit's suggestions and the item's topics, with every control to keep, change or remove
+     * them. Everything here is visibly Orbit's until the user keeps it.
+     *
+     * <p>Absent entirely when Smart Vault is off and the item has neither suggestions nor topics,
+     * so a Vault that never used Smart Vault looks exactly as it did.
+     */
+    private View smartCard(OrbitVaultItem item) {
+        boolean enabled = Prefs.smartVaultEnabled(this);
+        VaultSuggestions s = item.suggestions;
+        boolean hasSuggestions = s != null && s.hasContent();
+        if (!enabled && !hasSuggestions && item.topics.isEmpty()) return null;
+
+        LinearLayout card = card();
+        card.addView(UiKit.text(this, hasSuggestions ? SUGGESTED_HEADING : TOPICS_HEADING, 12,
+                UiKit.MUTED, true));
+
+        if (hasSuggestions && !item.suggestionsAreCurrent() && s.generatedAt > 0) {
+            TextView stale = UiKit.text(this, "Written before this item was last edited.", 12,
+                    UiKit.MUTED, false);
+            stale.setPadding(0, UiKit.dp(this, 5), 0, 0);
+            card.addView(stale);
+        }
+
+        if (item.titleIsSuggested()) {
+            TextView title = UiKit.text(this, "Title: " + s.title, 14, UiKit.TEXT, false);
+            title.setPadding(0, UiKit.dp(this, 8), 0, 0);
+            card.addView(title);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            Button keep = UiKit.button(this, "Keep title", false);
+            keep.setOnClickListener(v -> {
+                OrbitVaultStore.keepSuggestedTitle(this, item.id);
+                Toast.makeText(this, "Title kept", Toast.LENGTH_SHORT).show();
+                rebuild();
+            });
+            row.addView(keep, new LinearLayout.LayoutParams(0, UiKit.dp(this, 38), 1));
+            Button rename = UiKit.button(this, "Rename", false);
+            rename.setOnClickListener(v -> {
+                OrbitVaultItem now = OrbitVaultStore.get(this, item.id);
+                if (now != null) edit(now);
+            });
+            LinearLayout.LayoutParams renameLp = new LinearLayout.LayoutParams(
+                    0, UiKit.dp(this, 38), 1);
+            renameLp.setMargins(UiKit.dp(this, 8), 0, 0, 0);
+            row.addView(rename, renameLp);
+            Button drop = UiKit.button(this, "Remove", false);
+            drop.setContentDescription("Remove the suggested title");
+            drop.setOnClickListener(v -> {
+                OrbitVaultStore.updateSuggestions(this, item.id, s.withoutTitle());
+                rebuild();
+            });
+            LinearLayout.LayoutParams dropLp = new LinearLayout.LayoutParams(
+                    0, UiKit.dp(this, 38), 1);
+            dropLp.setMargins(UiKit.dp(this, 8), 0, 0, 0);
+            row.addView(drop, dropLp);
+            LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rowLp.setMargins(0, UiKit.dp(this, 6), 0, 0);
+            card.addView(row, rowLp);
+        }
+
+        if (hasSuggestions && !s.summary.isEmpty()) {
+            TextView summary = UiKit.text(this, s.summary, Prefs.chatTextSp(this, 14),
+                    UiKit.TEXT, false);
+            summary.setLineSpacing(0, UiKit.CHAT_LINE_SPACING);
+            summary.setTextIsSelectable(true);
+            summary.setPadding(0, UiKit.dp(this, 10), 0, 0);
+            card.addView(summary);
+            TextView removeSummary = UiKit.text(this, "Remove summary", 12, UiKit.accent(this), true);
+            removeSummary.setPadding(0, UiKit.dp(this, 6), 0, 0);
+            removeSummary.setOnClickListener(v -> {
+                OrbitVaultStore.updateSuggestions(this, item.id, s.withoutSummary());
+                rebuild();
+            });
+            card.addView(removeSummary);
+        }
+
+        // Topics: the user's first, then Orbit's proposals, each a chip that says which it is.
+        android.widget.HorizontalScrollView scroller = new android.widget.HorizontalScrollView(this);
+        scroller.setHorizontalScrollBarEnabled(false);
+        LinearLayout chips = new LinearLayout(this);
+        chips.setOrientation(LinearLayout.HORIZONTAL);
+        for (String topic : item.topics) chips.addView(topicChip(item, topic, false), chipLp());
+        for (String topic : item.suggestedTopics()) chips.addView(topicChip(item, topic, true), chipLp());
+        if (item.topics.size() < VaultTopics.MAX_PER_ITEM) {
+            TextView add = chip("+ " + ACTION_ADD_TOPIC, false);
+            add.setContentDescription(ACTION_ADD_TOPIC);
+            add.setOnClickListener(v -> addTopic(item));
+            chips.addView(add, chipLp());
+        }
+        scroller.addView(chips);
+        LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        scrollLp.setMargins(0, UiKit.dp(this, 10), 0, 0);
+        card.addView(scroller, scrollLp);
+        if (!item.suggestedTopics().isEmpty()) {
+            TextView hint = UiKit.text(this, "Topics marked ✦ are Orbit's suggestions. "
+                    + "Tap one to keep or remove it.", 11, UiKit.MUTED, false);
+            hint.setPadding(0, UiKit.dp(this, 6), 0, 0);
+            card.addView(hint);
+        }
+
+        String status = SmartVault.suggestionStatus(this, item.id);
+        if (!status.isEmpty()) {
+            TextView state = UiKit.text(this, status, 12, UiKit.MUTED, false);
+            state.setPadding(0, UiKit.dp(this, 8), 0, 0);
+            card.addView(state);
+        }
+
+        if (enabled || hasSuggestions) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            if (enabled) {
+                Button suggest = UiKit.button(this, hasSuggestions ? ACTION_REGENERATE
+                        : ACTION_SUGGEST, false);
+                suggest.setOnClickListener(v -> requestSuggestions(item));
+                row.addView(suggest, new LinearLayout.LayoutParams(0, UiKit.dp(this, 40), 1));
+            }
+            if (hasSuggestions) {
+                Button clear = UiKit.button(this, ACTION_CLEAR_SUGGESTIONS, false);
+                clear.setOnClickListener(v -> {
+                    OrbitVaultStore.updateSuggestions(this, item.id, s.onlyRejections());
+                    rebuild();
+                });
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        0, UiKit.dp(this, 40), 1);
+                if (enabled) lp.setMargins(UiKit.dp(this, 8), 0, 0, 0);
+                row.addView(clear, lp);
+            }
+            LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rowLp.setMargins(0, UiKit.dp(this, 12), 0, 0);
+            card.addView(row, rowLp);
+        }
+        return card;
+    }
+
+    private LinearLayout.LayoutParams chipLp() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 34));
+        lp.setMargins(0, 0, UiKit.dp(this, 7), 0);
+        return lp;
+    }
+
+    private TextView chip(String label, boolean suggested) {
+        TextView chip = UiKit.text(this, label, 13, suggested ? UiKit.accent(this) : UiKit.TEXT,
+                false);
+        chip.setGravity(Gravity.CENTER_VERTICAL);
+        chip.setPadding(UiKit.dp(this, 12), 0, UiKit.dp(this, 12), 0);
+        chip.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2,
+                UiKit.withAlpha(UiKit.accent(this), suggested ? 90 : 40), UiKit.accent(this), 17,
+                this));
+        return chip;
+    }
+
+    private View topicChip(OrbitVaultItem item, String topic, boolean suggested) {
+        TextView chip = chip((suggested ? "✦ " : "# ") + topic, suggested);
+        chip.setContentDescription((suggested ? "Suggested topic " : "Topic ") + topic
+                + ". Tap for options.");
+        chip.setOnClickListener(v -> {
+            String[] options = suggested
+                    ? new String[]{"Keep topic", "Remove suggestion", "Show items with this topic"}
+                    : new String[]{"Remove topic", "Show items with this topic"};
+            UiKit.showOrbitMenu(this, v, options, -1, (index, label) -> {
+                OrbitVaultItem now = OrbitVaultStore.get(this, item.id);
+                if (now == null) return;
+                if ("Keep topic".equals(label)) {
+                    List<String> next = new ArrayList<>(now.topics);
+                    next.add(topic);
+                    OrbitVaultStore.setTopics(this, now.id, next);
+                } else if ("Remove suggestion".equals(label) && now.suggestions != null) {
+                    OrbitVaultStore.updateSuggestions(this, now.id, now.suggestions.rejecting(topic));
+                } else if ("Remove topic".equals(label)) {
+                    List<String> next = new ArrayList<>(now.topics);
+                    next.remove(topic);
+                    OrbitVaultStore.setTopics(this, now.id, next);
+                } else if ("Show items with this topic".equals(label)) {
+                    Prefs.setVaultFilter(this, OrbitVaultFilter.NONE.withTopic(topic));
+                    startActivity(new Intent(this, OrbitVaultActivity.class)
+                            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                    | Intent.FLAG_ACTIVITY_SINGLE_TOP));
+                    UiKit.applyPageTransition(this);
+                    return;
+                }
+                rebuild();
+            });
+        });
+        UiKit.pressScale(chip);
+        return chip;
+    }
+
+    private void addTopic(OrbitVaultItem item) {
+        EditText field = new EditText(this);
+        field.setSingleLine(true);
+        field.setHint("Topic, like recipes or travel");
+        field.setTextColor(UiKit.TEXT);
+        field.setHintTextColor(UiKit.MUTED);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(ACTION_ADD_TOPIC)
+                .setView(field)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Add", (d, w) -> {
+                    OrbitVaultItem now = OrbitVaultStore.get(this, item.id);
+                    if (now == null) return;
+                    String topic = VaultTopics.reuse(field.getText().toString(),
+                            OrbitVaultStore.topicsInUse(this).keySet());
+                    if (topic.isEmpty()) return;
+                    List<String> next = new ArrayList<>(now.topics);
+                    if (!next.contains(topic)) next.add(topic);
+                    OrbitVaultStore.setTopics(this, now.id, next);
+                    rebuild();
+                })
+                .create();
+        UiKit.styleOrbitDialog(dialog, this, false);
+        dialog.show();
+    }
+
+    /**
+     * Asks for suggestions for this one item. The user pressed the button, which is the consent;
+     * the request itself waits for a connection and goes to the active AI provider.
+     */
+    private void requestSuggestions(OrbitVaultItem item) {
+        String blocker = SmartVault.suggestionBlocker(this);
+        if (!blocker.isEmpty()) {
+            Toast.makeText(this, blocker, Toast.LENGTH_LONG).show();
+            return;
+        }
+        int queued = SmartVault.queueSuggestions(this, java.util.Collections.singletonList(item.id));
+        Toast.makeText(this, queued > 0
+                ? "Orbit will send this item to " + SmartVault.providerName(this) + " for suggestions"
+                : "Orbit could not queue suggestions", Toast.LENGTH_SHORT).show();
+        rebuild();
+    }
+
+    /**
+     * Up to four saved items like this one, from the local index alone: no request is made to
+     * find them. Built off the main thread the first time, then drawn when ready.
+     */
+    private View relatedSection(OrbitVaultItem item) {
+        if (!Prefs.smartVaultEnabled(this)) return null;
+        SmartVaultIndex.Snapshot snapshot = SmartVaultIndex.current(this);
+        if (snapshot == null) {
+            SmartVaultIndex.warm(this, () -> {
+                if (!isFinishing() && !isDestroyed() && SmartVaultIndex.current(this) != null) {
+                    rebuild();
+                }
+            });
+            return null;
+        }
+        List<OrbitVaultItem> related = SmartVaultIndex.related(snapshot, item.id, 4);
+        if (related.isEmpty()) return null;
+        LinearLayout section = new LinearLayout(this);
+        section.setOrientation(LinearLayout.VERTICAL);
+        TextView heading = UiKit.text(this, RELATED_HEADING, 12, UiKit.MUTED, true);
+        heading.setLetterSpacing(0.18f);
+        heading.setPadding(UiKit.dp(this, 3), UiKit.dp(this, 26), 0, UiKit.dp(this, 10));
+        section.addView(heading);
+        for (OrbitVaultItem other : related) {
+            LinearLayout row = card();
+            row.addView(UiKit.text(this, other.displayTitle(), 14, UiKit.TEXT, true));
+            String preview = other.isLink() ? other.hostLabel() : other.preview();
+            if (!preview.isEmpty()) {
+                TextView p = UiKit.text(this, preview, 12, UiKit.MUTED, false);
+                p.setMaxLines(2);
+                p.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                p.setPadding(0, UiKit.dp(this, 4), 0, 0);
+                row.addView(p);
+            }
+            row.setBackground(UiKit.rippleOutlined(UiKit.SURFACE,
+                    UiKit.withAlpha(UiKit.accent(this), 30), UiKit.accent(this), 18, this));
+            row.setContentDescription("Related: " + other.typeLabel() + ", "
+                    + other.displayTitle());
+            row.setOnClickListener(v -> {
+                startActivity(new Intent(this, OrbitVaultItemActivity.class)
+                        .putExtra(EXTRA_ITEM_ID, other.id));
+                UiKit.applyPageTransition(this);
+            });
+            UiKit.pressScale(row);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.setMargins(0, 0, 0, UiKit.dp(this, 8));
+            section.addView(row, lp);
+        }
+        return section;
     }
 
     /**
@@ -209,7 +585,10 @@ public final class OrbitVaultItemActivity extends Activity {
         titles.setOrientation(LinearLayout.VERTICAL);
         titles.addView(UiKit.text(this, item == null ? "Vault item" : item.displayTitle(),
                 22, UiKit.TEXT, true));
-        titles.addView(UiKit.text(this, item == null ? "Vault" : item.typeLabel(),
+        // A suggested title is marked as Orbit's right under it, so it is never mistaken for one
+        // the user chose.
+        titles.addView(UiKit.text(this, item == null ? "Vault" : item.typeLabel()
+                        + (item.titleIsSuggested() ? " 00b7 2726 Suggested title" : ""),
                 12, UiKit.MUTED, false));
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
@@ -299,8 +678,11 @@ public final class OrbitVaultItemActivity extends Activity {
             where.setPadding(0, UiKit.dp(this, 6), 0, 0);
             card.addView(where);
         }
-        TextView note = UiKit.text(this,
-                "Orbit has not opened or read this address. It opens only when you choose to.",
+        // Honest either way: with "Read saved links" on, Smart Vault has read the page once.
+        TextView note = UiKit.text(this, pageText(item).isEmpty()
+                        ? "Orbit has not opened or read this address. It opens only when you choose to."
+                        : "Smart Vault read this page once so you can search its text. It opens "
+                                + "only when you choose to.",
                 12, UiKit.MUTED, false);
         note.setPadding(0, UiKit.dp(this, 8), 0, 0);
         card.addView(note);

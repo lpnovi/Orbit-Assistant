@@ -209,6 +209,7 @@ public final class Prefs {
      */
     public static final String VAULT_TYPE_FILTER = "vault_type_filter";
     public static final String VAULT_SOURCE_FILTER = "vault_source_filter";
+    public static final String VAULT_TOPIC_FILTER = "vault_topic_filter";
     /**
      * Whether Orbit Vault exists for this user at all.
      *
@@ -387,6 +388,37 @@ public final class Prefs {
      */
     public static boolean vaultEnabled(Context c) { return get(c).getBoolean(VAULT_ENABLED, true); }
 
+    // ---- Smart Vault (v0.8.1.0-beta.1). Every one of these is off until the user turns it on. ----
+
+    /** Local indexing: recognising text in saved pictures and indexing everything on this device. */
+    public static final String SMART_VAULT_ENABLED = "smart_vault_enabled";
+    /** Search by meaning, which needs the downloaded on-device model. */
+    public static final String SMART_VAULT_MEANING = "smart_vault_meaning";
+    /** Sending newly saved items to the active AI provider for a title, summary and topics. */
+    public static final String SMART_VAULT_AI_NEW = "smart_vault_ai_new_items";
+    /** Reading the web page behind a saved link so its words become searchable. */
+    public static final String SMART_VAULT_READ_LINKS = "smart_vault_read_links";
+    /** Recognising text in saved pictures, on this device, with Google ML Kit. */
+    public static final String SMART_VAULT_OCR = "smart_vault_ocr";
+    /** Whether the Vault's one-time Smart Vault introduction was dismissed. */
+    public static final String SMART_VAULT_INTRO_DISMISSED = "smart_vault_intro_dismissed";
+
+    public static boolean smartVaultEnabled(Context c) {
+        return vaultEnabled(c) && get(c).getBoolean(SMART_VAULT_ENABLED, false);
+    }
+    public static boolean smartVaultOcr(Context c) {
+        return smartVaultEnabled(c) && get(c).getBoolean(SMART_VAULT_OCR, false);
+    }
+    public static boolean smartVaultMeaning(Context c) {
+        return smartVaultEnabled(c) && get(c).getBoolean(SMART_VAULT_MEANING, false);
+    }
+    public static boolean smartVaultAiForNewItems(Context c) {
+        return smartVaultEnabled(c) && get(c).getBoolean(SMART_VAULT_AI_NEW, false);
+    }
+    public static boolean smartVaultReadLinks(Context c) {
+        return smartVaultEnabled(c) && get(c).getBoolean(SMART_VAULT_READ_LINKS, false);
+    }
+
     /** The Vault's list order. Newest first for a fresh install and for any unreadable value. */
     public static OrbitVaultStore.Sort vaultSort(Context c) {
         return OrbitVaultStore.Sort.fromId(get(c).getString(VAULT_SORT, OrbitVaultStore.Sort.NEWEST.id));
@@ -410,7 +442,8 @@ public final class Prefs {
                 OrbitVaultFilter.Type.fromId(get(c).getString(VAULT_TYPE_FILTER,
                         OrbitVaultFilter.Type.ALL.id)),
                 get(c).getString(VAULT_SOURCE_FILTER, ""),
-                "");
+                "",
+                get(c).getString(VAULT_TOPIC_FILTER, ""));
     }
 
     public static void setVaultFilter(Context c, OrbitVaultFilter filter) {
@@ -418,6 +451,7 @@ public final class Prefs {
         get(c).edit()
                 .putString(VAULT_TYPE_FILTER, applied.type.id)
                 .putString(VAULT_SOURCE_FILTER, applied.source)
+                .putString(VAULT_TOPIC_FILTER, applied.topic)
                 .apply();
     }
 

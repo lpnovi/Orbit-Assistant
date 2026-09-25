@@ -412,7 +412,7 @@ public final class AttachmentViewerActivity extends Activity {
         UiKit.haptic(saveToVault, HapticFeedbackConstants.CLOCK_TICK);
         OrbitVaultItem saved = OrbitVaultStore.saveRichAnswerImage(this, bitmap, image);
         android.widget.Toast.makeText(this,
-                saved == null ? "Orbit could not save this image" : "Saved to Vault",
+                saved == null ? OrbitVaultStore.saveFailureMessage(this, "Orbit could not save this image") : OrbitVaultStore.savedMessage(this),
                 android.widget.Toast.LENGTH_SHORT).show();
     }
 

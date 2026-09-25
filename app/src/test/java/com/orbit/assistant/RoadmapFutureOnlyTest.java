@@ -127,7 +127,8 @@ public final class RoadmapFutureOnlyTest {
     /** The page leads with what Orbit is building, then what follows it. */
     @Test public void thePageLeadsWithTheCurrentPlan() {
         String text = roadmapText();
-        assertTrue("the page must say what is being built now", text.contains("NOW - 0.8"));
+        assertTrue("the page must say what is being built now",
+                text.contains("NOW - ON THE WAY TO 0.9"));
         assertTrue(text.contains("LATER"));
         assertTrue(text.contains("EXPLORING"));
 

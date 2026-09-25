@@ -380,13 +380,24 @@ public final class OrbitVaultStoreTest {
         assertTrue(saved.body.contains("trimmed"));
     }
 
-    @Test public void theCollectionIsBounded() {
+    /**
+     * The collection is bounded, and reaching the bound never deletes anything (v0.8.1.0-beta.1).
+     * Before, the oldest item was silently removed to make room for the newest.
+     */
+    @Test public void theCollectionIsBoundedWithoutEverDeletingAnything() {
         for (int i = 0; i < OrbitVaultStore.MAX_ITEMS + 20; i++) {
-            OrbitVaultStore.saveText(context, "", "note " + i, "test");
+            OrbitVaultItem saved = OrbitVaultStore.saveText(context, "", "note " + i, "test");
+            if (i < OrbitVaultStore.MAX_ITEMS) assertNotNull(saved);
+            else assertNull("a save past the ceiling is refused", saved);
         }
         assertEquals(OrbitVaultStore.MAX_ITEMS, OrbitVaultStore.count(context));
-        assertEquals("the newest is kept", "note " + (OrbitVaultStore.MAX_ITEMS + 19),
-                OrbitVaultStore.list(context).get(0).body);
+        assertTrue(OrbitVaultStore.isFull(context));
+        List<OrbitVaultItem> all = OrbitVaultStore.list(context, OrbitVaultStore.Sort.OLDEST);
+        assertEquals("the oldest item is still there", "note 0", all.get(0).body);
+        assertEquals("the last accepted item is newest",
+                "note " + (OrbitVaultStore.MAX_ITEMS - 1), all.get(all.size() - 1).body);
+        assertEquals(OrbitVaultStore.FULL_MESSAGE,
+                OrbitVaultStore.saveFailureMessage(context, "generic"));
     }
 
     // ---- titles derived on this device ------------------------------------------------------------

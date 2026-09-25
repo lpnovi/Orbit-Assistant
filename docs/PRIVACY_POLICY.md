@@ -1,6 +1,6 @@
 # Orbit Assistant Privacy Policy
 
-**Last updated: September 18, 2026**
+**Last updated: September 24, 2026**
 
 This policy explains what Orbit Assistant ("Orbit") does with your information. It applies to both ways Orbit is distributed: the **Google Play edition** and the **GitHub edition**. Where they differ, this policy says so.
 
@@ -75,6 +75,19 @@ Viewing and searching a PDF happen on your phone. An attachment, or a PDF page y
 ## Web images in answers
 
 When an answer cites web pages, Orbit may load pictures from those pages to show alongside the answer. Orbit fetches the page and image directly from the website, sending no cookies or account information, but the website can see that a request came from your device, including your IP address. You can turn this off in Settings.
+
+## Smart Vault
+
+Smart Vault is an optional part of Orbit Vault, off until you turn it on in **Settings > Orbit Vault > Smart Vault**. Each part below is its own switch:
+
+- **Local indexing** keeps a search index of your Vault in Orbit's private storage. Nothing leaves your phone.
+- **Read text in pictures** recognises text in screenshots and photos you saved, on your phone, using Google ML Kit through Google Play services. Your pictures are not sent anywhere. Google Play services may download the recognition model and may collect anonymous usage statistics about the ML Kit feature.
+- **Search by meaning** downloads a search model once (about 30 MB) from Hugging Face. After that, meaning search runs entirely on your phone. Hugging Face can see the download request, including your IP address.
+- **Read saved links** opens the web page behind a link you saved, once, to read its title and text. That website can see the request, including your IP address. No cookies or account information are sent.
+- **Suggest details** sends a saved item's text (and text Orbit read from it) to your chosen AI provider to get a suggested title, summary and topics. This happens for new items only if you turned it on, and for items you saved earlier only if you ask, one item or one confirmed batch at a time.
+- **Ask Vault** attaches a few saved items that match your question to a normal chat. You see which items are attached, and nothing is sent until you press Send.
+
+When your Vault is full, Orbit pauses new saves instead of deleting anything. **Delete Smart Vault data** removes the index and every suggestion without touching your saved items. The index is not included in backups; suggestions and topics are, because they are part of your Vault items.
 
 ## Voice
 
@@ -160,6 +173,9 @@ Orbit works with these third parties only when you use the related feature. Orbi
 | GitHub | Release notes in What's New; update checks and Orbit Local downloads in the GitHub edition. [Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement) |
 | Google Play | Installing and updating the Google Play edition. [Google Privacy Policy](https://policies.google.com/privacy) |
 | Websites cited in answers | Pictures shown with answers, if enabled |
+| Google Play services (ML Kit) | On-device text recognition for Smart Vault, if you turn it on. [Google Privacy Policy](https://policies.google.com/privacy) |
+| Hugging Face | The one-time Smart Vault search model download, if you turn on search by meaning. [Privacy Policy](https://huggingface.co/privacy) |
+| Websites you saved as links | Reading a saved page's text, if you turn on Read saved links |
 | Your phone's speech and text-to-speech services | Voice input and spoken replies |
 | Your private relay or installed Extensions | Only if you configure them |
 

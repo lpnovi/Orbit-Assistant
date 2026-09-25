@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -284,6 +285,15 @@
             android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".OrbitVaultPickerActivity"
             android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".SmartVaultActivity"
+            android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <!-- ML Kit (Smart Vault text recognition) would otherwise start itself on every launch
+             through this provider. It is removed so ML Kit initialises only when the user has
+             turned on "Read text in pictures" and a picture is actually being read. -->
+        <provider
+            android:name="com.google.mlkit.common.internal.MlKitInitProvider"
+            android:authorities="${applicationId}.mlkitinitprovider"
+            tools:node="remove" />
         <activity android:name=".AppsActivity"
             android:enableOnBackInvokedCallback="true" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".AppProfileActivity"

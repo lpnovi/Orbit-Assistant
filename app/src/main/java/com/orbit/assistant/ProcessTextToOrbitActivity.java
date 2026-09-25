@@ -167,7 +167,7 @@ public final class ProcessTextToOrbitActivity extends Activity {
                 OrbitVaultSource.SELECTED_TEXT) != null;
         DiagnosticStore.recordExternalText(this, SharedContentStore.SOURCE_PROCESS_TEXT,
                 text.length(), saved ? "saved-to-vault" : "vault-save-failed");
-        Toast.makeText(this, saved ? "Saved to Vault" : "Orbit could not save that selection",
+        Toast.makeText(this, saved ? OrbitVaultStore.savedMessage(this) : OrbitVaultStore.saveFailureMessage(this, "Orbit could not save that selection"),
                 Toast.LENGTH_SHORT).show();
     }
 

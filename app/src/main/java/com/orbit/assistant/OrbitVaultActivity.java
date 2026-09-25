@@ -109,6 +109,9 @@ public final class OrbitVaultActivity extends Activity {
     static final String SOURCE_ANY = "Any source";
     /** What the Saved-from selector is asking, in the spoken description and nowhere else. */
     static final String SOURCE_QUESTION = "Saved from";
+    /** The Topic selector's resting value and its spoken question (v0.8.1.0-beta.1). */
+    static final String TOPIC_ANY = "Any topic";
+    static final String TOPIC_QUESTION = "Topic";
     /** And what the Type selector is asking. */
     static final String TYPE_QUESTION = "Type";
     /**
@@ -133,6 +136,19 @@ public final class OrbitVaultActivity extends Activity {
     static final String SAVED_HEADING = "SAVED ITEMS";
     /** "Pinned", as one item's provenance line and spoken description say it. */
     static final String PINNED_LABEL = "Pinned";
+
+    /** Smart Vault's words on this screen (v0.8.1.0-beta.1). */
+    static final String BEST_MATCHES_HEADING = "BEST MATCHES";
+    static final String ASK_VAULT_LABEL = "Ask Vault";
+    static final String INTRO_TITLE = "New: Smart Vault";
+    static final String INTRO_BODY = "Find saved things by what they mean, search text inside "
+            + "screenshots, get suggested titles and topics, and ask questions about what you "
+            + "saved. Every part is optional, and nothing leaves your phone unless you choose it.";
+    static final String NEARLY_FULL_TITLE = "Your Vault is nearly full";
+    static final String FULL_TITLE = "Your Vault is full";
+    /** Why a result matched, under its preview, when the card does not already show it. */
+    static final String MATCH_RECOGNIZED = "Found in text Orbit read";
+    static final String MATCH_MEANING = "Similar meaning";
 
     static final String ACTION_PIN = "Pin";
     static final String ACTION_UNPIN = "Unpin";
@@ -165,6 +181,8 @@ public final class OrbitVaultActivity extends Activity {
     private OrbitGlass.Chrome chrome;
     private Button capture;
     private LinearLayout undoBar;
+    /** Why each ranked result matched, while a Smart Vault search is on screen; otherwise null. */
+    private java.util.Map<String, SmartVaultRanker.Result> matchReasons;
     private boolean quickCapturePending;
     private String appearanceSignature = "";
 
@@ -454,7 +472,30 @@ public final class OrbitVaultActivity extends Activity {
         // are one question from here on. Nothing below asks any of them separately.
         OrbitVaultFilter filter = Prefs.vaultFilter(this).withQuery(query);
         rebuildFilterBar(filter);
-        List<OrbitVaultItem> shown = OrbitVaultStore.browse(this, filter, sort);
+        // Smart Vault ranks a search by relevance when it is on and its index is current. When the
+        // index is not ready yet, ordinary search answers immediately and the list is redrawn once
+        // the index is built, so typing never waits for it. Ranking only ever adds to what
+        // ordinary search finds; every literal match is still in the list, at the top.
+        List<OrbitVaultItem> shown = null;
+        matchReasons = null;
+        if (Prefs.smartVaultEnabled(this) && filter.hasQuery()) {
+            SmartVaultIndex.Snapshot snapshot = SmartVaultIndex.current(this);
+            if (snapshot == null) {
+                SmartVaultIndex.warm(this, this::refreshIfShowing);
+            } else {
+                shown = new ArrayList<>();
+                matchReasons = new java.util.HashMap<>();
+                for (SmartVaultRanker.Result result
+                        : SmartVaultIndex.search(this, snapshot, query)) {
+                    OrbitVaultItem item = snapshot.items.get(result.id);
+                    if (item == null || !filter.matchesSelectors(item)) continue;
+                    shown.add(item);
+                    matchReasons.put(item.id, result);
+                }
+            }
+        }
+        boolean ranked = shown != null;
+        if (shown == null) shown = OrbitVaultStore.browse(this, filter, sort);
         // An item waiting to be deleted is out of the list but still in storage, which is what
         // makes Undo complete rather than a reconstruction. It is out of the count as well, so the
         // header does not go on claiming something the user has just watched leave.
@@ -470,6 +511,9 @@ public final class OrbitVaultActivity extends Activity {
         String counted = total + (total == 1 ? " saved item" : " saved items");
         if (total == 0) {
             subtitle.setText("Nothing saved yet");
+        } else if (ranked) {
+            subtitle.setText(shown.size() + (shown.size() == 1 ? " match" : " matches")
+                    + " · best first");
         } else if (filter.isNarrowed()) {
             // What is on screen, and how much of the collection that is, so a short list after a
             // filter never reads as a Vault that has lost things.
@@ -494,6 +538,8 @@ public final class OrbitVaultActivity extends Activity {
             return;
         }
 
+        addNotices(total, filter);
+
         if (shown.isEmpty()) {
             LinearLayout empty = card();
             empty.addView(UiKit.text(this, NO_RESULTS_TITLE, 15, UiKit.TEXT, true));
@@ -506,6 +552,15 @@ public final class OrbitVaultActivity extends Activity {
             hint.setPadding(0, UiKit.dp(this, 5), 0, 0);
             empty.addView(hint);
             list.addView(empty, cardLp());
+            return;
+        }
+
+        // A ranked search is one list, best first. Splitting it into pinned and the rest would put
+        // a pinned but barely relevant item above the thing the user is actually looking for.
+        if (ranked) {
+            list.addView(askVaultRow(query, shown), cardLp());
+            list.addView(sectionHeading(BEST_MATCHES_HEADING, false));
+            addCards(shown);
             return;
         }
 
@@ -582,6 +637,150 @@ public final class OrbitVaultActivity extends Activity {
         return heading;
     }
 
+    // ---- Smart Vault on this screen (v0.8.1.0-beta.1) ---------------------------------------------
+
+    /** Redraws once the Smart Vault index is ready, if the screen is still there to redraw. */
+    private void refreshIfShowing() {
+        if (isFinishing() || isDestroyed() || list == null) return;
+        if (SmartVaultIndex.current(this) == null) return;
+        refresh();
+    }
+
+    /**
+     * The one-time Smart Vault introduction, and the capacity warning.
+     *
+     * <p>The introduction appears once there is something worth organising, never over a search
+     * or a filter, and never again once dismissed or used. The capacity warning is not optional:
+     * a nearly full Vault must say so before a save is refused, not after.
+     */
+    private void addNotices(int total, OrbitVaultFilter filter) {
+        if (total >= OrbitVaultStore.WARN_AT) {
+            LinearLayout full = card();
+            boolean atLimit = total >= OrbitVaultStore.MAX_ITEMS;
+            full.addView(UiKit.text(this, atLimit ? FULL_TITLE : NEARLY_FULL_TITLE, 15,
+                    UiKit.TEXT, true));
+            TextView body = UiKit.text(this, capacityBody(total), 12, UiKit.MUTED, false);
+            body.setPadding(0, UiKit.dp(this, 5), 0, 0);
+            full.addView(body);
+            full.setBackground(UiKit.outlined(UiKit.SURFACE,
+                    UiKit.withAlpha(UiKit.DANGER, 90), 20, this));
+            list.addView(full, cardLp());
+        }
+        if (!Prefs.smartVaultEnabled(this) && !filter.isNarrowed() && total >= 3
+                && !Prefs.get(this).getBoolean(Prefs.SMART_VAULT_INTRO_DISMISSED, false)) {
+            LinearLayout intro = card();
+            intro.addView(UiKit.text(this, INTRO_TITLE, 15, UiKit.TEXT, true));
+            TextView body = UiKit.text(this, INTRO_BODY, 12, UiKit.MUTED, false);
+            body.setPadding(0, UiKit.dp(this, 5), 0, UiKit.dp(this, 10));
+            intro.addView(body);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            Button setUp = UiKit.button(this, "Set up Smart Vault", true);
+            setUp.setOnClickListener(v -> startActivity(
+                    new Intent(this, SmartVaultActivity.class)));
+            row.addView(setUp, new LinearLayout.LayoutParams(0, UiKit.dp(this, 44), 1));
+            Button later = UiKit.button(this, "Not now", false);
+            later.setOnClickListener(v -> {
+                Prefs.get(this).edit().putBoolean(Prefs.SMART_VAULT_INTRO_DISMISSED, true).apply();
+                refresh();
+            });
+            LinearLayout.LayoutParams laterLp = new LinearLayout.LayoutParams(
+                    0, UiKit.dp(this, 44), 1);
+            laterLp.setMargins(UiKit.dp(this, 9), 0, 0, 0);
+            row.addView(later, laterLp);
+            intro.addView(row);
+            intro.setBackground(UiKit.outlined(UiKit.SURFACE,
+                    UiKit.withAlpha(UiKit.accent(this), 70), 20, this));
+            list.addView(intro, cardLp());
+        }
+    }
+
+    static String capacityBody(int total) {
+        if (total >= OrbitVaultStore.MAX_ITEMS) {
+            return "Your Vault holds " + OrbitVaultStore.MAX_ITEMS + " items, its current limit. "
+                    + "New saves are paused. Orbit never deletes saved items to make room, so "
+                    + "delete ones you no longer need to keep saving.";
+        }
+        return total + " of " + OrbitVaultStore.MAX_ITEMS + " spaces used. Orbit never deletes "
+                + "saved items to make room. When the Vault is full, new saves pause until you "
+                + "delete something.";
+    }
+
+    /**
+     * Ask Vault's entry point: the question typed into search, answered from the best matches.
+     * Tapping shows exactly which saved items would be attached before anything happens.
+     */
+    private View askVaultRow(String query, List<OrbitVaultItem> ranked) {
+        LinearLayout row = card();
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(R.drawable.ic_deck_sparkle);
+        icon.setImageTintList(ColorStateList.valueOf(UiKit.accent(this)));
+        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        row.addView(icon, new LinearLayout.LayoutParams(UiKit.dp(this, 20), UiKit.dp(this, 20)));
+        LinearLayout words = new LinearLayout(this);
+        words.setOrientation(LinearLayout.VERTICAL);
+        TextView title = UiKit.text(this, ASK_VAULT_LABEL + ": “" + query + "”", 14,
+                UiKit.TEXT, true);
+        title.setMaxLines(2);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        words.addView(title);
+        int count = Math.min(SmartVaultAsk.MAX_ITEMS, ranked.size());
+        words.addView(UiKit.text(this, "Answer from your top " + count
+                + (count == 1 ? " match" : " matches") + " in a chat", 12, UiKit.MUTED, false));
+        LinearLayout.LayoutParams wordsLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        wordsLp.setMargins(UiKit.dp(this, 12), 0, 0, 0);
+        row.addView(words, wordsLp);
+        row.setBackground(UiKit.rippleOutlined(UiKit.SURFACE,
+                UiKit.withAlpha(UiKit.accent(this), 80), UiKit.accent(this), 20, this));
+        row.setContentDescription(ASK_VAULT_LABEL + " about " + query);
+        row.setOnClickListener(v -> confirmAskVault(query, SmartVaultAsk.pick(ranked)));
+        UiKit.pressScale(row);
+        return row;
+    }
+
+    /**
+     * Lists the saved items Ask Vault would attach, and opens a chat only when the user agrees.
+     * Even then nothing is sent: the chat opens with the question and one attachment staged.
+     */
+    private void confirmAskVault(String query, List<OrbitVaultItem> items) {
+        if (items.isEmpty()) return;
+        StringBuilder message = new StringBuilder(
+                "Orbit will open a chat with your question and these saved items attached. "
+                        + "Nothing is sent until you press Send.\n");
+        for (int i = 0; i < items.size(); i++) {
+            message.append("\n").append(i + 1).append(". ").append(items.get(i).displayTitle());
+        }
+        if (!SmartVault.providerReady(this)) {
+            message.append("\n\n").append(SmartVault.providerName(this))
+                    .append(" is not ready yet, so you may need to finish setting it up first.");
+        }
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(ASK_VAULT_LABEL)
+                .setMessage(message.toString())
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Continue in chat", (d, w) -> {
+                    String[] ids = new String[items.size()];
+                    for (int i = 0; i < items.size(); i++) ids[i] = items.get(i).id;
+                    try {
+                        startActivity(new Intent(this, ChatActivity.class)
+                                .putExtra(ChatActivity.EXTRA_CONVERSATION_ID, ConversationStore.newId())
+                                .putExtra(ChatActivity.EXTRA_ASK_VAULT_IDS, ids)
+                                .putExtra(ChatActivity.EXTRA_ASK_VAULT_QUESTION, query)
+                                .putExtra(ChatActivity.EXTRA_FOCUS_COMPOSER, true));
+                        UiKit.applyPageTransition(this);
+                    } catch (Exception e) {
+                        Toast.makeText(this, "Could not open a conversation",
+                                Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .create();
+        UiKit.styleOrbitDialog(dialog, this, false);
+        dialog.show();
+    }
+
     // ---- narrowing the collection -----------------------------------------------------------------
 
     /**
@@ -617,14 +816,32 @@ public final class OrbitVaultActivity extends Activity {
                 v -> showSourceMenu(v, filter));
         filterBar.addView(sourceSelector, selectorLp(false));
 
+        // Topics (v0.8.1.0-beta.1) join as a third selector only once the Vault has any, so a
+        // Vault that never used Smart Vault keeps exactly the two-selector row it had.
+        View topicSelector = null;
+        boolean topical = filter.hasTopic();
+        if (topical || !OrbitVaultStore.topicsInUse(this).isEmpty()) {
+            String topicLabel = topical ? filter.topic : TOPIC_ANY;
+            topicSelector = selector(topicLabel, topical,
+                    TOPIC_QUESTION + ": " + topicLabel + ". Tap to choose a topic.",
+                    v -> showTopicMenu(v, filter));
+            filterBar.addView(topicSelector, selectorLp(false));
+        }
+
         // The cluster is rebuilt here, so the chrome is told about the new selectors. Without this
         // a scrolled list would leave Search at one depth and the row beneath it at another.
-        if (chrome != null) chrome.setControls(searchInput, typeSelector, sourceSelector);
+        if (chrome != null) {
+            if (topicSelector != null) {
+                chrome.setControls(searchInput, typeSelector, sourceSelector, topicSelector);
+            } else {
+                chrome.setControls(searchInput, typeSelector, sourceSelector);
+            }
+        }
 
         // Only once both questions are narrowing at the same time. With one in force, its own
         // selector already offers the way back in one tap, and a second control doing the same
         // thing is how Beta 4's row grew.
-        if (typed && sourced) {
+        if ((typed ? 1 : 0) + (sourced ? 1 : 0) + (topical ? 1 : 0) >= 2) {
             ImageButton clear = iconButton(R.drawable.ic_close, CLEAR_FILTERS);
             clear.setOnClickListener(v -> clearFilters());
             LinearLayout.LayoutParams clearLp = new LinearLayout.LayoutParams(
@@ -740,6 +957,27 @@ public final class OrbitVaultActivity extends Activity {
         }
         UiKit.showOrbitMenu(this, anchor, labels, selected, (index, label) ->
                 applyFilter(filter.withSource(index <= 0 ? "" : sources.get(index - 1))));
+    }
+
+    /**
+     * Topics the Vault uses, most used first, with how many items each would show. Topics are a
+     * way to find things again, never a folder: an item can have several, and choosing one only
+     * narrows the list.
+     */
+    private void showTopicMenu(View anchor, OrbitVaultFilter filter) {
+        java.util.LinkedHashMap<String, Integer> topics = OrbitVaultStore.topicsInUse(this);
+        List<String> keys = new ArrayList<>(topics.keySet());
+        if (filter.hasTopic() && !keys.contains(filter.topic)) keys.add(0, filter.topic);
+        String[] labels = new String[keys.size() + 1];
+        labels[0] = TOPIC_ANY;
+        int selected = 0;
+        for (int i = 0; i < keys.size(); i++) {
+            Integer n = topics.get(keys.get(i));
+            labels[i + 1] = keys.get(i) + (n == null ? "" : "  00b7  " + n);
+            if (keys.get(i).equals(filter.topic)) selected = i + 1;
+        }
+        UiKit.showOrbitMenu(this, anchor, labels, selected, (index, label) ->
+                applyFilter(filter.withTopic(index <= 0 ? "" : keys.get(index - 1))));
     }
 
     private void applyFilter(OrbitVaultFilter filter) {
@@ -866,6 +1104,33 @@ public final class OrbitVaultActivity extends Activity {
             note.setEllipsize(android.text.TextUtils.TruncateAt.END);
             note.setPadding(0, UiKit.dp(this, 6), 0, 0);
             card.addView(note);
+        }
+
+        // Why a Smart Vault result is here, when the card itself would not show it: words Orbit
+        // read in a picture or a page, or a match by meaning rather than by the words typed.
+        SmartVaultRanker.Result reason = matchReasons == null ? null : matchReasons.get(item.id);
+        if (reason != null && (reason.reason == SmartVaultRanker.Reason.RECOGNIZED
+                || reason.reason == SmartVaultRanker.Reason.MEANING)) {
+            String label = reason.reason == SmartVaultRanker.Reason.RECOGNIZED
+                    ? MATCH_RECOGNIZED : MATCH_MEANING;
+            TextView why = UiKit.text(this, reason.excerpt.isEmpty() ? label
+                    : label + ": " + reason.excerpt, 12, UiKit.accent(this), false);
+            why.setMaxLines(2);
+            why.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            why.setPadding(0, UiKit.dp(this, 6), 0, 0);
+            card.addView(why);
+        }
+
+        // Topics, kept or suggested, in one short line. Words, not coloured chips, so the list
+        // stays scannable and a topic never reads as a button that does something.
+        List<String> topics = item.allTopics();
+        if (!topics.isEmpty()) {
+            TextView topicLine = UiKit.text(this, "# " + String.join("  # ", topics), 11,
+                    UiKit.MUTED, false);
+            topicLine.setSingleLine(true);
+            topicLine.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            topicLine.setPadding(0, UiKit.dp(this, 6), 0, 0);
+            card.addView(topicLine);
         }
 
         // The kind of item is written out, never signalled by colour alone, so it reads the same
@@ -1162,7 +1427,7 @@ public final class OrbitVaultActivity extends Activity {
                 if (OrbitVaultStore.saveText(this, title.getText().toString(), text,
                         OrbitVaultSource.QUICK_CAPTURE,
                         userNote.getText().toString()) == null) {
-                    Toast.makeText(this, "Orbit could not save that", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, OrbitVaultStore.saveFailureMessage(this, "Orbit could not save that"), Toast.LENGTH_SHORT).show();
                     return;
                 }
                 dialog.dismiss();
@@ -1252,7 +1517,7 @@ public final class OrbitVaultActivity extends Activity {
                 if (OrbitVaultStore.saveText(this, title.getText().toString(), text,
                         OrbitVaultSource.CLIPBOARD,
                         userNote.getText().toString()) == null) {
-                    Toast.makeText(this, "Orbit could not save that", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, OrbitVaultStore.saveFailureMessage(this, "Orbit could not save that"), Toast.LENGTH_SHORT).show();
                     return;
                 }
                 dialog.dismiss();
@@ -1305,14 +1570,14 @@ public final class OrbitVaultActivity extends Activity {
         OrbitVaultItem item = OrbitVaultStore.saveImage(this, image, "", OrbitVaultSource.PHOTO);
         image.recycle();
         if (item == null) {
-            Toast.makeText(this, "Orbit could not save that image", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, OrbitVaultStore.saveFailureMessage(this, "Orbit could not save that image"), Toast.LENGTH_SHORT).show();
             return;
         }
         saved();
     }
 
     private void saved() {
-        Toast.makeText(this, "Saved to Vault", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, OrbitVaultStore.savedMessage(this), Toast.LENGTH_SHORT).show();
         if (searchInput != null && searchInput.getText().length() > 0) searchInput.setText("");
         refresh();
     }

@@ -73,15 +73,27 @@ public final class OrbitVaultFilter {
     }
 
     /** The default: everything, in whatever order the user chose. */
-    public static final OrbitVaultFilter NONE = new OrbitVaultFilter(Type.ALL, "", "");
+    public static final OrbitVaultFilter NONE = new OrbitVaultFilter(Type.ALL, "", "", "");
 
     public final Type type;
     /** A canonical {@link OrbitVaultSource} family, or empty for any source. */
     public final String source;
     /** What the user typed, or empty. */
     public final String query;
+    /**
+     * One topic the collection is narrowed to, or empty. Added in v0.8.1.0-beta.1.
+     *
+     * <p>Matches a topic the user kept or one Orbit proposed that they have not removed, so topic
+     * browsing is useful before anybody has reviewed a single suggestion.
+     */
+    public final String topic;
 
     public OrbitVaultFilter(Type type, String source, String query) {
+        this(type, source, query, "");
+    }
+
+    public OrbitVaultFilter(Type type, String source, String query, String topic) {
+        this.topic = VaultTopics.normalize(topic);
         this.type = type == null ? Type.ALL : type;
         // Anything that is not one of Orbit's own source words is not a source filter at all. A
         // restored backup may legitimately carry a label an older Orbit wrote, and a hand-edited
@@ -92,20 +104,26 @@ public final class OrbitVaultFilter {
     }
 
     public OrbitVaultFilter withType(Type newType) {
-        return new OrbitVaultFilter(newType, source, query);
+        return new OrbitVaultFilter(newType, source, query, topic);
     }
 
     public OrbitVaultFilter withSource(String newSource) {
-        return new OrbitVaultFilter(type, newSource, query);
+        return new OrbitVaultFilter(type, newSource, query, topic);
     }
 
     public OrbitVaultFilter withQuery(String newQuery) {
-        return new OrbitVaultFilter(type, source, newQuery);
+        return new OrbitVaultFilter(type, source, newQuery, topic);
     }
+
+    public OrbitVaultFilter withTopic(String newTopic) {
+        return new OrbitVaultFilter(type, source, query, newTopic);
+    }
+
+    public boolean hasTopic() { return !topic.isEmpty(); }
 
     /** Whether the user has narrowed the Vault by anything other than words. */
     public boolean hasTypeOrSource() {
-        return type != Type.ALL || !source.isEmpty();
+        return type != Type.ALL || !source.isEmpty() || !topic.isEmpty();
     }
 
     /** Whether anything at all is currently hiding part of the Vault. */
@@ -120,6 +138,19 @@ public final class OrbitVaultFilter {
         if (item == null) return false;
         if (!type.matches(item)) return false;
         if (!source.isEmpty() && !source.equals(OrbitVaultSource.family(item.source))) return false;
+        if (!topic.isEmpty() && !item.allTopics().contains(topic)) return false;
+        return matchesQuery(item);
+    }
+
+    /** Whether the words match, alone. Smart Vault ranks within what the selectors allow. */
+    public boolean matchesSelectors(OrbitVaultItem item) {
+        if (item == null) return false;
+        if (!type.matches(item)) return false;
+        if (!source.isEmpty() && !source.equals(OrbitVaultSource.family(item.source))) return false;
+        return topic.isEmpty() || item.allTopics().contains(topic);
+    }
+
+    public boolean matchesQuery(OrbitVaultItem item) {
         if (query.isEmpty()) return true;
         return item.searchHaystack().contains(query.toLowerCase(Locale.US));
     }
@@ -128,8 +159,12 @@ public final class OrbitVaultFilter {
     public String describe() {
         if (!hasTypeOrSource()) return "";
         String from = OrbitVaultSource.displayLabel(source);
-        if (from.isEmpty()) return type.label;
-        if (type == Type.ALL) return from;
-        return type.label + " · " + from;
+        String base;
+        if (type == Type.ALL && from.isEmpty()) base = topic.isEmpty() ? type.label : "";
+        else if (from.isEmpty()) base = type.label;
+        else if (type == Type.ALL) base = from;
+        else base = type.label + " · " + from;
+        if (topic.isEmpty()) return base;
+        return base.isEmpty() ? "Topic: " + topic : base + " · " + topic;
     }
 }

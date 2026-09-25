@@ -176,15 +176,28 @@ public final class ChatGptClient {
      */
     public static void plan(Context context, String planningPrompt, String intelligenceMode,
                             AssistantClient.PlanCallback cb) {
+        complete(context, PLANNING_SYSTEM, planningPrompt, intelligenceMode, cb);
+    }
+
+    /**
+     * One non-streaming structured request with caller-chosen instructions.
+     *
+     * <p>Exactly the planning request, with the Routine planner's instructions swapped for the
+     * caller's: no history, no screen, no memory, no tools. Smart Vault uses it to ask for a
+     * saved item's title, summary and topics as one small JSON object.
+     */
+    public static void complete(Context context, String instructions, String planningPrompt,
+                                String intelligenceMode, AssistantClient.PlanCallback cb) {
         ChatGptAuth.getValidTokens(context, false, new ChatGptAuth.TokenCallback() {
             @Override public void onSuccess(SecureStore.ChatGptTokens tokens) {
-                EXEC.execute(() -> doPlan(context, planningPrompt, intelligenceMode, tokens, false, cb));
+                EXEC.execute(() -> doPlan(context, instructions, planningPrompt, intelligenceMode, tokens, false, cb));
             }
             @Override public void onError(String message) { cb.onError(message); }
         });
     }
 
-    private static void doPlan(Context context, String planningPrompt, String intelligenceMode,
+    private static void doPlan(Context context, String instructions, String planningPrompt,
+                               String intelligenceMode,
                                SecureStore.ChatGptTokens tokens, boolean alreadyRefreshed,
                                AssistantClient.PlanCallback cb) {
         HttpURLConnection conn = null;
@@ -192,7 +205,7 @@ public final class ChatGptClient {
         try {
             JSONObject body = new JSONObject();
             body.put("model", model);
-            body.put("instructions", PLANNING_SYSTEM);
+            body.put("instructions", instructions);
             body.put("store", false);
             body.put("stream", true);
             body.put("parallel_tool_calls", false);
@@ -231,8 +244,8 @@ public final class ChatGptClient {
                 conn.disconnect();
                 ChatGptAuth.getValidTokens(context, true, new ChatGptAuth.TokenCallback() {
                     @Override public void onSuccess(SecureStore.ChatGptTokens fresh) {
-                        EXEC.execute(() -> doPlan(context, planningPrompt, intelligenceMode,
-                                fresh, true, cb));
+                        EXEC.execute(() -> doPlan(context, instructions, planningPrompt,
+                                intelligenceMode, fresh, true, cb));
                     }
                     @Override public void onError(String message) { cb.onError(message); }
                 });

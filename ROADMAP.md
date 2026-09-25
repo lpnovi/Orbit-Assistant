@@ -483,22 +483,54 @@ Planned after this completed line:
 - Until that provider exists, there is no checkout or billing library and nothing to buy
 - Other pre-1.0 polish, supporter ideas, and Orbit Labs exploration
 
-## Next
+## Current - the journey to Orbit 0.9
 
 ### Smart Vault - still a free Orbit feature
 
-Smart Vault returns as the next major feature after the planned Deck Pro line. It is not cancelled
-and is deliberately not a Pro feature: finding your own saved things is part of what the Vault is
-for, and the Vault is free.
-
-- Semantic Vault search and natural-language retrieval
-- OCR for screenshots and images the user explicitly saved
-- Optional webpage and article extraction
-- Optional AI summaries and AI-assisted organization
-- Richer retrieval of saved document content
+Smart Vault is the headline of the journey to Orbit 0.9, delivered through public GitHub Betas in
+the 0.8.1 line. It is deliberately not a Pro feature: finding your own saved things is part of
+what the Vault is for, and the Vault is free.
 
 **Privacy rule.** Smart Vault stays opt-in and explicit. Orbit must never silently upload, index or
-embed somebody's whole Vault.
+embed somebody's whole Vault. Every boundary is its own switch, off until the user turns it on:
+local indexing, text recognition in pictures, the one-time meaning-model download, reading saved
+links, and AI suggestions for new items. Existing items reach an AI provider only through an
+explicit, counted request.
+
+#### `0.8.1.0-beta.1` - first public Smart Vault Beta
+
+- **Hybrid search.** Ordinary search is unchanged and every literal match still ranks first; with
+  Smart Vault on, results are ranked by relevance, words are matched in any order with plural
+  folding, and each result says why it matched when the card would not show it
+- **Search by meaning, on the device.** Model2Vec `potion-base-8M` (MIT, about 30 MB), downloaded
+  once from a pinned revision and verified by SHA-256, read by a small pure-Java embedder. No native
+  runtime and nothing added to the APK
+- **Text in pictures.** Google ML Kit text recognition through Google Play services, on the device
+- **Smarter Screen Selection.** A full-screen save keeps the screen's text; a crop never does
+- **Read saved links** (optional). The page's title becomes a suggested title and its text becomes
+  searchable, through the existing Rich Answers page fetcher and its safety rules
+- **Suggestions.** A title, a short summary and up to three topics from the active AI provider,
+  kept apart from everything the user wrote, each keepable, editable or removable; rejected topics
+  never come back
+- **Topics** as a third Vault filter, **Related in your Vault** on each item, and **Ask Vault**,
+  which stages the best matches as one ordinary chat attachment for the user to send
+- **A full Vault never deletes anything.** The oldest item used to be removed silently at 300
+  items; now new saves pause with a clear message, and the Vault warns from 270
+- **Architecture.** The Vault's JSON document stays the only authority. Smart Vault's index is a
+  separate SQLite database that can be deleted and rebuilt at any time, and background results
+  are compare-and-set against the item they were computed from
+
+#### Still ahead in the 0.8.1 line
+
+- Suggestions from Orbit Local and the Relay provider (ChatGPT only in Beta 1)
+- Tappable citations inside Ask Vault answers, and Ask Vault from the Side-button overlay
+- Richer retrieval across whole saved documents rather than single pages
+- Raising the 300-item ceiling, which needs the Vault's storage to move off one preferences
+  document first
+- Multilingual meaning search
+
+Vault Pro organization - custom views, bulk AI reorganisation, dashboards, collections - stays a
+separate, later layer and is not part of Smart Vault.
 
 ## Later / parked
 
