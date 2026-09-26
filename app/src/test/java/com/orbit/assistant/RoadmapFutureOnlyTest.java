@@ -81,6 +81,14 @@ public final class RoadmapFutureOnlyTest {
             "Settings search",
             "GPT-6 Astra",
             "Deck layouts",
+            // v0.8.1.0 made Smart Vault Stable. Its milestone stays NOW for the work still ahead,
+            // but what shipped in the two Betas may no longer be offered as upcoming.
+            "search by meaning",
+            "Search by meaning",
+            "text read from your pictures",
+            "Read text in pictures",
+            "topic filters",
+            "Related in your Vault",
     };
 
     private String roadmapText() {

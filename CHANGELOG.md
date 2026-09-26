@@ -842,6 +842,13 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.1.0**: Orbit Smart Vault is now Stable.
+  - Search your Vault by meaning with an on-device model you choose to download, so you find things without remembering exact words.
+  - Orbit reads the text in saved screenshots and photos on your phone, and search shows the passage that matched.
+  - Get suggested titles, summaries and topics for saved items, then filter your Vault by topic. Your own titles always win.
+  - See related saves on each item, and ask Ask Vault a question answered from what you saved.
+  - Every part is optional and off until you turn it on. Indexing and search run on your phone, and each switch says what, if anything, leaves it.
+  - A full Vault never deletes your saved items. It warns you early and pauses new saves instead.
 - **v0.8.1.0-beta.2**: Smart Vault polish: smoother controls, clearer search results and a tidier settings page.
   - Smart Vault's switches now slide and give the same light haptic tick as every other Orbit setting.
   - The search model download shows a small progress ring with its percentage, and says when it is preparing, waiting or ready.

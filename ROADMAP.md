@@ -9,6 +9,15 @@ canonical record of what actually shipped.
 
 ## Shipped / Stable
 
+### `0.8.1.0` Stable - Smart Vault
+
+Released from the tested Beta 2 line with no product-behavior changes. Ranked Vault search, search
+by meaning with the on-device model, text read from saved pictures, suggested titles, summaries and
+topics, topic filters, related items, Ask Vault, the regrouped Smart Vault settings and the Vault
+shortcut to them are now Stable. Smart Vault stays free, optional and off until the user turns it
+on, and a full Vault pauses new saves rather than deleting anything. The record of both Betas and
+what is still ahead is under Current below.
+
 ### `0.8.0.0` Stable - Orbit Deck organization and surface materials
 
 Released from the tested Beta 8 line with no product-behavior changes. Solid, Frosted and Liquid
@@ -488,7 +497,8 @@ Planned after this completed line:
 ### Smart Vault - still a free Orbit feature
 
 Smart Vault is the headline of the journey to Orbit 0.9, delivered through public GitHub Betas in
-the 0.8.1 line. It is deliberately not a Pro feature: finding your own saved things is part of
+the 0.8.1 line and released as `0.8.1.0` Stable after two Betas. The work still ahead below
+continues the same line. It is deliberately not a Pro feature: finding your own saved things is part of
 what the Vault is for, and the Vault is free.
 
 **Privacy rule.** Smart Vault stays opt-in and explicit. Orbit must never silently upload, index or
@@ -532,9 +542,9 @@ explicit, counted request.
 - **Regrouped settings page**: Search, Capture, AI suggestions, Saved items and Manage, with the
   longer technical detail under Privacy details
 
-#### Still ahead in the 0.8.1 line
+#### Still ahead for Smart Vault
 
-- Suggestions from Orbit Local and the Relay provider (ChatGPT only in Beta 1)
+- Suggestions from Orbit Local and the Relay provider (ChatGPT only in 0.8.1.0)
 - Tappable citations inside Ask Vault answers, and Ask Vault from the Side-button overlay
 - Richer retrieval across whole saved documents rather than single pages
 - Raising the 300-item ceiling, which needs the Vault's storage to move off one preferences

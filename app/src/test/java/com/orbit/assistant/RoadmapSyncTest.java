@@ -106,7 +106,9 @@ public final class RoadmapSyncTest {
     @Test public void theShippedLineIsRecordedAboveTheActivePlan() {
         String file = markdown();
         int shipped = file.indexOf(RICH_ANSWERS);
-        int current = file.indexOf(OrbitRoadmap.CURRENT);
+        // Anchored on the section heading rather than the first mention of the milestone name:
+        // from 0.8.1.0 the Smart Vault Stable entry names it above the active plan too.
+        int current = file.indexOf("## Current - the journey to Orbit 0.9");
         assertTrue("Rich Answers must still be recorded", shipped >= 0);
         assertTrue("Smart Vault is the active line after the completed Pro Betas", current > shipped);
         assertTrue("Rich Answers is recorded as Stable, not as current work",
@@ -117,6 +119,12 @@ public final class RoadmapSyncTest {
                 file.indexOf("### `0.8.0.0` Stable") >= 0);
         assertTrue("above the active plan as well",
                 file.indexOf("### `0.8.0.0` Stable") < current);
+        assertTrue("the 0.8.1.0 Smart Vault line is recorded as Stable",
+                file.indexOf("### `0.8.1.0` Stable - Smart Vault") >= 0);
+        assertTrue("above the active plan too",
+                file.indexOf("### `0.8.1.0` Stable - Smart Vault") < current);
+        assertTrue("and the active plan still names its milestone",
+                file.indexOf(OrbitRoadmap.CURRENT, current) > current);
 
         String page = inApp();
         assertTrue("the in-app page leads with the active line",

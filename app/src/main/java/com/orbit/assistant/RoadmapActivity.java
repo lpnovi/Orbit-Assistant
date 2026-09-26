@@ -103,14 +103,15 @@ public final class RoadmapActivity extends Activity {
         // session, Orbit-managed timers, OpenRouter chat and the rest are all real unfinished work
         // and are still listed; they have simply stopped being presented as the next thing to
         // happen, which they had not been for several releases.
-        // v0.8.1.0-beta.1 began the journey to Orbit 0.9 with Smart Vault's first public Beta. It
-        // stays NOW until it reaches Stable, and says what is still ahead rather than what shipped.
+        // v0.8.1.0-beta.1 began the journey to Orbit 0.9 with Smart Vault's first public Beta.
+        // v0.8.1.0 made it Stable, so the entry now lists only what is still ahead for it: what
+        // shipped belongs to What's New, never here.
         addGroup(page, "NOW - ON THE WAY TO 0.9", new String[][]{
-                {OrbitRoadmap.CURRENT, "Making saved things easier to find and understand: ranked "
-                        + "search, search by meaning, text read from your pictures, suggested "
-                        + "titles and topics, related items and Ask Vault, now in Beta. Next: "
-                        + "suggestions from more providers and richer retrieval of whole saved "
-                        + "documents. Always explicit, never automatic, and always Free."}
+                {OrbitRoadmap.CURRENT, "What comes next for the Vault's search and suggestions: "
+                        + "suggestions from more AI providers, tappable sources in Ask Vault "
+                        + "answers, Ask Vault from the Side button, richer retrieval across whole "
+                        + "saved documents, and room for more than 300 items. Always explicit, "
+                        + "never automatic, and always Free."}
         });
         addGroup(page, "LATER", new String[][]{
                 {"Vault Pro organization", "Optional advanced organization built on top of the Free Vault."},
