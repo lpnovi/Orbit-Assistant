@@ -270,6 +270,11 @@ final class SmartVault {
         return AiProviders.active(c).displayName();
     }
 
+    /** Whether the active provider is Orbit Local, whose answers never leave this phone. */
+    static boolean localProviderActive(Context c) {
+        return Prefs.PROVIDER_LOCAL.equals(AiProviders.active(c).id());
+    }
+
     /** Whether the active provider can answer a chat right now. */
     static boolean providerReady(Context c) {
         return AiProviders.active(c).status(c) == AiProvider.Status.READY;

@@ -374,6 +374,32 @@ public final class DiagnosticStore {
     }
 
     /**
+     * The last Orbit Local chat request, as structure rather than content.
+     *
+     * <p>A path token from {@link LocalContextBudget} ("chat", "ask-vault", "notifications",
+     * "attachments", "screen", "image-only"), a summary made only of counts, the estimated prompt
+     * size against its budget, whether evidence was reduced to excerpts, timings, and an outcome
+     * token. The prompt, the answer, memories, notification text, saved items, screen text and
+     * attachment text never reach this store: nothing that could hold them is a parameter.
+     */
+    public static void recordLocalRequest(Context c, String path, String sourcesSummary,
+                                          int estimatedTokens, int budgetTokens, boolean trimmed,
+                                          long firstTokenMs, long totalMs, String outcome) {
+        if (c == null) return;
+        prefs(c).edit()
+                .putString("local_request_path", safe(path))
+                .putString("local_request_sources", safe(sourcesSummary))
+                .putInt("local_request_tokens", Math.max(0, estimatedTokens))
+                .putInt("local_request_budget", Math.max(0, budgetTokens))
+                .putBoolean("local_request_trimmed", trimmed)
+                .putLong("local_request_first_ms", firstTokenMs)
+                .putLong("local_request_total_ms", Math.max(0L, totalMs))
+                .putString("local_request_outcome", safe(outcome))
+                .putLong("local_request_updated", System.currentTimeMillis())
+                .apply();
+    }
+
+    /**
      * Where a reply draft was last sent, as a destination category.
      *
      * <p>One closed word from {@link ReplySurface#diagnosticsName}: "sms", "email-copy",

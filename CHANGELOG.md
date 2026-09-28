@@ -842,6 +842,12 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.2.0-beta.1**: Orbit Local 2.0 Beta 1: more of Orbit now works privately on your phone.
+  - Ask Vault works fully offline with Orbit Local, and each answer names the saved items it read.
+  - Attached text files, PDFs, clipboard text, Vault notes, Screen Selection and text Orbit read from pictures now reach Orbit Local.
+  - Ask Orbit Local what notifications you missed, using the Notification Intelligence history already kept on your phone.
+  - With the optional action model, local device actions handle up to three requests at once, and "put it back" now covers Do Not Disturb and the ringer.
+  - The Orbit Local screen now shows what works on this phone and what still needs a cloud provider.
 - **v0.8.1.0**: Orbit Smart Vault is now Stable.
   - Search your Vault by meaning with an on-device model you choose to download, so you find things without remembering exact words.
   - Orbit reads the text in saved screenshots and photos on your phone, and search shows the passage that matched.

@@ -29,6 +29,9 @@ public final class LocalCommandRouter {
         String normalized = raw.trim();
         if (normalized.isEmpty()) return null;
 
+        AssistantReply clarify = clarifyAmbiguousFollowUp(normalized);
+        if (clarify != null) return clarify;
+
         List<String> parts = splitIntoCommandParts(normalized);
         if (parts.size() > 1) {
             List<AssistantReply.Action> actions = new ArrayList<>();
@@ -163,40 +166,54 @@ public final class LocalCommandRouter {
         if (target == null) return null;
         if (!RecentActionContext.isBareFollowUp(q)) return null;
 
-        boolean restore = q.matches("^(?:put|set|turn|change)\\s+(?:it|that)\\s+back$")
-                || q.equals("put it back") || q.equals("undo that") || q.equals("revert that");
-        if (restore) {
-            if (target == RecentActionContext.Target.FLASHLIGHT) {
-                boolean previous = RecentActionContext.previousFlashlightOn();
-                return new ParsedCommand(
-                        action("FLASHLIGHT", new JSONObject().put("on", previous)),
-                        previous ? "Turning the flashlight back on." : "Turning the flashlight back off.",
-                        previous ? "turn on the flashlight" : "turn off the flashlight");
-            }
-            int previous = RecentActionContext.previousPercent();
-            // Orbit does not know where it was, so it does not pretend to.
-            if (previous < 0) return null;
-            String type = target == RecentActionContext.Target.BRIGHTNESS
-                    ? "SET_BRIGHTNESS" : "SET_VOLUME";
-            String noun = target == RecentActionContext.Target.BRIGHTNESS
-                    ? "brightness" : "media volume";
-            return new ParsedCommand(action(type, new JSONObject().put("percent", previous)),
-                    "Putting " + noun + " back to " + previous + "%.",
-                    "set " + noun + " back to " + previous + "%");
+        if (RecentActionContext.isRestore(q)) {
+            RecentActionContext.Restore restore = RecentActionContext.restore();
+            return restore == null ? null
+                    : new ParsedCommand(restore.action, restore.spoken, restore.summary);
         }
 
-        if (target == RecentActionContext.Target.FLASHLIGHT) {
-            // Only an explicit on/off follow-up applies to a flashlight.
-            if (q.matches("^(?:turn|switch)\\s+(?:it|that)\\s+off$") || q.equals("off")) {
-                return new ParsedCommand(action("FLASHLIGHT", new JSONObject().put("on", false)),
-                        "Turning off the flashlight.", "turn off the flashlight");
+        // "Turn it back on" is a restore that also states the result. It is honoured only when the
+        // stated result is what the state was before, so it can never mean something the user
+        // did not just undo.
+        String back = RecentActionContext.backOnOff(q);
+        if (back != null) {
+            RecentActionContext.Restore restore = RecentActionContext.restore();
+            if (restore == null) return null;
+            boolean wantOn = "on".equals(back);
+            switch (target) {
+                case FLASHLIGHT:
+                    return RecentActionContext.previousFlashlightOn() == wantOn
+                            ? new ParsedCommand(restore.action, restore.spoken, restore.summary) : null;
+                case DND:
+                    return RecentActionContext.previousDndEnabled() == wantOn
+                            ? new ParsedCommand(restore.action, restore.spoken, restore.summary) : null;
+                case RINGER:
+                    return wantOn && "normal".equals(RecentActionContext.previousRingerMode())
+                            ? new ParsedCommand(restore.action, restore.spoken, restore.summary) : null;
+                default:
+                    return null;
             }
-            if (q.matches("^(?:turn|switch)\\s+(?:it|that)\\s+on$") || q.equals("on")) {
-                return new ParsedCommand(action("FLASHLIGHT", new JSONObject().put("on", true)),
-                        "Turning on the flashlight.", "turn on the flashlight");
-            }
-            return null;
         }
+
+        if (target == RecentActionContext.Target.FLASHLIGHT || target == RecentActionContext.Target.DND) {
+            // Only an explicit on/off follow-up applies to a switch.
+            boolean flashlight = target == RecentActionContext.Target.FLASHLIGHT;
+            Boolean on = q.matches("^(?:turn|switch)\\s+(?:it|that)\\s+off$") || q.equals("off")
+                    ? Boolean.FALSE
+                    : q.matches("^(?:turn|switch)\\s+(?:it|that)\\s+on$") || q.equals("on")
+                    ? Boolean.TRUE : null;
+            if (on == null) return null;
+            if (flashlight) {
+                return new ParsedCommand(action("FLASHLIGHT", new JSONObject().put("on", on)),
+                        on ? "Turning on the flashlight." : "Turning off the flashlight.",
+                        on ? "turn on the flashlight" : "turn off the flashlight");
+            }
+            return new ParsedCommand(action("SET_DND", new JSONObject().put("enabled", on)),
+                    on ? "Turning on Do Not Disturb." : "Turning off Do Not Disturb.",
+                    on ? "turn on Do Not Disturb" : "turn off Do Not Disturb");
+        }
+        // The ringer has three states, so nothing but an explicit restore resolves against it.
+        if (target == RecentActionContext.Target.RINGER) return null;
 
         // A level follow-up: reuse the ordinary relative grammar by naming the remembered target,
         // so magnitudes, extremes and exact deltas all behave exactly as they do when spoken in
@@ -217,6 +234,21 @@ public final class LocalCommandRouter {
         else params.put("delta", resolved.delta);
         return new ParsedCommand(action(resolved.actionType(), params),
                 resolved.confirmation(), resolved.summary());
+    }
+
+    /**
+     * A question back to the user when a bare follow-up could mean more than one recent change.
+     *
+     * <p>After "turn on Do Not Disturb and dim the screen", "put it back" has two honest meanings.
+     * Orbit changes nothing and asks, which is the one answer that cannot be wrong.
+     */
+    static AssistantReply clarifyAmbiguousFollowUp(String raw) {
+        if (!RecentActionContext.isAmbiguous()) return null;
+        String q = LanguageNormalizer.stripPoliteness(LanguageNormalizer.canonical(raw));
+        if (q.isEmpty() || !RecentActionContext.isBareFollowUp(q)) return null;
+        if (!RecentActionContext.looksLikeFollowUp(q)) return null;
+        String question = RecentActionContext.clarification();
+        return question.isEmpty() ? null : new AssistantReply(question);
     }
 
     // ---- playback ---------------------------------------------------------------------------------

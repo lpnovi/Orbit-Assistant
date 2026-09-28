@@ -964,7 +964,32 @@ public final class DiagnosticsActivity extends Activity {
                           "\n  Explicit pause requested: " + status.pauseRequested +
                           "\n  Last download failure: " + (status.lastFailure.isEmpty()
                                   ? "none" : status.lastFailure)) +
-                "\n  Earlier Orbit model data: " + LocalModelStore.legacyBytes(this) + " bytes";
+                "\n  Earlier Orbit model data: " + LocalModelStore.legacyBytes(this) + " bytes" +
+                "\n  Chat model ready: " + (status != null && status.modelReady()) +
+                "\n  Action model ready: " + (status != null && status.actionModelReady()) +
+                "\n  Works locally now: " + OrbitLocalCapabilities.summary(
+                        OrbitLocalCapabilities.evaluate(this)) +
+                localRequest(d);
+    }
+
+    /**
+     * The last Orbit Local chat request: which path handled it, how much of each kind of context it
+     * carried, and how long it took. Counts, sizes, timings and closed tokens only.
+     */
+    private String localRequest(SharedPreferences d) {
+        long updated = d.getLong("local_request_updated", 0L);
+        if (updated == 0L) return "\n  Last local request: none";
+        long first = d.getLong("local_request_first_ms", -1L);
+        return "\n  Last local request path: " + blankAs(d.getString("local_request_path", ""), "none") +
+                "\n  Last local outcome: " + blankAs(d.getString("local_request_outcome", ""), "none") +
+                "\n  Context sources: " + blankAs(d.getString("local_request_sources", ""), "none") +
+                "\n  Estimated prompt: " + d.getInt("local_request_tokens", 0) + " of "
+                        + d.getInt("local_request_budget", 0) + " tokens" +
+                "\n  Evidence reduced to excerpts: " + d.getBoolean("local_request_trimmed", false) +
+                "\n  Time to first words: " + (first < 0L ? "none" : first + " ms") +
+                "\n  Total generation time: " + d.getLong("local_request_total_ms", 0L) + " ms" +
+                "\n  Last local request at: "
+                        + DateFormat.getDateTimeInstance().format(new Date(updated));
     }
 
     /**

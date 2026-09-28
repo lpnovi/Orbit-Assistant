@@ -260,9 +260,13 @@ public final class DeviceActionExecutor {
                     }
                     break;
                 }
-                case "SET_DND":
+                case "SET_DND": {
+                    // Read before the change, so "put it back" restores what was really there.
+                    Boolean before = dndEnabledForRestore(c);
                     result = setDoNotDisturb(c, p.optBoolean("enabled", true));
+                    if (result.success) RecentActionContext.recordDnd(before);
                     break;
+                }
                 case "MEDIA_CONTROL": {
                     // The whole implementation lives in MediaControl, so this stays a routing layer
                     // and every caller - cloud tool request, deterministic phrase, local action
@@ -275,9 +279,12 @@ public final class DeviceActionExecutor {
                     result = MediaControl.execute(c, command);
                     break;
                 }
-                case "SET_RINGER_MODE":
+                case "SET_RINGER_MODE": {
+                    String before = DeviceStatusReader.ringerModeName(c);
                     result = setRingerMode(c, p.optString("mode", ""));
+                    if (result.success) RecentActionContext.recordRinger(before);
                     break;
+                }
                 case "OPEN_INTERNET_PANEL":
                     start(c, new Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY));
                     result = Result.success("Internet controls opened");
@@ -527,6 +534,26 @@ public final class DeviceActionExecutor {
             case AudioManager.RINGER_MODE_NORMAL: return "Normal";
             case AudioManager.RINGER_MODE_VIBRATE: return "Vibrate";
             default: return "Silent";
+        }
+    }
+
+    /**
+     * Do Not Disturb as a state Orbit can put back exactly, or null.
+     *
+     * <p>Orbit turns Do Not Disturb on as "priority only". If the phone was in a stricter mode
+     * before - alarms only, or total silence - Orbit cannot recreate it, so it reports that it does
+     * not know rather than restoring something close to it.
+     */
+    private static Boolean dndEnabledForRestore(Context c) {
+        try {
+            NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm == null || !nm.isNotificationPolicyAccessGranted()) return null;
+            int filter = nm.getCurrentInterruptionFilter();
+            if (filter == NotificationManager.INTERRUPTION_FILTER_ALL) return Boolean.FALSE;
+            if (filter == NotificationManager.INTERRUPTION_FILTER_PRIORITY) return Boolean.TRUE;
+            return null;
+        } catch (Exception e) {
+            return null;
         }
     }
 

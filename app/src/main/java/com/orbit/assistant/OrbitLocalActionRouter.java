@@ -21,7 +21,8 @@ import java.util.regex.Pattern;
  * a cloud model to do something the phone could have done itself.
  *
  * <p>So there is now a small model on the device whose only job is to turn one short instruction
- * into one normalized Orbit action. It is a <em>fallback</em>, in the strict sense:
+ * into normalized Orbit actions - one, or since v0.8.2.0 up to three, or a request to undo what
+ * Orbit just changed. It is a <em>fallback</em>, in the strict sense:
  *
  * <ol>
  *   <li>{@link LocalCommandRouter} and the other deterministic routers run first and keep every
@@ -59,6 +60,7 @@ public final class OrbitLocalActionRouter {
                     + "volume|loud|louder|quiet|quieter|sound|do not disturb|ringer|silent|silence|"
                     + "vibrate|timer|countdown|alarm|wake me|music|song|track|playing|playback|"
                     + "pause|resume|skip|settings|open|launch|start|pull up|fire up|bring up|"
+                    + "bluetooth|wifi|wi-fi|internet|mobile data|"
                     // A duration with no other cue is how people ask for a timer: "give me ten
                     // minutes for the pasta" names nothing else Orbit could act on.
                     + "seconds?|minutes?|hours?)\\b");
@@ -107,7 +109,28 @@ public final class OrbitLocalActionRouter {
 
     /** Whether this request should be offered to the action model before the provider. */
     public static boolean shouldTry(Context context, String prompt) {
-        return available(context) && looksActionable(prompt);
+        return available(context)
+                && (looksActionable(prompt) || looksLikeRecentFollowUp(prompt));
+    }
+
+    /** Words that make a sentence about undoing a change rather than about something new. */
+    private static final Pattern UNDO_WORDS = Pattern.compile(
+            "\\b(undo|revert|reverse|back|before|how it was|the way it was)\\b");
+
+    /**
+     * A short follow-up about something Orbit just changed, which only makes sense while Orbit
+     * remembers a change. "Actually, go back to how it was" names nothing Orbit controls, so the
+     * ordinary gate would never offer it to the model; this lets it through while, and only while,
+     * there is a recorded change for it to refer to.
+     */
+    static boolean looksLikeRecentFollowUp(String raw) {
+        if (!RecentActionContext.hasRecent()) return false;
+        String q = LanguageNormalizer.stripPoliteness(LanguageNormalizer.canonical(raw));
+        if (q.isEmpty() || q.length() > 80) return false;
+        if (LanguageNormalizer.isConceptualQuestion(q) || NOT_AN_INSTRUCTION.matcher(q).find()) {
+            return false;
+        }
+        return UNDO_WORDS.matcher(q).find();
     }
 
     // ---- the attempt ------------------------------------------------------------------------------
@@ -151,20 +174,17 @@ public final class OrbitLocalActionRouter {
                     @Override public void onDone(String fullText) {
                         if (settled.get()) return;
                         long took = System.currentTimeMillis() - startedAt;
-                        LocalActionSchema.Validation validation =
-                                LocalActionSchema.validate(fullText, resolver(app));
-                        if (!validation.accepted() || refusedByOrbit(prompt, validation.action)) {
+                        Decision decision = decide(prompt, fullText, resolver(app));
+                        if (decision.reply == null) {
                             DiagnosticStore.recordLocalAction(app, "provider", "",
-                                    validation.accepted() ? "refused" : validation.rejection, took);
+                                    decision.outcome, took);
                             giveUp.run();
                             return;
                         }
                         if (!settled.compareAndSet(false, true)) return;
                         DiagnosticStore.recordLocalAction(app, "local-action-model",
-                                validation.category, "accepted", took);
-                        List<AssistantReply.Action> actions = new ArrayList<>();
-                        actions.add(validation.action);
-                        callback.onSuccess(new AssistantReply(speak(validation.action), actions));
+                                decision.category, decision.outcome, took);
+                        callback.onSuccess(decision.reply);
                     }
 
                     @Override public void onError(String message) {
@@ -173,6 +193,58 @@ public final class OrbitLocalActionRouter {
                         giveUp.run();
                     }
                 });
+    }
+
+    /** What Orbit makes of one model output: a reply to give, or null to hand the request on. */
+    static final class Decision {
+        final AssistantReply reply;
+        /** A Diagnostics token: "accepted", "clarify", "refused", or a schema rejection. */
+        final String outcome;
+        final String category;
+
+        Decision(AssistantReply reply, String outcome, String category) {
+            this.reply = reply;
+            this.outcome = outcome == null ? "" : outcome;
+            this.category = category == null ? "" : category;
+        }
+    }
+
+    /**
+     * Turns raw model output into Orbit's answer, or into nothing.
+     *
+     * <p>Pure apart from reading {@link RecentActionContext}, so every branch is testable without a
+     * model. The model's output is only ever evidence: a plan is rebuilt by
+     * {@link LocalActionSchema#validatePlan}, and an undo request is answered from what Orbit
+     * itself recorded, or by asking when that record holds more than one change.
+     */
+    static Decision decide(String prompt, String rawOutput, LocalActionSchema.AppResolver apps) {
+        LocalActionSchema.Plan plan = LocalActionSchema.validatePlan(rawOutput, apps, prompt);
+        if (!plan.accepted()) return new Decision(null, plan.rejection, "");
+
+        if (plan.undoLast) {
+            String q = LanguageNormalizer.stripPoliteness(LanguageNormalizer.canonical(prompt));
+            // The model may only classify a sentence that already sounds like an undo; it cannot
+            // turn "never mind" into a change to the phone.
+            if (!UNDO_WORDS.matcher(q).find()) return new Decision(null, "refused", "");
+            if (RecentActionContext.isAmbiguous()) {
+                return new Decision(new AssistantReply(RecentActionContext.clarification()),
+                        "clarify", "undo");
+            }
+            RecentActionContext.Restore restore = RecentActionContext.restore();
+            if (restore == null) return new Decision(null, "no-recent-action", "");
+            List<AssistantReply.Action> actions = new ArrayList<>();
+            actions.add(restore.action);
+            return new Decision(new AssistantReply(restore.spoken, actions), "accepted", "undo");
+        }
+
+        StringBuilder spoken = new StringBuilder();
+        for (AssistantReply.Action action : plan.actions) {
+            if (refusedByOrbit(prompt, action)) return new Decision(null, "refused", "");
+            if (spoken.length() > 0) spoken.append(' ');
+            spoken.append(speak(action));
+        }
+        return new Decision(new AssistantReply(spoken.toString(), new ArrayList<>(plan.actions)),
+                "accepted", plan.category);
     }
 
     /** One shared timer for every action attempt. Daemon, so it never holds the process open. */
@@ -251,6 +323,10 @@ public final class OrbitLocalActionRouter {
                 return "Opening " + p.optString("app", "that app") + ".";
             case "OPEN_SETTINGS":
                 return "Opening Settings.";
+            case "OPEN_INTERNET_PANEL":
+                return "Opening your internet controls.";
+            case "OPEN_BLUETOOTH_SETTINGS":
+                return "Opening Bluetooth settings.";
             default:
                 return "Working on it.";
         }
@@ -268,7 +344,7 @@ public final class OrbitLocalActionRouter {
      */
     static String buildPrompt(Context context, String userText) {
         StringBuilder p = new StringBuilder();
-        p.append("You turn one phone instruction into one JSON object. Reply with JSON only.\n");
+        p.append("You turn one phone request into JSON. Reply with JSON only.\n");
         p.append("Allowed actions:\n");
         p.append("{\"action\":\"FLASHLIGHT\",\"params\":{\"on\":true}}\n");
         p.append("{\"action\":\"SET_BRIGHTNESS\",\"params\":{\"percent\":0-100}}\n");
@@ -279,7 +355,9 @@ public final class OrbitLocalActionRouter {
         p.append("{\"action\":\"SET_TIMER\",\"params\":{\"seconds\":1-86400,\"label\":\"short name\"}}\n");
         p.append("{\"action\":\"SET_ALARM\",\"params\":{\"hour\":0-23,\"minute\":0-59}}\n");
         p.append("{\"action\":\"OPEN_APP\",\"params\":{\"app\":\"app name\"}}\n");
-        p.append("{\"action\":\"OPEN_SETTINGS\",\"params\":{}}\n");
+        p.append("{\"action\":\"OPEN_SETTINGS\",\"params\":{\"page\":\"main|internet|bluetooth\"}}\n");
+        p.append("Undo what Orbit just changed: {\"action\":\"UNDO_LAST\"}\n");
+        p.append("Two or three requests in one sentence: {\"actions\":[{...},{...}]}\n");
         p.append("Anything else: {\"action\":\"NONE\"}\n");
 
         // Real readings, so "a bit quieter" resolves against the phone rather than against a guess.
@@ -294,6 +372,10 @@ public final class OrbitLocalActionRouter {
                 .append("{\"action\":\"SET_TIMER\",\"params\":{\"seconds\":600,\"label\":\"Pasta\"}}\n");
         p.append("Instruction: pull up Spotify\n")
                 .append("{\"action\":\"OPEN_APP\",\"params\":{\"app\":\"Spotify\"}}\n");
+        p.append("Instruction: turn on dnd and dim the screen to 30\n")
+                .append("{\"actions\":[{\"action\":\"SET_DND\",\"params\":{\"enabled\":true}},")
+                .append("{\"action\":\"SET_BRIGHTNESS\",\"params\":{\"percent\":30}}]}\n");
+        p.append("Instruction: actually put it back how it was\n{\"action\":\"UNDO_LAST\"}\n");
         p.append("Instruction: what is the capital of France\n{\"action\":\"NONE\"}\n");
         p.append("Instruction: ").append(limit(userText, 200)).append('\n');
         return p.toString();

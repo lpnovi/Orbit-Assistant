@@ -1,6 +1,6 @@
 # Orbit Assistant Privacy Policy
 
-**Last updated: September 24, 2026**
+**Last updated: September 28, 2026**
 
 This policy explains what Orbit Assistant ("Orbit") does with your information. It applies to both ways Orbit is distributed: the **Google Play edition** and the **GitHub edition**. Where they differ, this policy says so.
 
@@ -125,6 +125,8 @@ Location permission is optional.
 ## Orbit Local (GitHub edition only)
 
 Orbit Local is an optional on-device AI component available only with the GitHub edition. When you use it, answers are generated on your phone and your requests are not sent to a cloud AI provider.
+
+From version 0.8.2.0, Orbit Local can also use context you already allow Orbit to use: your Orbit Memory, recent messages in the conversation, screen text when screen context is on, the text of files and pictures you attach, saved items chosen by Ask Vault, and your notification history when you ask about notifications. All of it stays on your phone for a local request, and it is never sent to a cloud provider, even if the local model fails.
 
 The Google Play edition does not offer Orbit Local, cannot install it, and cannot use a copy installed by the GitHub edition. The two editions are signed differently, and Orbit Local works only with the GitHub edition.
 

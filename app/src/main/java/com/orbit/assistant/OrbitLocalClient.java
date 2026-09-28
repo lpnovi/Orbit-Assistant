@@ -307,32 +307,82 @@ public final class OrbitLocalClient {
         generate(context, prompt, true, callback);
     }
 
+    /** Said when the component's process ends while it is answering, e.g. to free memory. */
+    public static final String STOPPED_UNEXPECTEDLY =
+            "Orbit Local stopped unexpectedly. Try again, or check the Orbit Local screen.";
+
+    /**
+     * A callback that ends exactly once.
+     *
+     * <p>Two things can finish a generation: the component's own onDone/onError, and the
+     * component's process dying. They can race, and the second must never produce a second answer
+     * or a second error for one request. Partials after the end are dropped for the same reason.
+     */
+    static StreamCallback terminalOnce(StreamCallback callback) {
+        final java.util.concurrent.atomic.AtomicBoolean ended =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
+        return new StreamCallback() {
+            @Override public void onPartial(String cumulativeText) {
+                if (!ended.get()) callback.onPartial(cumulativeText);
+            }
+
+            @Override public void onDone(String fullText) {
+                if (ended.compareAndSet(false, true)) callback.onDone(fullText);
+            }
+
+            @Override public void onError(String message) {
+                if (ended.compareAndSet(false, true)) callback.onError(message);
+            }
+        };
+    }
+
     private static void generate(Context context, String prompt, boolean actionModel,
                                  StreamCallback callback) {
         Context app = context.getApplicationContext();
+        final StreamCallback once = terminalOnce(callback);
         new Thread(() -> {
             String reason = unavailableReason(app);
             if (!reason.isEmpty()) {
-                callback.onError(reason);
+                once.onError(reason);
                 return;
             }
             IOrbitLocalService bound = connect(app);
             if (bound == null) {
-                callback.onError(UNAVAILABLE);
+                once.onError(UNAVAILABLE);
                 return;
             }
+            final IBinder binder = bound.asBinder();
+            // Generation replies arrive on a oneway callback, so if Android ends the component's
+            // process mid-answer - most often to reclaim memory - nothing would ever arrive and the
+            // request would wait forever. Watching the binder turns that into a clear local error.
+            final IBinder.DeathRecipient death = () -> {
+                synchronized (LOCK) { service = null; }
+                once.onError(STOPPED_UNEXPECTEDLY);
+            };
+            try {
+                binder.linkToDeath(death, 0);
+            } catch (Throwable t) {
+                synchronized (LOCK) { service = null; }
+                once.onError(STOPPED_UNEXPECTEDLY);
+                return;
+            }
+            final Runnable unlink = () -> {
+                try { binder.unlinkToDeath(death, 0); } catch (Throwable ignored) {}
+            };
             try {
                 IOrbitLocalCallback stub = new IOrbitLocalCallback.Stub() {
                     @Override public void onPartial(String cumulativeText) {
-                        callback.onPartial(cumulativeText == null ? "" : cumulativeText);
+                        once.onPartial(cumulativeText == null ? "" : cumulativeText);
                     }
 
                     @Override public void onDone(String fullText) {
-                        callback.onDone(fullText == null ? "" : fullText);
+                        unlink.run();
+                        once.onDone(fullText == null ? "" : fullText);
                     }
 
                     @Override public void onError(String message) {
-                        callback.onError("Orbit Local could not answer: "
+                        unlink.run();
+                        once.onError("Orbit Local could not answer: "
                                 + (message == null ? "unknown error" : message));
                     }
                 };
@@ -341,8 +391,9 @@ public final class OrbitLocalClient {
             } catch (Throwable t) {
                 // Includes the component's process dying mid-call. Drop the proxy so the next
                 // attempt rebinds cleanly, and report it as what it is.
+                unlink.run();
                 synchronized (LOCK) { service = null; }
-                callback.onError("Orbit Local stopped unexpectedly. Try again, or check the Orbit Local screen.");
+                once.onError(STOPPED_UNEXPECTEDLY);
             }
         }, "orbit-local-generate").start();
     }

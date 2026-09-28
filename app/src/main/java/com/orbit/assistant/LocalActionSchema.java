@@ -3,10 +3,12 @@ package com.orbit.assistant;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -26,11 +28,14 @@ import java.util.Set;
  * Intent action, a component name, a package, a URL, a file path, a class name or a shell string
  * has no route through here even in principle.
  *
- * <p>Three further rules make the boundary auditable rather than merely tight:
+ * <p>Further rules make the boundary auditable rather than merely tight:
  *
  * <ul>
- *   <li><b>One action per turn.</b> Beta 1 allows a single action. An output carrying several is
- *       rejected outright rather than partly obeyed.</li>
+ *   <li><b>All or nothing.</b> {@link #validate} accepts exactly one action. {@link #validatePlan}
+ *       (v0.8.2.0) accepts up to {@link #MAX_PLAN_ACTIONS}, each checked identically, and rejects the
+ *       whole plan if any step fails, so nothing is ever partly obeyed.</li>
+ *   <li><b>Unknown fields are a rejection too.</b> Since v0.8.2.0 an action may carry only the
+ *       fields it reads.</li>
  *   <li><b>Dangerous keys are a rejection, not something to ignore.</b> Silently dropping an
  *       {@code intent} field would let a model keep trying; seeing one means the whole output is
  *       distrusted.</li>
@@ -132,6 +137,70 @@ public final class LocalActionSchema {
     public static final String REJECT_BAD_PARAMS = "bad-params";
     public static final String REJECT_OUT_OF_RANGE = "out-of-range";
     public static final String REJECT_UNKNOWN_APP = "unknown-app";
+    /** A field that is neither forbidden nor one this action reads. Since v0.8.2.0. */
+    public static final String REJECT_UNKNOWN_FIELD = "unknown-field";
+    /** A multi-action plan that breaks a plan rule. Since v0.8.2.0. */
+    public static final String REJECT_BAD_PLAN = "bad-plan";
+    /** An action the user's own words do not ask for. Since v0.8.2.0. */
+    public static final String REJECT_UNREQUESTED = "unrequested-action";
+
+    /**
+     * The one follow-up the model may name: "undo what Orbit just did".
+     *
+     * <p>Not an action. It carries no parameters, is never executed as written, and means only
+     * "consult {@link RecentActionContext}", which holds what Orbit itself recorded. The model
+     * classifies the sentence; Orbit decides what, if anything, it refers to.
+     */
+    public static final String UNDO_LAST = "UNDO_LAST";
+
+    /** The most actions one local request may carry. Small, because each one changes the phone. */
+    public static final int MAX_PLAN_ACTIONS = 3;
+
+    /**
+     * Every field each action may carry, aliases included. Anything else rejects the whole output.
+     */
+    static final java.util.Map<String, Set<String>> ALLOWED_PARAMS;
+    static {
+        java.util.Map<String, Set<String>> m = new java.util.HashMap<>();
+        m.put("FLASHLIGHT", keys("on", "enabled", "state"));
+        m.put("SET_BRIGHTNESS", keys("percent", "level", "value"));
+        m.put("SET_VOLUME", keys("percent", "level", "value"));
+        m.put("SET_DND", keys("enabled", "on", "state"));
+        m.put("SET_RINGER_MODE", keys("mode"));
+        m.put("MEDIA_CONTROL", keys("command"));
+        m.put("SET_TIMER", keys("seconds", "duration", "length", "minutes", "label"));
+        m.put("SET_ALARM", keys("hour", "hours", "minute", "minutes", "label"));
+        m.put("OPEN_APP", keys("app", "name"));
+        m.put("OPEN_SETTINGS", keys("page"));
+        m.put(UNDO_LAST, keys());
+        ALLOWED_PARAMS = Collections.unmodifiableMap(m);
+    }
+
+    /** The only keys an action object itself may have. */
+    static final Set<String> ALLOWED_ROOT_KEYS = keys("action", "type", "params", "parameters");
+
+    private static Set<String> keys(String... names) {
+        return Collections.unmodifiableSet(new HashSet<>(Arrays.asList(names)));
+    }
+
+    /**
+     * Settings destinations the model may name, mapped to actions Orbit already has.
+     *
+     * <p>Each is a fixed Android settings screen opened by Orbit's existing executor; the model
+     * picks a word from this list and nothing it writes becomes part of an Intent.
+     */
+    static final java.util.Map<String, String> SETTINGS_PAGES;
+    static {
+        java.util.Map<String, String> m = new java.util.HashMap<>();
+        m.put("main", "OPEN_SETTINGS");
+        m.put("settings", "OPEN_SETTINGS");
+        m.put("internet", "OPEN_INTERNET_PANEL");
+        m.put("wifi", "OPEN_INTERNET_PANEL");
+        m.put("wi-fi", "OPEN_INTERNET_PANEL");
+        m.put("mobile data", "OPEN_INTERNET_PANEL");
+        m.put("bluetooth", "OPEN_BLUETOOTH_SETTINGS");
+        SETTINGS_PAGES = Collections.unmodifiableMap(m);
+    }
 
     private LocalActionSchema() {}
 
@@ -172,7 +241,161 @@ public final class LocalActionSchema {
         if (hasForbiddenKey(root) || hasForbiddenKey(params)) {
             return Validation.reject(REJECT_FORBIDDEN_FIELD);
         }
+        if (!onlyKeys(root, ALLOWED_ROOT_KEYS) || !onlyKeys(params, ALLOWED_PARAMS.get(type))) {
+            return Validation.reject(REJECT_UNKNOWN_FIELD);
+        }
         return build(type, params, apps);
+    }
+
+    /** Whether every key of an object is one of {@code allowed}. */
+    private static boolean onlyKeys(JSONObject object, Set<String> allowed) {
+        if (object == null) return true;
+        if (allowed == null) return false;
+        java.util.Iterator<String> keys = object.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            if (key == null || !allowed.contains(key.trim().toLowerCase(Locale.US))) return false;
+        }
+        return true;
+    }
+
+    /** One validated plan: the actions Orbit built, in the order they will run. */
+    public static final class Plan {
+        public final List<AssistantReply.Action> actions;
+        /** True when the model asked to undo the last change; {@link #actions} is then empty. */
+        public final boolean undoLast;
+        public final String rejection;
+        public final String category;
+
+        private Plan(List<AssistantReply.Action> actions, boolean undoLast, String rejection,
+                     String category) {
+            this.actions = Collections.unmodifiableList(actions);
+            this.undoLast = undoLast;
+            this.rejection = rejection == null ? "" : rejection;
+            this.category = category == null ? "" : category;
+        }
+
+        public boolean accepted() { return rejection.isEmpty(); }
+
+        static Plan reject(String reason) {
+            return new Plan(new ArrayList<>(), false, reason, "");
+        }
+    }
+
+    /** Actions that take the user to another screen, so at most one may run and it must be last. */
+    static final Set<String> FOREGROUND_ACTIONS = keys("OPEN_APP", "OPEN_SETTINGS",
+            "OPEN_INTERNET_PANEL", "OPEN_BLUETOOTH_SETTINGS", "SET_ALARM");
+
+    /**
+     * Validates a whole response that may hold one action, several, or an undo request.
+     *
+     * <p>All or nothing. Every action passes exactly the checks {@link #validate} applies to one,
+     * and then the plan as a whole must obey four rules: no more than {@link #MAX_PLAN_ACTIONS}, no
+     * target twice, at most one action that leaves Orbit's screen and only as the last step, and -
+     * for more than one action - each must be something the user's own words mention. One failure
+     * anywhere rejects the whole plan, so an invalid step can never ride along with valid ones.
+     */
+    public static Plan validatePlan(String rawOutput, AppResolver apps, String userText) {
+        if (rawOutput == null || rawOutput.trim().isEmpty()) return Plan.reject(REJECT_EMPTY);
+        if (rawOutput.length() > MAX_OUTPUT_CHARS) return Plan.reject(REJECT_TOO_LONG);
+        String json = firstJsonObject(rawOutput);
+        if (json.isEmpty()) return Plan.reject(REJECT_NOT_JSON);
+        JSONObject root;
+        try {
+            root = new JSONObject(json);
+        } catch (Exception e) {
+            return Plan.reject(REJECT_NOT_JSON);
+        }
+
+        JSONArray many = root.optJSONArray("actions");
+        List<JSONObject> steps = new ArrayList<>();
+        if (many != null) {
+            // The wrapper itself may hold nothing but the list.
+            if (root.length() != 1) return Plan.reject(REJECT_UNKNOWN_FIELD);
+            if (many.length() == 0) return Plan.reject(REJECT_NO_ACTION);
+            if (many.length() > MAX_PLAN_ACTIONS) return Plan.reject(REJECT_BAD_PLAN);
+            for (int i = 0; i < many.length(); i++) {
+                JSONObject step = many.optJSONObject(i);
+                if (step == null) return Plan.reject(REJECT_NOT_JSON);
+                steps.add(step);
+            }
+        } else {
+            steps.add(root);
+        }
+
+        // The undo request, alone or not at all.
+        for (JSONObject step : steps) {
+            String type = step.optString("action", step.optString("type", "")).trim()
+                    .toUpperCase(Locale.US);
+            if (!UNDO_LAST.equals(type)) continue;
+            if (steps.size() != 1) return Plan.reject(REJECT_BAD_PLAN);
+            JSONObject params = step.optJSONObject("params");
+            if (params == null) params = step.optJSONObject("parameters");
+            if (hasForbiddenKey(step) || hasForbiddenKey(params)) {
+                return Plan.reject(REJECT_FORBIDDEN_FIELD);
+            }
+            if (!onlyKeys(step, ALLOWED_ROOT_KEYS) || (params != null && params.length() > 0)) {
+                return Plan.reject(REJECT_UNKNOWN_FIELD);
+            }
+            return new Plan(new ArrayList<>(), true, "", "undo");
+        }
+
+        List<AssistantReply.Action> actions = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        StringBuilder categories = new StringBuilder();
+        for (int i = 0; i < steps.size(); i++) {
+            Validation one = validate(steps.get(i).toString(), apps);
+            if (!one.accepted()) return Plan.reject(one.rejection);
+            String type = one.action.type;
+            String target = FOREGROUND_ACTIONS.contains(type) ? "foreground" : type;
+            if (!seen.add(target)) return Plan.reject(REJECT_BAD_PLAN);
+            if (FOREGROUND_ACTIONS.contains(type) && i != steps.size() - 1) {
+                return Plan.reject(REJECT_BAD_PLAN);
+            }
+            if (steps.size() > 1 && !mentions(userText, type)) {
+                return Plan.reject(REJECT_UNREQUESTED);
+            }
+            actions.add(one.action);
+            if (categories.length() > 0) categories.append('+');
+            categories.append(one.category);
+        }
+        return new Plan(actions, false, "", categories.toString());
+    }
+
+    /**
+     * Words that must appear in the user's request before a multi-action plan may include a type.
+     *
+     * <p>A small model asked to split "dim the screen and pause the music" can add a third action
+     * nobody asked for. Requiring each action's subject in the user's own words means an extra step
+     * the sentence never mentions rejects the whole plan instead of running.
+     */
+    private static final java.util.Map<String, java.util.regex.Pattern> EVIDENCE;
+    static {
+        java.util.Map<String, java.util.regex.Pattern> m = new java.util.HashMap<>();
+        m.put("FLASHLIGHT", evidence("flashlight|torch|light"));
+        m.put("SET_BRIGHTNESS", evidence("bright\\w*|dim\\w*|screen|display"));
+        m.put("SET_VOLUME", evidence("volume|loud\\w*|quiet\\w*|sound|mute"));
+        m.put("SET_DND", evidence("do not disturb|dnd|disturb|focus|notifications?"));
+        m.put("SET_RINGER_MODE", evidence("ringer|ring|silent|silence|vibrat\\w*"));
+        m.put("MEDIA_CONTROL", evidence("music|song|track|play\\w*|pause|resume|skip|podcast|next|previous"));
+        m.put("SET_TIMER", evidence("timer|countdown|seconds?|minutes?|hours?"));
+        m.put("SET_ALARM", evidence("alarm|wake"));
+        m.put("OPEN_APP", evidence("open|launch|start|pull up|bring up|fire up|go to"));
+        m.put("OPEN_SETTINGS", evidence("settings?"));
+        m.put("OPEN_INTERNET_PANEL", evidence("wi-?fi|internet|mobile data|network"));
+        m.put("OPEN_BLUETOOTH_SETTINGS", evidence("bluetooth"));
+        EVIDENCE = Collections.unmodifiableMap(m);
+    }
+
+    private static java.util.regex.Pattern evidence(String words) {
+        return java.util.regex.Pattern.compile("\\b(?:" + words + ")\\b");
+    }
+
+    static boolean mentions(String userText, String type) {
+        if (userText == null) return false;
+        java.util.regex.Pattern p = EVIDENCE.get(type);
+        if (p == null) return false;
+        return p.matcher(LanguageNormalizer.canonical(userText)).find();
     }
 
     /**
@@ -269,8 +492,17 @@ public final class LocalActionSchema {
                     }
                     return accept(type, new JSONObject().put("app", resolved.trim()), "app");
                 }
-                case "OPEN_SETTINGS":
-                    return accept(type, new JSONObject(), "settings");
+                case "OPEN_SETTINGS": {
+                    // A page is a word from a fixed list that maps onto an action Orbit already
+                    // has. No page means the main Settings screen; an unknown page is a rejection,
+                    // not a guess at the nearest screen.
+                    String page = params.optString("page", "").trim().toLowerCase(Locale.US);
+                    if (page.isEmpty()) return accept(type, new JSONObject(), "settings");
+                    String mapped = SETTINGS_PAGES.get(page);
+                    if (mapped == null) return Validation.reject(REJECT_BAD_PARAMS);
+                    return accept(mapped, new JSONObject(), "OPEN_SETTINGS".equals(mapped)
+                            ? "settings" : "settings-page");
+                }
                 default:
                     return Validation.reject(REJECT_UNKNOWN_ACTION);
             }

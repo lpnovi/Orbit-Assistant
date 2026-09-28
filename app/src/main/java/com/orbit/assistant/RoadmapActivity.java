@@ -106,8 +106,14 @@ public final class RoadmapActivity extends Activity {
         // v0.8.1.0-beta.1 began the journey to Orbit 0.9 with Smart Vault's first public Beta.
         // v0.8.1.0 made it Stable, so the entry now lists only what is still ahead for it: what
         // shipped belongs to What's New, never here.
+        // v0.8.2.0-beta.1 made Orbit Local 2.0 the active line. What its first Beta shipped belongs
+        // to What's New; this entry names only what is still ahead for it.
         addGroup(page, "NOW - ON THE WAY TO 0.9", new String[][]{
-                {OrbitRoadmap.CURRENT, "What comes next for the Vault's search and suggestions: "
+                {OrbitRoadmap.CURRENT, "More of Orbit working privately on your phone. Still "
+                        + "ahead: a choice of a larger Enhanced model on capable phones, and more "
+                        + "on-device abilities as they can be done honestly. A request sent to "
+                        + "Orbit Local always stays on the phone."},
+                {OrbitRoadmap.SMART_VAULT, "What comes next for the Vault's search and suggestions: "
                         + "suggestions from more AI providers, tappable sources in Ask Vault "
                         + "answers, Ask Vault from the Side button, richer retrieval across whole "
                         + "saved documents, and room for more than 300 items. Always explicit, "
@@ -117,7 +123,7 @@ public final class RoadmapActivity extends Activity {
                 {"Vault Pro organization", "Optional advanced organization built on top of the Free Vault."},
                 {"Backup and export Pro", "Additional power-user backup and export controls without removing the Free backup path."},
                 {"Play distribution and Billing", "A real entitlement provider only when Orbit is ready for store distribution."},
-                {"Local device actions", "Growing what Orbit Local can act on by itself, beyond the first safe set of controls it understands today."},
+                {"Local device actions", "Growing what Orbit Local can act on by itself, beyond the safe set of controls it understands today."},
                 {"Calendar awareness", "Orbit reading your day back to you, and changing or removing events it added for you."},
                 {"More branch points & conditions", "Several decision points in one Routine, and conditions beyond time and place."},
                 {"Stronger Custom Commands", "Personal phrases that accept variation and detail, beyond today's exact wording."},

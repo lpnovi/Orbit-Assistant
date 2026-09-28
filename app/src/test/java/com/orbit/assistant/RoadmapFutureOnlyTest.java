@@ -162,18 +162,20 @@ public final class RoadmapFutureOnlyTest {
     }
 
     /**
-     * Smart Vault moved down the page rather than off it, and kept its promise.
+     * Smart Vault stays NOW beside Orbit Local 2.0, and kept its promise.
      *
-     * <p>Deferring a feature in the same release that starts a paid tier is exactly the shape of
-     * change a reader would misread as "it went behind Pro". The entry stays, below the active
-     * line, and says out loud that it is free.
+     * <p>Since v0.8.2.0-beta.1 Orbit Local 2.0 is the active line and heads the page. Smart Vault
+     * still has real work ahead, so it stays in NOW directly after it rather than dropping to
+     * LATER, and it still says out loud that it is free.
      */
-    @Test public void smartVaultIsCurrentAndStillFree() {
+    @Test public void smartVaultIsStillNowAndStillFree() {
         String text = roadmapText();
         int current = text.indexOf(OrbitRoadmap.CURRENT);
-        int vault = text.indexOf("Smart Vault");
+        int vault = text.indexOf(OrbitRoadmap.SMART_VAULT);
         assertTrue("Smart Vault is still real planned work", vault >= 0);
-        assertEquals(current, vault);
+        assertTrue("Orbit Local 2.0 leads the page", current >= 0 && current < vault);
+        int later = text.indexOf("Vault Pro organization");
+        assertTrue("and Smart Vault is still NOW, above LATER", later < 0 || vault < later);
         assertTrue("and it is still a Free Orbit feature", text.contains("always Free"));
     }
 

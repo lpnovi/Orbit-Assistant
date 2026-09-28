@@ -776,7 +776,7 @@ public final class OrbitVaultActivity extends Activity {
         title.setMaxLines(2);
         title.setEllipsize(android.text.TextUtils.TruncateAt.END);
         words.addView(title);
-        int count = Math.min(SmartVaultAsk.MAX_ITEMS, ranked.size());
+        int count = Math.min(SmartVaultAsk.maxItems(this), ranked.size());
         words.addView(UiKit.text(this, "Answer from your top " + count
                 + (count == 1 ? " match" : " matches") + " in a chat", 12, UiKit.MUTED, false));
         LinearLayout.LayoutParams wordsLp = new LinearLayout.LayoutParams(
@@ -786,7 +786,8 @@ public final class OrbitVaultActivity extends Activity {
         row.setBackground(UiKit.rippleOutlined(UiKit.SURFACE,
                 UiKit.withAlpha(UiKit.accent(this), 80), UiKit.accent(this), 20, this));
         row.setContentDescription(ASK_VAULT_LABEL + " about " + query);
-        row.setOnClickListener(v -> confirmAskVault(query, SmartVaultAsk.pick(ranked)));
+        row.setOnClickListener(v -> confirmAskVault(query,
+                SmartVaultAsk.pick(ranked, SmartVaultAsk.maxItems(this))));
         UiKit.pressScale(row);
         return row;
     }
@@ -806,6 +807,9 @@ public final class OrbitVaultActivity extends Activity {
         if (!SmartVault.providerReady(this)) {
             message.append("\n\n").append(SmartVault.providerName(this))
                     .append(" is not ready yet, so you may need to finish setting it up first.");
+        } else if (SmartVault.localProviderActive(this)) {
+            // Worth saying, because it is the reason many people choose Orbit Local at all.
+            message.append("\n\nOrbit Local will answer on this phone. These items never leave it.");
         }
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(ASK_VAULT_LABEL)

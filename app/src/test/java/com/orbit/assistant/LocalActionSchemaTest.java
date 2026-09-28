@@ -230,16 +230,38 @@ public final class LocalActionSchemaTest {
      * Orbit put there.
      */
     @Test public void nothingTheModelWroteIsEverForwarded() {
+        // An alias the schema reads is translated, never copied: "level" arrives as Orbit's own
+        // "percent" and the model's key is gone.
         AssistantReply.Action action = accepted(
-                "{\"action\":\"SET_TIMER\",\"params\":{\"seconds\":60,\"label\":\"Tea\","
-                        + "\"unexpected\":\"anything at all\",\"nested\":{\"deep\":true}}}");
-        assertEquals(2, action.params.length());
-        assertTrue(action.params.has("seconds"));
-        assertTrue(action.params.has("label"));
-        assertFalse(action.params.has("unexpected"));
-        assertFalse(action.params.has("nested"));
+                "{\"action\":\"SET_BRIGHTNESS\",\"params\":{\"level\":40}}");
+        assertEquals(1, action.params.length());
+        assertEquals(40, action.params.optInt("percent"));
+        assertFalse(action.params.has("level"));
+        AssistantReply.Action timer = accepted(
+                "{\"action\":\"SET_TIMER\",\"params\":{\"minutes\":2,\"label\":\"Tea\"}}");
+        assertEquals(2, timer.params.length());
+        assertTrue(timer.params.has("seconds"));
+        assertTrue(timer.params.has("label"));
+        assertFalse(timer.params.has("minutes"));
         assertFalse("and a local action never carries its own confirmation flag",
                 action.requiresConfirmation);
+    }
+
+    /**
+     * Since v0.8.2.0 a field the action does not read rejects the whole output, rather than being
+     * ignored. A model adding fields is a model that did not follow the schema.
+     */
+    @Test public void unknownFieldsAreRejectedRatherThanIgnored() {
+        rejected(LocalActionSchema.REJECT_UNKNOWN_FIELD,
+                "{\"action\":\"SET_TIMER\",\"params\":{\"seconds\":60,\"label\":\"Tea\","
+                        + "\"unexpected\":\"anything at all\",\"nested\":{\"deep\":true}}}");
+        rejected(LocalActionSchema.REJECT_UNKNOWN_FIELD,
+                "{\"action\":\"FLASHLIGHT\",\"params\":{\"on\":true},\"confidence\":0.9}");
+        rejected(LocalActionSchema.REJECT_UNKNOWN_FIELD,
+                "{\"action\":\"OPEN_SETTINGS\",\"params\":{\"section\":\"wifi\"}}");
+        // A field belonging to another action is still unknown here.
+        rejected(LocalActionSchema.REJECT_UNKNOWN_FIELD,
+                "{\"action\":\"SET_VOLUME\",\"params\":{\"percent\":30,\"mode\":\"silent\"}}");
     }
 
     // ---- app resolution --------------------------------------------------------------------------

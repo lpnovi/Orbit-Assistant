@@ -20,6 +20,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
+import java.util.List;
 
 /**
  * Orbit Local: the on-device AI management screen, and the only one there is.
@@ -436,6 +437,9 @@ public final class LocalAiActivity extends Activity {
         cards.removeAllViews();
         cards.addView(deviceCard(), cardLp());
         cards.addView(componentCard(), cardLp());
+        // Only once there is a trusted component to describe; before that every line would be
+        // "not yet", which the component card already says in one sentence.
+        if (OrbitLocalComponent.isUsable(this)) cards.addView(capabilityCard(), cardLp());
         cards.addView(modelCard(), cardLp());
         cards.addView(actionModelCard(), cardLp());
         cards.addView(storageCard(), cardLp());
@@ -521,6 +525,76 @@ public final class LocalAiActivity extends Activity {
             case LIMITED: return Color.rgb(240, 193, 100);
             default: return UiKit.DANGER;
         }
+    }
+
+    // ---- what works here ---------------------------------------------------------------------------
+
+    /**
+     * What Orbit Local does on this phone right now, and what still needs a cloud provider.
+     *
+     * <p>Every line comes from {@link OrbitLocalCapabilities}, which reads real readiness - installed
+     * models, switches, permissions - so nothing is listed as working because the code for it exists.
+     */
+    private View capabilityCard() {
+        List<OrbitLocalCapabilities.Capability> all = OrbitLocalCapabilities.evaluate(this);
+        LinearLayout card = card();
+        card.addView(UiKit.text(this, "What works on this phone", 12, UiKit.MUTED, true));
+        LinearLayout local = new LinearLayout(this);
+        local.setOrientation(LinearLayout.VERTICAL);
+        local.setPadding(0, UiKit.dp(this, 6), 0, 0);
+        LinearLayout cloud = new LinearLayout(this);
+        cloud.setOrientation(LinearLayout.VERTICAL);
+        for (OrbitLocalCapabilities.Capability capability : all) {
+            if (capability.availability == OrbitLocalCapabilities.Availability.CLOUD_ONLY) {
+                cloud.addView(capabilityRow(capability));
+            } else {
+                local.addView(capabilityRow(capability));
+            }
+        }
+        card.addView(local);
+        TextView cloudTitle = UiKit.text(this, "Needs a cloud provider", 12, UiKit.MUTED, true);
+        cloudTitle.setPadding(0, UiKit.dp(this, 12), 0, UiKit.dp(this, 2));
+        card.addView(cloudTitle);
+        card.addView(cloud);
+        TextView promise = UiKit.text(this,
+                "Orbit Local never passes a request to the cloud. When something needs one, "
+                        + "Orbit says so and you choose.", 12, UiKit.MUTED, false);
+        promise.setLineSpacing(0, 1.12f);
+        promise.setPadding(0, UiKit.dp(this, 10), 0, 0);
+        card.addView(promise);
+        return card;
+    }
+
+    private View capabilityRow(OrbitLocalCapabilities.Capability capability) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, UiKit.dp(this, 5), 0, UiKit.dp(this, 1));
+        View dot = new View(this);
+        int color;
+        switch (capability.availability) {
+            case READY: color = UiKit.SUCCESS; break;
+            case NEEDS_SETUP: color = Color.rgb(240, 193, 100); break;
+            default: color = UiKit.withAlpha(UiKit.MUTED, 150); break;
+        }
+        dot.setBackground(UiKit.rounded(color, 99, this));
+        LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(
+                UiKit.dp(this, 7), UiKit.dp(this, 7));
+        dotLp.rightMargin = UiKit.dp(this, 10);
+        row.addView(dot, dotLp);
+        LinearLayout words = new LinearLayout(this);
+        words.setOrientation(LinearLayout.VERTICAL);
+        boolean cloudOnly = capability.availability == OrbitLocalCapabilities.Availability.CLOUD_ONLY;
+        words.addView(UiKit.text(this, capability.name, 14,
+                cloudOnly ? UiKit.MUTED : UiKit.TEXT, !cloudOnly));
+        if (!capability.detail.isEmpty()) {
+            words.addView(UiKit.text(this, capability.detail, 12, UiKit.MUTED, false));
+        }
+        row.addView(words, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        String state = capability.availability == OrbitLocalCapabilities.Availability.READY
+                ? "works on this phone" : cloudOnly ? "needs a cloud provider" : "not ready yet";
+        row.setContentDescription(capability.name + ", " + state
+                + (capability.detail.isEmpty() ? "" : ". " + capability.detail));
+        return row;
     }
 
     // ---- the component ----------------------------------------------------------------------------

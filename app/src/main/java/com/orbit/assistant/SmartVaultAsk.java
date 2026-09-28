@@ -20,6 +20,8 @@ final class SmartVaultAsk {
     static final int MAX_ITEMS = 5;
     /** Characters of one item's content that travel. */
     static final int MAX_CHARS_PER_ITEM = 1500;
+    /** Marks a gap between excerpts. A char code, so no rewrite of this file can mangle it. */
+    static final String ELLIPSIS = String.valueOf((char) 0x2026);
 
     static final String FRAMING = "The user is asking a question about things they saved in "
             + "Orbit Vault. Orbit found the saved items below on this device by searching for the "
@@ -30,13 +32,29 @@ final class SmartVaultAsk {
 
     private SmartVaultAsk() {}
 
+    /**
+     * How many items one question may draw on with the active provider.
+     *
+     * <p>Orbit Local reads a few thousand tokens, so it is given its best {@value
+     * LocalContextBudget#MAX_VAULT_ITEMS} rather than five thinly cut ones - and because the limit
+     * is applied here, the list the user confirms is exactly the list the model reads.
+     */
+    static int maxItems(Context c) {
+        return c != null && SmartVault.localProviderActive(c)
+                ? LocalContextBudget.MAX_VAULT_ITEMS : MAX_ITEMS;
+    }
+
     /** The best items for a question, from the ranked results the Vault screen already has. */
     static List<OrbitVaultItem> pick(List<OrbitVaultItem> ranked) {
+        return pick(ranked, MAX_ITEMS);
+    }
+
+    static List<OrbitVaultItem> pick(List<OrbitVaultItem> ranked, int max) {
         List<OrbitVaultItem> out = new ArrayList<>();
         if (ranked == null) return out;
         for (OrbitVaultItem item : ranked) {
             out.add(item);
-            if (out.size() >= MAX_ITEMS) break;
+            if (out.size() >= Math.max(1, Math.min(MAX_ITEMS, max))) break;
         }
         return out;
     }
@@ -49,7 +67,7 @@ final class SmartVaultAsk {
         for (String id : ids) {
             OrbitVaultItem item = OrbitVaultStore.get(c, id);
             if (item != null) items.add(item);
-            if (items.size() >= MAX_ITEMS) break;
+            if (items.size() >= maxItems(c)) break;
         }
         if (items.isEmpty()) return null;
         java.util.Map<String, String> recognized = new java.util.HashMap<>();
@@ -167,7 +185,10 @@ final class SmartVaultAsk {
         StringBuilder out = new StringBuilder();
         int previous = -2;
         for (int i : chosen) {
-            if (out.length() > 0) out.append(i == previous + 1 ? " " : " [2026] ");
+            // An ellipsis marks the gap between passages that were not next to each other. It is
+            // written as a char code so no tool that rewrites this file can turn it into a number a
+            // model would read as a year.
+            if (out.length() > 0) out.append(i == previous + 1 ? " " : " " + ELLIPSIS + " ");
             out.append(passages.get(i));
             previous = i;
         }

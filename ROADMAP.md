@@ -494,6 +494,46 @@ Planned after this completed line:
 
 ## Current - the journey to Orbit 0.9
 
+### Orbit Local 2.0 - more of Orbit, privately on the phone
+
+Orbit Local began as private offline chat. The 0.8.2 line makes it a first-class part of Orbit:
+the same memory, attachments, Vault, notifications and device control people use with cloud
+providers, answered on the phone.
+
+**Privacy rule.** A request sent to Orbit Local stays on the phone. Nothing in it is ever passed to
+ChatGPT, the Relay, OpenRouter, hosted search or any other service, including after a local
+failure. When something needs the cloud, Orbit says so and the user chooses.
+
+#### `0.8.2.0-beta.1` - first Orbit Local 2.0 Beta
+
+- **Ask Vault offline.** Smart Vault's local retrieval hands the best two or three passages to
+  Orbit Local, which answers on the phone and names the saved items it read
+- **A context budget for the 4K window.** Memory, conversation, screen text, attachments, Vault
+  passages and notifications each get a bounded share; long evidence is reduced to its passages
+  most relevant to the question instead of being cut off, and all of it is marked untrusted
+- **Attachments.** Text files, clipboard text, PDF text, Vault notes, Screen Selection text and
+  text Orbit recognised in pictures reach the local model. A picture with no readable text is
+  explained honestly; there is no local vision
+- **Notification questions.** Notification Intelligence's existing prepared, filtered history now
+  reaches Orbit Local
+- **Local device actions 2.0.** Up to three validated actions per request, all or nothing;
+  "put it back" and "turn it back on" resolved only from what Orbit itself recorded, asking when
+  more than one thing just changed; Do Not Disturb and ringer follow-ups; Wi-Fi/internet and
+  Bluetooth settings destinations; unknown fields now reject the whole output
+- **What works on this phone** on the Orbit Local screen, derived from real readiness
+- **Reliability.** A component that Android ends mid-answer now produces a clear local error
+  instead of a request that never finishes
+- **Model decision.** Qwen 2.5 1.5B Instruct stays: the newer candidates need a different runtime,
+  are 2-4 GB, or carry gated terms. See `docs/LOCAL_MODELS.md`
+
+#### Still ahead for Orbit Local
+
+- A **Standard / Enhanced** model choice for capable phones, once a larger model is available for
+  Orbit's runtime or the component moves to LiteRT-LM; the context budget already scales with the
+  model's window
+- Local vision (Orbit Lens) and Smart Vault suggestions from Orbit Local
+- More local device actions where Orbit already has a trusted executor
+
 ### Smart Vault - still a free Orbit feature
 
 Smart Vault is the headline of the journey to Orbit 0.9, delivered through public GitHub Betas in
@@ -559,8 +599,9 @@ separate, later layer and is not part of Smart Vault.
 Real unfinished ideas that are not the current direction. They are not abandoned, and they are not
 next.
 
-- **Local device actions**, beyond the first allowlist: more actions, short follow-ups through the
-  semantic path, and requests needing more than one action. The foundation shipped in `0.7.8.0`
+- **Local device actions**, beyond what Orbit Local 2.0 understands: more actions where Orbit has
+  a trusted executor. The foundation shipped in `0.7.8.0`; follow-ups and multi-action requests
+  arrived in `0.8.2.0-beta.1`
 - **Calendar awareness**: reading the day back, and changing or removing events Orbit added
 - **Routine branching**: conditions beyond time and place, and more than one branch point
 - **Stronger Custom Commands**, accepting variation and detail beyond exact wording

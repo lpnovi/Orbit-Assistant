@@ -17,8 +17,14 @@ package com.orbit.assistant;
  */
 public final class OrbitRoadmap {
 
-    /** The next major milestone after the planned Orbit Deck Pro line completed in Beta 7. */
-    public static final String CURRENT = "Smart Vault";
+    /**
+     * The active milestone: Orbit Local 2.0, from v0.8.2.0-beta.1. Smart Vault, Stable in 0.8.1.0,
+     * stays listed beside it for the work still ahead.
+     */
+    public static final String CURRENT = "Orbit Local 2.0";
+
+    /** The previous headline line, still NOW for what remains of it. */
+    public static final String SMART_VAULT = "Smart Vault";
 
     /**
      * Every milestone both roadmaps must agree about.
@@ -26,7 +32,7 @@ public final class OrbitRoadmap {
      * <p>The list is short on purpose. It is a guard against silent drift on the things a reader
      * would be actively misled by, not an index of everything either document says.
      */
-    public static final String[] MILESTONES = {CURRENT};
+    public static final String[] MILESTONES = {CURRENT, SMART_VAULT};
 
     private OrbitRoadmap() {}
 }

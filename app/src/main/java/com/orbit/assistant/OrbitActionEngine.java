@@ -29,9 +29,24 @@ public final class OrbitActionEngine {
             if (listener != null) listener.onFinished(true, 0, 0);
             return;
         }
+        // One run is one batch of recent changes, so a follow-up after a multi-action reply knows
+        // that several things just changed and asks which one, rather than undoing whichever step
+        // happened to run last.
+        RecentActionContext.beginBatch();
+        Listener batched = new Listener() {
+            @Override public void onStep(AssistantReply.Action action, DeviceActionExecutor.Result result,
+                                         int index, int total) {
+                if (listener != null) listener.onStep(action, result, index, total);
+            }
+
+            @Override public void onFinished(boolean completedAllSteps, int completedSteps, int totalSteps) {
+                RecentActionContext.endBatch();
+                if (listener != null) listener.onFinished(completedAllSteps, completedSteps, totalSteps);
+            }
+        };
         // Branch geometry is a fixed property of the saved chain, so it is resolved once here and
         // then only read. Nothing about how a condition evaluates can move a branch boundary.
-        runStep(context, actions, RoutineBranch.flow(actions), 0, confirmationHandler, listener);
+        runStep(context, actions, RoutineBranch.flow(actions), 0, confirmationHandler, batched);
     }
 
     private static void runStep(Context context, List<AssistantReply.Action> actions,
