@@ -156,10 +156,12 @@ public final class OrbitLocalProgressTest {
 
         String screen = ComponentUninstallTest.readRepositoryFile(
                 "app/src/main/java/com/orbit/assistant/LocalAiActivity.java");
+        assertTrue("the screen reads status through its one lifecycle-bound poller",
+                screen.contains("new OrbitLocalStatusPoller("));
+        String poller = ComponentUninstallTest.readRepositoryFile(
+                "app/src/main/java/com/orbit/assistant/OrbitLocalStatusPoller.java");
         assertTrue("a tick arriving mid-read must be dropped, not doubled up",
-                screen.contains("if (statusInFlight) return;"));
-        assertTrue("and the next tick is scheduled where the fresh status lands",
-                screen.contains("scheduleNextRefresh();"));
+                poller.contains("if (!running || inFlight) return;"));
     }
 
     /**
@@ -183,7 +185,7 @@ public final class OrbitLocalProgressTest {
     // ---- helpers ---------------------------------------------------------------------------------------
 
     private static String describe(OrbitLocalStatus status) {
-        return status.modelState + ":" + status.modelBytes;
+        return OrbitLocalStatusPoller.fingerprint(status);
     }
 
     private static OrbitLocalStatus status(String state, long bytes) {

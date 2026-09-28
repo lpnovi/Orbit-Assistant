@@ -185,12 +185,12 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * 0.8.2.0-beta.1 is the first Orbit Local 2.0 Beta.
+     * 0.8.2.0-beta.2 is the second Orbit Local 2.0 Beta, a focused progress-display fix.
      *
      * <p>It must carry Beta metadata, and the changelog entry the release workflow builds its notes
      * from must already exist for this version name.
      */
-    @Test public void thisReleaseIsTheFirstOrbitLocal2Beta() {
+    @Test public void thisReleaseIsTheSecondOrbitLocal2Beta() {
         assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
                 OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
         assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));

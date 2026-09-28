@@ -35,11 +35,6 @@ import java.util.List;
  * the main thread with file, network, or cross-process work.
  */
 public final class LocalAiActivity extends Activity {
-    /** How often live work is re-read while this screen is visible. */
-    private static final long ACTIVE_REFRESH_MS = 700L;
-    /** How often a settled component is re-read. Cheap, and keeps the screen honest. */
-    private static final long IDLE_REFRESH_MS = 2500L;
-
     /**
      * Remembers which removal is waiting on Android's answer, if either is.
      *
@@ -82,28 +77,31 @@ public final class LocalAiActivity extends Activity {
     private boolean waitingForInstallPermission;
     /** What the last removal attempt came to, shown once and never invented. */
     private String removalMessage = "";
-    /** True between kicking off a status read and its answer landing. */
-    private boolean statusInFlight;
-    /** True only while this screen is between onResume and onPause. */
-    private boolean visible;
 
     /**
-     * One tick of the live view of the component.
+     * The live view of the component while this screen is visible.
      *
-     * <p>The v0.7.7.5 version read status asynchronously and then decided whether to keep polling
-     * from the <em>previous</em> status, which had not been replaced yet. On a fresh download that
-     * previous status was "nothing installed", so polling stopped one tick after it started: the
-     * {@code .part} file kept growing on disk while the screen sat frozen on a stale megabyte
-     * count. Scheduling now happens where the fresh status arrives, and nowhere else.
+     * <p>Started in onResume and stopped in onPause, so it never runs behind another screen and
+     * never survives this one. Each reading is kept, and the cards are redrawn whenever anything
+     * they show changed - either model's state, bytes, errors, pause flag or storage - or while
+     * Orbit is downloading the component APK itself, whose percentage is Orbit's own to draw.
      */
-    private final Runnable refresh = new Runnable() {
-        @Override public void run() {
-            // The component APK's own download percentage is Orbit's to draw; the model's comes
-            // from the component and is drawn when its answer lands.
-            if (installing) rebuild();
-            readStatus();
-        }
-    };
+    /** Package-visible so tests can observe the loop. */
+    final OrbitLocalStatusPoller poller = new OrbitLocalStatusPoller(main,
+            answer -> {
+                if (!OrbitLocalComponent.isUsable(this)) {
+                    // Nothing to ask across a process boundary: the component is absent.
+                    answer.accept(null);
+                    return;
+                }
+                OrbitLocalClient.statusAsync(this, answer::accept);
+            },
+            (fresh, changed) -> {
+                if (isFinishing() || isDestroyed()) return;
+                status = fresh;
+                if (changed || installing) rebuild();
+            },
+            () -> installing);
 
     /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
     private OrbitPredictiveBack navigation;
@@ -128,7 +126,6 @@ public final class LocalAiActivity extends Activity {
             recreate();
             return;
         }
-        visible = true;
         // Coming back from Android's installer or uninstaller: what actually happened is
         // whatever the package manager now reports, never what Orbit asked for.
         reconcileComponentRemoval();
@@ -139,9 +136,9 @@ public final class LocalAiActivity extends Activity {
             waitingForInstallPermission = false;
             launchComponentInstaller(readyComponentApk);
         }
-        main.removeCallbacks(refresh);
         rebuild();
-        readStatus();
+        // An immediate read, then live updates for as long as the page stays visible.
+        poller.start();
     }
 
     /**
@@ -300,68 +297,9 @@ public final class LocalAiActivity extends Activity {
      * ends here is Orbit looking.
      */
     @Override protected void onPause() {
-        visible = false;
-        main.removeCallbacks(refresh);
+        poller.stop();
         UiPresence.leave(this);
         super.onPause();
-    }
-
-    /**
-     * Reads component status off the main thread, redraws, then schedules the next read.
-     *
-     * <p>Single-flight: a tick that arrives while an answer is still outstanding is dropped rather
-     * than starting a second reader, so no amount of time on this screen can accumulate overlapping
-     * status threads.
-     */
-    private void readStatus() {
-        if (!OrbitLocalComponent.isUsable(this)) {
-            boolean changed = status != null;
-            status = null;
-            if (changed) rebuild();
-            scheduleNextRefresh();
-            return;
-        }
-        if (statusInFlight) return;
-        statusInFlight = true;
-        OrbitLocalClient.statusAsync(this, fresh -> main.post(() -> {
-            statusInFlight = false;
-            if (isFinishing() || isDestroyed()) return;
-            boolean changed = !describe(status).equals(describe(fresh));
-            status = fresh;
-            if (changed) rebuild();
-            // Scheduled here, from the status that just arrived, and never from the one it
-            // replaced. Deciding this before the answer landed is what froze the progress bar.
-            scheduleNextRefresh();
-        }));
-    }
-
-    /**
-     * Keeps watching for as long as this screen is visible.
-     *
-     * <p>Faster while something is actually moving, slower when nothing is, but never stopped: a
-     * download that is queued, offline, or momentarily unreadable will start advancing again on
-     * its own, and the screen has to be looking when it does.
-     */
-    private void scheduleNextRefresh() {
-        if (!visible || isFinishing() || isDestroyed()) return;
-        main.removeCallbacks(refresh);
-        main.postDelayed(refresh, activeNow() ? ACTIVE_REFRESH_MS : IDLE_REFRESH_MS);
-    }
-
-    private boolean activeNow() {
-        if (installing) return true;
-        return status != null && status.modelInFlight();
-    }
-
-    /**
-     * What makes one reading different from the last.
-     *
-     * <p>Includes the byte count, so every advance of the download redraws the bar and the figure
-     * beside it. Both are read straight from the component; Orbit keeps no counter of its own that
-     * could drift away from the file on disk.
-     */
-    private static String describe(OrbitLocalStatus status) {
-        return status == null ? "none" : status.modelState + ":" + status.modelBytes;
     }
 
     /**
@@ -823,7 +761,7 @@ public final class LocalAiActivity extends Activity {
         installPercent = -1;
         installMessage = "";
         rebuild();
-        scheduleNextRefresh();
+        poller.nudge();
         OrbitLocalInstaller.downloadAsync(this, new OrbitLocalInstaller.Callback() {
             @Override public void onProgress(int percent) {
                 main.post(() -> {
@@ -1113,8 +1051,7 @@ public final class LocalAiActivity extends Activity {
     }
 
     private void bumpRefresh() {
-        main.removeCallbacks(refresh);
-        main.postDelayed(refresh, 250L);
+        poller.nudge();
     }
 
     // ---- migration --------------------------------------------------------------------------------

@@ -842,6 +842,9 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.2.0-beta.2**: Orbit Local 2.0 Beta 2 fixes live download progress on the Orbit Local screen.
+  - Orbit Local model downloads now update their progress live while the management screen is open.
+  - Download percentage, size and model state no longer require leaving and reopening the page to refresh.
 - **v0.8.2.0-beta.1**: Orbit Local 2.0 Beta 1: more of Orbit now works privately on your phone.
   - Ask Vault works fully offline with Orbit Local, and each answer names the saved items it read.
   - Attached text files, PDFs, clipboard text, Vault notes, Screen Selection and text Orbit read from pictures now reach Orbit Local.

@@ -179,6 +179,34 @@ public final class OrbitLocalStatus {
         return modelBusy() || QUEUED.equals(modelState) || WAITING_FOR_NETWORK.equals(modelState);
     }
 
+    /**
+     * Whether either model is doing something that will change on its own soon.
+     *
+     * <p>The Orbit Local screen polls quickly while this is true. Until v0.8.2.0-beta.2 it asked
+     * only about the chat model, so an action-model download was watched at the idle rate.
+     */
+    public boolean anyInFlight() {
+        return modelInFlight() || actionModelInFlight();
+    }
+
+    /**
+     * Everything the Orbit Local screen draws from a status, as one comparable string.
+     *
+     * <p>The screen redraws when this changes. Until v0.8.2.0-beta.2 it compared only the chat
+     * model's state and byte count, so an action-model download, an error message, a pause flag or
+     * the storage totals could change underneath a screen that kept showing the old figures until
+     * the page was left and reopened. Every field a card reads belongs here.
+     */
+    public String displayFingerprint() {
+        return protocol + "|" + componentVersionName + "|" + componentVersionCode
+                + "|m:" + modelState + ":" + modelBytes + ":" + modelTotalBytes + ":" + modelSizeBytes
+                + ":" + modelError + ":" + pauseRequested + ":" + lastFailure + ":" + modelDisplayName
+                + "|a:" + actionModelState + ":" + actionModelBytes + ":" + actionModelTotalBytes
+                + ":" + actionModelSizeBytes + ":" + actionModelError + ":" + actionPauseRequested
+                + ":" + actionLastFailure + ":" + actionModelDisplayName
+                + "|free:" + freeBytes / (64L * 1024L * 1024L);
+    }
+
     /** Stopped part-way with bytes worth keeping, whoever or whatever stopped it. */
     public boolean modelResumable() {
         return PAUSED.equals(modelState) || INTERRUPTED.equals(modelState);
