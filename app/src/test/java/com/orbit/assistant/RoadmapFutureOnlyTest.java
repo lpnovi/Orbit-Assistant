@@ -89,6 +89,12 @@ public final class RoadmapFutureOnlyTest {
             "Read text in pictures",
             "topic filters",
             "Related in your Vault",
+            // v0.8.2.0 made Orbit Local 2.0 Stable. It stays NOW for the work still ahead, but what
+            // its two Betas shipped may no longer be offered as upcoming.
+            "Ask Vault offline",
+            "What works on this phone",
+            "multi-step device actions",
+            "live download progress",
     };
 
     private String roadmapText() {

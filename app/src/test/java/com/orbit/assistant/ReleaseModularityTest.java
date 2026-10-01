@@ -185,16 +185,17 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * 0.8.2.0-beta.2 is the second Orbit Local 2.0 Beta, a focused progress-display fix.
+     * The 0.8.2.0 Orbit Local 2.0 line reaches Stable after two Betas.
      *
-     * <p>It must carry Beta metadata, and the changelog entry the release workflow builds its notes
-     * from must already exist for this version name.
+     * <p>Beta 2 is the tested behavior and is promoted unchanged, so this build must carry Stable
+     * metadata, and the changelog entry the release workflow builds its notes from must exist for
+     * the Stable version name.
      */
-    @Test public void thisReleaseIsTheSecondOrbitLocal2Beta() {
-        assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
-                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
-        assertTrue(OrbitVersion.installedIsBeta());
+    @Test public void thisReleaseIsOrbitLocal2Stable() {
+        assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
+                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.installedIsBeta());
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
     }
 

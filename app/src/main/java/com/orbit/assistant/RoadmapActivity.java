@@ -108,6 +108,8 @@ public final class RoadmapActivity extends Activity {
         // shipped belongs to What's New, never here.
         // v0.8.2.0-beta.1 made Orbit Local 2.0 the active line. What its first Beta shipped belongs
         // to What's New; this entry names only what is still ahead for it.
+        // v0.8.2.0 made Orbit Local 2.0 Stable. It stays NOW for the work still ahead, and the
+        // entry already listed only that, so its text is unchanged.
         addGroup(page, "NOW - ON THE WAY TO 0.9", new String[][]{
                 {OrbitRoadmap.CURRENT, "More of Orbit working privately on your phone. Still "
                         + "ahead: a choice of a larger Enhanced model on capable phones, and more "

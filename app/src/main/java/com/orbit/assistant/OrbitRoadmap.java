@@ -18,8 +18,8 @@ package com.orbit.assistant;
 public final class OrbitRoadmap {
 
     /**
-     * The active milestone: Orbit Local 2.0, from v0.8.2.0-beta.1. Smart Vault, Stable in 0.8.1.0,
-     * stays listed beside it for the work still ahead.
+     * The active milestone: Orbit Local 2.0, from v0.8.2.0-beta.1 and Stable in 0.8.2.0, still NOW
+     * for the work ahead of it. Smart Vault, Stable in 0.8.1.0, stays listed beside it likewise.
      */
     public static final String CURRENT = "Orbit Local 2.0";
 

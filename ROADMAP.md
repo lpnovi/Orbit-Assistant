@@ -9,6 +9,15 @@ canonical record of what actually shipped.
 
 ## Shipped / Stable
 
+### `0.8.2.0` Stable - Orbit Local 2.0
+
+Released from the tested Beta 2 line with no product-behavior changes. Offline Ask Vault, the
+bounded context budget for the local model, attachment, PDF and screen text on the phone,
+notification questions, Local Device Actions 2.0 with up to three actions per request, the "What
+works on this phone" readiness card, the clear error when the component stops mid-answer, and live
+model download progress are now Stable. A request sent to Orbit Local still never leaves the phone.
+The record of both Betas and what is still ahead is under Current below.
+
 ### `0.8.1.0` Stable - Smart Vault
 
 Released from the tested Beta 2 line with no product-behavior changes. Ranked Vault search, search
@@ -498,7 +507,8 @@ Planned after this completed line:
 
 Orbit Local began as private offline chat. The 0.8.2 line makes it a first-class part of Orbit:
 the same memory, attachments, Vault, notifications and device control people use with cloud
-providers, answered on the phone.
+providers, answered on the phone. It was released as `0.8.2.0` Stable after two Betas; the work
+still ahead below continues the same line.
 
 **Privacy rule.** A request sent to Orbit Local stays on the phone. Nothing in it is ever passed to
 ChatGPT, the Relay, OpenRouter, hosted search or any other service, including after a local
@@ -525,6 +535,11 @@ failure. When something needs the cloud, Orbit says so and the user chooses.
   instead of a request that never finishes
 - **Model decision.** Qwen 2.5 1.5B Instruct stays: the newer candidates need a different runtime,
   are 2-4 GB, or carry gated terms. See `docs/LOCAL_MODELS.md`
+
+#### `0.8.2.0-beta.2` - live download progress
+
+- **Live progress.** The Orbit Local screen now redraws while a chat or action model downloads,
+  instead of only after leaving and reopening it. The downloader and component are unchanged
 
 #### Still ahead for Orbit Local
 

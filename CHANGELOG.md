@@ -842,6 +842,13 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.2.0**: Orbit Local 2.0 is now Stable: more of Orbit works privately on your phone.
+  - Ask Vault works fully offline with Orbit Local, and each answer names the saved items it read.
+  - Attached text files, PDFs, clipboard text, Screen Selection and screen text now reach Orbit Local, fitted carefully into its limited memory.
+  - Ask Orbit Local what notifications you missed, using the notification history already kept on your phone.
+  - Local device actions handle up to three requests at once, and "put it back" now covers Do Not Disturb and the ringer.
+  - The Orbit Local screen shows what works on this phone, and model downloads show live progress.
+  - If the local component stops mid-answer, Orbit now says so clearly instead of waiting forever.
 - **v0.8.2.0-beta.2**: Orbit Local 2.0 Beta 2 fixes live download progress on the Orbit Local screen.
   - Orbit Local model downloads now update their progress live while the management screen is open.
   - Download percentage, size and model state no longer require leaving and reopening the page to refresh.

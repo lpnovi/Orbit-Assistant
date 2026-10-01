@@ -123,6 +123,10 @@ public final class RoadmapSyncTest {
                 file.indexOf("### `0.8.1.0` Stable - Smart Vault") >= 0);
         assertTrue("above the active plan too",
                 file.indexOf("### `0.8.1.0` Stable - Smart Vault") < current);
+        assertTrue("the 0.8.2.0 Orbit Local 2.0 line is recorded as Stable",
+                file.indexOf("### `0.8.2.0` Stable - Orbit Local 2.0") >= 0);
+        assertTrue("above the active plan as well",
+                file.indexOf("### `0.8.2.0` Stable - Orbit Local 2.0") < current);
         assertTrue("and the active plan still names its milestone",
                 file.indexOf(OrbitRoadmap.CURRENT, current) > current);
 
