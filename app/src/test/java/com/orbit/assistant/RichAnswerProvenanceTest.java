@@ -112,7 +112,7 @@ public class RichAnswerProvenanceTest {
 
     private PendingRequestStore.Item complete(String url, String shape) throws Exception {
         PendingRequestStore.Item item = PendingRequestStore.create(context, "chat", PROMPT,
-                "", "", false, false, Prefs.MODE_BALANCED, false, "");
+                "", "", false, false, AiSelections.FALLBACK, false, "");
         item = PendingRequestStore.load(context, item.id);
         OrbitRequestWorker.completeProviderReply(context, item, streamed(url, shape), WorkerAttempt.of(1, false));
         assertTrue(PendingRequestStore.isCommitted(context, item.id));
@@ -192,7 +192,8 @@ public class RichAnswerProvenanceTest {
 
     @Test public void unsupportedProviderRecordsWhyEvenWithoutSources() {
         assertTrue(AiProviders.select(context, Prefs.PROVIDER_RELAY));
-        RichAnswerCoordinator.discover(context, "chat", "request", PROMPT, new AssistantReply(ANSWER));
+        RichAnswerCoordinator.discover(context, "chat", "request", PROMPT, new AssistantReply(ANSWER).withDetails(ResponseDetails.sentWith(
+                AiSelection.of(Prefs.PROVIDER_RELAY, OrbitModelCatalog.LUNA, AiStrength.LOW))));
         assertEquals(RichAnswerTrace.Outcome.PROVIDER_UNSUPPORTED, RichAnswerTrace.last(context).outcome);
     }
 
@@ -218,7 +219,7 @@ public class RichAnswerProvenanceTest {
     @Test public void cancelledCompletionDoesNotWriteAnAnswerOrStartDiscovery() throws Exception {
         OrbitRequestManager.setWorkCanceller(name -> {});
         PendingRequestStore.Item item = PendingRequestStore.create(context, "chat", PROMPT,
-                "", "", false, false, Prefs.MODE_BALANCED, false, "");
+                "", "", false, false, AiSelections.FALLBACK, false, "");
         assertTrue(OrbitRequestManager.cancel(context, item.id));
         OrbitRequestWorker.completeProviderReply(context, item, streamed(NEW, "tool"), WorkerAttempt.of(1, false));
         drainDiscovery();

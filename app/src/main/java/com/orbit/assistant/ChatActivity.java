@@ -123,7 +123,10 @@ public class ChatActivity extends Activity {
     private OrbitListeningHalo listeningHalo;
     private TextView voiceStatus;
     private VoiceInputController voiceController;
-    private Button modeChip;
+    /** The header's model control: "GPT-6.1 Sol" (and the provider when there is room). */
+    private Button modelPill;
+    /** The header's strength control. Gone for a model with no strength. */
+    private Button strengthPill;
     private LinearLayout thinkingRow;
     private OrbitThinkingView thinkingView;
     /** Non-null only while Thinking updates are on and a request is running. */
@@ -152,7 +155,8 @@ public class ChatActivity extends Activity {
     private ProgressiveResponseView streamingBubble;
     /** Which request the streaming bubble belongs to. Presentation identity, never ownership. */
     private String streamingRequestId = "";
-    private String currentMode;
+    /** This chat's provider, model and strength. Always validated; see {@link AiSelections}. */
+    private AiSelection currentSelection;
 
     private static final int REQ_CAMERA = 5601;
     private static final int REQ_GALLERY = 5602;
@@ -170,6 +174,13 @@ public class ChatActivity extends Activity {
     /** An unsent draft Edit &amp; resend displaced, put back if the user leaves without sending. */
     private String displacedDraft;
     private LinearLayout editingBar;
+    /**
+     * The compact card above the composer naming the message being replied to, built once and only
+     * shown or hidden. {@link #pendingQuote} is the state; the card just draws it.
+     */
+    private LinearLayout quoteCard;
+    private TextView quoteCardText;
+    private QuotedMessage pendingQuote;
 
     private AttachmentStripView attachmentStrip;
     /**
@@ -213,7 +224,21 @@ public class ChatActivity extends Activity {
             pendingScreenSelectionAge = savedInstanceState.getString(
                     "pending_screen_selection_age", "");
         }
-        currentMode = ConversationStore.modeFor(this, conversationId);
+        currentSelection = AiSelections.forConversation(this, conversationId);
+        if (savedInstanceState != null) {
+            // A quote waiting in the composer is part of the draft, and survives like it.
+            String quoted = savedInstanceState.getString("pending_quote_text", "");
+            if (!quoted.isEmpty()) {
+                pendingQuote = new QuotedMessage(
+                        savedInstanceState.getString("pending_quote_role", "user"), quoted);
+            }
+            // A chat with no saved message yet keeps its choice only in memory, so it survives
+            // the activity being recreated through the saved state rather than through the store.
+            AiSelection kept = AiSelection.decode(savedInstanceState.getString("ai_selection", ""));
+            if (kept != null && ConversationStore.selectionFor(this, conversationId) == null) {
+                currentSelection = AiSelections.resolve(kept);
+            }
+        }
         Window w = getWindow();
         w.setStatusBarColor(OrbitBackground.systemBarColor(this));
         w.setNavigationBarColor(OrbitBackground.systemBarColor(this));
@@ -266,7 +291,7 @@ public class ChatActivity extends Activity {
         ComposerTrace.event("chat.onResume");
         UiPresence.enter(this);
         RichAnswerCoordinator.addListener(richImageListener);
-        if (modeChip != null) modeChip.setText(modeChipText());
+        updateAiControls();
         // Before the reload below, so a rebuilt hierarchy is the one the conversation is drawn into
         // rather than one that is replaced immediately afterwards.
         rebuildForNewAppearanceIfNeeded();
@@ -542,16 +567,21 @@ public class ChatActivity extends Activity {
         // search, and rename actions, but never crowd the conversation header.
         View headerSpacer = new View(this);
         top.addView(headerSpacer, new LinearLayout.LayoutParams(0, 1, 1));
-        modeChip = new Button(this);
-        modeChip.setText(modeChipText());
-        modeChip.setTextSize(12);
-        modeChip.setTextColor(UiKit.TEXT);
-        modeChip.setAllCaps(false);
-        modeChip.setMinHeight(0); modeChip.setMinimumHeight(0); modeChip.setStateListAnimator(null);
-        modeChip.setBackground(UiKit.rippleOutlined(UiKit.SURFACE, UiKit.withAlpha(UiKit.accent(this), 150), UiKit.accent(this), 16, this));
-        modeChip.setOnClickListener(v -> showModeMenu());
-        UiKit.pressScale(modeChip);
-        top.addView(modeChip, new LinearLayout.LayoutParams(UiKit.dp(this, 92), UiKit.dp(this, 40)));
+        // The active AI, visible and one tap from changing. Two compact pills rather than three:
+        // the provider is named inside the model pill when there is width for it and always in
+        // the picker, so the controls never crowd the header on a phone.
+        modelPill = headerPill();
+        modelPill.setOnClickListener(v -> showAiSelector());
+        LinearLayout.LayoutParams modelLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 44));
+        top.addView(modelPill, modelLp);
+        strengthPill = headerPill();
+        strengthPill.setOnClickListener(v -> showStrengthMenu());
+        LinearLayout.LayoutParams strengthLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 44));
+        strengthLp.setMargins(UiKit.dp(this, 6), 0, 0, 0);
+        top.addView(strengthPill, strengthLp);
+        updateAiControls();
         ImageButton more = iconButton(com.orbit.assistant.R.drawable.ic_more, "Chat options");
         LinearLayout.LayoutParams moreLp = new LinearLayout.LayoutParams(UiKit.dp(this, 42), UiKit.dp(this, 42));
         moreLp.setMargins(UiKit.dp(this, 6), 0, 0, 0);
@@ -602,6 +632,10 @@ public class ChatActivity extends Activity {
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         editingLp.gravity = Gravity.START;
         editingLp.setMargins(UiKit.dp(this, 4), 0, 0, UiKit.dp(this, 6));
+        LinearLayout.LayoutParams quoteLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        quoteLp.setMargins(UiKit.dp(this, 2), 0, UiKit.dp(this, 2), UiKit.dp(this, 6));
+        root.addView(buildQuoteCard(), quoteLp);
         root.addView(buildEditingBar(), editingLp);
 
         LinearLayout composer = new LinearLayout(this);
@@ -706,9 +740,9 @@ public class ChatActivity extends Activity {
         history.clear();
         if (c != null) {
             history.addAll(c.messages);
-            if (c.intelligenceMode != null && !c.intelligenceMode.trim().isEmpty()) currentMode = Prefs.normalizeMode(c.intelligenceMode);
+            if (c.aiSelection != null) currentSelection = AiSelections.resolve(c.aiSelection);
         }
-        if (modeChip != null) modeChip.setText(modeChipText());
+        updateAiControls();
         render();
     }
 
@@ -767,7 +801,9 @@ public class ChatActivity extends Activity {
             UiKit.applyBubbleTextMetrics(bubble);
             bubble.setPadding(UiKit.dp(this, 15), UiKit.dp(this, 12), UiKit.dp(this, 15), UiKit.dp(this, 12));
             bubble.setBackground(UiKit.bubbleSurface(this, fill));
-            MessageActions.bindUser(bubble, rawVisible, () -> beginEditResend(rawVisible), null);
+            MessageActions.bindUser(bubble, rawVisible, () -> beginEditResend(rawVisible),
+                    () -> beginReplyTo(h), null);
+            if (h.quote != null) addSentQuote(h.quote);
             messages.addView(bubble, bubbleLp(Gravity.END, UiKit.dp(this, 310)));
         } else {
             View bubble = OrbitRichResponseRenderer.render(this, visible, fill, false, h.richImages);
@@ -779,11 +815,11 @@ public class ChatActivity extends Activity {
                     ViewGroup.LayoutParams.WRAP_CONTENT);
             richLp.gravity = Gravity.START;
             richLp.setMargins(0, UiKit.dp(this, 5), UiKit.dp(this, 8), UiKit.dp(this, 5));
-            if (!visible.trim().isEmpty() && !visible.startsWith("Orbit could not finish")) {
-                MessageActions.bindAssistant(bubble, rawVisible, index == history.size() - 1,
-                        this::regenerateLastResponse, null);
-            }
+            boolean finished = !visible.trim().isEmpty() && !visible.startsWith("Orbit could not finish");
+            MessageActions.AssistantActions actions = finished ? responseActions(h, index) : null;
+            if (finished) MessageActions.bindAssistant(bubble, rawVisible, actions);
             messages.addView(bubble, richLp);
+            if (finished) addResponseStrip(rawVisible, actions);
         }
         if (!user && !visible.trim().isEmpty() && !visible.startsWith("Orbit could not finish")) {
             addMemoryUsageIndicator(h);
@@ -1087,10 +1123,12 @@ public class ChatActivity extends Activity {
                 ComposerAttachments.kindOf(attached),
                 ComposerAttachments.labelOf(attached),
                 requestContext, "", "", "", "",
-                ComposerAttachments.documentsOf(attached));
+                ComposerAttachments.documentsOf(attached)).withQuote(pendingQuote);
+        // The quote belongs to the message that was sent, so the composer lets go of it now.
+        clearQuote();
         history.add(user);
         ConversationStore.save(this, conversationId, history);
-        ConversationStore.setMode(this, conversationId, currentMode);
+        AiSelections.setForConversation(this, conversationId, currentSelection);
 
         clearComposerAttachments();
         animateNewestOnRender = true;
@@ -1098,7 +1136,7 @@ public class ChatActivity extends Activity {
 
         OrbitRequestManager.Listener listener = createRequestListener(voiceRequest);
         String requestId = OrbitRequestManager.enqueue(this, conversationId, q,
-                requestContext, requestImages, voiceRequest, false, currentMode,
+                requestContext, requestImages, voiceRequest, false, currentSelection,
                 hasAttachment, listener);
         listeners.put(requestId, listener);
         addThinkingRow();
@@ -2498,6 +2536,11 @@ public class ChatActivity extends Activity {
                 pendingCameraUri.toString());
         outState.putString("pending_screen_selection_text", pendingScreenSelectionText);
         outState.putString("pending_screen_selection_package", pendingScreenSelectionPackage);
+        if (currentSelection != null) outState.putString("ai_selection", currentSelection.encode());
+        if (pendingQuote != null) {
+            outState.putString("pending_quote_role", pendingQuote.role);
+            outState.putString("pending_quote_text", pendingQuote.text);
+        }
         outState.putString("pending_screen_selection_app", pendingScreenSelectionApp);
         outState.putString("pending_screen_selection_age", pendingScreenSelectionAge);
     }
@@ -2509,41 +2552,92 @@ public class ChatActivity extends Activity {
         pendingScreenSelectionAge = "";
     }
 
-    /**
-     * The chip names the AI strength when the provider really has strengths, and names the
-     * provider itself when it does not, so it never looks like a control that does nothing.
-     */
-    private String modeChipText() {
-        AiProvider active = AiProviders.active(this);
-        if (!active.capabilities().reasoningLevels) {
-            String name = active.displayName();
-            return name.startsWith("Orbit ") ? name.substring(6) : name;
-        }
-        return Prefs.modeLabel(currentMode);
+    // ---- AI controls -----------------------------------------------------------------------------
+
+    private Button headerPill() {
+        Button pill = new Button(this);
+        pill.setTextSize(13);
+        pill.setTextColor(UiKit.TEXT);
+        pill.setAllCaps(false);
+        pill.setSingleLine(true);
+        pill.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        pill.setMinHeight(0);
+        pill.setMinimumHeight(0);
+        pill.setMinWidth(0);
+        pill.setMinimumWidth(0);
+        pill.setStateListAnimator(null);
+        pill.setPadding(UiKit.dp(this, 12), 0, UiKit.dp(this, 12), 0);
+        pill.setBackground(UiKit.rippleOutlined(UiKit.SURFACE,
+                UiKit.withAlpha(UiKit.accent(this), 150), UiKit.accent(this), 16, this));
+        UiKit.pressScale(pill);
+        return pill;
     }
 
-    private void showModeMenu() {
-        if (!AiProviders.active(this).capabilities().reasoningLevels) {
-            startActivity(new Intent(this, AiProvidersActivity.class));
-            return;
-        }
-        String[] labels = {"Auto", "Fast", "Balanced", "Deep", "Custom"};
-        int selected = Prefs.MODE_AUTO.equals(currentMode) ? 0
-                : Prefs.MODE_FAST.equals(currentMode) ? 1
-                : Prefs.MODE_DEEP.equals(currentMode) ? 3
-                : Prefs.MODE_CUSTOM.equals(currentMode) ? 4 : 2;
+    /** True when the header has room to name the provider beside the model. */
+    private boolean roomForProvider() {
+        return getResources().getConfiguration().screenWidthDp >= 480;
+    }
 
-        UiKit.showOrbitMenu(this, modeChip, labels, selected, (index, label) -> {
-            currentMode = index == 0 ? Prefs.MODE_AUTO
-                    : index == 1 ? Prefs.MODE_FAST
-                    : index == 3 ? Prefs.MODE_DEEP
-                    : index == 4 ? Prefs.MODE_CUSTOM
-                    : Prefs.MODE_BALANCED;
-            ConversationStore.setMode(this, conversationId, currentMode);
-            modeChip.setText(modeChipText());
-            Toast.makeText(this, "This chat is now " + Prefs.modeLabel(currentMode),
-                    Toast.LENGTH_SHORT).show();
-        });
+    /** Text only: the pills themselves are never rebuilt. */
+    private void updateAiControls() {
+        if (modelPill == null || currentSelection == null) return;
+        AiSelection s = currentSelection;
+        String model = roomForProvider() ? s.providerName() + " · " + s.modelName() : s.modelName();
+        modelPill.setText(model + "  ▾");
+        modelPill.setMaxWidth(UiKit.dp(this, roomForProvider() ? 300 : 190));
+        modelPill.setContentDescription("AI: " + s.providerName() + ", " + s.modelName()
+                + ". Tap to change provider or model.");
+        boolean strengths = s.strength != null;
+        strengthPill.setVisibility(strengths ? View.VISIBLE : View.GONE);
+        if (strengths) {
+            strengthPill.setText(s.strength.label + "  ▾");
+            strengthPill.setContentDescription("Strength: " + s.strength.label + ". Tap to change.");
+        }
+    }
+
+    /** The current selection, for tests. */
+    AiSelection currentSelectionForTest() { return currentSelection; }
+
+    /** The header's two AI controls. For tests. */
+    Button modelPillForTest() { return modelPill; }
+    Button strengthPillForTest() { return strengthPill; }
+
+    /** Sends what the composer holds, as the Send control does. For tests. */
+    void submitForTest() { submit(false, SubmissionGate.SOURCE_BUTTON); }
+
+    private void showAiSelector() {
+        AiSelectorDialog.show(this, "AI for this chat", currentSelection,
+                s -> "Use " + s.label(), this::applySelection);
+    }
+
+    /** Strength alone, straight from its pill: only what the selected model accepts. */
+    private void showStrengthMenu() {
+        List<AiStrength> legal = AiSelections.strengthsFor(currentSelection);
+        if (legal.isEmpty()) return;
+        String[] labels = new String[legal.size()];
+        int selected = -1;
+        for (int i = 0; i < legal.size(); i++) {
+            labels[i] = legal.get(i).label;
+            if (legal.get(i) == currentSelection.strength) selected = i;
+        }
+        UiKit.showOrbitMenu(this, strengthPill, labels, selected, (index, label) ->
+                applySelection(AiSelections.withStrength(currentSelection, legal.get(index))));
+    }
+
+    /**
+     * Makes a selection this chat's own. Affects the next turn and later ones; a reply already on
+     * its way keeps the selection it was sent with. No other chat and not the default change.
+     */
+    void applySelection(AiSelection chosen) {
+        AiSelection resolved = AiSelections.resolve(chosen);
+        if (resolved.equals(currentSelection)) return;
+        currentSelection = resolved;
+        AiSelections.setForConversation(this, conversationId, resolved);
+        updateAiControls();
+        if (Prefs.haptics(this) && modelPill != null) {
+            UiKit.haptic(modelPill, android.view.HapticFeedbackConstants.CLOCK_TICK);
+        }
+        Toast.makeText(this, "This chat now uses " + resolved.label(), Toast.LENGTH_SHORT).show();
     }
 
     private void addFailureStateIfNeeded() {
@@ -2753,6 +2847,25 @@ public class ChatActivity extends Activity {
     }
 
     private void regenerateLastResponse() {
+        retryLastResponse(null);
+    }
+
+    /** True while a retry has been accepted and not yet handed to the request manager. */
+    private boolean retryStarting;
+
+    /**
+     * Asks the latest question again and replaces its answer.
+     *
+     * <p>Orbit's existing regeneration model, unchanged in shape: the latest assistant turn is
+     * removed and the same stored user turn is sent again, so the conversation never gains a second
+     * copy of the question or a ghost of the old answer. Attachments, documents and a quoted
+     * message all live on that stored user turn and therefore travel with it.
+     *
+     * @param override the AI to use for this one retry (Retry with), or null for the chat's own.
+     *     It never becomes the chat's selection; only the header changes that.
+     */
+    void retryLastResponse(AiSelection override) {
+        if (retryStarting) return;
         if (PendingRequestStore.hasActiveForConversation(this, conversationId)) {
             Toast.makeText(this, "Wait for the current response to finish", Toast.LENGTH_SHORT).show();
             return;
@@ -2771,19 +2884,186 @@ public class ChatActivity extends Activity {
         List<Bitmap> images = user.screenAttached
                 ? AttachmentStore.loadAll(user.attachmentPaths) : new ArrayList<>();
         boolean explicit = user.screenAttached && !"screen".equals(user.attachmentKind);
-        OrbitRequestManager.Listener listener = createRequestListener();
-        String id = OrbitRequestManager.enqueue(this, conversationId, user.content,
-                user.attachmentText, images, false, false, currentMode,
-                explicit, listener);
-        listeners.put(id, listener);
-        addThinkingRow(); updateComposerAction(); scrollBottom();
+        AiSelection selection = override == null ? currentSelection : AiSelections.resolve(override);
+        // Held across the synchronous hand-off, so a second tap landing in the same frame finds
+        // the retry already started rather than a conversation that briefly has no request.
+        retryStarting = true;
+        try {
+            OrbitRequestManager.Listener listener = createRequestListener();
+            String id = OrbitRequestManager.enqueue(this, conversationId, user.content,
+                    user.attachmentText, images, false, false, selection,
+                    explicit, listener);
+            listeners.put(id, listener);
+            addThinkingRow();
+            updateComposerAction();
+            scrollBottom();
+        } finally {
+            retryStarting = false;
+        }
         if (user.screenAttached && images.size() < user.attachmentCount()) {
             Toast.makeText(this, images.isEmpty()
-                            ? "Regenerating without the original screen image"
-                            : "Regenerating with " + images.size() + " of "
+                            ? "Retrying without the original screen image"
+                            : "Retrying with " + images.size() + " of "
                                     + user.attachmentCount() + " original images",
                     Toast.LENGTH_SHORT).show();
+        } else if (override != null) {
+            Toast.makeText(this, "Retrying with " + selection.label(), Toast.LENGTH_SHORT).show();
         }
+    }
+
+    /** Retry with: one retry on a chosen AI. The chat keeps its own selection afterwards. */
+    private void showRetryWith() {
+        if (PendingRequestStore.hasActiveForConversation(this, conversationId)) {
+            Toast.makeText(this, "Wait for the current response to finish", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        AiSelectorDialog.show(this, "Retry with", currentSelection,
+                s -> "Retry with " + s.label(), this::retryLastResponse);
+    }
+
+    // ---- response actions ------------------------------------------------------------------------
+
+    /** What a finished reply offers. Retry and Retry with only on the latest one. */
+    private MessageActions.AssistantActions responseActions(AssistantClient.History h, int index) {
+        MessageActions.AssistantActions a = new MessageActions.AssistantActions();
+        boolean latest = index == history.size() - 1;
+        if (latest) {
+            a.retry = this::regenerateLastResponse;
+            a.retryWith = this::showRetryWith;
+        }
+        a.reply = () -> beginReplyTo(h);
+        if (h.details != null) a.details = () -> showResponseDetails(h.details);
+        a.sourceUrls = new ArrayList<>(h.sourceUrls);
+        if (a.sourceUrls.isEmpty()) {
+            // An answer whose only provenance is its trailing Source line still has one page.
+            String url = SourceLinkUtil.sourceUrl(h.content == null ? "" : h.content);
+            if (url != null && !url.isEmpty()) a.sourceUrls.add(url);
+        }
+        return a;
+    }
+
+    /** The quiet strip under a finished reply. Muted and small, so the answer stays first. */
+    private void addResponseStrip(String rawVisible, MessageActions.AssistantActions actions) {
+        LinearLayout strip = MessageActions.actionStrip(this, rawVisible, actions);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.gravity = Gravity.START;
+        lp.setMargins(0, -UiKit.dp(this, 4), 0, UiKit.dp(this, 2));
+        messages.addView(strip, lp);
+    }
+
+    /** Only what Orbit actually knows about the reply, on request; never under every answer. */
+    private void showResponseDetails(ResponseDetails details) {
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setPadding(UiKit.dp(this, 22), UiKit.dp(this, 6), UiKit.dp(this, 22), 0);
+        for (String[] row : details.rows()) {
+            LinearLayout line = new LinearLayout(this);
+            line.setPadding(0, UiKit.dp(this, 5), 0, UiKit.dp(this, 5));
+            TextView label = UiKit.text(this, row[0], 14, UiKit.MUTED, false);
+            line.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            line.addView(UiKit.text(this, row[1], 14, UiKit.TEXT, true));
+            body.addView(line);
+        }
+        if (details.elapsedMs >= 0) {
+            TextView note = UiKit.text(this,
+                    "Response time is measured on this phone, from sending to the finished answer.",
+                    12, UiKit.MUTED, false);
+            note.setPadding(0, UiKit.dp(this, 8), 0, 0);
+            body.addView(note);
+        }
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Response details")
+                .setView(body)
+                .setPositiveButton("Done", null)
+                .create();
+        styleOrbitDialog(dialog);
+        dialog.show();
+    }
+
+    // ---- quoting ---------------------------------------------------------------------------------
+
+    private View buildQuoteCard() {
+        quoteCard = new LinearLayout(this);
+        quoteCard.setGravity(Gravity.CENTER_VERTICAL);
+        quoteCard.setPadding(UiKit.dp(this, 12), UiKit.dp(this, 6), UiKit.dp(this, 4),
+                UiKit.dp(this, 6));
+        quoteCard.setBackground(UiKit.outlined(
+                UiKit.blend(UiKit.accent(this), UiKit.SURFACE, 0.10f),
+                UiKit.withAlpha(UiKit.accent(this), 90), 14, this));
+        quoteCard.setVisibility(View.GONE);
+
+        View rule = new View(this);
+        rule.setBackground(UiKit.rounded(UiKit.accent(this), 2, this));
+        quoteCard.addView(rule, new LinearLayout.LayoutParams(UiKit.dp(this, 3), UiKit.dp(this, 30)));
+
+        quoteCardText = UiKit.text(this, "", 13, UiKit.TEXT, false);
+        quoteCardText.setMaxLines(2);
+        quoteCardText.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams textLp = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        textLp.setMargins(UiKit.dp(this, 9), 0, UiKit.dp(this, 4), 0);
+        quoteCard.addView(quoteCardText, textLp);
+
+        ImageButton remove = new ImageButton(this);
+        remove.setImageResource(com.orbit.assistant.R.drawable.ic_close);
+        remove.setImageTintList(ColorStateList.valueOf(UiKit.accent(this)));
+        remove.setBackground(UiKit.ripple(Color.TRANSPARENT, UiKit.accent(this), 14, this));
+        remove.setContentDescription("Remove quoted message");
+        int pad = UiKit.dp(this, 13);
+        remove.setPadding(pad, pad, pad, pad);
+        remove.setOnClickListener(v -> clearQuote());
+        UiKit.pressScale(remove);
+        quoteCard.addView(remove, new LinearLayout.LayoutParams(UiKit.dp(this, 44), UiKit.dp(this, 44)));
+        updateQuoteCard();
+        return quoteCard;
+    }
+
+    /** Reply to this: the message becomes a compact quote above the composer. Nothing is sent. */
+    void beginReplyTo(AssistantClient.History message) {
+        QuotedMessage quote = QuotedMessage.of(message);
+        if (quote == null) return;
+        pendingQuote = quote;
+        updateQuoteCard();
+        if (quoteCard != null) UiKit.enterContent(quoteCard);
+        if (input != null) {
+            input.requestFocus();
+            showComposerKeyboard();
+        }
+    }
+
+    void clearQuote() {
+        pendingQuote = null;
+        updateQuoteCard();
+    }
+
+    /** The quote the next message will carry, or null. For tests. */
+    QuotedMessage pendingQuoteForTest() { return pendingQuote; }
+
+    /** The composer's quote card. For tests. */
+    View quoteCardForTest() { return quoteCard; }
+
+    private void updateQuoteCard() {
+        if (quoteCard == null) return;
+        if (pendingQuote == null) {
+            quoteCard.setVisibility(View.GONE);
+            return;
+        }
+        quoteCardText.setText(pendingQuote.speaker() + ": " + pendingQuote.preview());
+        quoteCard.setContentDescription("Replying to " + pendingQuote.speaker() + ": "
+                + pendingQuote.preview());
+        quoteCard.setVisibility(View.VISIBLE);
+    }
+
+    /** The small line above a sent message naming what it replied to. */
+    private void addSentQuote(QuotedMessage quote) {
+        TextView line = UiKit.text(this, "↪ " + quote.speaker() + ": " + quote.preview(), 12,
+                UiKit.MUTED, false);
+        line.setMaxLines(1);
+        line.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        line.setContentDescription("In reply to " + quote.speaker() + ": " + quote.preview());
+        line.setPadding(UiKit.dp(this, 12), UiKit.dp(this, 4), UiKit.dp(this, 6), 0);
+        messages.addView(line, bubbleLp(Gravity.END, UiKit.dp(this, 300)));
     }
 
     private void showChatOptions(View anchor) {
@@ -2812,7 +3092,7 @@ public class ChatActivity extends Activity {
                 } else {
                     AlertDialog dialog = new AlertDialog.Builder(this)
                             .setTitle("Clear this chat?")
-                            .setMessage("This removes the messages but keeps the conversation and its AI strength.")
+                            .setMessage("This removes the messages but keeps the conversation and its AI selection.")
                             .setNegativeButton("Cancel", null)
                             .setPositiveButton("Clear", (d,w) -> {
                                 ConversationStore.clearMessages(this, conversationId);

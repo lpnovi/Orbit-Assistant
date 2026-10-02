@@ -160,8 +160,8 @@ public final class OrbitLaunchSequenceTest {
      *
      * <p>Beta 1 called them Luna, Terra and Sol, which are Orbit's Fast/Balanced/Deep model
      * codenames. On a real device that read as though touching one changed the AI mode, so the names
-     * are gone from the scene entirely. They remain the Auto routing codenames everywhere else,
-     * which {@code theAutoModelCodenamesAreUnchanged} below pins.
+     * are gone from the scene entirely. Since 0.8.3.0 they are parts of real model names
+     * (GPT-6 Luna, GPT-6.1 Sol), which {@code theModelNamesLiveInTheCatalog} below pins.
      */
     @Test public void theBodiesAreUnnamedAndNeverFunctional() {
         String source = ComponentUninstallTest.readRepositoryFile(
@@ -183,17 +183,11 @@ public final class OrbitLaunchSequenceTest {
     }
 
     /**
-     * Removing the names from the scene did not rename Orbit's Auto routing.
-     *
-     * <p>Luna, Terra and Sol are the Fast, Balanced and Deep model codenames and stay exactly that.
-     * The easter egg simply stopped borrowing them.
+     * The names the scene stopped borrowing belong to the model catalog, and only there.
      */
-    @Test public void theAutoModelCodenamesAreUnchanged() {
-        String prefs = ComponentUninstallTest.readRepositoryFile(
-                "app/src/main/java/com/orbit/assistant/Prefs.java");
-        for (String mode : new String[]{"fast", "balanced", "deep"}) {
-            assertTrue("Auto must still know " + mode, prefs.contains("\"" + mode + "\""));
-        }
+    @Test public void theModelNamesLiveInTheCatalog() {
+        assertTrue(OrbitModelCatalog.displayName(OrbitModelCatalog.LUNA).contains("Luna"));
+        assertTrue(OrbitModelCatalog.displayName(OrbitModelCatalog.SOL).contains("Sol"));
     }
 
     // ---- dragging ------------------------------------------------------------------------------

@@ -127,7 +127,7 @@ public final class CapabilitiesActivity extends Activity {
         page.addView(section("AI & PERSONALIZATION"));
         LinearLayout ai = card();
         ai.addView(status("ChatGPT account", ChatGptAuth.getAccountInfo(this) != null));
-        ai.addView(status("Smart Auto routing", true));
+        ai.addView(status("Direct model and strength choice", true));
         ai.addView(status("Orbit Memory", Prefs.memoryEnabled(this)));
         ai.addView(status("Attachments & PDF", true));
         page.addView(ai, cardLp());

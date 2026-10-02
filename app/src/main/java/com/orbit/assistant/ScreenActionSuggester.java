@@ -52,8 +52,7 @@ public final class ScreenActionSuggester {
                                 AppProfileStore.effectivePrivacy(context, foregroundPackage))
                                 ? "Manual only" : AppProfileStore.screenLabel(profile.screenPolicy)),
                 AppProfileStore.screenshotAllowed(context, foregroundPackage) ? "Allowed" : "Blocked",
-                Prefs.modeLabel(AppProfileStore.defaultMode(context, foregroundPackage,
-                        Prefs.intelligenceMode(context))),
+                AiSelections.globalDefault(context).label(),
                 actionLabels.toString());
         return out;
     }

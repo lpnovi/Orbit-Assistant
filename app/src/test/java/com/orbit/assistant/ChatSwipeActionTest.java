@@ -42,6 +42,8 @@ import java.util.List;
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = {29, 31, 35})
 public final class ChatSwipeActionTest {
+    private static final AiSelection SOL_HIGH =
+            AiSelection.of(Prefs.PROVIDER_CHATGPT, OrbitModelCatalog.SOL, AiStrength.HIGH);
     private Context context;
     private int slop;
 
@@ -374,13 +376,13 @@ public final class ChatSwipeActionTest {
     /** Everything else about the chat survives being pinned. */
     @Test public void pinningKeepsTheRestOfTheConversationIntact() {
         String id = chat("Screenshot chat", "What is this?");
-        ConversationStore.setMode(context, id, Prefs.MODE_DEEP);
+        ConversationStore.setSelection(context, id, SOL_HIGH);
         ConversationStore.setPinned(context, id, true);
 
         ConversationStore.Conversation after = ConversationStore.load(context, id);
         assertEquals("Screenshot chat", after.title);
         assertEquals(1, after.messages.size());
-        assertEquals(Prefs.MODE_DEEP, after.intelligenceMode);
+        assertEquals(SOL_HIGH, after.aiSelection);
         assertTrue(after.pinned);
     }
 
@@ -450,7 +452,7 @@ public final class ChatSwipeActionTest {
         history.add(new AssistantClient.History("assistant", "A settings page."));
         ConversationStore.save(context, id, history);
         ConversationStore.rename(context, id, "Screenshot chat");
-        ConversationStore.setMode(context, id, Prefs.MODE_DEEP);
+        ConversationStore.setSelection(context, id, SOL_HIGH);
         ConversationStore.setPinned(context, id, true);
         ConversationStore.markTurnStopped(context, id, "req-1234");
 
@@ -467,7 +469,7 @@ public final class ChatSwipeActionTest {
                 attachment, after.messages.get(0).attachmentPath);
         assertTrue("and its file was never touched", new File(attachment).isFile());
         assertEquals("screen text", after.messages.get(0).attachmentText);
-        assertEquals(Prefs.MODE_DEEP, after.intelligenceMode);
+        assertEquals(SOL_HIGH, after.aiSelection);
         assertTrue("pinned state survives too", after.pinned);
         assertEquals("and so does the stopped mark", 1,
                 ConversationStore.stoppedRequestIds(context, id).size());

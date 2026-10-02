@@ -150,18 +150,6 @@ public final class DiagnosticStore {
                 .apply();
     }
 
-    public static void recordAutoRouting(Context c, String mode, int confidence,
-                                         String reason, String model, String reasoning) {
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
-                .putString("auto_mode", Prefs.normalizeMode(mode))
-                .putInt("auto_confidence", Math.max(0, Math.min(100, confidence)))
-                .putString("auto_reason", safe(reason))
-                .putString("auto_model", safe(model))
-                .putString("auto_reasoning", safe(reasoning))
-                .putLong("auto_updated", System.currentTimeMillis())
-                .apply();
-    }
-
     /**
      * Which model a request asked for, and which one it actually went to.
      *
@@ -178,12 +166,11 @@ public final class DiagnosticStore {
                 .apply();
     }
 
-    /** A model Orbit could not reach, and the one it fell back to after saying so. */
-    public static void recordModelFallback(Context c, String from, String to) {
+    /** A model the account could not reach. Orbit reported it and substituted nothing. */
+    public static void recordModelUnavailable(Context c, String model) {
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
-                .putString("model_fallback_from", safe(from))
-                .putString("model_fallback_to", safe(to))
-                .putLong("model_fallback_updated", System.currentTimeMillis())
+                .putString("model_unavailable", safe(model))
+                .putLong("model_unavailable_updated", System.currentTimeMillis())
                 .apply();
     }
 

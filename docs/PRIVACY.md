@@ -44,6 +44,8 @@ Smart Vault's index (recognised text, page text, meaning vectors and job state) 
 ## Credentials and secrets
 
 - ChatGPT account tokens are encrypted with an Android Keystore-backed key.
+- ChatGPT sign-in (from v0.8.3.0-beta.1) uses OAuth with PKCE in the system browser. For the length of one sign-in only, Orbit listens on `127.0.0.1` (port 1455, or 1457 if busy) for OpenAI's redirect, checks that it carries the exact random state Orbit created, exchanges the code, and closes the listener. Nothing off the phone can reach that address. The PKCE verifier is kept only in memory. The one-time-code sign-in remains available as a fallback, and Orbit never switches between the two on its own.
+- The provider, model and strength a request is sent with are chosen by the user per chat. Orbit does not route a request to a different model, and when an account cannot use a model Orbit says so rather than answering with another one.
 - The setup-only OpenRouter key is Keystore-encrypted with no plaintext fallback.
 - Extension `secret` and `secret_url` fields are encrypted with Android Keystore-backed AES/GCM and fail closed if secure storage is unavailable.
 - The optional private-relay access token prefers Keystore-backed encryption. Current compatibility behavior can fall back to Orbit's app-private preferences if Keystore persistence fails. Do not reuse a high-value provider key as this relay token; keep the provider key on the relay server.

@@ -162,7 +162,11 @@ public final class RichAnswerCoordinator {
         Context app = context.getApplicationContext();
         RichAnswerTrace.Attempt trace = new RichAnswerTrace.Attempt();
         trace.enabled = enabled(app);
-        trace.providerEligible = AiProviders.active(app).capabilities().richWebMedia;
+        // The provider that produced this answer, not today's default: chats can differ.
+        AiProvider answering = reply.details != null && !reply.details.provider.isEmpty()
+                ? AiProviders.byId(reply.details.provider)
+                : AiProviders.forSelection(app, AiSelections.forConversation(app, conversationId));
+        trace.providerEligible = answering.capabilities().richWebMedia;
         trace.intent = RichAnswerRelevance.intentFor(prompt, answer);
         boolean strong = trace.intent == RichAnswerTrace.Intent.STRONG_VISUAL;
 

@@ -72,7 +72,7 @@ public final class SupersededWorkerAttemptTest {
 
     private PendingRequestStore.Item newRequest() {
         return PendingRequestStore.create(context, CHAT, "what is 18% of 75", "", "", false,
-                false, Prefs.MODE_BALANCED, false, "");
+                false, AiSelections.FALLBACK, false, "");
     }
 
     private Runnable answerWith(String text, AtomicInteger commits, String id) {

@@ -22,7 +22,7 @@ from openai import OpenAI
 app = FastAPI(title="Orbit Relay", version="0.1.0")
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-ALLOWED_MODELS = {"gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6"}
+ALLOWED_MODELS = {"gpt-6-luna", "gpt-6.1-sol", "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6"}
 ALLOWED_REASONING = {"none", "low", "medium", "high", "xhigh", "max"}
 
 
@@ -33,7 +33,7 @@ class HistoryItem(BaseModel):
 
 class AssistantRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=20000)
-    model: str = "gpt-5.6-terra"
+    model: str = "gpt-6-luna"
     reasoning: str = "low"
     screenText: str = Field(default="", max_length=110000)
     clientTime: str = ""
@@ -150,7 +150,7 @@ def assistant(req: AssistantRequest, authorization: str | None = Header(default=
     if not os.environ.get("OPENAI_API_KEY"):
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not configured on the relay")
 
-    model = req.model if req.model in ALLOWED_MODELS else "gpt-5.6-terra"
+    model = req.model if req.model in ALLOWED_MODELS else "gpt-6-luna"
     reasoning = req.reasoning if req.reasoning in ALLOWED_REASONING else "low"
 
     developer = SYSTEM + (LELO_SYSTEM if req.leloMode else "")

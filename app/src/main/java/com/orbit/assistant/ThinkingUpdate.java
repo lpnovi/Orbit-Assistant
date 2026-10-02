@@ -206,7 +206,7 @@ public final class ThinkingUpdate {
     }
 
     /**
-     * Luna, Terra, Sol or Astra, or "" for a model Orbit has no name for. Never invents one.
+     * The model's Orbit name (GPT-6 Luna, GPT-6.1 Sol, GPT-6 Astra), or "" for one Orbit has no name for. Never invents one.
      *
      * <p>Delegated to {@link OrbitModelCatalog} rather than kept as a second list. A status line
      * saying "Reasoning with Sol" while the request went to Astra would be Orbit misreporting its

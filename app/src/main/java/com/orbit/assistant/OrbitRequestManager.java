@@ -228,28 +228,28 @@ public final class OrbitRequestManager {
     public static String enqueue(Context c, String conversationId, String prompt, String screenText, Bitmap screenshot,
                                  boolean voiceRequest, boolean draftReply) {
         return enqueue(c, conversationId, prompt, screenText, screenshot, voiceRequest, draftReply,
-                ConversationStore.modeFor(c, conversationId), null);
+                AiSelections.forConversation(c, conversationId), null);
     }
 
     public static String enqueue(Context c, String conversationId, String prompt, String screenText, Bitmap screenshot,
                                  boolean voiceRequest, boolean draftReply, Listener listener) {
         return enqueue(c, conversationId, prompt, screenText, screenshot, voiceRequest, draftReply,
-                ConversationStore.modeFor(c, conversationId), listener);
+                AiSelections.forConversation(c, conversationId), listener);
     }
 
     public static String enqueue(Context c, String conversationId, String prompt, String screenText, Bitmap screenshot,
-                                 boolean voiceRequest, boolean draftReply, String intelligenceMode, Listener listener) {
+                                 boolean voiceRequest, boolean draftReply, AiSelection selection, Listener listener) {
         return enqueue(c, conversationId, prompt, screenText, screenshot, voiceRequest, draftReply,
-                intelligenceMode, false, listener);
+                selection, false, listener);
     }
 
     public static String enqueue(Context c, String conversationId, String prompt, String screenText, Bitmap screenshot,
-                                 boolean voiceRequest, boolean draftReply, String intelligenceMode,
+                                 boolean voiceRequest, boolean draftReply, AiSelection selection,
                                  boolean explicitAttachment, Listener listener) {
         return enqueue(c, conversationId, prompt, screenText,
                 screenshot == null ? java.util.Collections.emptyList()
                         : java.util.Collections.singletonList(screenshot),
-                voiceRequest, draftReply, intelligenceMode, explicitAttachment, listener);
+                voiceRequest, draftReply, selection, explicitAttachment, listener);
     }
 
     /**
@@ -261,7 +261,7 @@ public final class OrbitRequestManager {
      */
     public static String enqueue(Context c, String conversationId, String prompt, String screenText,
                                  List<Bitmap> images, boolean voiceRequest, boolean draftReply,
-                                 String intelligenceMode, boolean explicitAttachment, Listener listener) {
+                                 AiSelection selection, boolean explicitAttachment, Listener listener) {
         ConversationStore.Conversation conversation = ConversationStore.load(c, conversationId);
         List<AssistantClient.History> history = conversation == null
                 ? java.util.Collections.emptyList() : conversation.messages;
@@ -269,16 +269,16 @@ public final class OrbitRequestManager {
         String trustedTaskContext = ReplyDraftContext.observeAndGet(
                 c, conversationId, prompt, screenText, first, history);
         return enqueueFrozen(c, conversationId, prompt, screenText, images, voiceRequest,
-                draftReply, intelligenceMode, explicitAttachment, trustedTaskContext, listener);
+                draftReply, selection, explicitAttachment, trustedTaskContext, listener);
     }
 
     private static String enqueueFrozen(Context c, String conversationId, String prompt, String screenText,
                                         List<Bitmap> images, boolean voiceRequest, boolean draftReply,
-                                        String intelligenceMode, boolean explicitAttachment,
+                                        AiSelection selection, boolean explicitAttachment,
                                         String trustedTaskContext, Listener listener) {
         List<String> pendingScreens = AttachmentStore.savePendingScreens(c, images);
         PendingRequestStore.Item item = PendingRequestStore.create(c, conversationId, prompt, screenText,
-                pendingScreens, voiceRequest, draftReply, intelligenceMode, explicitAttachment,
+                pendingScreens, voiceRequest, draftReply, selection, explicitAttachment,
                 trustedTaskContext);
         if (listener != null) addListener(item.id, listener);
         Data input = new Data.Builder().putString(OrbitRequestWorker.KEY_REQUEST_ID, item.id).build();
@@ -287,7 +287,7 @@ public final class OrbitRequestManager {
         // request survives a dead network instead of failing instantly.
         boolean offlineOk = MemoryCommandRouter.canHandle(prompt)
                 || KitchenMathRouter.canHandle(prompt)
-                || AiProviders.active(c).capabilities().offline;
+                || AiProviders.forSelection(c, selection).capabilities().offline;
         Constraints constraints = new Constraints.Builder()
                 .setRequiredNetworkType(offlineOk ? NetworkType.NOT_REQUIRED : NetworkType.CONNECTED)
                 .build();
@@ -312,7 +312,7 @@ public final class OrbitRequestManager {
         List<Bitmap> images = AttachmentStore.loadAll(failed.screenshotPaths);
         PendingRequestStore.markSuperseded(c, failedRequestId);
         String next = enqueueFrozen(c, failed.conversationId, failed.prompt, failed.screenText, images,
-                failed.voiceRequest, failed.draftReply, failed.intelligenceMode,
+                failed.voiceRequest, failed.draftReply, failed.selection,
                 failed.explicitAttachment, failed.trustedTaskContext, listener);
         AttachmentStore.deleteAll(failed.screenshotPaths);
         return next;

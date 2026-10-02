@@ -249,7 +249,7 @@ public final class ThemePreviewView extends LinearLayout {
         row.addView(title, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        modeChip = UiKit.text(c, "Balanced", 11, UiKit.TEXT, false);
+        modeChip = UiKit.text(c, "Luna · Medium", 11, UiKit.TEXT, false);
         modeChip.setPadding(UiKit.dp(c, 10), UiKit.dp(c, 4), UiKit.dp(c, 10), UiKit.dp(c, 4));
         row.addView(modeChip);
         return row;

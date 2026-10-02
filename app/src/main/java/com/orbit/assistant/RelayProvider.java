@@ -99,13 +99,14 @@ final class RelayProvider implements AiProvider {
                 // pictures it never sent.
                 boolean imagesAllowed = Prefs.screenshot(context) || request.explicitAttachment;
                 int offeredImages = imagesAllowed ? request.images.size() : 0;
-                payload.put("prompt", offeredImages > 1
+                String quote = OrbitLocalProvider.currentQuote(request);
+                payload.put("prompt", (offeredImages > 1
                         ? request.prompt + "\n\n[Orbit note: the user attached " + offeredImages
                                 + " images. This backend accepts one image per message, so only the"
                                 + " first was sent. Say so if the answer depends on the others.]"
-                        : request.prompt);
-                payload.put("model", Prefs.effectiveModelForMode(context, request.intelligenceMode, request.prompt));
-                payload.put("reasoning", Prefs.effectiveReasoningForMode(context, request.intelligenceMode, request.prompt));
+                        : request.prompt) + (quote.isEmpty() ? "" : "\n\n" + quote));
+                payload.put("model", request.selection.model);
+                payload.put("reasoning", request.selection.effortId());
                 payload.put("clientTime", OffsetDateTime.now().toString());
                 payload.put("timezone", TimeZone.getDefault().getID());
                 payload.put("locale", java.util.Locale.getDefault().toLanguageTag());
@@ -135,7 +136,8 @@ final class RelayProvider implements AiProvider {
                     for (int i = start; i < end; i++) {
                         JSONObject m = new JSONObject();
                         m.put("role", history.get(i).role);
-                        m.put("content", safe(history.get(i).content, 6000));
+                        m.put("content", safe(history.get(i).content, 6000)
+                                + ChatGptClient.quoteBlock(history.get(i)));
                         h.put(m);
                     }
                 }
@@ -159,7 +161,8 @@ final class RelayProvider implements AiProvider {
                     cb.onError("Relay error " + code + (body.isEmpty() ? "" : ": " + safe(body, 700)));
                     return;
                 }
-                cb.onSuccess(AssistantReply.fromJson(new JSONObject(body)));
+                cb.onSuccess(AssistantReply.fromJson(new JSONObject(body))
+                        .withDetails(ResponseDetails.sentWith(request.selection)));
             } catch (Exception e) {
                 cb.onError("Could not reach the Orbit relay: " + e.getMessage());
             } finally {
@@ -168,7 +171,7 @@ final class RelayProvider implements AiProvider {
         });
     }
 
-    @Override public void plan(Context context, String planningPrompt, String intelligenceMode,
+    @Override public void plan(Context context, String planningPrompt, AiSelection selection,
                                AssistantClient.PlanCallback cb) {
         String backend = Prefs.backendUrl(context);
         if (backend.isEmpty()) { cb.onError(NOT_CONFIGURED_ERROR); return; }
@@ -191,8 +194,9 @@ final class RelayProvider implements AiProvider {
                 // screen text, screenshot, notifications, or memory context.
                 JSONObject payload = new JSONObject();
                 payload.put("prompt", planningPrompt);
-                payload.put("model", Prefs.effectiveModelForMode(context, intelligenceMode, planningPrompt));
-                payload.put("reasoning", Prefs.effectiveReasoningForMode(context, intelligenceMode, planningPrompt));
+                AiSelection sent = AiSelections.resolve(selection);
+                payload.put("model", sent.model);
+                payload.put("reasoning", sent.effortId());
                 payload.put("clientTime", OffsetDateTime.now().toString());
                 payload.put("timezone", TimeZone.getDefault().getID());
                 payload.put("locale", java.util.Locale.getDefault().toLanguageTag());
@@ -213,7 +217,7 @@ final class RelayProvider implements AiProvider {
                     cb.onError("Relay error " + code + (body.isEmpty() ? "" : ": " + safe(body, 700)));
                     return;
                 }
-                cb.onText(body, "Relay · " + Prefs.modeLabel(intelligenceMode));
+                cb.onText(body, "Relay · " + AiSelections.resolve(selection).label());
             } catch (Exception e) {
                 cb.onError("Could not reach the Orbit relay: " + e.getMessage());
             } finally {

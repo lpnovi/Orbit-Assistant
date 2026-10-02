@@ -344,6 +344,24 @@
         -->
         <activity android:name=".OrbitLaunchSequenceActivity"
             android:exported="false" android:excludeFromRecents="true" />
+        <!--
+          The browser's "Return to Orbit" button after ChatGPT sign-in. Exported and BROWSABLE only
+          because a web page cannot otherwise hand the user back to an app; it reads nothing from the
+          link and only brings the screen that started the sign-in forward. See the class comment.
+        -->
+        <activity
+            android:name=".ChatGptSignInReturnActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@style/Theme.Orbit.Bridge">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="orbit-assistant" android:host="chatgpt-signin" />
+            </intent-filter>
+        </activity>
         <activity
             android:name=".OrbitWidgetConfigureActivity"
             android:exported="true"

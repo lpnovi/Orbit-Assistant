@@ -227,16 +227,11 @@ public final class DiagnosticsActivity extends Activity {
 
     private String overview() {
         SharedPreferences d = DiagnosticStore.prefs(this);
-        long autoUpdatedMs = d.getLong("auto_updated", 0L);
         return "Orbit version: " + versionLabel() +
                 "\nDistribution: " + OrbitDistribution.label() +
                 "\nProvider: " + AiProviders.active(this).displayName() +
                 "\nChatGPT: " + accountStatus() +
-                "\nDefault mode: " + Prefs.modeLabel(this) +
-                (autoUpdatedMs == 0 ? "" : "\nLast Auto route: "
-                        + Prefs.modeLabel(d.getString("auto_mode", Prefs.MODE_BALANCED))
-                        + " · " + d.getString("auto_model", "")
-                        + " · " + d.getString("auto_reasoning", "")) +
+                "\nDefault AI: " + defaultSelectionLabel() +
                 "\nPending requests: " + PendingRequestStore.active(this).size() +
                 "\nThinking updates: " + (Prefs.thinkingUpdates(this) ? "enabled" : "disabled")
                         + " · " + ReasoningSummarySupport.lastSource(this) +
@@ -384,7 +379,7 @@ public final class DiagnosticsActivity extends Activity {
         List<Section> sections = new ArrayList<>();
         sections.add(new Section("Request flow", requestFlow(d)));
         sections.add(new Section("Thinking updates", thinkingUpdates()));
-        sections.add(new Section("Auto routing", autoRouting(d)));
+        sections.add(new Section("AI selection", aiSelection(d)));
         sections.add(new Section("Screen & app context", screenContext(d)));
         sections.add(new Section("Memory", memory()));
         sections.add(new Section("Calendar", CalendarDiagnostics.body(this)));
@@ -670,26 +665,24 @@ public final class DiagnosticsActivity extends Activity {
         return HostedSearchPolicy.body(this) + "\n\n" + HostedSearchSchemaTrace.body(this);
     }
 
-    private String autoRouting(SharedPreferences d) {
-        long autoUpdatedMs = d.getLong("auto_updated", 0L);
-        if (autoUpdatedMs == 0) return "\n  No Auto request recorded yet" + modelReport(d);
-        return "\n  Last Auto decision: "
-                        + Prefs.modeLabel(d.getString("auto_mode", Prefs.MODE_BALANCED)) +
-                "\n  Confidence: " + d.getInt("auto_confidence", 0) + "%" +
-                "\n  Reason: " + d.getString("auto_reason", "") +
-                "\n  Model: " + d.getString("auto_model", "") +
-                "\n  Reasoning: " + d.getString("auto_reasoning", "") +
-                "\n  Routed at: " + DateFormat.getDateTimeInstance().format(new Date(autoUpdatedMs)) +
-                modelReport(d);
+    /**
+     * The default selection and what the last request was sent to. There is no routing to report:
+     * since 0.8.3.0 a request goes to exactly the model its chat selected.
+     */
+    private String aiSelection(SharedPreferences d) {
+        return "\n  Default for new chats: " + defaultSelectionLabel() + modelReport(d);
+    }
+
+    private String defaultSelectionLabel() {
+        AiSelection s = AiSelections.globalDefault(this);
+        return s.providerName() + " · " + s.label();
     }
 
     /**
      * Which model the last request asked for and which one answered it.
      *
-     * <p>Reported separately from the Auto decision because it is true of every request, Custom
-     * included, and because the pair is the only honest way to describe an Astra request: the model
-     * a user selected and the model that actually ran are different questions, and a screen that
-     * only showed the first would claim Astra for a turn Sol answered.
+     * <p>The pair should always agree now that Orbit never substitutes a model; reporting both is
+     * what proves it.
      */
     private String modelReport(SharedPreferences d) {
         long updated = d.getLong("model_updated", 0L);
@@ -702,12 +695,11 @@ public final class DiagnosticsActivity extends Activity {
         if (!requested.isEmpty() && !requested.equals(effective)) {
             out.append(" (Orbit did not use the requested model)");
         }
-        long fallback = d.getLong("model_fallback_updated", 0L);
-        if (fallback > 0L) {
-            out.append("\n  Last model fallback: ")
-               .append(orNone(d.getString("model_fallback_from", "")))
-               .append(" to ").append(orNone(d.getString("model_fallback_to", "")))
-               .append(" at ").append(DateFormat.getDateTimeInstance().format(new Date(fallback)));
+        long unavailable = d.getLong("model_unavailable_updated", 0L);
+        if (unavailable > 0L) {
+            out.append("\n  Last unavailable model: ")
+               .append(orNone(d.getString("model_unavailable", "")))
+               .append(" at ").append(DateFormat.getDateTimeInstance().format(new Date(unavailable)));
         }
         out.append(richImageReport());
         return out.toString();
@@ -751,7 +743,7 @@ public final class DiagnosticsActivity extends Activity {
                 "\n  App privacy: " + orNone(d.getString("app_effective_privacy", "")) +
                 "\n  App screen policy: " + orNone(d.getString("app_effective_screen", "")) +
                 "\n  App screenshot policy: " + orNone(d.getString("app_effective_screenshot", "")) +
-                "\n  App AI strength: " + orNone(d.getString("app_effective_mode", "")) +
+                "\n  AI in use: " +orNone(d.getString("app_effective_mode", "")) +
                 "\n  App quick actions: " + orNone(d.getString("app_effective_actions", "")) +
                 attachmentContinuity(d);
     }
@@ -1178,7 +1170,6 @@ public final class DiagnosticsActivity extends Activity {
      */
     String summaryReport() {
         SharedPreferences d = DiagnosticStore.prefs(this);
-        long autoUpdatedMs = d.getLong("auto_updated", 0L);
         String recovered = DiagnosticStore.recoveredCondition(this);
         long recoveredAt = d.getLong("recovered_updated", 0L);
         int refused = d.getInt("completions_ignored", 0);
@@ -1189,12 +1180,7 @@ public final class DiagnosticsActivity extends Activity {
                 "\nVersion: " + versionLabel() +
                 "\nProvider: " + AiProviders.active(this).displayName()
                         + " · " + accountStatus() +
-                "\nDefault mode: " + Prefs.modeLabel(this) +
-                (autoUpdatedMs == 0 ? "" : "\nLast Auto route: "
-                        + Prefs.modeLabel(d.getString("auto_mode", Prefs.MODE_BALANCED))
-                        + " · " + d.getString("auto_model", "")
-                        + " · " + d.getString("auto_reasoning", "")
-                        + " · " + d.getInt("auto_confidence", 0) + "%") +
+                "\nDefault AI: " + defaultSelectionLabel() +
                 "\nPending requests: " + PendingRequestStore.active(this).size() +
                 "\nRequests: " + d.getInt("submissions_accepted", 0) + " accepted, "
                         + suppressed + " suppressed, "

@@ -11,7 +11,7 @@ import java.util.function.BooleanSupplier;
  * One normalized conversation request, provider-agnostic.
  *
  * <p>Everything Orbit's pipeline prepares for a turn — prompt, screen context, attachments,
- * history, memory, notification context, and the resolved intelligence mode — travels in this
+ * history, memory, notification context, and the resolved AI selection — travels in this
  * one value so every {@link AiProvider} receives the same shape. Providers use the parts their
  * {@link AiCapabilities} support and ignore the rest.
  */
@@ -35,8 +35,11 @@ public final class AiRequest {
      */
     public final List<Bitmap> images;
     public final List<AssistantClient.History> history;
-    /** Already resolved: never {@link Prefs#MODE_AUTO} by the time a provider sees it. */
-    public final String intelligenceMode;
+    /**
+     * The provider, model and strength this turn goes to, already validated by
+     * {@link AiSelections#resolve}. Providers send exactly this; none of them re-decides it.
+     */
+    public final AiSelection selection;
     public final boolean explicitAttachment;
     public final String notificationContext;
     public final String memoryContext;
@@ -71,7 +74,7 @@ public final class AiRequest {
         this.images = Collections.unmodifiableList(resolvedImages);
         this.screenshot = resolvedImages.isEmpty() ? null : resolvedImages.get(0);
         this.history = b.history == null ? Collections.emptyList() : b.history;
-        this.intelligenceMode = b.intelligenceMode == null ? Prefs.MODE_BALANCED : b.intelligenceMode;
+        this.selection = AiSelections.resolve(b.selection);
         this.explicitAttachment = b.explicitAttachment;
         this.notificationContext = b.notificationContext == null ? "" : b.notificationContext;
         this.memoryContext = b.memoryContext == null ? "" : b.memoryContext;
@@ -88,7 +91,7 @@ public final class AiRequest {
         private Bitmap screenshot;
         private List<Bitmap> images;
         private List<AssistantClient.History> history;
-        private String intelligenceMode;
+        private AiSelection selection;
         private boolean explicitAttachment;
         private String notificationContext;
         private String memoryContext;
@@ -101,7 +104,7 @@ public final class AiRequest {
         public Builder screenshot(Bitmap v) { screenshot = v; return this; }
         public Builder images(List<Bitmap> v) { images = v; return this; }
         public Builder history(List<AssistantClient.History> v) { history = v; return this; }
-        public Builder intelligenceMode(String v) { intelligenceMode = v; return this; }
+        public Builder selection(AiSelection v) { selection = v; return this; }
         public Builder explicitAttachment(boolean v) { explicitAttachment = v; return this; }
         public Builder notificationContext(String v) { notificationContext = v; return this; }
         public Builder memoryContext(String v) { memoryContext = v; return this; }

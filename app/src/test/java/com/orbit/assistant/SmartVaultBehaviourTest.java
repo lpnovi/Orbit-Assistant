@@ -62,7 +62,7 @@ public final class SmartVaultBehaviourTest {
         @Override public void send(Context c, AiRequest r, AssistantClient.Callback cb) {
             throw new AssertionError("Smart Vault must never send a chat request");
         }
-        @Override public void plan(Context c, String p, String m, AssistantClient.PlanCallback cb) {
+        @Override public void plan(Context c, String p, AiSelection m, AssistantClient.PlanCallback cb) {
             throw new AssertionError("Smart Vault must never plan a Routine");
         }
         @Override public boolean supportsCompletion(Context c) { return supports; }

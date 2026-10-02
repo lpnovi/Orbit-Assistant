@@ -92,8 +92,8 @@ public final class SettingsSearchTest {
      * The aliases are where most of the value is.
      *
      * <p>None of these words appears on the control they reach. Orbit's control is called AMOLED,
-     * not dark mode; the feature is called Vault, not saved stuff; the setting is Custom model, not
-     * AI model. Without aliases each of these searches finds nothing, which reads as the setting
+     * not dark mode; the feature is called Vault, not saved stuff; the setting is Default AI for new chats,
+     * not AI model. Without aliases each of these searches finds nothing, which reads as the setting
      * not existing at all.
      */
     @Test public void aliasesReachControlsThatDoNotUseThoseWords() {
@@ -101,13 +101,13 @@ public final class SettingsSearchTest {
         assertEquals("Theme Studio", best("accent").title);
         assertEquals("Theme Studio", best("colour").title);
         assertEquals("Orbit Vault", best("saved stuff").title);
-        assertEquals("Custom model", best("ai model").title);
+        assertEquals("Default AI for new chats", best("ai model").title);
         assertEquals("Chat text size", best("bigger text").title);
         assertEquals("Haptic feedback", best("vibrate").title);
         assertEquals("Backup & restore", best("export").title);
         assertTrue(titles("delete chats").contains("Clear Orbit conversation history"));
         assertTrue(titles("chatgpt").contains("ChatGPT sign-in"));
-        assertTrue(titles("astra").contains("Custom model"));
+        assertTrue(titles("astra").contains("Default AI for new chats"));
         assertTrue(titles("bixby").contains("Make Orbit default assistant"));
     }
 

@@ -288,12 +288,12 @@ public final class OrbitDialogContractTest {
                 calendarBridge.contains("new AlertDialog.Builder"));
         assertFalse(calendarBridge.contains("styleOrbitDialog"));
 
-        // Picker, calendar permission, widget action, the external Share doorway, and now the
-        // selected-text doorway. All five are invisible bridges rather than pages, and all five
-        // keep the dedicated non-page theme.
-        assertTrue("invisible picker, calendar, widget, share and selected-text bridges keep their"
-                        + " non-page theme",
-                count(manifest, "android:theme=\"@style/Theme.Orbit.Bridge\"") == 5);
+        // Picker, calendar permission, widget action, the external Share doorway, the
+        // selected-text doorway, and the ChatGPT sign-in return doorway. All six are invisible
+        // bridges rather than pages, and all six keep the dedicated non-page theme.
+        assertTrue("invisible picker, calendar, widget, share, selected-text and sign-in return"
+                        + " bridges keep their non-page theme",
+                count(manifest, "android:theme=\"@style/Theme.Orbit.Bridge\"") == 6);
 
         // Both external doorways draw exactly one thing, and only since v0.7.8.4: the question of
         // where the content should go. Share to Orbit gained it in Beta 1 and the selected-text

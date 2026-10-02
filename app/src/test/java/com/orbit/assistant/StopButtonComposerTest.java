@@ -84,7 +84,7 @@ public final class StopButtonComposerTest {
     private PendingRequestStore.Item startRequest(String conversationId) {
         seedUserMessage(conversationId);
         return PendingRequestStore.create(context, conversationId, "Tell me about Saturn", "", "",
-                false, false, Prefs.MODE_BALANCED, false, "");
+                false, false, AiSelections.FALLBACK, false, "");
     }
 
     /** Full chat reads the durable record alone; the overlay also knows its own in-flight turn. */

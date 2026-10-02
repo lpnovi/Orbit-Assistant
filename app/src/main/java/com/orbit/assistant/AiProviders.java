@@ -35,7 +35,6 @@ public final class AiProviders {
         return CHATGPT;
     }
 
-    /** The provider the user has made active. Unknown or unselectable ids fall back to ChatGPT. */
     /** A provider tests put in place of the real ones; never set in production. */
     private static volatile AiProvider testOverride;
 
@@ -45,6 +44,20 @@ public final class AiProviders {
         return previous;
     }
 
+    /**
+     * The provider one request goes to: the one its selection names.
+     *
+     * <p>Deliberately not {@link #active}'s silent fall-back to ChatGPT. A chat set to Orbit Local
+     * whose model has since been removed gets Orbit Local's own plain explanation, rather than an
+     * answer from a different provider under a header that still says Orbit Local.
+     */
+    public static AiProvider forSelection(Context c, AiSelection selection) {
+        AiProvider override = testOverride;
+        if (override != null) return override;
+        return byId(AiSelections.resolve(selection).provider);
+    }
+
+    /** The default provider: the one new chats and the assistant start with. */
     public static AiProvider active(Context c) {
         AiProvider override = testOverride;
         if (override != null) return override;
@@ -60,7 +73,18 @@ public final class AiProviders {
     public static boolean select(Context c, String id) {
         AiProvider chosen = byId(id);
         if (!chosen.id().equals(id) || !chosen.selectable(c)) return false;
-        Prefs.get(c).edit().putString(Prefs.PROVIDER, id).apply();
+        // Through the selection layer, so the default model and strength stay legal for the new
+        // provider. Only the default for new chats changes; existing chats keep their own.
+        if (OrbitModelCatalog.modelsFor(id).isEmpty()) {
+            Prefs.get(c).edit().putString(Prefs.PROVIDER, id).apply();
+        } else {
+            // Compared with what is stored, not with the resolved default: a stored provider that can
+            // no longer answer already resolves to ChatGPT, and must still be replaced on disk.
+            if (!id.equals(Prefs.provider(c))) {
+                AiSelections.setGlobalDefault(c,
+                        AiSelections.withProvider(AiSelections.globalDefault(c), id));
+            }
+        }
         return true;
     }
 }

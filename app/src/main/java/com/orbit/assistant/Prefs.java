@@ -12,9 +12,15 @@ import java.util.Set;
 
 public final class Prefs {
     private static final String FILE = "orbit_prefs";
+    // Retired with intelligence modes in 0.8.3.0. Read once by AiSelections.ensureMigrated and
+    // otherwise left untouched, so a downgrade still finds what it wrote.
     public static final String MODEL = "model";
     public static final String REASONING = "reasoning";
     public static final String INTELLIGENCE_MODE = "intelligence_mode";
+    /** Default model for new chats and the assistant (0.8.3.0+). Provider lives in PROVIDER. */
+    public static final String AI_DEFAULT_MODEL = "ai_default_model";
+    /** Default reasoning strength id for new chats; empty for a model with no strength. */
+    public static final String AI_DEFAULT_STRENGTH = "ai_default_strength";
     public static final String PROVIDER = "provider";
     public static final String BACKEND_URL = "backend_url";
     public static final String BACKEND_TOKEN = "backend_token";
@@ -235,12 +241,6 @@ public final class Prefs {
     public static final String PROVIDER_LOCAL = "local";
     public static final String PROVIDER_OPENROUTER = "openrouter";
 
-    public static final String MODE_AUTO = "auto";
-    public static final String MODE_FAST = "fast";
-    public static final String MODE_BALANCED = "balanced";
-    public static final String MODE_DEEP = "deep";
-    public static final String MODE_CUSTOM = "custom";
-
     public static final String CHAT_TEXT_SMALL = "small";
     public static final String CHAT_TEXT_DEFAULT = "default";
     public static final String CHAT_TEXT_LARGE = "large";
@@ -258,7 +258,7 @@ public final class Prefs {
     private Prefs() {}
 
     private static final Set<String> BACKUP_STRING_KEYS = new HashSet<>(Arrays.asList(
-            MODEL, REASONING, INTELLIGENCE_MODE, ACCENT, USER_BUBBLE_COLOR,
+            MODEL, REASONING, INTELLIGENCE_MODE, AI_DEFAULT_MODEL, AI_DEFAULT_STRENGTH, ACCENT, USER_BUBBLE_COLOR,
             ASSISTANT_BUBBLE_COLOR, CHAT_TEXT_SIZE, WEATHER_LOCATION, WEATHER_UNITS, APP_FONT,
             QUICK_SETTINGS_ROUTINE_ID, PAGE_TRANSITION,
             THEME_SURFACE, THEME_BACKGROUND, THEME_ID, THEME_NAME, THEME_MATERIAL,
@@ -323,6 +323,9 @@ public final class Prefs {
         for (String key : BACKUP_STRING_KEYS) e.remove(key);
         for (String key : BACKUP_BOOLEAN_KEYS) e.remove(key);
         for (String key : BACKUP_INTEGER_KEYS) e.remove(key);
+        // A restored backup may carry only the retired mode keys; letting the AI selection migrate
+        // again from what was restored is what makes an old backup mean what it meant.
+        e.remove(AiSelections.MIGRATED_CHATS);
         java.util.Iterator<String> keys = values.keys();
         while (keys.hasNext()) {
             String key = keys.next();
@@ -333,19 +336,6 @@ public final class Prefs {
         return e.commit();
     }
 
-    /**
-     * The Custom model, as stored.
-     *
-     * <p>Not filtered by provider here on purpose. A user who chose Astra on ChatGPT and then tried
-     * the relay for an afternoon should find Astra still selected when they come back, rather than
-     * silently reset to Terra by a screen they never opened. What a provider will actually accept
-     * is a question the picker answers, in {@link OrbitModelCatalog#modelsFor}.
-     */
-    public static String model(Context c) {
-        return get(c).getString(MODEL, OrbitModelCatalog.TERRA);
-    }
-    public static String reasoning(Context c) { return get(c).getString(REASONING, "low"); }
-    public static String intelligenceMode(Context c) { return get(c).getString(INTELLIGENCE_MODE, MODE_BALANCED); }
     public static String provider(Context c) {
         return normalizeProvider(get(c).getString(PROVIDER, PROVIDER_CHATGPT));
     }
@@ -633,87 +623,5 @@ public final class Prefs {
         if (clean.isEmpty()) editor.remove(QUICK_SETTINGS_ROUTINE_ID);
         else editor.putString(QUICK_SETTINGS_ROUTINE_ID, clean);
         return editor.commit();
-    }
-
-    public static String effectiveModel(Context c, String prompt) {
-        return effectiveModelForMode(c, intelligenceMode(c), prompt);
-    }
-
-    /**
-     * The model one request goes to.
-     *
-     * <p>Astra appears here in exactly one branch: Custom, where the user picked it themselves.
-     * Fast, Balanced, Deep and Auto are untouched by its existence, which is deliberate - Astra
-     * spends an account allowance faster than Sol does, and routing somebody into it because their
-     * question looked difficult would be Orbit spending something of theirs without being asked.
-     */
-    public static String effectiveModelForMode(Context c, String mode, String prompt) {
-        String chosen = normalizeMode(mode);
-        if (MODE_FAST.equals(chosen)) return OrbitModelCatalog.LUNA;
-        if (MODE_BALANCED.equals(chosen)) return OrbitModelCatalog.TERRA;
-        if (MODE_DEEP.equals(chosen)) return OrbitModelCatalog.SOL;
-        if (MODE_CUSTOM.equals(chosen)) return model(c);
-        return autoIsDeep(prompt) ? OrbitModelCatalog.SOL
-                : autoIsQuick(prompt) ? OrbitModelCatalog.LUNA : OrbitModelCatalog.TERRA;
-    }
-
-    public static String effectiveReasoning(Context c, String prompt) {
-        return effectiveReasoningForMode(c, intelligenceMode(c), prompt);
-    }
-
-    /**
-     * The reasoning effort one request carries, after the chosen model has had its say.
-     *
-     * <p>The model is consulted rather than ignored because effort is not universal: Astra has no
-     * {@code none}, and a user who set Custom to {@code none} before choosing it would otherwise
-     * have every request refused for a reason nothing on screen explained. The substitution happens
-     * once, here, so no provider has to remember to make it.
-     */
-    public static String effectiveReasoningForMode(Context c, String mode, String prompt) {
-        return OrbitModelCatalog.reasoningFor(effectiveModelForMode(c, mode, prompt),
-                requestedReasoningForMode(c, mode, prompt));
-    }
-
-    /** What the mode asks for, before the model's own limits are applied. */
-    static String requestedReasoningForMode(Context c, String mode, String prompt) {
-        String chosen = normalizeMode(mode);
-        if (MODE_FAST.equals(chosen)) return "low";
-        if (MODE_BALANCED.equals(chosen)) return "medium";
-        if (MODE_DEEP.equals(chosen)) return "high";
-        if (MODE_CUSTOM.equals(chosen)) return reasoning(c);
-        return autoIsDeep(prompt) ? "high" : autoIsQuick(prompt) ? "low" : "medium";
-    }
-
-    public static String modeLabel(Context c) { return modeLabel(intelligenceMode(c)); }
-
-    public static String modeLabel(String mode) {
-        String chosen = normalizeMode(mode);
-        if (MODE_FAST.equals(chosen)) return "Fast";
-        if (MODE_DEEP.equals(chosen)) return "Deep";
-        if (MODE_CUSTOM.equals(chosen)) return "Custom";
-        if (MODE_AUTO.equals(chosen)) return "Auto";
-        return "Balanced";
-    }
-
-    public static String normalizeMode(String mode) {
-        if (MODE_AUTO.equals(mode) || MODE_FAST.equals(mode) || MODE_BALANCED.equals(mode) ||
-                MODE_DEEP.equals(mode) || MODE_CUSTOM.equals(mode)) return mode;
-        return MODE_BALANCED;
-    }
-
-    private static boolean autoIsQuick(String prompt) {
-        String p = prompt == null ? "" : prompt.trim().toLowerCase(Locale.US);
-        if (p.length() > 90) return false;
-        return !containsAny(p, "analyze", "compare", "explain why", "reason", "plan", "evaluate", "pros and cons", "deep", "thorough", "research");
-    }
-
-    private static boolean autoIsDeep(String prompt) {
-        String p = prompt == null ? "" : prompt.trim().toLowerCase(Locale.US);
-        return p.length() > 420 || containsAny(p, "think deeply", "reason carefully", "deep analysis", "thorough analysis", "work this out carefully", "complex", "evaluate in depth");
-    }
-
-    private static boolean containsAny(String s, String... needles) {
-        for (String n : needles) if (s.contains(n)) return true;
-        return false;
     }
 }

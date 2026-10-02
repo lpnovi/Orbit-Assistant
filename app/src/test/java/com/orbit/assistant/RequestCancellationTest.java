@@ -61,7 +61,7 @@ public final class RequestCancellationTest {
 
     private PendingRequestStore.Item queue(String conversationId) {
         return PendingRequestStore.create(context, conversationId, "What is the weather?", "", "",
-                false, false, Prefs.MODE_BALANCED, false, "");
+                false, false, AiSelections.FALLBACK, false, "");
     }
 
     private List<AssistantClient.History> assistantMessages(String conversationId) {

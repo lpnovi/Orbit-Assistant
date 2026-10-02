@@ -427,6 +427,7 @@ public final class ShareToOrbitTest {
         java.util.Collections.sort(exported);
         assertEquals(Arrays.asList(
                 "AskOrbitTileService",
+                "ChatGptSignInReturnActivity",
                 "MainActivity",
                 "OrbitNotificationListenerService",
                 "OrbitRoutineTileService",

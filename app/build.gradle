@@ -48,8 +48,8 @@ android {
         applicationId 'com.orbit.assistant'
         minSdk 29
         targetSdk 36
-        versionCode 804
-        versionName "0.8.2.0"
+        versionCode 805
+        versionName "0.8.3.0-beta.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         // No ABI filter is needed here any more: with the inference runtime moved into the
@@ -127,6 +127,12 @@ android {
 
     testOptions {
         unitTests.includeAndroidResources = true
+        // Robolectric suites of 9k+ tests, including real bitmap decoding for Rich Answers, ran
+        // out of Gradle's default 512 MB test heap intermittently. Give the test JVM explicit
+        // headroom so a passing test cannot fail for memory alone.
+        unitTests.all {
+            maxHeapSize = "2g"
+        }
     }
 
     compileOptions {

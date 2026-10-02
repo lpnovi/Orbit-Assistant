@@ -232,7 +232,8 @@ final class OrbitLocalProvider implements AiProvider {
                         first == 0L ? -1L : first - startedAt,
                         System.currentTimeMillis() - startedAt, stopped ? "stopped" : "answered");
                 callback.onSuccess(new AssistantReply(withNotes(text.trim(), fitted),
-                        new java.util.ArrayList<>()));
+                        new java.util.ArrayList<>()).withDetails(
+                        ResponseDetails.sentWith(request.selection)));
             }
 
             @Override public void onError(String message) {
@@ -311,7 +312,7 @@ final class OrbitLocalProvider implements AiProvider {
         }, "orbit-local-cancel-watch").start();
     }
 
-    @Override public void plan(Context context, String planningPrompt, String intelligenceMode,
+    @Override public void plan(Context context, String planningPrompt, AiSelection selection,
                                AssistantClient.PlanCallback callback) {
         callback.onError("Orbit Local can't build Routines yet. Switch the active provider to ChatGPT to plan this routine, then switch back.");
     }
@@ -323,6 +324,17 @@ final class OrbitLocalProvider implements AiProvider {
      * attachments, Ask Vault passages and notification history - and each gets a bounded share, so
      * the prompt the component receives never overflows the model and never loses the question.
      */
+    /** The quote the turn being asked carries, from its own stored record, or "". */
+    static String currentQuote(AiRequest request) {
+        List<AssistantClient.History> history = request.history;
+        if (history == null || history.isEmpty()) return "";
+        AssistantClient.History last = history.get(history.size() - 1);
+        if (last == null || last.quote == null || !"user".equalsIgnoreCase(last.role)) return "";
+        String asked = request.prompt == null ? "" : request.prompt.trim();
+        if (!asked.equals(last.content == null ? "" : last.content.trim())) return "";
+        return last.quote.promptBlock().trim();
+    }
+
     static LocalContextBudget.Result buildPrompt(Context context, AiRequest request) {
         LocalContextBudget.Input in = new LocalContextBudget.Input();
         in.system = SYSTEM;
@@ -334,6 +346,7 @@ final class OrbitLocalProvider implements AiProvider {
         in.notificationContext = request.notificationContext;
         in.trustedTaskContext = request.trustedTaskContext;
         in.prompt = request.prompt;
+        in.quote = currentQuote(request);
         in.imageCount = picturesIn(request);
         in.scorer = meaningScorer(context, request);
         return LocalContextBudget.build(in);

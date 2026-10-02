@@ -227,7 +227,8 @@ public class RichAnswerSourceFallbackTest {
     @Test public void theFallbackRespectsProviderCapability() throws Exception {
         assertTrue(AiProviders.select(context, Prefs.PROVIDER_RELAY));
         RichAnswerCoordinator.discover(context, "chat", "request", PROMPT,
-                new AssistantReply(marked(SOURCE)));
+                new AssistantReply(marked(SOURCE)).withDetails(ResponseDetails.sentWith(
+                        AiSelection.of(Prefs.PROVIDER_RELAY, OrbitModelCatalog.LUNA, AiStrength.LOW))));
         drainDiscovery();
         assertEquals(RichAnswerTrace.Outcome.PROVIDER_UNSUPPORTED, RichAnswerTrace.last(context).outcome);
         assertEquals(RichAnswerTrace.Provenance.NONE, RichAnswerTrace.last(context).provenance);
@@ -321,7 +322,7 @@ public class RichAnswerSourceFallbackTest {
 
     private PendingRequestStore.Item complete(String answer) throws Exception {
         PendingRequestStore.Item item = PendingRequestStore.create(context, "chat", PROMPT,
-                "", "", false, false, Prefs.MODE_BALANCED, false, "");
+                "", "", false, false, AiSelections.FALLBACK, false, "");
         item = PendingRequestStore.load(context, item.id);
         OrbitRequestWorker.completeProviderReply(context, item, new AssistantReply(answer),
                 WorkerAttempt.of(1, false));

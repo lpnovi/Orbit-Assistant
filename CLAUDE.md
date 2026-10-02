@@ -152,9 +152,15 @@ code, and never let the Play edition install Orbit Local. See `docs/PLAY_STORE.m
 - **Full app** — `MainActivity` (chat list/search/tools), `ChatActivity` (full conversation),
   `SettingsActivity` (sectioned: Models & access, Voice/context/permissions, Personalization & data,
   Look & Feel, About & updates), `OnboardingActivity`, `CapabilitiesActivity`, `DiagnosticsActivity`.
-- **AI pipeline** — `AssistantClient`, `ChatGptClient`/`ChatGptAuth` (device-code flow),
-  `AutoRouter` (Auto/Fast/Balanced/Deep/Custom), `OrbitRequestManager` + `OrbitRequestWorker`
-  (durable WorkManager background completion), `ConversationStore`, `PendingRequestStore`.
+- **AI pipeline** — `AssistantClient`, `ChatGptClient`, `ChatGptBrowserAuth` (primary browser
+  OAuth + PKCE sign-in, loopback `127.0.0.1:1455`) and `ChatGptAuth` (device-code fallback, shared
+  token storage/refresh), `OrbitRequestManager` + `OrbitRequestWorker` (durable WorkManager
+  background completion), `ConversationStore`, `PendingRequestStore`.
+- **AI selection (0.8.3.0+)** — provider → model → strength. `OrbitModelCatalog` (`AiModelSpec`,
+  `AiStrength`) holds model facts; `AiSelections` is the one validation/resolution/migration
+  layer; `AiSelection` is what chats, pending requests and `AiRequest` carry. There is no routing:
+  never add per-request model choice outside `AiSelections`. Intelligence modes and `AutoRouter`
+  were removed; legacy `model`/`reasoning`/`intelligence_mode` keys are read once by migration.
 - **Context** — `ScreenContextExtractor`, `ScreenContextClassifier`, `ScreenActionSuggester`,
   `ScreenSelection*` (crop/markup editor), `AttachmentStore`/`AttachmentLoader`/`AttachmentBridge`.
 - **Actions & automation** — `OrbitActionEngine`, `DeviceActionExecutor` (timers, alarms, brightness,

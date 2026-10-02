@@ -136,7 +136,7 @@ public final class AiProvidersTest {
     @Test public void planningOnOrbitLocalFailsWithGuidanceInsteadOfBadJson() {
         AtomicReference<String> error = new AtomicReference<>();
         AiProviders.byId(Prefs.PROVIDER_LOCAL).plan(context, "turn on the flashlight at 9",
-                Prefs.MODE_BALANCED, new AssistantClient.PlanCallback() {
+                AiSelections.FALLBACK, new AssistantClient.PlanCallback() {
                     @Override public void onText(String rawResponse, String providerLabel) {}
                     @Override public void onError(String message) { error.set(message); }
                 });

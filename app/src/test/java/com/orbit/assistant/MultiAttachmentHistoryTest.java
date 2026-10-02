@@ -220,7 +220,7 @@ public final class MultiAttachmentHistoryTest {
     @Test public void apendingRequestFreezesEveryImage() {
         List<String> paths = Arrays.asList(store("p1"), store("p2"), store("p3"));
         PendingRequestStore.Item created = PendingRequestStore.create(context, "c-1", "compare",
-                "context", paths, false, false, Prefs.MODE_BALANCED, true, "");
+                "context", paths, false, false, AiSelections.FALLBACK, true, "");
 
         PendingRequestStore.Item reloaded = PendingRequestStore.load(context, created.id);
         assertNotNull(reloaded);
@@ -232,7 +232,7 @@ public final class MultiAttachmentHistoryTest {
     @Test public void alegacyPendingRequestStillReadsBack() {
         String path = store("legacy-pending");
         PendingRequestStore.Item created = PendingRequestStore.create(context, "c-1", "what is this",
-                "context", path, false, false, Prefs.MODE_BALANCED, true, "");
+                "context", path, false, false, AiSelections.FALLBACK, true, "");
 
         PendingRequestStore.Item reloaded = PendingRequestStore.load(context, created.id);
         assertEquals(java.util.Collections.singletonList(path), reloaded.screenshotPaths);

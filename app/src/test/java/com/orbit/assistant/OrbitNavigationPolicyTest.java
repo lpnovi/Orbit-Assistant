@@ -77,6 +77,8 @@ public final class OrbitNavigationPolicyTest {
             "ShareToOrbitActivity",
             // The external selected-text doorway, which is the same shape as the share bridge.
             "ProcessTextToOrbitActivity",
+            // The browser's return doorway after ChatGPT sign-in, the same invisible shape again.
+            "ChatGptSignInReturnActivity",
             // The full-screen attachment viewer. A detail surface rather than a page, and the one
             // screen where the classification is load-bearing beyond appearance: it owns live pan
             // and zoom across the whole window, so an app-wide gesture reading horizontal progress

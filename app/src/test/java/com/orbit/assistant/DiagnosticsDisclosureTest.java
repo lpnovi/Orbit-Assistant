@@ -106,7 +106,7 @@ public final class DiagnosticsDisclosureTest {
         List<String> visible = texts(controller.get());
 
         assertTrue("the Overview is the part that is always there", visible.contains("Overview"));
-        for (String section : new String[]{"Request flow", "Thinking updates", "Auto routing",
+        for (String section : new String[]{"Request flow", "Thinking updates", "AI selection",
                 "Screen & app context", "Memory", "Calendar", "Orbit Local", "Routines", "Advanced"}) {
             assertTrue("section " + section + " must have a heading", visible.contains(section));
         }
@@ -127,7 +127,7 @@ public final class DiagnosticsDisclosureTest {
         }
         assertNotNull("the Overview must be present", overview);
         for (String field : new String[]{"Orbit version:", "Provider:", "ChatGPT:",
-                "Default mode:", "Pending requests:", "Thinking updates:"}) {
+                "Default AI:", "Pending requests:", "Thinking updates:"}) {
             assertTrue("the Overview must answer " + field, overview.contains(field));
         }
         assertTrue("the Overview must still say whether anything is wrong",
@@ -256,7 +256,7 @@ public final class DiagnosticsDisclosureTest {
         ActivityController<DiagnosticsActivity> controller = open();
         String summary = controller.get().summaryReport();
 
-        for (String field : new String[]{"Version:", "Provider:", "Default mode:",
+        for (String field : new String[]{"Version:", "Provider:", "Default AI:",
                 "Pending requests:", "Requests:", "Thinking updates:"}) {
             assertTrue("the summary must carry " + field, summary.contains(field));
         }
@@ -303,7 +303,7 @@ public final class DiagnosticsDisclosureTest {
         String full = controller.get().fullReport();
 
         for (String heading : new String[]{"Overview", "Request flow", "Thinking updates",
-                "Auto routing", "Screen & app context", "Memory", "Calendar", "Orbit Local",
+                "AI selection", "Screen & app context", "Memory", "Calendar", "Orbit Local",
                 "Routines", "Advanced"}) {
             assertTrue("the full report must still contain " + heading, full.contains(heading));
         }
@@ -393,7 +393,7 @@ public final class DiagnosticsDisclosureTest {
         history.add(new AssistantClient.History("assistant", "zzanswerzz I cannot see that"));
         ConversationStore.save(context, "c-diag", history);
         PendingRequestStore.create(context, "c-diag", "zzpromptzz what is my bank balance",
-                "", "", false, false, Prefs.MODE_BALANCED, false, "");
+                "", "", false, false, AiSelections.FALLBACK, false, "");
 
         ActivityController<DiagnosticsActivity> controller = open();
         DiagnosticsActivity activity = controller.get();
@@ -482,7 +482,7 @@ public final class DiagnosticsDisclosureTest {
         Activity activity = controller.get();
 
         for (String title : new String[]{"Overview", "Request flow", "Thinking updates",
-                "Auto routing", "Screen & app context", "Memory", "Calendar", "Orbit Local",
+                "AI selection", "Screen & app context", "Memory", "Calendar", "Orbit Local",
                 "Routines", "Gestures", "Advanced"}) {
             assertNotNull(title + " must be copyable on its own",
                     copyControlFor(activity, title));

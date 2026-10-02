@@ -503,6 +503,40 @@ Planned after this completed line:
 
 ## Current - the journey to Orbit 0.9
 
+### AI Control - direct control over the AI
+
+The 0.8.3 line replaces Auto, Fast, Balanced, Deep and Custom with three direct choices:
+**provider, model and strength**. The user always knows which model answers and how much reasoning
+it is asked to use, and Orbit never quietly sends a request somewhere else because a question
+looked hard.
+
+**Honesty rule.** The selected model is the model that answers. If an account cannot use it, Orbit
+says so, keeps the selection, and lets the user choose another; it never answers with a different
+model under the chosen one's name.
+
+#### `0.8.3.0-beta.1` - first AI Control Beta
+
+- **Sign in with ChatGPT in the browser.** OAuth with PKCE and a loopback callback that exists only
+  while one sign-in is running; the one-time-code sign-in stays as a fallback the user chooses.
+  Existing sessions are untouched
+- **Provider, model and strength.** GPT-6 Luna (None to Max), GPT-6.1 Sol and GPT-6 Astra (Low to
+  Max). Pickers show only what a model accepts, and moving to a model without None lands on Low
+- **Per-chat AI.** Each chat remembers its own choice; Settings holds the default for new chats.
+  Existing settings and chats migrate once: Fast to Luna Low, Auto and Balanced to Luna Medium,
+  Deep to Sol High, and a valid Custom choice is kept
+- **Response actions.** A quiet Copy, Retry, Save to Vault and More strip under finished answers;
+  Retry with another model or strength for one retry; Reply to this, which quotes a message as
+  context; and Response details with the provider, model, strength and measured response time
+- **No silent substitution.** The Astra-to-Sol fallback and the capacity retry on a lighter model
+  are gone; an unavailable model is reported for any model, never for a network failure
+
+#### Still ahead for AI Control
+
+- Conversation branching and a branch view
+- Editing an earlier message and branching from it
+- Comparing models side by side
+- A context inspector showing what a request carried
+
 ### Orbit Local 2.0 - more of Orbit, privately on the phone
 
 Orbit Local began as private offline chat. The 0.8.2 line makes it a first-class part of Orbit:
@@ -629,7 +663,9 @@ next.
 - **Hands-busy help beyond cooking**: repairs, cleaning, assembly, and other guided tasks
 - **OpenRouter chat**, deferred until there is a configured account to validate it against. The
   secure setup groundwork and Keystore-only key storage remain intact
-- **Hybrid Auto**: automatic local/cloud routing chosen from capability, task and availability
+- **Hybrid Auto**: an optional, clearly labelled mode that could choose between Orbit Local and the
+  cloud from capability and availability. Since `0.8.3.0-beta.1` nothing routes on the user's behalf,
+  and any such mode would have to show which model answered
 - **Proactive screen intelligence**, transparent and controllable
 - Still ahead for the Vault itself: cloud sync and shared Vaults, Routine and Extension access, and
   a full Side-button Vault browser

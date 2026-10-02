@@ -60,7 +60,7 @@ public final class ThinkingUpdatePrivacyTest {
         ConversationStore.save(context, conversationId, history);
         PendingRequestStore.Item item = PendingRequestStore.create(context, conversationId,
                 "Compare these two architectures.", "", "", false, false,
-                Prefs.MODE_DEEP, false, "");
+                AiSelections.FALLBACK, false, "");
         OrbitRequestManager.dispatchThinking(item.id, ThinkingUpdate.providerSummary(SUMMARY));
         ReasoningSummarySupport.recordDisplayed(context, ThinkingUpdate.providerSummary(SUMMARY));
         return item;

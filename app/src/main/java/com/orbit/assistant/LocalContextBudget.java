@@ -75,6 +75,8 @@ final class LocalContextBudget {
         String notificationContext = "";
         String trustedTaskContext = "";
         String prompt = "";
+        /** The earlier message the current turn replies to, as an untrusted block, or "". */
+        String quote = "";
         /** Images the turn carries. Orbit Local cannot see any of them. */
         int imageCount;
         /** Optional meaning scorer for passage choice; lexical overlap is used without it. */
@@ -255,6 +257,9 @@ final class LocalContextBudget {
                     .append("shown below. If the question needs the picture itself, say so plainly.");
         }
 
+        // A quoted message is bounded data the user pointed at. It rides with the question so the
+        // small model knows what "this" refers to, and is counted in the fixed share like it.
+        String quoteBlock = fitTokens(safe(in.quote).trim(), Math.max(60, budget / 8));
         String shownQuestion = question;
         int questionCap = Math.max(200, budget / 4);
         if (estimateTokens(question) > questionCap) {
@@ -269,7 +274,8 @@ final class LocalContextBudget {
 
         String scaffold = "\n\nConversation so far:\n\nUser: \nOrbit:";
         int fixed = estimateTokens(in.system) + estimateTokens(trusted.toString())
-                + estimateTokens(shownQuestion) + estimateTokens(scaffold) + 8;
+                + estimateTokens(shownQuestion) + estimateTokens(quoteBlock)
+                + estimateTokens(scaffold) + 8;
         int remaining = Math.max(0, budget - fixed);
 
         List<AssistantClient.History> turns = priorTurns(in.history, question);
@@ -363,6 +369,7 @@ final class LocalContextBudget {
         p.append("\n\nConversation so far:\n");
         for (String line : lines) p.append(line);
         p.append("\nUser: ").append(shownQuestion);
+        if (!quoteBlock.isEmpty()) p.append("\n").append(quoteBlock);
         p.append("\nOrbit:");
         r.prompt = p.toString();
         r.estimatedTokens = estimateTokens(r.prompt);

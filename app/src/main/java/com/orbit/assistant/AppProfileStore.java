@@ -158,11 +158,6 @@ public final class AppProfileStore {
         return !SCREENSHOT_BLOCK.equals(get(c, pkg).screenshotPolicy);
     }
 
-    public static String defaultMode(Context c, String pkg, String globalMode) {
-        String mode = get(c, pkg).intelligenceMode;
-        return MODE_GLOBAL.equals(mode) ? Prefs.normalizeMode(globalMode) : Prefs.normalizeMode(mode);
-    }
-
     public static String categoryLabel(String c) {
         if (CATEGORY_CONVERSATION.equals(c)) return "Conversation";
         if (CATEGORY_PRODUCT.equals(c)) return "Product / shopping";
@@ -191,10 +186,6 @@ public final class AppProfileStore {
         if (SCREEN_ATTACH.equals(s)) return "Attach by default";
         if (SCREEN_NEVER.equals(s)) return "Never use screen";
         return "Use global setting";
-    }
-
-    public static String modeLabel(String m) {
-        return MODE_GLOBAL.equals(m) ? "Use global default" : Prefs.modeLabel(m);
     }
 
     public static String actionLabel(String action) {
@@ -250,9 +241,13 @@ public final class AppProfileStore {
     private static String normalizeScreenshot(String v) {
         return SCREENSHOT_ALLOW.equals(v) || SCREENSHOT_BLOCK.equals(v) ? v : SCREENSHOT_GLOBAL;
     }
+    /**
+     * The retired per-app intelligence mode. Since 0.8.3.0 nothing reads it to choose a model; it is
+     * kept, validated and written back unchanged only so stored profiles and backups round-trip.
+     */
     private static String normalizeMode(String v) {
-        if (Prefs.MODE_AUTO.equals(v) || Prefs.MODE_FAST.equals(v) || Prefs.MODE_BALANCED.equals(v) ||
-                Prefs.MODE_DEEP.equals(v) || Prefs.MODE_CUSTOM.equals(v)) return v;
+        if ("auto".equals(v) || "fast".equals(v) || "balanced".equals(v) ||
+                "deep".equals(v) || "custom".equals(v)) return v;
         return MODE_GLOBAL;
     }
     private static String normalizeAction(String v) {

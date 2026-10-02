@@ -353,7 +353,12 @@ public final class OrbitBackupManager {
             if (o == null || !addUnique(ids, o.optString("id", "")) ||
                     o.optString("title", "").trim().isEmpty()) invalid("conversation history");
             String mode = o.optString("intelligenceMode", "");
-            if (!mode.isEmpty() && !mode.equals(Prefs.normalizeMode(mode))) invalid("conversation history");
+            // The retired mode is still accepted so a backup from any earlier Orbit restores.
+            if (!mode.isEmpty() && !set("auto", "fast", "balanced", "deep", "custom").contains(mode))
+                invalid("conversation history");
+            // A chat's own selection (0.8.3.0+) must be well formed; restore resolves it again.
+            String selection = o.optString("aiSelection", "");
+            if (!selection.isEmpty() && AiSelection.decode(selection) == null) invalid("conversation history");
             JSONArray messages = o.optJSONArray("messages");
             if (messages == null || messages.length() > 40) invalid("conversation history");
             for (int j = 0; j < messages.length(); j++) {

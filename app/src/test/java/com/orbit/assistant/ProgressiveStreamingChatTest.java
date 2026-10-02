@@ -324,7 +324,7 @@ public final class ProgressiveStreamingChatTest {
     /** Registers a request on the screen the way an enqueue would, and returns its id. */
     private String enqueue(ChatActivity activity, String conversationId) {
         PendingRequestStore.Item item = PendingRequestStore.create(context, conversationId,
-                "a question", "", java.util.Collections.emptyList(), false, false, "balanced",
+                "a question", "", java.util.Collections.emptyList(), false, false, AiSelections.FALLBACK,
                 false, "");
         activity.registerRequestForTest(item.id);
         return item.id;

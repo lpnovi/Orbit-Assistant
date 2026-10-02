@@ -67,7 +67,7 @@ public interface AiProvider {
      * to validate. Providers whose models cannot plan reliably answer {@code onError} with a
      * plain explanation of which provider to use instead.
      */
-    void plan(Context context, String planningPrompt, String intelligenceMode,
+    void plan(Context context, String planningPrompt, AiSelection selection,
               AssistantClient.PlanCallback callback);
 
     /** What a provider without structured completions says when asked for one. */

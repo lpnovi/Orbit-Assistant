@@ -64,7 +64,7 @@ public final class RequestCompletionIdentityTest {
 
     private PendingRequestStore.Item newRequest() {
         return PendingRequestStore.create(context, CHAT, "put the schedule on my calendar",
-                "", "", false, false, Prefs.MODE_BALANCED, false, "");
+                "", "", false, false, AiSelections.FALLBACK, false, "");
     }
 
     /** What the worker does inside the gate: persist the answer and mark the request done. */

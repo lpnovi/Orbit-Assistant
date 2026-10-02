@@ -23,8 +23,10 @@ import java.util.concurrent.Executors;
 /**
  * Experimental ChatGPT/Codex account authentication.
  *
- * This follows OpenAI Codex's public device-code OAuth protocol. It intentionally
- * stores OAuth credentials only through SecureStore (Android Keystore).
+ * Two ways in, one account. {@link ChatGptBrowserAuth} is the normal sign-in (browser, PKCE,
+ * loopback callback); the device-code flow here is the fallback the user can choose ("use code
+ * sign-in"). Both end in the same place: OAuth credentials stored only through SecureStore
+ * (Android Keystore), with the same refresh, account id and sign-out behaviour.
  */
 public final class ChatGptAuth {
     public static final String ISSUER = "https://auth.openai.com";
@@ -89,6 +91,8 @@ public final class ChatGptAuth {
 
     public static void requestDeviceCode(Context context, StartCallback cb) {
         Context app = context.getApplicationContext();
+        // One sign-in at a time: choosing code sign-in ends a browser attempt and closes its receiver.
+        ChatGptBrowserAuth.cancel();
         EXEC.execute(() -> {
             HttpURLConnection conn = null;
             try {
@@ -277,12 +281,100 @@ public final class ChatGptAuth {
     }
 
     public static void logout(Context context) {
+        // A browser sign-in still waiting for its callback is part of "signed in or about to be",
+        // so signing out ends it too and its local receiver closes.
+        ChatGptBrowserAuth.cancel();
         synchronized (LOGIN_LOCK) {
             SecureStore.clearPendingChatGptLogin(context);
             SecureStore.clearChatGpt(context);
             activeDeviceAuthId = "";
             LOGIN_CALLBACKS.clear();
         }
+    }
+
+    /**
+     * Abandons a pending code sign-in, so only one sign-in method is ever waiting at a time.
+     * Starting a browser sign-in calls this; the code attempt's poll loop sees it is no longer
+     * active and ends without reporting anything.
+     */
+    static void cancelPendingDeviceCode(Context context) {
+        synchronized (LOGIN_LOCK) {
+            SecureStore.clearPendingChatGptLogin(context);
+            activeDeviceAuthId = "";
+            LOGIN_CALLBACKS.clear();
+        }
+    }
+
+    /** The outcome of exchanging a browser authorization code. */
+    static final class BrowserExchange {
+        final AccountInfo account;
+        final String message;
+
+        private BrowserExchange(AccountInfo account, String message) {
+            this.account = account;
+            this.message = message == null ? "" : message;
+        }
+
+        static BrowserExchange success(AccountInfo account) { return new BrowserExchange(account, ""); }
+        static BrowserExchange error(String message) { return new BrowserExchange(null, message); }
+        boolean ok() { return account != null; }
+    }
+
+    /**
+     * Exchanges a browser sign-in's authorization code and stores the result exactly as the code
+     * sign-in does: the same Android Keystore storage, account id extraction and provider choice.
+     * Runs on the caller's thread.
+     */
+    static BrowserExchange exchangeBrowserCode(Context context, String code, String verifier,
+                                               String redirectUri) {
+        HttpURLConnection conn = null;
+        try {
+            logStage("browser_token_exchange_started");
+            String form = formPair("grant_type", "authorization_code") +
+                    "&" + formPair("code", code) +
+                    "&" + formPair("redirect_uri", redirectUri) +
+                    "&" + formPair("client_id", CLIENT_ID) +
+                    "&" + formPair("code_verifier", verifier);
+            conn = formConnection(OAUTH_TOKEN_URL, 15000, 30000);
+            write(conn, form, "application/x-www-form-urlencoded");
+            int status = conn.getResponseCode();
+            String body = readAll(status >= 200 && status < 300 ? conn.getInputStream() : conn.getErrorStream());
+            if (status < 200 || status >= 300) {
+                logFailure("browser_token_exchange_failed", "http_" + status);
+                return BrowserExchange.error(oauthError("OpenAI could not finish the sign-in", status, body));
+            }
+            JSONObject o = new JSONObject(body);
+            return storeSignIn(context, o.optString("id_token", ""), o.optString("access_token", ""),
+                    o.optString("refresh_token", ""));
+        } catch (Exception e) {
+            logFailure("browser_token_exchange_failed", exceptionKind(e));
+            return BrowserExchange.error("OpenAI could not finish the sign-in: " + cleanMessage(e));
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    /** Stores fresh credentials from a browser sign-in. Shared with tests that fake the exchange. */
+    static BrowserExchange storeSignIn(Context context, String id, String access, String refresh) {
+        if (access == null || access.isEmpty() || refresh == null || refresh.isEmpty()) {
+            return BrowserExchange.error(
+                    "OpenAI completed sign-in but did not return reusable credentials.");
+        }
+        String accountId = firstNonEmpty(extractAccountId(id), extractAccountId(access));
+        synchronized (LOGIN_LOCK) {
+            if (!SecureStore.saveChatGptTokens(context, id, access, refresh, accountId)) {
+                return BrowserExchange.error(
+                        "ChatGPT sign-in worked, but Orbit could not save the credentials in Android Keystore.");
+            }
+            if (SecureStore.loadChatGptTokens(context) == null) {
+                return BrowserExchange.error(
+                        "ChatGPT sign-in worked, but Orbit could not verify the saved credentials.");
+            }
+            SecureStore.clearPendingChatGptLogin(context);
+            Prefs.get(context).edit().putString(Prefs.PROVIDER, Prefs.PROVIDER_CHATGPT).apply();
+        }
+        logStage("browser_credentials_persisted_and_verified");
+        return BrowserExchange.success(accountInfo(id, access, accountId));
     }
 
     /** Returns a valid access token, refreshing through OpenAI when it is near expiry. */
@@ -315,16 +407,12 @@ public final class ChatGptAuth {
                 cb.onError(oauthError("ChatGPT session refresh failed. Sign out and sign in again if this persists", code, body));
                 return;
             }
-            JSONObject o = new JSONObject(body);
-            String access = o.optString("access_token", old.accessToken);
-            String refresh = o.optString("refresh_token", old.refreshToken); // Refresh tokens may rotate; always persist the newest one.
-            String id = o.optString("id_token", old.idToken);
-            String accountId = firstNonEmpty(extractAccountId(id), extractAccountId(access), old.accountId);
-            if (access.isEmpty() || refresh.isEmpty()) {
+            String[] next = refreshed(old, new JSONObject(body));
+            if (next == null) {
                 cb.onError("OpenAI returned an incomplete token refresh response.");
                 return;
             }
-            if (!SecureStore.saveChatGptTokens(context, id, access, refresh, accountId)) {
+            if (!SecureStore.saveChatGptTokens(context, next[0], next[1], next[2], next[3])) {
                 cb.onError("Orbit could not securely save the refreshed ChatGPT session.");
                 return;
             }
@@ -336,6 +424,20 @@ public final class ChatGptAuth {
         } finally {
             if (conn != null) conn.disconnect();
         }
+    }
+
+    /**
+     * The credentials to store after a refresh: id, access, refresh, account id. Refresh tokens may
+     * rotate, so a new one always replaces the old; a field the response leaves out keeps its old
+     * value. Null when the result would not be usable.
+     */
+    static String[] refreshed(SecureStore.ChatGptTokens old, JSONObject o) {
+        String access = o.optString("access_token", old.accessToken);
+        String refresh = o.optString("refresh_token", old.refreshToken);
+        String id = o.optString("id_token", old.idToken);
+        if (access == null || access.isEmpty() || refresh == null || refresh.isEmpty()) return null;
+        String accountId = firstNonEmpty(extractAccountId(id), extractAccountId(access), old.accountId);
+        return new String[]{id, access, refresh, accountId};
     }
 
     private static AccountInfo accountInfo(String idToken, String accessToken, String fallbackId) {
@@ -557,12 +659,12 @@ public final class ChatGptAuth {
         }
     }
 
-    private static void logStage(String stage) {
-        Log.i(LOG_TAG, "Device sign-in stage=" + stage);
+    static void logStage(String stage) {
+        Log.i(LOG_TAG, "Sign-in stage=" + stage);
     }
 
-    private static void logFailure(String stage, String diagnostic) {
-        Log.w(LOG_TAG, "Device sign-in stage=" + stage + " diagnostic=" + diagnostic);
+    static void logFailure(String stage, String diagnostic) {
+        Log.w(LOG_TAG, "Sign-in stage=" + stage + " diagnostic=" + diagnostic);
     }
 
     private static String exceptionKind(Exception e) {

@@ -56,7 +56,7 @@ final class OpenRouterProvider implements AiProvider {
         callback.onError("OpenRouter chat is not available yet. Choose ChatGPT or Orbit Local as the active provider.");
     }
 
-    @Override public void plan(Context context, String planningPrompt, String intelligenceMode,
+    @Override public void plan(Context context, String planningPrompt, AiSelection selection,
                                AssistantClient.PlanCallback callback) {
         callback.onError("OpenRouter is not available yet. Choose ChatGPT as the active provider.");
     }

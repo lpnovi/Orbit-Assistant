@@ -73,7 +73,12 @@ public class OrbitSession extends VoiceInteractionSession {
     private final List<AssistantClient.History> history = new ArrayList<>();
 
     private String conversationId = ConversationStore.newId();
-    private String currentMode = Prefs.MODE_BALANCED;
+    /**
+     * The AI this overlay conversation uses. Deliberately the same model as full chat: a new
+     * overlay chat starts from the global default, and a saved one keeps its own selection, so the
+     * chip and the full-screen header always agree about the same conversation.
+     */
+    private AiSelection currentSelection = AiSelections.FALLBACK;
     private boolean initialHistoryRestoreAttempted = false;
     private boolean historyMode = false;
 
@@ -213,7 +218,7 @@ public class OrbitSession extends VoiceInteractionSession {
         try {
             super.onCreate();
             UiKit.syncTheme(getContext());
-            currentMode = Prefs.intelligenceMode(getContext());
+            currentSelection = AiSelections.globalDefault(getContext());
             Dialog d = getWindow();
             if (d != null && d.getWindow() != null) {
                 Window w = d.getWindow();
@@ -370,8 +375,7 @@ public class OrbitSession extends VoiceInteractionSession {
 
         OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_HISTORY_START);
         if (Prefs.newChatOnOpen(getContext())) {
-            currentMode = AppProfileStore.defaultMode(
-                    getContext(), foregroundPackage, Prefs.intelligenceMode(getContext()));
+            currentSelection = AiSelections.globalDefault(getContext());
             history.clear();
             conversationId = ConversationStore.newId();
             historyMode = false;
@@ -385,7 +389,7 @@ public class OrbitSession extends VoiceInteractionSession {
             if (latest != null) {
                 history.addAll(latest.messages);
                 conversationId = latest.id;
-                currentMode = ConversationStore.modeFor(getContext(), latest.id);
+                currentSelection = AiSelections.forConversation(getContext(), latest.id);
             }
         }
         boolean restoreAttempted = !initialHistoryRestoreAttempted;
@@ -527,6 +531,10 @@ public class OrbitSession extends VoiceInteractionSession {
         modeChip.setGravity(Gravity.CENTER);
         modeChip.setSingleLine(true);
         modeChip.setMinWidth(UiKit.dp(c, 62));
+        // "Astra · Extra High" is the longest label; past this width it ends in an ellipsis rather
+        // than pushing the overlay's title aside.
+        modeChip.setMaxWidth(UiKit.dp(c, 150));
+        modeChip.setEllipsize(TextUtils.TruncateAt.END);
         modeChip.setPadding(UiKit.dp(c, 10), 0, UiKit.dp(c, 10), 0);
         modeChip.setBackground(UiKit.rippleOutlined(
                 UiKit.blend(UiKit.accent(c), UiKit.SURFACE_2, 0.08f),
@@ -770,56 +778,89 @@ public class OrbitSession extends VoiceInteractionSession {
         return "Ready";
     }
 
+    /**
+     * The overlay's compact AI control: one menu of this provider's models, plus Strength (only
+     * when the model has strengths) and Provider (only when there is more than one to pick). No
+     * more chrome than the old strength chip it replaces.
+     */
     private void showModeMenu() {
         if (modeChip == null) return;
         Context c = getContext();
-        // A provider without real reasoning levels gets no fake strength menu. The chip opens
-        // provider management instead, which is what it is actually reporting.
-        if (!AiProviders.active(c).capabilities().reasoningLevels) {
-            Intent providers = new Intent(c, AiProvidersActivity.class)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            try { c.startActivity(providers); hide(); } catch (Exception ignored) {}
-            return;
+        AiSelection s = currentSelection;
+        List<AiModelSpec> models = OrbitModelCatalog.modelsFor(s.provider);
+        List<AiStrength> strengths = AiSelections.strengthsFor(s);
+        List<AiProvider> providers = AiSelections.pickableProviders(c);
+        List<String> labels = new ArrayList<>();
+        int selected = -1;
+        for (AiModelSpec spec : models) {
+            if (spec.id.equals(s.model)) selected = labels.size();
+            labels.add(spec.displayName);
         }
-        String[] labels = {"Auto", "Fast", "Balanced", "Deep", "Custom"};
-        int selected = Prefs.MODE_AUTO.equals(currentMode) ? 0
-                : Prefs.MODE_FAST.equals(currentMode) ? 1
-                : Prefs.MODE_DEEP.equals(currentMode) ? 3
-                : Prefs.MODE_CUSTOM.equals(currentMode) ? 4 : 2;
-
-        UiKit.showOrbitMenu(c, modeChip, labels, selected, (index, label) -> {
-            switch (index) {
-                case 0: currentMode = Prefs.MODE_AUTO; break;
-                case 1: currentMode = Prefs.MODE_FAST; break;
-                case 3: currentMode = Prefs.MODE_DEEP; break;
-                case 4: currentMode = Prefs.MODE_CUSTOM; break;
-                case 2:
-                default: currentMode = Prefs.MODE_BALANCED; break;
+        final int strengthIndex = strengths.isEmpty() ? -1 : labels.size();
+        if (strengthIndex >= 0) labels.add("Strength · " + s.strength.label);
+        final int providerIndex = providers.size() > 1 ? labels.size() : -1;
+        if (providerIndex >= 0) labels.add("Provider · " + s.providerName());
+        UiKit.showOrbitMenu(c, modeChip, labels.toArray(new String[0]), selected, (index, label) -> {
+            if (index < models.size()) {
+                applyOverlaySelection(AiSelections.withModel(currentSelection, models.get(index).id));
+            } else if (index == strengthIndex) {
+                main.postDelayed(this::showStrengthMenu, 160);
+            } else if (index == providerIndex) {
+                main.postDelayed(this::showProviderMenu, 160);
             }
-            ConversationStore.setMode(c, conversationId, currentMode);
-            updateModeChip();
-            if (Prefs.haptics(c)) vibrate(10);
-            stateTextSafe("AI strength changed");
-            main.postDelayed(() -> stateTextSafe(readyState()), 700);
         });
+    }
+
+    private void showStrengthMenu() {
+        if (modeChip == null) return;
+        List<AiStrength> strengths = AiSelections.strengthsFor(currentSelection);
+        if (strengths.isEmpty()) return;
+        String[] labels = new String[strengths.size()];
+        int selected = -1;
+        for (int i = 0; i < strengths.size(); i++) {
+            labels[i] = strengths.get(i).label;
+            if (strengths.get(i) == currentSelection.strength) selected = i;
+        }
+        UiKit.showOrbitMenu(getContext(), modeChip, labels, selected, (index, label) ->
+                applyOverlaySelection(AiSelections.withStrength(currentSelection, strengths.get(index))));
+    }
+
+    private void showProviderMenu() {
+        if (modeChip == null) return;
+        List<AiProvider> providers = AiSelections.pickableProviders(getContext());
+        String[] labels = new String[providers.size()];
+        int selected = -1;
+        for (int i = 0; i < providers.size(); i++) {
+            labels[i] = providers.get(i).displayName();
+            if (providers.get(i).id().equals(currentSelection.provider)) selected = i;
+        }
+        UiKit.showOrbitMenu(getContext(), modeChip, labels, selected, (index, label) ->
+                applyOverlaySelection(AiSelections.withProvider(currentSelection,
+                        providers.get(index).id())));
+    }
+
+    /** This overlay conversation's selection only; the default and other chats are untouched. */
+    private void applyOverlaySelection(AiSelection chosen) {
+        AiSelection resolved = AiSelections.resolve(chosen);
+        if (resolved.equals(currentSelection)) return;
+        currentSelection = resolved;
+        AiSelections.setForConversation(getContext(), conversationId, resolved);
+        updateModeChip();
+        if (Prefs.haptics(getContext())) vibrate(10);
+        stateTextSafe("Now using " + resolved.label());
+        main.postDelayed(() -> stateTextSafe(readyState()), 900);
     }
 
     private void updateModeChip() {
         if (modeChip == null) return;
-        AiProvider active = AiProviders.active(getContext());
-        if (!active.capabilities().reasoningLevels) {
-            // Fast/Balanced/Deep would be a control that does nothing for this provider, so the
-            // chip honestly names the provider instead.
-            String name = active.displayName().startsWith("Orbit ")
-                    ? active.displayName().substring(6) : active.displayName();
-            modeChip.setText(name + "  ▾");
-            modeChip.setContentDescription("AI provider: " + active.displayName() + ". Tap to manage.");
-            return;
-        }
-        String label = Prefs.modeLabel(currentMode);
-        modeChip.setText(label + "  ▾");
-        modeChip.setContentDescription("AI strength: " + label + ". Tap to change.");
+        AiSelection s = currentSelection;
+        modeChip.setText(s.shortLabel() + "  ▾");
+        modeChip.setContentDescription("AI: " + s.providerName() + ", " + s.label()
+                + ". Tap to change.");
     }
+
+    /** The overlay's current selection. For tests. */
+    AiSelection currentSelectionForTest() { return currentSelection; }
 
     private void renderConversation() {
         MessageActions.dismiss();
@@ -949,7 +990,7 @@ public class OrbitSession extends VoiceInteractionSession {
             if (chat.id.equals(conversationId)) {
                 history.clear();
                 conversationId = ConversationStore.newId();
-                currentMode = Prefs.intelligenceMode(getContext());
+                currentSelection = AiSelections.globalDefault(getContext());
                 updateModeChip();
             }
             ConversationStore.delete(c, chat.id);
@@ -972,7 +1013,7 @@ public class OrbitSession extends VoiceInteractionSession {
         history.clear();
         history.addAll(chat.messages);
         conversationId = chat.id;
-        currentMode = ConversationStore.modeFor(getContext(), chat.id);
+        currentSelection = AiSelections.forConversation(getContext(), chat.id);
         updateModeChip();
         renderConversation();
         stateTextSafe("Opened saved chat");
@@ -987,8 +1028,7 @@ public class OrbitSession extends VoiceInteractionSession {
         saveCurrentConversation();
         history.clear();
         conversationId = ConversationStore.newId();
-        currentMode = AppProfileStore.defaultMode(
-                getContext(), foregroundPackage, Prefs.intelligenceMode(getContext()));
+        currentSelection = AiSelections.globalDefault(getContext());
         historyMode = false;
         stopListening();
         stopSpeaking();
@@ -1007,7 +1047,7 @@ public class OrbitSession extends VoiceInteractionSession {
         // can otherwise race with and erase the completed answer.
         if (busy && conversationId != null && conversationId.equals(uiRequestConversationId)) return;
         ConversationStore.save(getContext(), conversationId, history);
-        ConversationStore.setMode(getContext(), conversationId, currentMode);
+        AiSelections.setForConversation(getContext(), conversationId, currentSelection);
     }
 
     private void resetInvocationContext() {
@@ -1250,8 +1290,7 @@ public class OrbitSession extends VoiceInteractionSession {
                                     AppProfileStore.effectivePrivacy(getContext(), foregroundPackage))
                                     ? "Manual only" : AppProfileStore.screenLabel(effectiveProfile.screenPolicy)),
                     AppProfileStore.screenshotAllowed(getContext(), foregroundPackage) ? "Allowed" : "Blocked",
-                    Prefs.modeLabel(AppProfileStore.defaultMode(getContext(), foregroundPackage,
-                            Prefs.intelligenceMode(getContext()))),
+                    currentSelection.label(),
                     DiagnosticStore.prefs(getContext()).getString("app_effective_actions", "Waiting for screen"));
 
             if (blocked) {
@@ -1876,7 +1915,7 @@ public class OrbitSession extends VoiceInteractionSession {
         final String requestConversationId = conversationId;
         final List<AssistantClient.History> requestHistory = new ArrayList<>(history);
         ConversationStore.save(getContext(), requestConversationId, requestHistory);
-        ConversationStore.setMode(getContext(), requestConversationId, currentMode);
+        AiSelections.setForConversation(getContext(), requestConversationId, currentSelection);
 
         busy = true;
         uiRequestConversationId = requestConversationId;
@@ -1994,7 +2033,7 @@ public class OrbitSession extends VoiceInteractionSession {
         };
 
         OrbitRequestManager.enqueue(getContext(), requestConversationId, submitted, submittedScreenText,
-                submittedImages, voiceRequest, draftedReply, currentMode,
+                submittedImages, voiceRequest, draftedReply, currentSelection,
                 hasManual || submittedSelection, listener);
     }
 
@@ -2657,7 +2696,7 @@ public class OrbitSession extends VoiceInteractionSession {
         updateComposerAction();
         OrbitRequestManager.Listener listener = requestListenerForExistingUser(prompt, draftReply, voiceRequest);
         OrbitRequestManager.enqueue(getContext(), conversationId, prompt, screen, images,
-                voiceRequest, draftReply, currentMode, explicitAttachment, listener);
+                voiceRequest, draftReply, currentSelection, explicitAttachment, listener);
     }
 
     private OrbitRequestManager.Listener requestListenerForExistingUser(String prompt, boolean draftedReply, boolean voiceRequest) {

@@ -82,7 +82,7 @@ Draft, adjust once the reviewer-access decision is made:
 
 > Orbit Assistant works without an account for its device features: Routines, reminders, Orbit Deck, Theme Studio, Orbit Vault, widgets, Quick Settings tiles, and the document viewer.
 >
-> AI chat requires the user to connect their own ChatGPT account. Orbit uses a browser device-code sign-in; Orbit never receives the password. [OWNER INPUT REQUIRED: either provide a dedicated test account that you are permitted to share and that has no personal data, or explain that AI chat requires the reviewer's own account.]
+> AI chat requires the user to connect their own ChatGPT account. Orbit uses OpenAI's sign-in page in the browser, with a one-time-code sign-in as an alternative; Orbit never receives the password. [OWNER INPUT REQUIRED: either provide a dedicated test account that you are permitted to share and that has no personal data, or explain that AI chat requires the reviewer's own account.]
 >
 > To test the Side-button assistant: Settings > Apps > Default apps > Digital assistant app > Orbit Assistant, then long-press the Side button (Samsung) or use the system assistant gesture. The in-app onboarding offers a shortcut to this setting.
 

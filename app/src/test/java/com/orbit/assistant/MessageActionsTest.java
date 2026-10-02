@@ -54,7 +54,7 @@ public final class MessageActionsTest {
 
     @Test public void theLatestAssistantTurnOffersCopySaveAndRegenerate() {
         assertArrayEquals(new String[]{MessageActions.COPY_MENU_LABEL,
-                        MessageActions.SAVE_TO_VAULT_MENU_LABEL, MessageActions.REGENERATE_MENU_LABEL},
+                        MessageActions.SAVE_TO_VAULT_MENU_LABEL, MessageActions.RETRY_MENU_LABEL},
                 MessageActions.assistantLabels(true));
         assertEquals(3, MessageActions.assistantIcons(true).length);
     }

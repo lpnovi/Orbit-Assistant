@@ -80,6 +80,8 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     private TextView chatGptHelp;
     private Button chatGptSignIn;
     private Button chatGptSignOut;
+    /** "Having trouble? Use code sign-in": the device-code fallback, always one tap away. */
+    private Button chatGptCodeSignIn;
     private ScrollView settingsScroll;
     private String appliedAppearance = "";
     /** Accent/AMOLED only — the appearance that forces a rebuild. */
@@ -119,6 +121,25 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
                 updateChatGptStatus();
                 showOrbitMessageDialog("ChatGPT sign-in could not complete", message);
             });
+        }
+    };
+
+    /** Hears how a browser sign-in ended. Attached while this screen is in front. */
+    private final ChatGptBrowserAuth.Listener chatGptBrowserListener = new ChatGptBrowserAuth.Listener() {
+         public void onSignedIn(ChatGptAuth.AccountInfo account) {
+            if (!canShowAuthResult()) return;
+            updateChatGptStatus();
+            Toast.makeText(SettingsActivity.this, "ChatGPT connected to Orbit", Toast.LENGTH_LONG).show();
+        }
+
+         public void onFailed(String message, boolean offerCodeSignIn) {
+            if (!canShowAuthResult()) return;
+            updateChatGptStatus();
+            showBrowserSignInFailure(message, offerCodeSignIn);
+        }
+
+         public void onCancelled() {
+            if (canShowAuthResult()) updateChatGptStatus();
         }
     };
 
@@ -166,6 +187,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         updateAssistantStatus();
         refreshQuickRoutineSelection();
         refreshProviderSection();
+        ChatGptBrowserAuth.attach(chatGptBrowserListener);
         updateChatGptStatus();
         if (chatGptStatus != null && !ChatGptAuth.isSignedIn(this) &&
                 ChatGptAuth.resumePendingDeviceCode(this, chatGptLoginCallback)) {
@@ -177,6 +199,9 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     @Override
     protected void onPause() {
         UiPresence.leave(this);
+        // The attempt keeps running while the browser is in front; this screen just stops being
+        // the one told about it, and hears the outcome when it comes back.
+        ChatGptBrowserAuth.detach(chatGptBrowserListener);
         super.onPause();
     }
 
@@ -247,7 +272,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         categories.addView(settingsCategoryCard(SECTION_ASSISTANT, "Assistant setup",
                 "Default assistant, Side button and Quick Settings access"), categoryLp());
         categories.addView(settingsCategoryCard(SECTION_AI, "AI & account",
-                "AI Providers, ChatGPT sign-in and intelligence modes"), categoryLp());
+                "AI Providers, ChatGPT sign-in and default AI"), categoryLp());
         categories.addView(settingsCategoryCard(SECTION_VOICE, "Voice, context & permissions",
                 "Voice Beta, screen context and capabilities"), categoryLp());
         categories.addView(settingsCategoryCard(SECTION_DATA, "Personalization & data",
@@ -972,50 +997,21 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         page.addView(sectionTitle("INTELLIGENCE", "intelligence"));
         LinearLayout aiCard = card();
         tagSectionCard(aiCard, "intelligence");
-        TextView modeLabel = label("Default mode for new chats");
-        String[] modeLabels = {"Auto", "Fast", "Balanced", "Deep", "Custom"};
-        String modeValue = Prefs.intelligenceMode(this);
-        int modePos = Prefs.MODE_AUTO.equals(modeValue) ? 0 : Prefs.MODE_FAST.equals(modeValue) ? 1 :
-                Prefs.MODE_DEEP.equals(modeValue) ? 3 : Prefs.MODE_CUSTOM.equals(modeValue) ? 4 : 2;
-        LinearLayout mode = menuSelector(modeLabels, modePos, (pos, selectedLabel) -> {
-            String value = pos == 0 ? Prefs.MODE_AUTO : pos == 1 ? Prefs.MODE_FAST :
-                    pos == 3 ? Prefs.MODE_DEEP : pos == 4 ? Prefs.MODE_CUSTOM : Prefs.MODE_BALANCED;
-            Prefs.get(this).edit().putString(Prefs.INTELLIGENCE_MODE, value).apply();
-        });
-        aiCard.addView(controlGroup(SettingsSearchIndex.KEY_MODE, modeLabel, mode, selectorLp()));
-        TextView modeHelp = UiKit.text(this,
-                "Fast favors Luna, Balanced favors Terra, and Deep favors Sol. Auto chooses per request. This is the default for new chats; changing the mode inside a conversation now stays with that chat.",
+        // One control for the three choices, opening Orbit's shared picker, so Settings can never
+        // offer a strength the chosen model refuses. Only the default for new chats lives here;
+        // each chat keeps its own selection and is changed from its own header.
+        TextView defaultAiLabel = label("Default AI for new chats");
+        LinearLayout defaultAi = defaultAiSelector();
+        aiCard.addView(controlGroup(SettingsSearchIndex.KEY_DEFAULT_AI, defaultAiLabel, defaultAi,
+                selectorLp()));
+        TextView defaultAiHelp = UiKit.text(this,
+                "Provider, model and strength for new chats and the assistant. Each chat remembers "
+                        + "its own choice, so changing this never changes an existing chat. "
+                        + "Orbit always uses exactly the model you choose.",
                 12, UiKit.MUTED, false);
-        modeHelp.setPadding(0, 0, 0, UiKit.dp(this, 10));
-        aiCard.addView(modeHelp);
-
-        TextView modelLabelView = label("Custom model");
-        // Which models are offered follows the active provider, because a picker entry is a promise
-        // that choosing it works. Astra has been validated against the account-backed ChatGPT path
-        // and nowhere else, so only that provider offers it.
-        String[] modelLabels = OrbitModelCatalog.modelsFor(Prefs.provider(this));
-        int modelPos = indexOf(modelLabels, Prefs.model(this));
-        LinearLayout model = menuSelector(modelLabels, modelPos,
-                (pos, selectedLabel) -> Prefs.get(this).edit().putString(Prefs.MODEL, selectedLabel).apply());
-        aiCard.addView(controlGroup(SettingsSearchIndex.KEY_MODEL, modelLabelView, model, selectorLp()));
-        if (OrbitModelCatalog.supports(Prefs.provider(this), OrbitModelCatalog.ASTRA)) {
-            TextView astraNote = UiKit.text(this,
-                    OrbitModelCatalog.settingsLabel(OrbitModelCatalog.ASTRA)
-                            + ": most capable. Availability depends on your ChatGPT/Codex account, "
-                            + "and Astra uses its allowance faster. Auto, Fast, Balanced and Deep "
-                            + "are unchanged and never route to Astra on their own.",
-                    12, UiKit.MUTED, false);
-            astraNote.setLineSpacing(0, 1.12f);
-            astraNote.setPadding(0, UiKit.dp(this, 7), 0, UiKit.dp(this, 4));
-            aiCard.addView(astraNote);
-        }
-
-        TextView reasoningLabel = label("Custom reasoning");
-        String[] reasoningLabels = {"none", "low", "medium", "high", "xhigh", "max"};
-        int rPos = indexOf(reasoningLabels, Prefs.reasoning(this));
-        LinearLayout reasoning = menuSelector(reasoningLabels, rPos,
-                (pos, selectedLabel) -> Prefs.get(this).edit().putString(Prefs.REASONING, selectedLabel).apply());
-        aiCard.addView(controlGroup(SettingsSearchIndex.KEY_REASONING, reasoningLabel, reasoning, selectorLp()));
+        defaultAiHelp.setLineSpacing(0, 1.12f);
+        defaultAiHelp.setPadding(0, UiKit.dp(this, 7), 0, UiKit.dp(this, 4));
+        aiCard.addView(defaultAiHelp);
         TextView cost = UiKit.text(this, "ChatGPT-account mode uses your account-backed allowance. Orbit never silently switches to the separately metered API-relay fallback.", 12, UiKit.MUTED, false);
         cost.setPadding(0, UiKit.dp(this, 8), 0, 0);
         aiCard.addView(cost);
@@ -1207,7 +1203,46 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         return scroll;
     }
 
+    /**
+     * Sign in with ChatGPT: the browser flow. One tap opens OpenAI's normal sign-in page; the
+     * result arrives through {@link #chatGptBrowserListener}. A failure explains itself and offers
+     * code sign-in, and Orbit never switches methods without the user choosing to.
+     */
     private void startChatGptLogin() {
+        ChatGptBrowserAuth.Started started = ChatGptBrowserAuth.start(this, chatGptBrowserListener);
+        if (!started.ok()) {
+            showBrowserSignInFailure(started.error, true);
+            return;
+        }
+        ChatGptSignInReturnActivity.returnTo = SettingsActivity.class;
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(started.authorizeUrl))
+                    .addCategory(Intent.CATEGORY_BROWSABLE));
+        } catch (Exception e) {
+            ChatGptBrowserAuth.cancel();
+            showBrowserSignInFailure("Orbit could not open a web browser on this phone.", true);
+            return;
+        }
+        updateChatGptStatus();
+    }
+
+    private void showBrowserSignInFailure(String message, boolean offerCodeSignIn) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle("ChatGPT sign-in could not complete")
+                .setMessage(message);
+        if (offerCodeSignIn) {
+            builder.setPositiveButton("Use code sign-in", (d, w) -> startCodeSignIn())
+                    .setNegativeButton("Close", null);
+        } else {
+            builder.setPositiveButton("OK", null);
+        }
+        AlertDialog dialog = builder.create();
+        styleOrbitDialog(dialog, false);
+        dialog.show();
+    }
+
+    /** The device-code fallback, unchanged: a one-time code entered on OpenAI's page. */
+    private void startCodeSignIn() {
         if (chatGptStatus != null) {
             chatGptStatus.setText("Starting secure ChatGPT sign-in…");
             chatGptStatus.setTextColor(UiKit.TEXT);
@@ -1295,10 +1330,17 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         boolean connected = info != null;
         if (chatGptSignIn != null) chatGptSignIn.setVisibility(connected ? View.GONE : View.VISIBLE);
         if (chatGptSignOut != null) chatGptSignOut.setVisibility(connected ? View.VISIBLE : View.GONE);
+        if (chatGptCodeSignIn != null) chatGptCodeSignIn.setVisibility(connected ? View.GONE : View.VISIBLE);
         if (chatGptHelp != null) {
             chatGptHelp.setText(connected
                     ? "Orbit is using this account's ChatGPT/Codex allowance. No API key is needed."
-                    : "Recommended: sign in with your normal ChatGPT account using OpenAI's Codex device-code flow. This path uses your account-backed Codex/ChatGPT allowance and does not require an OpenAI API key.");
+                    : "Sign in with your normal ChatGPT account in your browser. Orbit uses your "
+                            + "account-backed ChatGPT/Codex allowance and does not need an OpenAI API key.");
+        }
+        if (!connected && ChatGptBrowserAuth.inProgress()) {
+            chatGptStatus.setText("Waiting for ChatGPT sign-in in your browser…");
+            chatGptStatus.setTextColor(UiKit.TEXT);
+            return;
         }
         if (!connected) {
             chatGptStatus.setText("○ Not signed in with ChatGPT");
@@ -1318,6 +1360,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         chatGptHelp = null;
         chatGptSignIn = null;
         chatGptSignOut = null;
+        chatGptCodeSignIn = null;
         // The effective provider, not the raw stored one: if a stored Orbit Local selection lost
         // its model, requests already fall back to ChatGPT, and this block must describe the
         // provider that actually answers.
@@ -1389,6 +1432,21 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         container.addView(chatGptSignIn, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 48)));
 
+        // The fallback is a quiet text action, not a second primary button: most people never need
+        // it, and it must never look like the recommended path.
+        chatGptCodeSignIn = new Button(this);
+        chatGptCodeSignIn.setText("Having trouble? Use code sign-in");
+        chatGptCodeSignIn.setAllCaps(false);
+        chatGptCodeSignIn.setTextSize(13);
+        chatGptCodeSignIn.setTextColor(UiKit.accent(this));
+        chatGptCodeSignIn.setBackground(UiKit.ripple(Color.TRANSPARENT, UiKit.accent(this), 14, this));
+        chatGptCodeSignIn.setStateListAnimator(null);
+        chatGptCodeSignIn.setMinHeight(UiKit.dp(this, 44));
+        chatGptCodeSignIn.setMinimumHeight(UiKit.dp(this, 44));
+        chatGptCodeSignIn.setOnClickListener(v -> startCodeSignIn());
+        container.addView(chatGptCodeSignIn, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(this, 44)));
+
         // Signing out is disruptive rather than dangerous, so it stays a restrained outlined
         // action with a confirmation, never a bright primary competing with the connected state.
         chatGptSignOut = dangerOutlineButton("Sign out of ChatGPT");
@@ -1412,7 +1470,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         });
 
         TextView experimental = UiKit.text(this,
-                "Orbit uses the public Codex OAuth protocol for ChatGPT-account mode. Because OpenAI does not document the Codex backend as a general third-party mobile API, this integration is experimental and the API relay remains available as an explicit fallback.",
+                "Orbit signs in through OpenAI's public Codex OAuth sign-in (browser, or a one-time code). Because OpenAI does not document the Codex backend as a general third-party mobile API, this integration is experimental and the API relay remains available as an explicit fallback.",
                 12, UiKit.MUTED, false);
         experimental.setPadding(0, UiKit.dp(this, 8), 0, 0);
         container.addView(experimental);
@@ -2295,6 +2353,39 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
                 }));
         UiKit.pressScale(field);
         return field;
+    }
+
+    /**
+     * The default-AI field: shows the current default and opens the shared picker. Built once;
+     * a choice updates its text in place.
+     */
+    private LinearLayout defaultAiSelector() {
+        LinearLayout field = new LinearLayout(this);
+        field.setOrientation(LinearLayout.HORIZONTAL);
+        field.setGravity(Gravity.CENTER_VERTICAL);
+        field.setPadding(UiKit.dp(this, 16), 0, UiKit.dp(this, 14), 0);
+        field.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2,
+                UiKit.withAlpha(UiKit.accent(this), 72), UiKit.accent(this), 16, this));
+        TextView value = UiKit.text(this, defaultAiText(), 15, UiKit.TEXT, false);
+        value.setMaxLines(2);
+        field.addView(value, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        TextView arrow = UiKit.text(this, "▾", 18, UiKit.MUTED, true);
+        arrow.setPadding(UiKit.dp(this, 12), 0, 0, 0);
+        field.addView(arrow);
+        field.setContentDescription("Default AI for new chats: " + defaultAiText());
+        field.setOnClickListener(v -> AiSelectorDialog.show(this, "Default for new chats",
+                AiSelections.globalDefault(this), s -> "Use " + s.label(), chosen -> {
+                    AiSelections.setGlobalDefault(this, chosen);
+                    value.setText(defaultAiText());
+                    field.setContentDescription("Default AI for new chats: " + defaultAiText());
+                }));
+        UiKit.pressScale(field);
+        return field;
+    }
+
+    private String defaultAiText() {
+        AiSelection s = AiSelections.globalDefault(this);
+        return s.providerName() + " · " + s.label();
     }
 
     private LinearLayout menuSelector(String[] labels, int selectedIndex,

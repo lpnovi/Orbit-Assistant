@@ -842,6 +842,12 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.3.0-beta.1**: AI Control Beta 1: choose exactly which AI answers you and how hard it thinks.
+  - Sign in with ChatGPT in your normal browser with one tap; code sign-in stays available if you need it.
+  - Pick the provider, model and strength right from the chat header, replacing Auto, Fast, Balanced and Deep.
+  - Supports GPT-6 Luna, GPT-6.1 Sol and GPT-6 Astra, showing only the strengths each model accepts.
+  - Each chat remembers its own AI, and Retry with asks the same question again on another model.
+  - Save answers to your Vault, reply to a specific message, and open Response details to see which model answered and how long it took.
 - **v0.8.2.0**: Orbit Local 2.0 is now Stable: more of Orbit works privately on your phone.
   - Ask Vault works fully offline with Orbit Local, and each answer names the saved items it read.
   - Attached text files, PDFs, clipboard text, Screen Selection and screen text now reach Orbit Local, fitted carefully into its limited memory.

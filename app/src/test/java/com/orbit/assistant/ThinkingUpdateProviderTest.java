@@ -157,31 +157,23 @@ public final class ThinkingUpdateProviderTest {
         int at = client.indexOf("if (askForSummary) reasoning.put(\"summary\"");
         assertTrue("the summary must be requested on the existing reasoning object", at > 0);
         String around = client.substring(Math.max(0, at - 700), at);
-        // Still the router's answer, now asked through the model catalog so an effort the chosen
-        // model does not accept is corrected once rather than at each provider. The summary
+        // The effort is the validated selection's, resolved once by AiSelections. The summary
         // request is still a separate key on the same object and still changes nothing about it.
-        assertTrue("the effort must still come from the router",
-                around.contains("Prefs.requestedReasoningForMode"));
-        assertTrue("and the model's own limits are the only thing allowed to adjust it",
-                around.contains("OrbitModelCatalog.reasoningFor"));
+        assertTrue("the effort must come from the validated selection",
+                around.contains("AiSelections.resolve(selection).effortId()"));
         assertFalse("the summary request must not overwrite the effort",
                 client.contains("reasoning.put(\"effort\", \"high\")"));
     }
 
-    /** Auto's validated calibration is untouched by this release. */
-    @Test public void autoRoutingCalibrationIsUnchanged() {
-        assertEquals("gpt-5.6-luna", Prefs.effectiveModelForMode(context, Prefs.MODE_FAST, "hi"));
-        assertEquals("low", Prefs.effectiveReasoningForMode(context, Prefs.MODE_FAST, "hi"));
-        assertEquals("gpt-5.6-terra", Prefs.effectiveModelForMode(context, Prefs.MODE_BALANCED, "hi"));
-        assertEquals("medium", Prefs.effectiveReasoningForMode(context, Prefs.MODE_BALANCED, "hi"));
-        assertEquals("gpt-5.6-sol", Prefs.effectiveModelForMode(context, Prefs.MODE_DEEP, "hi"));
-        assertEquals("high", Prefs.effectiveReasoningForMode(context, Prefs.MODE_DEEP, "hi"));
-
-        // And the same answers with the feature on: the setting reaches the request, not the router.
+    /** The selection decides the model and effort; Thinking updates change neither. */
+    @Test public void theSelectionAloneDecidesModelAndEffort() {
+        AiSelection sol = AiSelection.of(Prefs.PROVIDER_CHATGPT, OrbitModelCatalog.SOL, AiStrength.HIGH);
+        AiRequest off = AiRequest.builder().prompt("hi").selection(sol).build();
         Prefs.get(context).edit().putBoolean(Prefs.THINKING_UPDATES, true).commit();
-        assertEquals("gpt-5.6-luna", Prefs.effectiveModelForMode(context, Prefs.MODE_FAST, "hi"));
-        assertEquals("low", Prefs.effectiveReasoningForMode(context, Prefs.MODE_FAST, "hi"));
-        assertEquals("high", Prefs.effectiveReasoningForMode(context, Prefs.MODE_DEEP, "hi"));
+        AiRequest on = AiRequest.builder().prompt("hi").selection(sol).thinkingUpdates(true).build();
+        assertEquals(OrbitModelCatalog.SOL, off.selection.model);
+        assertEquals(off.selection, on.selection);
+        assertEquals("high", on.selection.effortId());
     }
 
     /** The flag is frozen onto the request rather than read again later. */
@@ -212,7 +204,7 @@ public final class ThinkingUpdateProviderTest {
         AiRequest request = AiRequest.builder()
                 .prompt("Compare these architectures.")
                 .history(new ArrayList<>())
-                .intelligenceMode(Prefs.MODE_DEEP)
+                .selection(AiSelections.FALLBACK)
                 .thinkingUpdates(true)
                 .build();
         AiProviders.byId(Prefs.PROVIDER_RELAY).send(context, request, new AssistantClient.Callback() {

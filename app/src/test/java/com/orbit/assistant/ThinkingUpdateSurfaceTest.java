@@ -57,7 +57,7 @@ public final class ThinkingUpdateSurfaceTest {
         history.add(new AssistantClient.History("user", "Compare these two architectures."));
         ConversationStore.save(context, conversationId, history);
         PendingRequestStore.create(context, conversationId, "Compare these two architectures.",
-                "", "", false, false, Prefs.MODE_DEEP, false, "");
+                "", "", false, false, AiSelections.FALLBACK, false, "");
         return conversationId;
     }
 

@@ -28,7 +28,9 @@ public final class PendingRequestStore {
     private PendingRequestStore() {}
 
     public static final class Item {
-        public final String id, conversationId, prompt, screenText, screenshotPath, status, error, intelligenceMode, trustedTaskContext;
+        public final String id, conversationId, prompt, screenText, screenshotPath, status, error, trustedTaskContext;
+        /** The provider, model and strength this request is sent with. Frozen when it is queued. */
+        public final AiSelection selection;
         /**
          * Every image frozen for this request, in the order the user attached them.
          *
@@ -51,21 +53,21 @@ public final class PendingRequestStore {
 
         public Item(String id, String conversationId, String prompt, String screenText, String screenshotPath,
                     String status, String error, long createdAt, long updatedAt, boolean voiceRequest, boolean draftReply,
-                    String intelligenceMode, boolean explicitAttachment, String trustedTaskContext) {
+                    AiSelection selection, boolean explicitAttachment, String trustedTaskContext) {
             this(id, conversationId, prompt, screenText, screenshotPath, status, error, createdAt,
-                    updatedAt, voiceRequest, draftReply, intelligenceMode, explicitAttachment,
+                    updatedAt, voiceRequest, draftReply, selection, explicitAttachment,
                     trustedTaskContext, false);
         }
 
         public Item(String id, String conversationId, String prompt, String screenText, String screenshotPath,
                     String status, String error, long createdAt, long updatedAt, boolean voiceRequest, boolean draftReply,
-                    String intelligenceMode, boolean explicitAttachment, String trustedTaskContext,
+                    AiSelection selection, boolean explicitAttachment, String trustedTaskContext,
                     boolean committed) {
             this(id, conversationId, prompt, screenText,
                     screenshotPath == null || screenshotPath.trim().isEmpty()
                             ? java.util.Collections.emptyList()
                             : java.util.Collections.singletonList(screenshotPath),
-                    status, error, createdAt, updatedAt, voiceRequest, draftReply, intelligenceMode,
+                    status, error, createdAt, updatedAt, voiceRequest, draftReply, selection,
                     explicitAttachment, trustedTaskContext, committed);
         }
 
@@ -73,7 +75,7 @@ public final class PendingRequestStore {
         public Item(String id, String conversationId, String prompt, String screenText,
                     List<String> screenshotPaths, String status, String error, long createdAt,
                     long updatedAt, boolean voiceRequest, boolean draftReply,
-                    String intelligenceMode, boolean explicitAttachment, String trustedTaskContext,
+                    AiSelection selection, boolean explicitAttachment, String trustedTaskContext,
                     boolean committed) {
             this.committed = committed;
             this.id = id;
@@ -94,7 +96,7 @@ public final class PendingRequestStore {
             this.updatedAt = updatedAt;
             this.voiceRequest = voiceRequest;
             this.draftReply = draftReply;
-            this.intelligenceMode = Prefs.normalizeMode(intelligenceMode);
+            this.selection = AiSelections.resolve(selection);
             this.explicitAttachment = explicitAttachment;
             this.trustedTaskContext = trustedTaskContext == null ? "" : trustedTaskContext;
         }
@@ -102,23 +104,23 @@ public final class PendingRequestStore {
 
     public static synchronized Item create(Context c, String conversationId, String prompt, String screenText,
                                            String screenshotPath, boolean voiceRequest, boolean draftReply,
-                                           String intelligenceMode, boolean explicitAttachment,
+                                           AiSelection selection, boolean explicitAttachment,
                                            String trustedTaskContext) {
         return create(c, conversationId, prompt, screenText,
                 screenshotPath == null || screenshotPath.trim().isEmpty()
                         ? java.util.Collections.emptyList()
                         : java.util.Collections.singletonList(screenshotPath),
-                voiceRequest, draftReply, intelligenceMode, explicitAttachment, trustedTaskContext);
+                voiceRequest, draftReply, selection, explicitAttachment, trustedTaskContext);
     }
 
     public static synchronized Item create(Context c, String conversationId, String prompt, String screenText,
                                            List<String> screenshotPaths, boolean voiceRequest, boolean draftReply,
-                                           String intelligenceMode, boolean explicitAttachment,
+                                           AiSelection selection, boolean explicitAttachment,
                                            String trustedTaskContext) {
         long now = System.currentTimeMillis();
         Item item = new Item(UUID.randomUUID().toString(), conversationId, prompt == null ? "" : prompt,
                 screenText == null ? "" : screenText, screenshotPaths,
-                QUEUED, "", now, now, voiceRequest, draftReply, intelligenceMode, explicitAttachment,
+                QUEUED, "", now, now, voiceRequest, draftReply, selection, explicitAttachment,
                 trustedTaskContext, false);
         List<Item> all = readAll(c);
         all.add(0, item);
@@ -213,7 +215,7 @@ public final class PendingRequestStore {
             if (i.committed || isTerminal(i.status)) return false;
             all.set(x, new Item(i.id, i.conversationId, i.prompt, i.screenText, i.screenshotPaths,
                     i.status, i.error, i.createdAt, System.currentTimeMillis(), i.voiceRequest,
-                    i.draftReply, i.intelligenceMode, i.explicitAttachment, i.trustedTaskContext,
+                    i.draftReply, i.selection, i.explicitAttachment, i.trustedTaskContext,
                     true));
             writeAll(c, all, true);
             return true;
@@ -248,7 +250,7 @@ public final class PendingRequestStore {
             if (!i.id.equals(id)) continue;
             all.set(x, new Item(i.id, i.conversationId, i.prompt, i.screenText, i.screenshotPaths,
                     status, error, i.createdAt, now, i.voiceRequest, i.draftReply,
-                    i.intelligenceMode, i.explicitAttachment, i.trustedTaskContext, i.committed));
+                    i.selection, i.explicitAttachment, i.trustedTaskContext, i.committed));
             break;
         }
         trim(all);
@@ -272,13 +274,26 @@ public final class PendingRequestStore {
                         o.optString("screenText"), readScreenshotPaths(o), o.optString("status", QUEUED),
                         o.optString("error"), o.optLong("createdAt"), o.optLong("updatedAt"),
                         o.optBoolean("voiceRequest"), o.optBoolean("draftReply"),
-                        o.optString("intelligenceMode", Prefs.MODE_BALANCED),
+                        readSelection(c, o),
                         o.optBoolean("explicitAttachment", false),
                         o.optString("trustedTaskContext", ""),
                         o.optBoolean("committed", false)));
             }
         } catch (Exception ignored) {}
         return result;
+    }
+
+    /**
+     * The selection a stored request was queued with. A request queued by a build before 0.8.3.0
+     * recorded an intelligence mode instead, which maps the same way the settings migration does.
+     */
+    private static AiSelection readSelection(Context c, JSONObject record) {
+        AiSelection stored = AiSelection.decode(record.optString("aiSelection", ""));
+        if (stored != null) return stored;
+        SharedPreferences p = Prefs.get(c);
+        return AiSelections.fromLegacy(p.getString(Prefs.PROVIDER, Prefs.PROVIDER_CHATGPT),
+                record.optString("intelligenceMode", ""), p.getString(Prefs.MODEL, ""),
+                p.getString(Prefs.REASONING, ""));
     }
 
     /** A stored request's ordered image paths, whichever shape it was written in. */
@@ -319,7 +334,7 @@ public final class PendingRequestStore {
                         .put("prompt", i.prompt).put("screenText", i.screenText).put("screenshotPath", i.screenshotPath)
                         .put("status", i.status).put("error", i.error).put("createdAt", i.createdAt).put("updatedAt", i.updatedAt)
                         .put("voiceRequest", i.voiceRequest).put("draftReply", i.draftReply)
-                        .put("intelligenceMode", i.intelligenceMode)
+                        .put("aiSelection", i.selection.encode())
                         .put("explicitAttachment", i.explicitAttachment)
                         .put("trustedTaskContext", i.trustedTaskContext)
                         .put("committed", i.committed));

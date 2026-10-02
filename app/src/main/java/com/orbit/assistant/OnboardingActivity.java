@@ -79,6 +79,32 @@ public final class OnboardingActivity extends Activity {
         }
     };
 
+    /** Hears how a browser sign-in ended. Attached while onboarding is in front. */
+    private final ChatGptBrowserAuth.Listener browserListener = new ChatGptBrowserAuth.Listener() {
+         public void onSignedIn(ChatGptAuth.AccountInfo account) {
+            if (!canUpdateUi()) return;
+            Toast.makeText(OnboardingActivity.this, "ChatGPT connected to Orbit", Toast.LENGTH_LONG).show();
+            render();
+        }
+
+         public void onFailed(String message, boolean offerCodeSignIn) {
+            if (!canUpdateUi()) return;
+            render();
+            AlertDialog dialog = new AlertDialog.Builder(OnboardingActivity.this)
+                    .setTitle("ChatGPT sign-in could not complete")
+                    .setMessage(message)
+                    .setPositiveButton("Use code sign-in", (d, w) -> startCodeSignIn())
+                    .setNegativeButton("Close", null)
+                    .create();
+            UiKit.styleOrbitDialog(dialog, OnboardingActivity.this, false);
+            dialog.show();
+        }
+
+         public void onCancelled() {
+            if (canUpdateUi()) render();
+        }
+    };
+
     public static Intent freshInstallIntent(Context context) {
         return new Intent(context, OnboardingActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -135,6 +161,7 @@ public final class OnboardingActivity extends Activity {
         String appearance = UiKit.appearanceSignature(this);
         if (resumedOnce || !appearance.equals(appliedAppearance)) render();
         resumedOnce = true;
+        ChatGptBrowserAuth.attach(browserListener);
         if (step == 1 && !ChatGptAuth.isSignedIn(this) &&
                 ChatGptAuth.resumePendingDeviceCode(this, loginCallback)) {
             Toast.makeText(this, "Finishing secure ChatGPT sign-in…", Toast.LENGTH_SHORT).show();
@@ -143,6 +170,7 @@ public final class OnboardingActivity extends Activity {
 
     @Override protected void onPause() {
         UiPresence.leave(this);
+        ChatGptBrowserAuth.detach(browserListener);
         super.onPause();
     }
 
@@ -334,6 +362,18 @@ public final class OnboardingActivity extends Activity {
             } else startChatGptLogin();
         });
         card.addView(action, new LinearLayout.LayoutParams(-1, UiKit.dp(this, 48)));
+        if (!connected) {
+            // The fallback, quiet and always present: never the recommended path, never hidden.
+            Button code = new Button(this);
+            code.setText("Having trouble? Use code sign-in");
+            code.setAllCaps(false);
+            code.setTextSize(13);
+            code.setTextColor(UiKit.accent(this));
+            code.setBackground(UiKit.ripple(android.graphics.Color.TRANSPARENT, UiKit.accent(this), 14, this));
+            code.setStateListAnimator(null);
+            code.setOnClickListener(v -> startCodeSignIn());
+            card.addView(code, new LinearLayout.LayoutParams(-1, UiKit.dp(this, 44)));
+        }
         return card;
     }
 
@@ -1284,7 +1324,25 @@ public final class OnboardingActivity extends Activity {
         startActivity(new Intent(this, CapabilitiesActivity.class));
     }
 
+    /** Sign in with ChatGPT: the browser flow, as in Settings. */
     private void startChatGptLogin() {
+        ChatGptBrowserAuth.Started started = ChatGptBrowserAuth.start(this, browserListener);
+        if (!started.ok()) {
+            browserListener.onFailed(started.error, true);
+            return;
+        }
+        ChatGptSignInReturnActivity.returnTo = OnboardingActivity.class;
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(started.authorizeUrl))
+                    .addCategory(Intent.CATEGORY_BROWSABLE));
+        } catch (Exception e) {
+            ChatGptBrowserAuth.cancel();
+            browserListener.onFailed("Orbit could not open a web browser on this phone.", true);
+        }
+    }
+
+    /** The device-code fallback, unchanged. */
+    private void startCodeSignIn() {
         ChatGptAuth.requestDeviceCode(this, new ChatGptAuth.StartCallback() {
             @Override public void onSuccess(ChatGptAuth.DeviceCode code) {
                 runOnUiThread(() -> { if (canUpdateUi()) showDeviceCode(code); });

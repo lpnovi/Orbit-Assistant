@@ -62,31 +62,36 @@ final class ChatGptProvider implements AiProvider {
             return;
         }
         ChatGptClient.send(context, request.prompt, request.screenText, request.images,
-                request.history, request.intelligenceMode, request.explicitAttachment,
+                request.history, request.selection, request.explicitAttachment,
                 request.notificationContext, request.memoryContext, request.trustedTaskContext,
                 request.thinkingUpdates, callback);
     }
 
-    @Override public void plan(Context context, String planningPrompt, String intelligenceMode,
+    @Override public void plan(Context context, String planningPrompt, AiSelection selection,
                                AssistantClient.PlanCallback callback) {
         if (!ChatGptAuth.isSignedIn(context)) {
             callback.onError(SIGN_IN_ERROR);
             return;
         }
-        ChatGptClient.plan(context, planningPrompt, intelligenceMode, callback);
+        ChatGptClient.plan(context, planningPrompt, selection, callback);
     }
 
     @Override public boolean supportsCompletion(Context context) {
         return ChatGptAuth.isSignedIn(context);
     }
 
-    /** Always the Fast model: a title and three topics never need a deep one. */
+    /**
+     * Always {@link AiSelections#SMART_VAULT_ENRICHMENT} (GPT-6 Luna, Low): a title and three
+     * topics never need a deep model, and this runs unattended for many items. A deliberate,
+     * documented internal choice rather than the chat's selection.
+     */
     @Override public void complete(Context context, String instructions, String prompt,
                                    AssistantClient.PlanCallback callback) {
         if (!ChatGptAuth.isSignedIn(context)) {
             callback.onError(SIGN_IN_ERROR);
             return;
         }
-        ChatGptClient.complete(context, instructions, prompt, Prefs.MODE_FAST, callback);
+        ChatGptClient.complete(context, instructions, prompt,
+                AiSelections.SMART_VAULT_ENRICHMENT, callback);
     }
 }

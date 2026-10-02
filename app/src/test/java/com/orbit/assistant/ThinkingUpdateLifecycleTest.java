@@ -53,7 +53,7 @@ public final class ThinkingUpdateLifecycleTest {
         ConversationStore.save(context, conversationId, history);
         return PendingRequestStore.create(context, conversationId,
                 "Compare these two architectures.", "", "", false, false,
-                Prefs.MODE_DEEP, false, "");
+                AiSelections.FALLBACK, false, "");
     }
 
     /** Records what it is told and nothing more, which is all a progress listener may do. */

@@ -281,8 +281,8 @@ public final class OrbitVaultBeta2Test {
         String[] off = MessageActions.assistantLabels(true, false);
         assertFalse(Arrays.asList(off).contains(MessageActions.SAVE_TO_VAULT_MENU_LABEL));
         assertTrue("Copy is untouched", Arrays.asList(off).contains(MessageActions.COPY_MENU_LABEL));
-        assertTrue("and so is Regenerate",
-                Arrays.asList(off).contains(MessageActions.REGENERATE_MENU_LABEL));
+        assertTrue("and so is Retry",
+                Arrays.asList(off).contains(MessageActions.RETRY_MENU_LABEL));
         assertEquals("labels and icons must stay the same length",
                 off.length, MessageActions.assistantIcons(true, false).length);
         assertEquals(1, MessageActions.assistantLabels(false, false).length);

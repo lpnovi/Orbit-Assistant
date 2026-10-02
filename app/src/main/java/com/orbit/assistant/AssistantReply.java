@@ -31,6 +31,11 @@ public final class AssistantReply {
      * provenance; strongly visual requests record that distinction in Rich Answers diagnostics.
      */
     public final List<String> sourceUrls;
+    /**
+     * The provider, model and strength this reply was produced with, or null when Orbit answered on
+     * the phone without a model. Set by the provider that sent the request; never guessed.
+     */
+    public final ResponseDetails details;
 
     public AssistantReply(String text) {
         this(text, new ArrayList<>(), "", "", "");
@@ -48,6 +53,13 @@ public final class AssistantReply {
     public AssistantReply(String text, List<Action> actions, String memoryUsage,
                           String suggestedMemoryText, String suggestedMemoryCategory,
                           List<String> sourceUrls) {
+        this(text, actions, memoryUsage, suggestedMemoryText, suggestedMemoryCategory, sourceUrls, null);
+    }
+
+    public AssistantReply(String text, List<Action> actions, String memoryUsage,
+                          String suggestedMemoryText, String suggestedMemoryCategory,
+                          List<String> sourceUrls, ResponseDetails details) {
+        this.details = details;
         this.text = text == null ? "" : text;
         this.actions = actions == null ? new ArrayList<>() : actions;
         this.memoryUsage = memoryUsage == null ? "" : memoryUsage.trim();
@@ -70,13 +82,19 @@ public final class AssistantReply {
     /** The same reply carrying the pages its search consulted. Text and actions are untouched. */
     public AssistantReply withSourceUrls(List<String> urls) {
         return new AssistantReply(text, actions, memoryUsage, suggestedMemoryText,
-                suggestedMemoryCategory, urls);
+                suggestedMemoryCategory, urls, details);
     }
 
     /** Normalize display text without dropping provider provenance or memory metadata. */
     public AssistantReply withText(String value) {
         return new AssistantReply(value, actions, memoryUsage, suggestedMemoryText,
-                suggestedMemoryCategory, sourceUrls);
+                suggestedMemoryCategory, sourceUrls, details);
+    }
+
+    /** The same reply, recording what produced it. */
+    public AssistantReply withDetails(ResponseDetails value) {
+        return new AssistantReply(text, actions, memoryUsage, suggestedMemoryText,
+                suggestedMemoryCategory, sourceUrls, value);
     }
 
     public static AssistantReply fromJson(JSONObject obj) {

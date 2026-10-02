@@ -110,8 +110,14 @@ public final class RoadmapActivity extends Activity {
         // to What's New; this entry names only what is still ahead for it.
         // v0.8.2.0 made Orbit Local 2.0 Stable. It stays NOW for the work still ahead, and the
         // entry already listed only that, so its text is unchanged.
+        // v0.8.3.0-beta.1 made AI Control the active line. What its first Beta shipped belongs to
+        // What's New; this entry names only what later Betas are planned to add.
         addGroup(page, "NOW - ON THE WAY TO 0.9", new String[][]{
-                {OrbitRoadmap.CURRENT, "More of Orbit working privately on your phone. Still "
+                {OrbitRoadmap.CURRENT, "Direct control over the AI that answers you. Still ahead "
+                        + "in later Betas: conversation branching, editing an earlier message and "
+                        + "branching from it, comparing models side by side, and a view of exactly "
+                        + "what a request carried."},
+                {OrbitRoadmap.ORBIT_LOCAL_2, "More of Orbit working privately on your phone. Still "
                         + "ahead: a choice of a larger Enhanced model on capable phones, and more "
                         + "on-device abilities as they can be done honestly. A request sent to "
                         + "Orbit Local always stays on the phone."},

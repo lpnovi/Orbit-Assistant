@@ -398,10 +398,28 @@ public final class OrbitVaultStore {
      * nothing.
      */
     public static synchronized OrbitVaultItem saveOrbitReply(Context c, String visibleReply) {
+        return saveOrbitReply(c, visibleReply, "");
+    }
+
+    /**
+     * The same, keeping the web page the answer cited as the item's source page (0.8.3.0+). The
+     * address is provenance the answer already showed the user, never anything hidden, and only an
+     * ordinary web address is kept.
+     */
+    public static synchronized OrbitVaultItem saveOrbitReply(Context c, String visibleReply,
+                                                             String sourceUrl) {
         String text = visibleReply == null ? "" : visibleReply.trim();
         if (text.isEmpty()) return null;
-        return insert(c, OrbitVaultItem.TYPE_ORBIT_REPLY, "", text,
-                OrbitVaultSource.ORBIT_REPLY, "", "");
+        String url = sourceUrl == null ? "" : sourceUrl.trim();
+        if (url.isEmpty()) {
+            return insert(c, OrbitVaultItem.TYPE_ORBIT_REPLY, "", text,
+                    OrbitVaultSource.ORBIT_REPLY, "", "");
+        }
+        if (c == null || !enabled(c)) return null;
+        long now = System.currentTimeMillis();
+        return insert(c, new OrbitVaultItem(UUID.randomUUID().toString(),
+                OrbitVaultItem.TYPE_ORBIT_REPLY, "", text, OrbitVaultSource.ORBIT_REPLY, "", "",
+                "", 0, 0, false, url, now, now));
     }
 
     /**

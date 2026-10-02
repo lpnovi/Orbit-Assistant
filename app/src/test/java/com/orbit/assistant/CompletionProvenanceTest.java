@@ -60,7 +60,7 @@ public final class CompletionProvenanceTest {
 
     private PendingRequestStore.Item newRequest() {
         return PendingRequestStore.create(context, CHAT, "what is 18% of 75", "", "", false,
-                false, Prefs.MODE_BALANCED, false, "");
+                false, AiSelections.FALLBACK, false, "");
     }
 
     private Runnable answerWith(String text, AtomicInteger commits, String id) {
@@ -197,7 +197,7 @@ public final class CompletionProvenanceTest {
     @Test public void provenanceCarriesNoPromptOrResponseText() {
         PendingRequestStore.Item item = PendingRequestStore.create(context, CHAT,
                 "remind me about my hospital appointment with Dr Salt", "", "", false, false,
-                Prefs.MODE_BALANCED, false, "");
+                AiSelections.FALLBACK, false, "");
         AtomicInteger commits = new AtomicInteger();
         OrbitRequestManager.completeIfNotCancelled(context, item.id,
                 CompletionSource.WORKER_RESPONSE, 0,

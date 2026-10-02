@@ -406,6 +406,7 @@ public final class AskOrbitProcessTextTest {
         java.util.Collections.sort(exported);
         assertEquals(Arrays.asList(
                 "AskOrbitTileService",
+                "ChatGptSignInReturnActivity",
                 "MainActivity",
                 "OrbitNotificationListenerService",
                 "OrbitRoutineTileService",

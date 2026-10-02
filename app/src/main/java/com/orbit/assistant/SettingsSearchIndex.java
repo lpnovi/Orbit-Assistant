@@ -90,9 +90,7 @@ public final class SettingsSearchIndex {
     public static final String KEY_WIDGETS = "widgets";
     public static final String KEY_PROVIDER = "provider";
     public static final String KEY_CHATGPT_ACCOUNT = "chatgpt_account";
-    public static final String KEY_MODE = "intelligence_mode";
-    public static final String KEY_MODEL = "custom_model";
-    public static final String KEY_REASONING = "custom_reasoning";
+    public static final String KEY_DEFAULT_AI = "default_ai";
     public static final String KEY_THINKING_UPDATES = "thinking_updates";
     public static final String KEY_RICH_ANSWERS = "rich_answers";
     public static final String KEY_SCREEN_TEXT = "screen_text";
@@ -269,18 +267,11 @@ public final class SettingsSearchIndex {
                 "Connect or disconnect your ChatGPT account.",
                 S_AI, "ai", KEY_CHATGPT_ACCOUNT,
                 "chatgpt", "sign in", "log in", "sign out", "account", "openai", "codex"));
-        out.add(new Entry("Default mode for new chats",
-                "Auto, Fast, Balanced, Deep or Custom.",
-                S_AI, "ai", KEY_MODE,
-                "auto", "fast", "balanced", "deep", "intelligence", "strength", "mode"));
-        out.add(new Entry("Custom model",
-                "Pick the exact model Custom mode uses.",
-                S_AI, "ai", KEY_MODEL,
-                "model", "ai model", "astra", "gpt-6 astra", "sol", "terra", "luna", "gpt"));
-        out.add(new Entry("Custom reasoning",
-                "How much reasoning effort Custom mode asks for.",
-                S_AI, "ai", KEY_REASONING,
-                "reasoning", "effort", "thinking", "low", "medium", "high"));
+        out.add(new Entry("Default AI for new chats",
+                "Provider, model and strength new chats start with.",
+                S_AI, "ai", KEY_DEFAULT_AI,
+                "model", "ai model", "provider", "strength", "reasoning", "effort", "default",
+                "gpt", "gpt-6", "luna", "sol", "astra", "low", "medium", "high", "max"));
         out.add(new Entry("Thinking updates",
                 "Brief status while Orbit prepares an answer.",
                 S_AI, "ai", KEY_THINKING_UPDATES,

@@ -23,7 +23,7 @@ public class AppProfileActivity extends Activity {
     public static final String EXTRA_LABEL = "label";
 
     private String pkg, label;
-    private OptionSelector category, privacy, screen, screenshot, mode, action1, action2, action3;
+    private OptionSelector category, privacy, screen, screenshot, action1, action2, action3;
     /** The profile this screen opened with, so it can tell whether anything has been changed. */
     private AppProfileStore.Profile loaded;
     /** Interactive Back for this page. Its classification lives in OrbitNavigation. */
@@ -75,13 +75,6 @@ public class AppProfileActivity extends Activity {
     private static final String[] SHOT_LABELS = {
             "Use global setting","Allow when globally enabled","Block screenshots"
     };
-    private static final String[] MODE_VALUES = {
-            AppProfileStore.MODE_GLOBAL, Prefs.MODE_AUTO, Prefs.MODE_FAST,
-            Prefs.MODE_BALANCED, Prefs.MODE_DEEP, Prefs.MODE_CUSTOM
-    };
-    private static final String[] MODE_LABELS = {
-            "Use global default","Auto","Fast","Balanced","Deep","Custom"
-    };
     private static final String[] ACTION_VALUES = {
             AppProfileStore.ACTION_AUTO, AppProfileStore.ACTION_DRAFT, AppProfileStore.ACTION_SUMMARIZE,
             AppProfileStore.ACTION_EXPLAIN, AppProfileStore.ACTION_TONE, AppProfileStore.ACTION_NEEDS_ACTION,
@@ -128,7 +121,6 @@ public class AppProfileActivity extends Activity {
                 || !selectedValue(privacy).equals(loaded.privacyPolicy)
                 || !selectedValue(screen).equals(loaded.screenPolicy)
                 || !selectedValue(screenshot).equals(loaded.screenshotPolicy)
-                || !selectedValue(mode).equals(loaded.intelligenceMode)
                 || !selectedValue(action1).equals(loaded.action1)
                 || !selectedValue(action2).equals(loaded.action2)
                 || !selectedValue(action3).equals(loaded.action3);
@@ -176,7 +168,6 @@ public class AppProfileActivity extends Activity {
                 : AppProfileStore.categoryLabel(current.category);
         preview.addView(infoLine("Context", detected));
         preview.addView(infoLine("Privacy", AppProfileStore.effectivePrivacyLabel(this,pkg)));
-        preview.addView(infoLine("AI strength", AppProfileStore.defaultMode(this,pkg,Prefs.intelligenceMode(this))));
         TextView previewNote = UiKit.text(this,
                 "Automatic adapts from the app and whatever is actually on screen. Your overrides always win.",
                 12, UiKit.MUTED, false);
@@ -187,7 +178,6 @@ public class AppProfileActivity extends Activity {
         root.addView(section("BEHAVIOR"));
         LinearLayout behavior = card();
         category = addSelector(behavior,"Screen type",CATEGORY_LABELS,CATEGORY_VALUES,current.category);
-        mode = addSelector(behavior,"Default AI strength",MODE_LABELS,MODE_VALUES,current.intelligenceMode);
         root.addView(behavior,cardLp());
 
         root.addView(section("PRIVACY"));
@@ -219,7 +209,7 @@ public class AppProfileActivity extends Activity {
             AppProfileStore.save(this,new AppProfileStore.Profile(pkg,label,
                     selectedValue(category),selectedValue(privacy),
                     selectedValue(screen),selectedValue(screenshot),
-                    selectedValue(mode),selectedValue(action1),
+                    current.intelligenceMode,selectedValue(action1),
                     selectedValue(action2),selectedValue(action3),
                     System.currentTimeMillis()));
             Toast.makeText(this,"App behavior saved",Toast.LENGTH_SHORT).show();

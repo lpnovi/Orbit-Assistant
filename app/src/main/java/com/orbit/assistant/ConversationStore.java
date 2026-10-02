@@ -42,6 +42,14 @@ public final class ConversationStore {
          * unpinned chat is. Nothing has to be rewritten to gain the field.
          */
         public final boolean pinned;
+        /**
+         * This chat's own provider, model and strength (0.8.3.0+), or null for a chat that has not
+         * been given one yet. Null is resolved to the global default by {@link AiSelections}.
+         *
+         * <p>{@link #intelligenceMode} is the retired field it replaced. It is still read, for the
+         * one-time migration, and still written back unchanged so a downgrade finds what it wrote.
+         */
+        public final AiSelection aiSelection;
 
         public Conversation(String id, String title, long updatedAt, List<AssistantClient.History> messages) {
             this(id, title, updatedAt, messages, "");
@@ -53,12 +61,18 @@ public final class ConversationStore {
 
         public Conversation(String id, String title, long updatedAt, List<AssistantClient.History> messages,
                             String intelligenceMode, boolean pinned) {
+            this(id, title, updatedAt, messages, intelligenceMode, pinned, null);
+        }
+
+        public Conversation(String id, String title, long updatedAt, List<AssistantClient.History> messages,
+                            String intelligenceMode, boolean pinned, AiSelection aiSelection) {
             this.id = id == null || id.isEmpty() ? UUID.randomUUID().toString() : id;
             this.title = title == null || title.trim().isEmpty() ? "Untitled chat" : title.trim();
             this.updatedAt = updatedAt;
             this.messages = messages == null ? new ArrayList<>() : new ArrayList<>(messages);
             this.intelligenceMode = intelligenceMode == null ? "" : intelligenceMode.trim();
             this.pinned = pinned;
+            this.aiSelection = aiSelection;
         }
     }
 
@@ -68,6 +82,10 @@ public final class ConversationStore {
 
     public static synchronized void save(Context c, String id, List<AssistantClient.History> history) {
         if (!Prefs.historyEnabled(c) || history == null || !hasUserMessage(history)) return;
+        // Read before the store is: a first-ever call may run the one-time selection migration, which
+        // rewrites the store, and reading afterwards keeps this save from undoing it. A new chat is
+        // pinned to the default it started under, so changing the default later leaves it alone.
+        AiSelection startingSelection = AiSelections.globalDefault(c);
         List<Conversation> all = readAll(c);
         String wantedId = id == null || id.isEmpty() ? newId() : id;
         Conversation existing = null;
@@ -99,7 +117,7 @@ public final class ConversationStore {
                     h.documents,
                     // Carried through the clip for the same reason the stopped anchor is: a
                     // lifecycle save must not be able to rub a picture off an answer that has one.
-                    h.richImages, h.replyRequestId, h.sourceUrls));
+                    h.richImages, h.replyRequestId, h.sourceUrls, h.quote, h.details));
         }
         // A background response may be appended to disk after the assistant sheet
         // is hidden, while that old sheet still holds a shorter in-memory copy.
@@ -124,7 +142,8 @@ public final class ConversationStore {
         String finalTitle = existing != null && existing.title != null && !existing.title.trim().isEmpty()
                 && !existing.title.equals(titleFor(existing.messages)) ? existing.title : computedTitle;
         all.add(new Conversation(wantedId, finalTitle, System.currentTimeMillis(), clipped,
-                existing == null ? "" : existing.intelligenceMode, existing != null && existing.pinned));
+                existing == null ? "" : existing.intelligenceMode, existing != null && existing.pinned,
+                existing == null ? startingSelection : existing.aiSelection));
         all.sort((a, b) -> Long.compare(b.updatedAt, a.updatedAt));
         if (all.size() > MAX_CONVERSATIONS) all = new ArrayList<>(all.subList(0, MAX_CONVERSATIONS));
         writeAll(c, all);
@@ -251,7 +270,7 @@ public final class ConversationStore {
                 // updatedAt is carried across untouched: a picture arriving is not the user doing
                 // something, and reordering Chats because one resolved would be wrong.
                 all.set(x, new Conversation(existing.id, existing.title, existing.updatedAt,
-                        messages, existing.intelligenceMode, existing.pinned));
+                        messages, existing.intelligenceMode, existing.pinned, existing.aiSelection));
                 writeAll(c, all);
                 return true;
             }
@@ -295,7 +314,7 @@ public final class ConversationStore {
             if (last == null || last.isStopped()) return false;
             messages.set(messages.size() - 1, last.withStoppedRequestId(wanted));
             all.set(x, new Conversation(existing.id, existing.title, existing.updatedAt, messages,
-                    existing.intelligenceMode, existing.pinned));
+                    existing.intelligenceMode, existing.pinned, existing.aiSelection));
             writeAll(c, all);
             return true;
         }
@@ -331,7 +350,7 @@ public final class ConversationStore {
             if (!id.equals(item.id)) continue;
             if (item.pinned == pinned) return pinned;
             all.set(i, new Conversation(item.id, item.title, item.updatedAt, item.messages,
-                    item.intelligenceMode, pinned));
+                    item.intelligenceMode, pinned, item.aiSelection));
             writeAll(c, all);
             return pinned;
         }
@@ -351,36 +370,59 @@ public final class ConversationStore {
             Conversation item = all.get(i);
             if (!id.equals(item.id)) continue;
             all.set(i, new Conversation(item.id, title.trim(), System.currentTimeMillis(), item.messages,
-                    item.intelligenceMode, item.pinned));
+                    item.intelligenceMode, item.pinned, item.aiSelection));
             break;
         }
         writeAll(c, all);
     }
 
 
-    public static synchronized String modeFor(Context c, String id) {
+    /** This chat's stored selection, unresolved, or null when it has none. See {@link AiSelections}. */
+    public static synchronized AiSelection selectionFor(Context c, String id) {
+        if (id == null || id.isEmpty()) return null;
         Conversation existing = load(c, id);
-        if (existing == null || existing.intelligenceMode == null || existing.intelligenceMode.trim().isEmpty()) {
-            return Prefs.intelligenceMode(c);
-        }
-        return Prefs.normalizeMode(existing.intelligenceMode);
+        return existing == null ? null : existing.aiSelection;
     }
 
-    public static synchronized void setMode(Context c, String id, String mode) {
-        if (id == null || id.isEmpty()) return;
-        String normalized = Prefs.normalizeMode(mode);
+    /**
+     * Stores one chat's selection. Only that chat changes; no other chat, and not the global
+     * default. A chat with no record yet keeps its selection in the caller's memory until its first
+     * message is saved, exactly as before.
+     */
+    public static synchronized void setSelection(Context c, String id, AiSelection selection) {
+        if (id == null || id.isEmpty() || selection == null) return;
         List<Conversation> all = readAll(c);
-        boolean found = false;
         for (int i = 0; i < all.size(); i++) {
             Conversation item = all.get(i);
             if (!id.equals(item.id)) continue;
-            all.set(i, new Conversation(item.id, item.title, item.updatedAt, item.messages, normalized, item.pinned));
-            found = true;
-            break;
+            if (selection.equals(item.aiSelection)) return;
+            all.set(i, new Conversation(item.id, item.title, item.updatedAt, item.messages,
+                    item.intelligenceMode, item.pinned, selection));
+            writeAll(c, all);
+            return;
         }
-        // Empty/new chats do not need a disk record yet. The caller keeps the mode
-        // in memory and save() will preserve it once the first user message exists.
-        if (found) writeAll(c, all);
+    }
+
+    /** Maps a chat's retired intelligence mode (possibly empty) to its explicit selection. */
+    interface LegacySelectionMapper {
+        AiSelection map(String legacyMode);
+    }
+
+    /**
+     * Gives every chat that has no selection yet the one its retired mode stood for. Chats that
+     * already have a selection are never touched, so running this again changes nothing.
+     */
+    static synchronized void migrateSelections(Context c, LegacySelectionMapper mapper) {
+        List<Conversation> all = readAll(c);
+        boolean changed = false;
+        for (int i = 0; i < all.size(); i++) {
+            Conversation item = all.get(i);
+            if (item.aiSelection != null) continue;
+            all.set(i, new Conversation(item.id, item.title, item.updatedAt, item.messages,
+                    item.intelligenceMode, item.pinned, mapper.map(item.intelligenceMode)));
+            changed = true;
+        }
+        if (changed) writeAll(c, all);
     }
 
     public static synchronized void clearMessages(Context c, String id) {
@@ -390,7 +432,7 @@ public final class ConversationStore {
             Conversation item = all.get(i);
             if (!id.equals(item.id)) continue;
             all.set(i, new Conversation(item.id, "Untitled chat", System.currentTimeMillis(), new ArrayList<>(),
-                    item.intelligenceMode, item.pinned));
+                    item.intelligenceMode, item.pinned, item.aiSelection));
             writeAll(c, all);
             ActionResultStore.clearConversation(c, id);
             return;
@@ -413,7 +455,7 @@ public final class ConversationStore {
             // This is an intentional edit, not a lifecycle save, so bypass the
             // stale-prefix protection used by save().
             all.set(x, new Conversation(existing.id, existing.title, System.currentTimeMillis(), messages,
-                    existing.intelligenceMode, existing.pinned));
+                    existing.intelligenceMode, existing.pinned, existing.aiSelection));
             writeAll(c, all);
             return messages;
         }
@@ -654,14 +696,20 @@ public final class ConversationStore {
                                 // Absent from every message written before v0.7.8.5, and absent
                                 // from every answer that never had a picture. Missing means none,
                                 // which is what none already means, so nothing is migrated.
-                                readRichImages(m), m.optString("replyRequestId", ""), readSourceUrls(m)));
+                                readRichImages(m), m.optString("replyRequestId", ""), readSourceUrls(m),
+                                // Both absent before 0.8.3.0, and absent means none.
+                                QuotedMessage.fromJson(m.optJSONObject("quote")),
+                                ResponseDetails.fromJson(m.optJSONObject("details"))));
                     }
                 }
                 // A chat stored before pinning existed simply has no "pinned" key, and false is
                 // exactly what an unpinned chat means, so old data needs no migration step.
                 result.add(new Conversation(o.optString("id"), o.optString("title"),
                         o.optLong("updatedAt", 0), history, o.optString("intelligenceMode", ""),
-                        o.optBoolean("pinned", false)));
+                        o.optBoolean("pinned", false),
+                        // Absent from every chat written before 0.8.3.0; null means "not migrated
+                        // yet" and is filled in once by AiSelections.ensureMigrated.
+                        AiSelection.decode(o.optString("aiSelection", ""))));
             }
         } catch (Exception ignored) {}
         return result;
@@ -676,6 +724,7 @@ public final class ConversationStore {
                 o.put("title", item.title);
                 o.put("updatedAt", item.updatedAt);
                 o.put("intelligenceMode", item.intelligenceMode);
+                if (item.aiSelection != null) o.put("aiSelection", item.aiSelection.encode());
                 // Written only when true, so an unpinned chat's record is byte-for-byte what it
                 // was before pinning existed and a downgrade reads it back unchanged.
                 if (item.pinned) o.put("pinned", true);
@@ -714,6 +763,8 @@ public final class ConversationStore {
                     }
                     if (!h.replyRequestId.isEmpty()) message.put("replyRequestId", h.replyRequestId);
                     if (!h.sourceUrls.isEmpty()) message.put("sourceUrls", new JSONArray(h.sourceUrls));
+                    if (h.quote != null) message.put("quote", h.quote.toJson());
+                    if (h.details != null) message.put("details", h.details.toJson());
                     msgs.put(message
                             .put("role", h.role)
                             .put("content", h.content)

@@ -18,10 +18,13 @@ package com.orbit.assistant;
 public final class OrbitRoadmap {
 
     /**
-     * The active milestone: Orbit Local 2.0, from v0.8.2.0-beta.1 and Stable in 0.8.2.0, still NOW
-     * for the work ahead of it. Smart Vault, Stable in 0.8.1.0, stays listed beside it likewise.
+     * The active milestone: AI Control, from v0.8.3.0-beta.1. Orbit Local 2.0 (Stable in 0.8.2.0)
+     * and Smart Vault (Stable in 0.8.1.0) stay listed beside it for the work still ahead.
      */
-    public static final String CURRENT = "Orbit Local 2.0";
+    public static final String CURRENT = "AI Control";
+
+    /** The previous headline line, still NOW for what remains of it. */
+    public static final String ORBIT_LOCAL_2 = "Orbit Local 2.0";
 
     /** The previous headline line, still NOW for what remains of it. */
     public static final String SMART_VAULT = "Smart Vault";
@@ -32,7 +35,7 @@ public final class OrbitRoadmap {
      * <p>The list is short on purpose. It is a guard against silent drift on the things a reader
      * would be actively misled by, not an index of everything either document says.
      */
-    public static final String[] MILESTONES = {CURRENT, SMART_VAULT};
+    public static final String[] MILESTONES = {CURRENT, ORBIT_LOCAL_2, SMART_VAULT};
 
     private OrbitRoadmap() {}
 }

@@ -58,7 +58,7 @@ public final class StoppedTurnStateTest {
         ConversationStore.save(context, conversationId, history);
         return PendingRequestStore.create(context, conversationId,
                 "Compare these two architectures.", "", "", false, false,
-                Prefs.MODE_DEEP, false, "");
+                AiSelections.FALLBACK, false, "");
     }
 
     /** One more turn on an existing conversation, the way sending another message behaves. */
@@ -66,7 +66,7 @@ public final class StoppedTurnStateTest {
         ConversationStore.appendMessage(context, conversationId,
                 new AssistantClient.History("user", prompt));
         return PendingRequestStore.create(context, conversationId, prompt, "", "", false, false,
-                Prefs.MODE_DEEP, false, "");
+                AiSelections.FALLBACK, false, "");
     }
 
     /** Finishes a turn the way a successful completion does. */

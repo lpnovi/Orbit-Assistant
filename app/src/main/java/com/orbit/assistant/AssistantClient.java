@@ -89,6 +89,13 @@ public final class AssistantClient {
         /** Completed request ownership and hosted-search provenance. Never sent as model history. */
         public final String replyRequestId;
         public final List<String> sourceUrls;
+        /**
+         * The earlier message this user turn replies to (0.8.3.0+), or null. Context the user chose
+         * to point at, never an instruction; see {@link QuotedMessage}.
+         */
+        public final QuotedMessage quote;
+        /** What answered this assistant turn and how long it took, when Orbit knows. Or null. */
+        public final ResponseDetails details;
 
         public History(String role, String content) {
             this(role, content, false, "", "", "", "", "", "", "");
@@ -173,6 +180,20 @@ public final class AssistantClient {
                        String memorySuggestionCategory, String stoppedRequestId,
                        List<DocumentReference> documents, List<RichAnswerImage> richImages,
                        String replyRequestId, List<String> sourceUrls) {
+            this(role, content, attached, attachmentPaths, attachmentKind, attachmentLabel,
+                    attachmentText, memoryUsage, memorySuggestionText, memorySuggestionCategory,
+                    stoppedRequestId, documents, richImages, replyRequestId, sourceUrls, null, null);
+        }
+
+        public History(String role, String content, boolean attached, List<String> attachmentPaths,
+                       String attachmentKind, String attachmentLabel, String attachmentText,
+                       String memoryUsage, String memorySuggestionText,
+                       String memorySuggestionCategory, String stoppedRequestId,
+                       List<DocumentReference> documents, List<RichAnswerImage> richImages,
+                       String replyRequestId, List<String> sourceUrls, QuotedMessage quote,
+                       ResponseDetails details) {
+            this.quote = quote;
+            this.details = details;
             this.replyRequestId = replyRequestId == null ? "" : replyRequestId.trim();
             this.sourceUrls = new AssistantReply("").withSourceUrls(sourceUrls).sourceUrls;
             this.stoppedRequestId = stoppedRequestId == null ? "" : stoppedRequestId.trim();
@@ -219,7 +240,7 @@ public final class AssistantClient {
         public History withStoppedRequestId(String requestId) {
             return new History(role, content, screenAttached, attachmentPaths, attachmentKind,
                     attachmentLabel, attachmentText, memoryUsage, memorySuggestionText,
-                    memorySuggestionCategory, requestId, documents, richImages, replyRequestId, sourceUrls);
+                    memorySuggestionCategory, requestId, documents, richImages, replyRequestId, sourceUrls, quote, details);
         }
 
         /**
@@ -233,13 +254,29 @@ public final class AssistantClient {
         public History withRichImages(List<RichAnswerImage> images) {
             return new History(role, content, screenAttached, attachmentPaths, attachmentKind,
                     attachmentLabel, attachmentText, memoryUsage, memorySuggestionText,
-                    memorySuggestionCategory, stoppedRequestId, documents, images, replyRequestId, sourceUrls);
+                    memorySuggestionCategory, stoppedRequestId, documents, images, replyRequestId, sourceUrls, quote, details);
         }
 
         public History withReplyProvenance(String requestId, List<String> sources) {
             return new History(role, content, screenAttached, attachmentPaths, attachmentKind,
                     attachmentLabel, attachmentText, memoryUsage, memorySuggestionText,
-                    memorySuggestionCategory, stoppedRequestId, documents, richImages, requestId, sources);
+                    memorySuggestionCategory, stoppedRequestId, documents, richImages, requestId, sources, quote, details);
+        }
+
+        /** A copy of this user turn pointing at an earlier message, everything else untouched. */
+        public History withQuote(QuotedMessage value) {
+            return new History(role, content, screenAttached, attachmentPaths, attachmentKind,
+                    attachmentLabel, attachmentText, memoryUsage, memorySuggestionText,
+                    memorySuggestionCategory, stoppedRequestId, documents, richImages, replyRequestId,
+                    sourceUrls, value, details);
+        }
+
+        /** A copy of this assistant turn carrying what answered it, everything else untouched. */
+        public History withDetails(ResponseDetails value) {
+            return new History(role, content, screenAttached, attachmentPaths, attachmentKind,
+                    attachmentLabel, attachmentText, memoryUsage, memorySuggestionText,
+                    memorySuggestionCategory, stoppedRequestId, documents, richImages, replyRequestId,
+                    sourceUrls, quote, value);
         }
 
         /** Whether this message has a picture to draw. */
@@ -252,46 +289,46 @@ public final class AssistantClient {
     private AssistantClient() {}
 
     public static void send(Context context, String prompt, String screenText, Bitmap screenshot, List<History> history, Callback cb) {
-        send(context, prompt, screenText, screenshot, history, Prefs.intelligenceMode(context), cb);
+        send(context, prompt, screenText, screenshot, history, AiSelections.globalDefault(context), cb);
     }
 
     public static void send(Context context, String prompt, String screenText, Bitmap screenshot, List<History> history,
-                            String intelligenceMode, Callback cb) {
-        send(context, prompt, screenText, screenshot, history, intelligenceMode, false, cb);
+                            AiSelection selection, Callback cb) {
+        send(context, prompt, screenText, screenshot, history, selection, false, cb);
     }
 
     public static void send(Context context, String prompt, String screenText, Bitmap screenshot, List<History> history,
-                            String intelligenceMode, boolean explicitAttachment, Callback cb) {
-        send(context, prompt, screenText, screenshot, history, intelligenceMode,
+                            AiSelection selection, boolean explicitAttachment, Callback cb) {
+        send(context, prompt, screenText, screenshot, history, selection,
                 explicitAttachment, "", cb);
     }
 
     public static void send(Context context, String prompt, String screenText, Bitmap screenshot, List<History> history,
-                            String intelligenceMode, boolean explicitAttachment,
+                            AiSelection selection, boolean explicitAttachment,
                             String trustedTaskContext, Callback cb) {
-        send(context, prompt, screenText, screenshot, history, intelligenceMode,
+        send(context, prompt, screenText, screenshot, history, selection,
                 explicitAttachment, trustedTaskContext, () -> false, cb);
     }
 
     public static void send(Context context, String prompt, String screenText, Bitmap screenshot, List<History> history,
-                            String intelligenceMode, boolean explicitAttachment,
+                            AiSelection selection, boolean explicitAttachment,
                             String trustedTaskContext, java.util.function.BooleanSupplier cancelled,
                             Callback cb) {
         send(context, prompt, screenText,
                 screenshot == null ? java.util.Collections.emptyList()
                         : java.util.Collections.singletonList(screenshot),
-                history, intelligenceMode, explicitAttachment, trustedTaskContext, cancelled, cb);
+                history, selection, explicitAttachment, trustedTaskContext, cancelled, cb);
     }
 
     /**
      * The full entry point: a turn carrying any number of images, in the user's order.
      *
      * <p>Every other {@code send} funnels here, so a one-image turn is simply the one-element case
-     * and the deterministic routers, memory selection, and Auto routing above the provider see one
+     * and the deterministic routers, and memory selection above the provider see one
      * pipeline rather than two.
      */
     public static void send(Context context, String prompt, String screenText, List<Bitmap> images,
-                            List<History> history, String intelligenceMode,
+                            List<History> history, AiSelection selection,
                             boolean explicitAttachment, String trustedTaskContext,
                             java.util.function.BooleanSupplier cancelled, Callback callback) {
         // Every answer in Orbit leaves through this callback - the deterministic routers below,
@@ -385,7 +422,7 @@ public final class AssistantClient {
 
         final String resolvedNotificationContext = notificationContext;
         final Runnable continueToProvider = () -> sendToProvider(context, prompt, screenText,
-                requestImages, history, intelligenceMode, explicitAttachment, trustedTaskContext,
+                requestImages, history, selection, explicitAttachment, trustedTaskContext,
                 cancelled, resolvedNotificationContext, cb);
 
         // The last stop before the network. When Orbit Local's action model is installed and
@@ -410,7 +447,7 @@ public final class AssistantClient {
      */
     private static void sendToProvider(Context context, String prompt, String screenText,
                                        List<Bitmap> images, List<History> history,
-                                       String intelligenceMode, boolean explicitAttachment,
+                                       AiSelection selection, boolean explicitAttachment,
                                        String trustedTaskContext,
                                        java.util.function.BooleanSupplier cancelled,
                                        String notificationContext, Callback cb) {
@@ -422,15 +459,9 @@ public final class AssistantClient {
         final Callback responseCallback = decorateMemoryMetadata(
                 cb, memorySelection, memorySuggestion);
 
-        String requestMode = Prefs.normalizeMode(intelligenceMode);
-        if (Prefs.MODE_AUTO.equals(requestMode)) {
-            AutoRouter.Decision auto = AutoRouter.route(context, prompt, screenText, screenshot,
-                    history, explicitAttachment, notificationContext);
-            requestMode = auto.mode;
-            DiagnosticStore.recordAutoRouting(context, requestMode, auto.confidence, auto.reason,
-                    Prefs.effectiveModelForMode(context, requestMode, prompt),
-                    Prefs.effectiveReasoningForMode(context, requestMode, prompt));
-        }
+        // Resolved once, here, and then sent as it is. There is no routing: the model the user
+        // selected is the model this turn goes to, whatever the question looks like.
+        final AiSelection resolved = AiSelections.resolve(selection);
 
         // Thinking updates are decided once, here, and then travel with the request. Reading the
         // preference again inside a provider would let a setting change mid-flight alter a turn
@@ -455,7 +486,7 @@ public final class AssistantClient {
                 .screenshot(screenshot)
                 .images(images)
                 .history(history)
-                .intelligenceMode(requestMode)
+                .selection(resolved)
                 .explicitAttachment(explicitAttachment)
                 .notificationContext(notificationContext)
                 .memoryContext(memorySelection.promptContext)
@@ -463,7 +494,7 @@ public final class AssistantClient {
                 .cancelled(cancelled)
                 .thinkingUpdates(thinkingUpdates)
                 .build();
-        AiProviders.active(context).send(context, request, responseCallback);
+        AiProviders.forSelection(context, resolved).send(context, request, responseCallback);
     }
 
     /**
@@ -489,10 +520,9 @@ public final class AssistantClient {
         void onError(String message);
     }
 
-    /** The mode planning runs in. Auto is resolved locally so planning never re-routes itself. */
-    static String planMode(Context context) {
-        String mode = Prefs.normalizeMode(Prefs.intelligenceMode(context));
-        return Prefs.MODE_AUTO.equals(mode) ? Prefs.MODE_BALANCED : mode;
+    /** Planning runs with the default selection: the one new chats and the assistant use. */
+    static AiSelection planSelection(Context context) {
+        return AiSelections.globalDefault(context);
     }
 
     public static void plan(Context context, String planningPrompt, PlanCallback cb) {
@@ -501,7 +531,8 @@ public final class AssistantClient {
             cb.onError("Describe the routine you want Orbit to build.");
             return;
         }
-        AiProviders.active(context).plan(context, planningPrompt, planMode(context), cb);
+        AiSelection selection = planSelection(context);
+        AiProviders.forSelection(context, selection).plan(context, planningPrompt, selection, cb);
     }
 
     private static Callback decorateMemoryMetadata(Callback downstream,
@@ -531,7 +562,7 @@ public final class AssistantClient {
                 // The cited pages travel with the reply the same way its actions do: this wrapper
                 // adds memory metadata and must not quietly drop provenance on the way past.
                 downstream.onSuccess(new AssistantReply(reply.text, reply.actions,
-                        usage, suggestedText, suggestedCategory, reply.sourceUrls));
+                        usage, suggestedText, suggestedCategory, reply.sourceUrls, reply.details));
             }
 
             @Override public void onError(String message) {

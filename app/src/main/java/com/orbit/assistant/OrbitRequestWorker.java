@@ -100,19 +100,19 @@ public final class OrbitRequestWorker extends Worker {
         }
 
         RequestOutcome outcome = performRequest(c, item, images, history,
-                item.intelligenceMode, id, true, 4);
+                item.selection, id, true, 4);
         if (cancelled(c, id)) return Result.success();
 
-        // Hosted search can occasionally return a short-lived capacity error even
-        // when ordinary ChatGPT requests are healthy. Voice and typed prompts now
-        // use the exact same recovery path: retry the fresh-info request once on a
-        // lighter model before surfacing an error to the user. This is ChatGPT-specific
-        // recovery, so it only runs when the active provider actually offers hosted search.
-        if (outcome.reply == null && AiProviders.active(c).capabilities().hostedWebSearch
+        // Hosted search can occasionally return a short-lived capacity error even when ordinary
+        // ChatGPT requests are healthy, so a fresh-info request gets one quick second attempt.
+        // Same provider, same model, same strength: before 0.8.3.0 this retried on a lighter
+        // model, which answered under the name of a model the user had not chosen.
+        if (outcome.reply == null
+                && AiProviders.forSelection(c, item.selection).capabilities().hostedWebSearch
                 && ChatGptClient.shouldOfferHostedWebSearch(item.prompt)
                 && looksServerOverloaded(outcome.error)) {
             outcome = performRequest(c, item, images, history,
-                    Prefs.MODE_FAST, id, true, 2);
+                    item.selection, id, true, 2);
             if (cancelled(c, id)) return Result.success();
         }
 
@@ -189,7 +189,7 @@ public final class OrbitRequestWorker extends Worker {
         String text = reply.text.trim().isEmpty() ? "Done." : reply.text.trim().replace("—", "-");
         commit(c, item, item.id,
                 new AssistantClient.History("assistant", text, false, "", "", "", "",
-                        reply.memoryUsage, reply.suggestedMemoryText, reply.suggestedMemoryCategory),
+                        reply.memoryUsage, reply.suggestedMemoryText, reply.suggestedMemoryCategory).withDetails(reply.details),
                 reply.withText(text), SourceLinkUtil.displayText(text), attempt);
     }
 
@@ -251,14 +251,17 @@ public final class OrbitRequestWorker extends Worker {
 
     private RequestOutcome performRequest(Context c, PendingRequestStore.Item item,
                                           List<Bitmap> images, List<AssistantClient.History> history,
-                                          String mode, String requestId,
+                                          AiSelection selection, String requestId,
                                           boolean streamDeltas, int timeoutMinutes) {
         CountDownLatch latch = new CountDownLatch(1);
         AtomicReference<AssistantReply> replyRef = new AtomicReference<>();
         AtomicReference<String> errorRef = new AtomicReference<>();
+        // Measured on this phone from hand-off to finished answer: what Response details calls
+        // response time. Never presented as the backend's own processing time.
+        final long startedAt = android.os.SystemClock.elapsedRealtime();
 
         AssistantClient.send(c, item.prompt, item.screenText, images, history,
-                mode, item.explicitAttachment, item.trustedTaskContext,
+                selection, item.explicitAttachment, item.trustedTaskContext,
                 () -> isStopped() || OrbitRequestManager.isCancelled(c, requestId),
                 new AssistantClient.Callback() {
                     /**
@@ -296,7 +299,13 @@ public final class OrbitRequestWorker extends Worker {
                     }
 
                     @Override public void onSuccess(AssistantReply reply) {
-                        replyRef.set(reply);
+                        long elapsed = android.os.SystemClock.elapsedRealtime() - startedAt;
+                        // Every provider records what it sent with; a reply without that record was
+                        // produced by Orbit itself (a calculation, a device command), which is what
+                        // an empty provider and model say.
+                        ResponseDetails details = reply == null || reply.details == null
+                                ? new ResponseDetails("", "", "", elapsed) : reply.details.withElapsed(elapsed);
+                        replyRef.set(reply == null ? null : reply.withDetails(details));
                         latch.countDown();
                     }
 
@@ -309,7 +318,7 @@ public final class OrbitRequestWorker extends Worker {
         try {
             if (!latch.await(timeoutMinutes, TimeUnit.MINUTES)) {
                 return new RequestOutcome(null, "Orbit timed out while waiting for "
-                        + AiProviders.active(c).displayName() + ".");
+                        + AiProviders.forSelection(c, selection).displayName() + ".");
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

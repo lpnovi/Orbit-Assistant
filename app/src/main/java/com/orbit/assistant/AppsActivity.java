@@ -115,7 +115,7 @@ public class AppsActivity extends Activity {
         root.addView(top);
 
         TextView note = UiKit.text(this,
-                "Orbit adapts automatically to each app. Open any app below to customize privacy, AI strength, screen behavior, or all three quick actions.",
+                "Orbit adapts automatically to each app. Open any app below to customize privacy, screen behavior, or all three quick actions.",
                 13, UiKit.MUTED, false);
         note.setPadding(UiKit.dp(this,4), UiKit.dp(this,12), UiKit.dp(this,4), UiKit.dp(this,12));
         root.addView(note);

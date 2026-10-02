@@ -1,160 +1,187 @@
 package com.orbit.assistant;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 
 /**
  * The models Orbit will send a request to, and what is true about each of them.
  *
- * <p>Orbit had three models and knew them as three string literals scattered across a preference
- * reader, a settings list, a status line and a test. Adding a fourth made that untenable: Astra is
- * not simply another id in the list, because it is available to some accounts and not others, it
- * refuses one of the reasoning efforts the others accept, and it is deliberately reachable only
- * when the user asks for it by name. Those are facts about a model, so they live with the model.
+ * <p>Since 0.8.3.0 the user picks a provider, a model and a strength directly, so this is the
+ * authority every picker and every request builder consults. Capability facts (which strengths a
+ * model accepts, whether its availability depends on the account) are data here rather than
+ * {@code if (astra)} checks in screens.
  *
- * <p><b>Astra is opt-in and stays opt-in.</b> Auto routing is untouched by this class: Fast still
- * means Luna, Balanced still means Terra, Deep still means Sol, and nothing Orbit decides on the
- * user's behalf reaches Astra. A model whose availability depends on an account and whose allowance
- * is consumed faster is not something to route somebody into because their question looked hard.
- * Choosing Custom and picking it is the only way there.
+ * <p>Current ChatGPT facts, checked against OpenAI's published model notes on 2026-10-01:
+ * GPT-6 Luna ({@code gpt-6-luna}) accepts none through max; GPT-6.1 Sol ({@code gpt-6.1-sol}) and
+ * GPT-6 Astra ({@code gpt-6-astra}) accept low through max and refuse none.
  *
- * <p>Nothing here claims to know what an account is entitled to. Orbit finds out the only honest
- * way, which is by making the request and reading what comes back; {@link #looksUnavailable} is
- * what turns that answer into something truthful to show, and it is deliberately narrow so an
- * ordinary network failure is never reported as "your account cannot do this".
+ * <p>The GPT-5.6 ids are kept only so stored preferences, chats and backups that name them still
+ * resolve deterministically. They never appear in a picker.
+ *
+ * <p>Nothing here claims to know what an account is entitled to. Orbit finds out by making the
+ * request; {@link #looksUnavailable} turns that answer into something truthful and is deliberately
+ * narrow, so an ordinary network failure is never reported as "your account cannot do this".
  */
 public final class OrbitModelCatalog {
 
     // ---- model ids (sent to the backend: never renamed) ----------------------------------------
 
-    public static final String LUNA = "gpt-5.6-luna";
-    public static final String TERRA = "gpt-5.6-terra";
-    public static final String SOL = "gpt-5.6-sol";
-    /**
-     * The most capable model Orbit can reach, and the one with a real cost attached.
-     *
-     * <p>Its allowance is consumed faster than Sol's and its availability follows the user's own
-     * ChatGPT/Codex account rather than anything Orbit controls.
-     */
+    public static final String LUNA = "gpt-6-luna";
+    public static final String SOL = "gpt-6.1-sol";
     public static final String ASTRA = "gpt-6-astra";
+    /** Orbit Local's one on-device chat model. Never sent anywhere. */
+    public static final String ORBIT_LOCAL = "orbit-local";
+
+    /** Retired ids that older installs, chats and backups may still name. Migration only. */
+    public static final String LEGACY_LUNA = "gpt-5.6-luna";
+    public static final String LEGACY_TERRA = "gpt-5.6-terra";
+    public static final String LEGACY_SOL = "gpt-5.6-sol";
+
+    private static final AiStrength[] LUNA_STRENGTHS = {AiStrength.NONE, AiStrength.LOW,
+            AiStrength.MEDIUM, AiStrength.HIGH, AiStrength.XHIGH, AiStrength.MAX};
+    private static final AiStrength[] NO_NONE_STRENGTHS = {AiStrength.LOW, AiStrength.MEDIUM,
+            AiStrength.HIGH, AiStrength.XHIGH, AiStrength.MAX};
+
+    private static final List<AiModelSpec> CHATGPT = Collections.unmodifiableList(Arrays.asList(
+            new AiModelSpec(LUNA, "GPT-6 Luna", Prefs.PROVIDER_CHATGPT,
+                    "Quick everyday answers", AiStrength.MEDIUM, false, LUNA_STRENGTHS),
+            new AiModelSpec(SOL, "GPT-6.1 Sol", Prefs.PROVIDER_CHATGPT,
+                    "Complex work and coding", AiStrength.MEDIUM, false, NO_NONE_STRENGTHS),
+            new AiModelSpec(ASTRA, "GPT-6 Astra", Prefs.PROVIDER_CHATGPT,
+                    "Deepest reasoning; access varies by account", AiStrength.MEDIUM, true,
+                    NO_NONE_STRENGTHS)));
 
     /**
-     * Every model the ChatGPT/Codex provider offers for Custom selection, weakest first.
-     *
-     * <p>The order is the order the picker shows, and it is ascending capability on purpose: the
-     * one at the bottom is the one that costs the most, so nobody lands on it by scrolling past.
+     * The relay forwards to the OpenAI API with the operator's own key, so it offers the models the
+     * bundled relay server allows. Astra is absent: the relay path has not been validated against
+     * it, and a picker entry that only produces a backend error is worse than none.
      */
-    public static final String[] CHATGPT_MODELS = {LUNA, TERRA, SOL, ASTRA};
+    private static final List<AiModelSpec> RELAY = Collections.unmodifiableList(Arrays.asList(
+            new AiModelSpec(LUNA, "GPT-6 Luna", Prefs.PROVIDER_RELAY,
+                    "Quick everyday answers", AiStrength.MEDIUM, false, LUNA_STRENGTHS),
+            new AiModelSpec(SOL, "GPT-6.1 Sol", Prefs.PROVIDER_RELAY,
+                    "Complex work and coding", AiStrength.MEDIUM, false, NO_NONE_STRENGTHS)));
 
-    /**
-     * The models every other provider offers.
-     *
-     * <p>Astra is deliberately absent. Orbit's relay and OpenRouter paths have not been validated
-     * against it, and offering a model in a picker is a promise that choosing it works; a picker
-     * entry that produces a backend error is worse than no entry at all.
-     */
-    public static final String[] DEFAULT_MODELS = {LUNA, TERRA, SOL};
+    /** Orbit Local has one model and no reasoning parameter, so it exposes no strengths. */
+    private static final List<AiModelSpec> LOCAL = Collections.singletonList(
+            new AiModelSpec(ORBIT_LOCAL, "Orbit Local", Prefs.PROVIDER_LOCAL,
+                    "Private, on this phone", null, false));
 
     private OrbitModelCatalog() {}
 
-    /** The models the given provider may be asked for, in picker order. */
-    public static String[] modelsFor(String providerId) {
-        return Prefs.PROVIDER_CHATGPT.equals(providerId) ? CHATGPT_MODELS : DEFAULT_MODELS;
+    /** The models a provider offers, in picker order. Empty for a provider with no chat yet. */
+    public static List<AiModelSpec> modelsFor(String providerId) {
+        if (Prefs.PROVIDER_CHATGPT.equals(providerId)) return CHATGPT;
+        if (Prefs.PROVIDER_RELAY.equals(providerId)) return RELAY;
+        if (Prefs.PROVIDER_LOCAL.equals(providerId)) return LOCAL;
+        return Collections.emptyList();
+    }
+
+    /** The first model a provider offers, or null when it offers none. */
+    public static AiModelSpec defaultModel(String providerId) {
+        List<AiModelSpec> models = modelsFor(providerId);
+        return models.isEmpty() ? null : models.get(0);
+    }
+
+    /** This provider's spec for this model, or null when the provider does not offer it. */
+    public static AiModelSpec spec(String providerId, String modelId) {
+        if (modelId == null) return null;
+        for (AiModelSpec spec : modelsFor(providerId)) if (spec.id.equals(modelId)) return spec;
+        return null;
     }
 
     /** Whether this provider can be asked for this model at all. */
     public static boolean supports(String providerId, String modelId) {
-        for (String known : modelsFor(providerId)) if (known.equals(modelId)) return true;
-        return false;
+        return spec(providerId, modelId) != null;
     }
 
-    /** True for Orbit's most capable model, whatever else the id carries. */
-    public static boolean isAstra(String modelId) {
-        return modelId != null && modelId.toLowerCase(Locale.US).contains("astra");
+    /** Every current model id across providers, without duplicates. For tests and audits. */
+    public static List<String> currentModelIds() {
+        List<String> ids = new ArrayList<>();
+        for (String provider : new String[]{Prefs.PROVIDER_CHATGPT, Prefs.PROVIDER_RELAY,
+                Prefs.PROVIDER_LOCAL}) {
+            for (AiModelSpec spec : modelsFor(provider)) if (!ids.contains(spec.id)) ids.add(spec.id);
+        }
+        return ids;
     }
 
     /**
-     * Orbit's own name for a model, or empty for one it has no name for.
+     * The current model a retired id stands for, or the id unchanged when it is not retired.
      *
-     * <p>Never invents one. A status line that said "Reasoning with gpt-6-astra" would be leaking
-     * an internal id into the interface, and one that guessed a friendly name for an unknown id
-     * would be Orbit making something up about which model answered.
+     * <p>GPT-5.6 Luna and Terra both become GPT-6 Luna, the broadly available successor; GPT-5.6 Sol
+     * becomes GPT-6.1 Sol. Deterministic, so the same stored value always migrates the same way.
+     */
+    public static String successorOf(String modelId) {
+        if (modelId == null) return "";
+        String id = modelId.trim();
+        if (LEGACY_LUNA.equals(id) || LEGACY_TERRA.equals(id)) return LUNA;
+        if (LEGACY_SOL.equals(id)) return SOL;
+        return id;
+    }
+
+    /**
+     * Orbit's name for a model, or empty for one it has no name for.
+     *
+     * <p>Never invents one: a status line guessing a friendly name for an unknown id would be Orbit
+     * making something up about which model answered.
      */
     public static String displayName(String modelId) {
-        String id = modelId == null ? "" : modelId.toLowerCase(Locale.US);
-        if (id.contains("luna")) return "Luna";
-        if (id.contains("terra")) return "Terra";
-        if (id.contains("sol")) return "Sol";
-        if (id.contains("astra")) return "Astra";
+        if (modelId == null) return "";
+        for (String provider : new String[]{Prefs.PROVIDER_CHATGPT, Prefs.PROVIDER_LOCAL}) {
+            AiModelSpec spec = spec(provider, modelId);
+            if (spec != null) return spec.displayName;
+        }
+        if (LEGACY_LUNA.equals(modelId)) return "GPT-5.6 Luna";
+        if (LEGACY_TERRA.equals(modelId)) return "GPT-5.6 Terra";
+        if (LEGACY_SOL.equals(modelId)) return "GPT-5.6 Sol";
         return "";
-    }
-
-    /** "GPT-6 Astra", the way a model is written in Settings. Empty for an unknown id. */
-    public static String settingsLabel(String modelId) {
-        String name = displayName(modelId);
-        if (name.isEmpty()) return "";
-        return ASTRA.equals(modelId) ? "GPT-6 Astra" : name;
-    }
-
-    /**
-     * The reasoning effort Orbit will actually send for one model.
-     *
-     * <p>The only rule that differs between models, and the reason it is here rather than in the
-     * request builder: Astra has no {@code none}. Sending one would be an error rather than a
-     * degraded request, so a user who had already chosen {@code none} for Custom and then picked
-     * Astra would find every request failing for a reason nothing on screen explained.
-     *
-     * <p>The substitute is {@code low}, which is the nearest thing Astra has to "do not spend time
-     * thinking". Everything else is passed through untouched, and Luna, Terra and Sol keep
-     * {@code none} exactly as they always have.
-     */
-    public static String reasoningFor(String modelId, String requested) {
-        String effort = requested == null ? "" : requested.trim().toLowerCase(Locale.US);
-        if (!isAstra(modelId)) return effort;
-        return effort.isEmpty() || "none".equals(effort) ? "low" : effort;
     }
 
     /**
      * Whether a provider error means "this account cannot reach this model", rather than anything
      * else that can go wrong.
      *
-     * <p>Deliberately narrow, because the cost of being wrong runs in both directions. Reporting a
-     * flat network failure as an entitlement problem would send somebody to look at their ChatGPT
-     * subscription over a dropped connection; reporting a real entitlement problem as a network
-     * failure would have them retrying forever. So this matches only the language a backend uses
-     * when a model is genuinely not there for this caller, and everything else stays the ordinary
-     * error it already was.
+     * <p>Generic across models: any model can be withdrawn or rolled out gradually. Deliberately
+     * narrow, because the cost of being wrong runs both ways. A dropped connection reported as an
+     * entitlement problem sends somebody to check their subscription; a real entitlement problem
+     * reported as a network failure has them retrying forever. So transport failures never match,
+     * and the error has to both concern a model and refuse it.
      */
     public static boolean looksUnavailable(String modelId, String error) {
-        if (!isAstra(modelId) || error == null) return false;
+        if (modelId == null || modelId.trim().isEmpty() || error == null) return false;
         String message = error.toLowerCase(Locale.US);
         if (message.contains("timed out") || message.contains("timeout")
                 || message.contains("interrupted") || message.contains("network")
-                || message.contains("unable to resolve") || message.contains("connection")) {
+                || message.contains("unable to resolve") || message.contains("connection")
+                || message.contains("unknownhost") || message.contains("dns")
+                || message.contains("could not reach") || message.contains("socket")) {
             return false;
         }
-        boolean namesModel = message.contains("astra") || message.contains("model");
+        String id = modelId.toLowerCase(Locale.US);
+        String name = displayName(modelId).toLowerCase(Locale.US);
+        boolean namesModel = message.contains("model") || message.contains(id)
+                || (!name.isEmpty() && message.contains(name));
         boolean refuses = message.contains("did not make") || message.contains("not found")
                 || message.contains("does not exist") || message.contains("unsupported")
-                || message.contains("not available") || message.contains("no access")
-                || message.contains("not allowed") || message.contains("did not allow")
-                || message.contains("unavailable");
+                || message.contains("not supported") || message.contains("not available")
+                || message.contains("no access") || message.contains("not allowed")
+                || message.contains("did not allow") || message.contains("unavailable")
+                || message.contains("not have access") || message.contains("not entitled");
         return namesModel && refuses;
     }
 
-    /** What Orbit says when an account cannot reach Astra. Truthful, and blames nothing else. */
-    public static String unavailableMessage() {
-        return "Astra is not available through this ChatGPT account here yet. "
-                + "Choose Sol, Terra, or Luna in Settings, or leave Orbit on Auto.";
-    }
-
     /**
-     * The line prefixed to an answer Sol produced after Astra turned out to be unavailable.
-     *
-     * <p>Non-negotiable, and the reason the fallback is allowed to exist at all. A silent
-     * substitution would mean Orbit showing an answer while the interface still said Astra, which
-     * is Orbit stating something untrue about its own work. Saying it plainly costs one sentence.
+     * What Orbit says when an account cannot reach a model. Truthful, keeps the user's choice, and
+     * says how to pick another one; Orbit never quietly answers with a different model instead.
      */
-    public static String fallbackNotice() {
-        return "Astra was unavailable, so Orbit used Sol for this request.";
+    public static String unavailableMessage(String modelId) {
+        String name = displayName(modelId);
+        if (name.isEmpty()) name = "This model";
+        return name + " is not available through this ChatGPT account right now. "
+                + "Your selection has not been changed. Choose another model from the AI menu, "
+                + "or use Retry with to try this message on a different one.";
     }
 }
