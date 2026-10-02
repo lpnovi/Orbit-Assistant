@@ -269,7 +269,7 @@ public final class OrbitRequestManager {
         String trustedTaskContext = ReplyDraftContext.observeAndGet(
                 c, conversationId, prompt, screenText, first, history);
         return enqueueFrozen(c, conversationId, prompt, screenText, images, voiceRequest,
-                draftReply, selection, explicitAttachment, trustedTaskContext, "", listener);
+                draftReply, selection, explicitAttachment, trustedTaskContext, "", history, listener);
     }
 
     /**
@@ -294,17 +294,28 @@ public final class OrbitRequestManager {
         String target = PendingRequestStore.variantTarget(answerAt,
                 ConversationBranches.parentKey(history, history.size()));
         return enqueueFrozen(c, conversationId, prompt, screenText, images, false, false,
-                selection, explicitAttachment, trustedTaskContext, target, listener);
+                selection, explicitAttachment, trustedTaskContext, target, history, listener);
     }
 
     private static String enqueueFrozen(Context c, String conversationId, String prompt, String screenText,
                                         List<Bitmap> images, boolean voiceRequest, boolean draftReply,
                                         AiSelection selection, boolean explicitAttachment,
-                                        String trustedTaskContext, String variantTarget, Listener listener) {
+                                        String trustedTaskContext, String variantTarget,
+                                        List<AssistantClient.History> history, Listener listener) {
+        // Auto is resolved here, once, before anything is queued: the request is frozen with the
+        // exact provider, model and strength Auto chose, and nothing later re-routes it. An
+        // explicit selection never reaches the router at all.
+        AiSelection exact = AiSelections.resolve(selection);
+        SmartRouter.Route route = null;
+        if (exact.isAuto()) {
+            route = routeAuto(c, conversationId, history, prompt, screenText, images,
+                    explicitAttachment);
+            exact = route.ok() ? route.selection : AiSelection.AUTO;
+        }
         List<String> pendingScreens = AttachmentStore.savePendingScreens(c, images);
         PendingRequestStore.Item item = PendingRequestStore.create(c, conversationId, prompt, screenText,
-                pendingScreens, voiceRequest, draftReply, selection, explicitAttachment,
-                trustedTaskContext, variantTarget);
+                pendingScreens, voiceRequest, draftReply, exact, explicitAttachment,
+                trustedTaskContext, variantTarget, route);
         if (listener != null) addListener(item.id, listener);
         Data input = new Data.Builder().putString(OrbitRequestWorker.KEY_REQUEST_ID, item.id).build();
         // An offline-capable provider (Orbit Local) must not wait for connectivity: its whole
@@ -312,7 +323,9 @@ public final class OrbitRequestManager {
         // request survives a dead network instead of failing instantly.
         boolean offlineOk = MemoryCommandRouter.canHandle(prompt)
                 || KitchenMathRouter.canHandle(prompt)
-                || AiProviders.forSelection(c, selection).capabilities().offline;
+                // An Auto request with no permitted model reports that at once, network or not.
+                || (route != null && !route.ok())
+                || AiProviders.forSelection(c, exact).capabilities().offline;
         Constraints constraints = new Constraints.Builder()
                 .setRequiredNetworkType(offlineOk ? NetworkType.NOT_REQUIRED : NetworkType.CONNECTED)
                 .build();
@@ -331,14 +344,46 @@ public final class OrbitRequestManager {
         return item.id;
     }
 
+    /**
+     * Asks {@link SmartRouter} for one request's exact selection. Reads only what is on the phone:
+     * the history the request will be built from, its attachments, and the chat's kept context.
+     * Never throws; a failure becomes a route the worker reports as an error.
+     */
+    static SmartRouter.Route routeAuto(Context c, String conversationId,
+                                       List<AssistantClient.History> history, String prompt,
+                                       String screenText, List<Bitmap> images,
+                                       boolean explicitAttachment) {
+        try {
+            List<AssistantClient.History> turns = history == null
+                    ? java.util.Collections.emptyList() : history;
+            KeptContext.Prepared kept = OrbitRequestWorker.keptFor(
+                    ConversationStore.load(c, conversationId), turns);
+            SmartRouter.Request request = SmartRouter.describe(c, turns, prompt, screenText,
+                    images, explicitAttachment, kept);
+            return SmartRouter.route(c, request);
+        } catch (RuntimeException e) {
+            return SmartRouter.Route.failed("Auto could not choose a model for this request."
+                    + SmartRouter.HINT);
+        }
+    }
+
     public static String retry(Context c, String failedRequestId, Listener listener) {
         PendingRequestStore.Item failed = PendingRequestStore.load(c, failedRequestId);
         if (failed == null) return "";
         List<Bitmap> images = AttachmentStore.loadAll(failed.screenshotPaths);
         PendingRequestStore.markSuperseded(c, failedRequestId);
+        // Retry is a new attempt the user asked for: an Auto request asks Auto again, under the
+        // permissions as they are now, and an explicit one goes to exactly the same model.
+        ConversationStore.Conversation conversation = ConversationStore.load(c, failed.conversationId);
+        List<AssistantClient.History> history = conversation == null
+                ? java.util.Collections.emptyList() : conversation.messages;
+        if (failed.isAnswerVariant()) {
+            history = history.subList(0, Math.max(0, Math.min(failed.variantAt(), history.size())));
+        }
         String next = enqueueFrozen(c, failed.conversationId, failed.prompt, failed.screenText, images,
-                failed.voiceRequest, failed.draftReply, failed.selection,
-                failed.explicitAttachment, failed.trustedTaskContext, failed.variantTarget, listener);
+                failed.voiceRequest, failed.draftReply, failed.requestedSelection(),
+                failed.explicitAttachment, failed.trustedTaskContext, failed.variantTarget,
+                history, listener);
         AttachmentStore.deleteAll(failed.screenshotPaths);
         return next;
     }

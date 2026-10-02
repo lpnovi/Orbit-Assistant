@@ -81,5 +81,9 @@ other provider. Removing a key immediately makes that provider require setup aga
 ## Deliberate limits
 
 Beta 4 does not add arbitrary provider endpoints, user-defined providers, Fusion or judge
-synthesis, automatic routing, benchmark rankings, pricing comparisons, or a broad chat redesign.
+synthesis, benchmark rankings, pricing comparisons, or a broad chat redesign.
 OpenRouter chat remains deferred until it can be validated with a configured account.
+
+Beta 5 adds Auto on top of this library without changing it: see `docs/SMART_ROUTING.md`. Auto
+routes only to a small curated subset of these models, never to a model merely because an account
+catalog reports it, and its choices never enter Recents.

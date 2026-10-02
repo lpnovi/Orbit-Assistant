@@ -14,6 +14,11 @@ import java.util.Locale;
  * request path sends the result of {@link #resolve}. There is no routing here: a selection of
  * GPT-6 Luna goes to GPT-6 Luna, whatever the question looks like.
  *
+ * <p><b>Auto (0.8.3.0-beta.5+).</b> {@link AiSelection#AUTO} is legal too, and is stored per chat
+ * like any other selection. It is the only selection that permits routing, and the routing itself
+ * lives in {@link SmartRouter}, never here: an explicit selection resolves to itself and nothing
+ * else, and Auto resolves to Auto until the router turns one request into an exact selection.
+ *
  * <p><b>Migration from intelligence modes.</b> Before 0.8.3.0 Orbit stored a mode (Auto, Fast,
  * Balanced, Deep, Custom) and decided the model per request. {@link #fromLegacy} maps those once,
  * deterministically, to an explicit selection; {@link #ensureMigrated} runs that mapping a single
@@ -67,6 +72,9 @@ public final class AiSelections {
      */
     public static AiSelection resolve(AiSelection raw) {
         if (raw == null) return FALLBACK;
+        // Auto is a legal selection in its own right, not a model to correct. It never carries a
+        // strength: SmartRouter chooses one per request.
+        if (raw.isAuto()) return AiSelection.AUTO;
         String provider = normalizeProvider(raw.provider);
         AiModelSpec spec = OrbitModelCatalog.spec(provider, raw.model);
         if (spec == null) spec = OrbitModelCatalog.spec(provider, OrbitModelCatalog.successorOf(raw.model));
@@ -104,9 +112,20 @@ public final class AiSelections {
      */
     public static AiSelection withModel(AiSelection current, String model) {
         AiSelection base = current == null ? FALLBACK : current;
+        if (base.isAuto()) {
+            // Leaving Auto for a named model: the model's own provider, at the model's default.
+            for (String provider : new String[]{Prefs.PROVIDER_CHATGPT, Prefs.PROVIDER_ANTHROPIC,
+                    Prefs.PROVIDER_XAI, Prefs.PROVIDER_LOCAL, Prefs.PROVIDER_RELAY}) {
+                if (OrbitModelCatalog.spec(provider, model) != null) {
+                    return resolve(AiSelection.of(provider, model, null));
+                }
+            }
+            base = FALLBACK;
+        }
         return resolve(AiSelection.of(base.provider, model, base.strength));
     }
 
+    /** A strength belongs to a model, so Auto, which has neither, ignores it and stays Auto. */
     public static AiSelection withStrength(AiSelection current, AiStrength strength) {
         AiSelection base = current == null ? FALLBACK : current;
         return resolve(AiSelection.of(base.provider, base.model, strength));
@@ -155,13 +174,38 @@ public final class AiSelections {
         return stored;
     }
 
-    /** Changes the default for future chats. Existing chats keep their own selection. */
+    /**
+     * Changes the default for future chats. Existing chats keep their own selection.
+     *
+     * <p>Choosing Auto keeps the explicit default as it is (planning and other non-chat work still
+     * use it) and only marks new chats as starting on Auto. Choosing an explicit selection clears
+     * that mark, so the default is always exactly what the user chose last.
+     */
     public static AiSelection setGlobalDefault(Context c, AiSelection selection) {
         ensureMigrated(c);
         AiSelection resolved = resolve(selection);
+        if (resolved.isAuto()) {
+            Prefs.get(c).edit().putBoolean(Prefs.AI_DEFAULT_AUTO, true).apply();
+            return resolved;
+        }
+        Prefs.get(c).edit().putBoolean(Prefs.AI_DEFAULT_AUTO, false).apply();
         writeGlobal(c, resolved);
         ModelLibraryStore.rememberProviderDefault(c, resolved);
         return resolved;
+    }
+
+    /** True when the user chose Auto as the default for new chats. False after any upgrade. */
+    public static boolean newChatsUseAuto(Context c) {
+        return Prefs.get(c).getBoolean(Prefs.AI_DEFAULT_AUTO, false);
+    }
+
+    /**
+     * What a brand-new chat starts with: Auto when the user chose it as the default, otherwise the
+     * explicit {@link #globalDefault}. Planning, Smart Vault and other non-chat work never use this;
+     * they keep the explicit default.
+     */
+    public static AiSelection newChatSelection(Context c) {
+        return newChatsUseAuto(c) ? AiSelection.AUTO : globalDefault(c);
     }
 
     private static void writeGlobal(Context c, AiSelection s) {
@@ -178,7 +222,7 @@ public final class AiSelections {
     public static AiSelection forConversation(Context c, String conversationId) {
         ensureMigrated(c);
         AiSelection stored = ConversationStore.selectionFor(c, conversationId);
-        return stored == null ? globalDefault(c) : resolve(stored);
+        return stored == null ? newChatSelection(c) : resolve(stored);
     }
 
     /** Changes one chat. Every other chat and the global default are untouched. */

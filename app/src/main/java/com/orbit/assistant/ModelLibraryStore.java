@@ -49,9 +49,14 @@ public final class ModelLibraryStore {
         return Collections.unmodifiableList(out);
     }
 
-    /** Records only a real user conversation turn. Metadata jobs never call this method. */
+    /**
+     * Records only a real user conversation turn the user chose explicitly. Metadata jobs never
+     * call this method, and neither does an Auto-routed turn: Recents are the models the user
+     * picked, never the ones Auto picked for them.
+     */
     public static synchronized void recordRecent(Context c, AiSelection selection) {
-        if (c == null || selection == null || selection.provider.isEmpty() || selection.model.isEmpty()) return;
+        if (c == null || selection == null || selection.provider.isEmpty() || selection.model.isEmpty()
+                || selection.isAuto()) return;
         String encoded = selection.encode();
         List<String> values = readStrings(c, Prefs.AI_MODEL_RECENTS);
         for (int i = values.size() - 1; i >= 0; i--) {
@@ -74,8 +79,9 @@ public final class ModelLibraryStore {
         return Collections.unmodifiableList(out);
     }
 
+    /** Auto is nobody's provider default: switching a chat to Auto leaves these untouched. */
     public static synchronized void rememberProviderDefault(Context c, AiSelection selection) {
-        if (c == null || selection == null) return;
+        if (c == null || selection == null || selection.isAuto()) return;
         try {
             JSONObject all = new JSONObject(Prefs.get(c).getString(Prefs.AI_PROVIDER_DEFAULTS, "{}"));
             all.put(selection.provider, selection.encode());

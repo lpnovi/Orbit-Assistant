@@ -47,9 +47,23 @@ final class ContextEstimate {
     final boolean fittedByProvider;
     /** The model this estimate is for, as the user reads it. */
     final String modelName;
+    /**
+     * True when the chat is on Auto (0.8.3.0-beta.5+). The next request's model is not chosen until
+     * it is sent, so there is deliberately no limit and no percentage: borrowing any one model's
+     * window would present a guess as a fact. Each routed request is checked against the window of
+     * the model Auto actually chooses for it.
+     */
+    final boolean auto;
 
     ContextEstimate(int tokens, int limit, Map<ContextLedger.Category, Integer> breakdown,
                     int olderMessagesNotSent, boolean fittedByProvider, String modelName) {
+        this(tokens, limit, breakdown, olderMessagesNotSent, fittedByProvider, modelName, false);
+    }
+
+    ContextEstimate(int tokens, int limit, Map<ContextLedger.Category, Integer> breakdown,
+                    int olderMessagesNotSent, boolean fittedByProvider, String modelName,
+                    boolean auto) {
+        this.auto = auto;
         this.tokens = Math.max(0, tokens);
         this.limit = Math.max(0, limit);
         this.breakdown = breakdown == null ? Collections.emptyMap()
@@ -133,6 +147,51 @@ final class ContextEstimate {
     }
 
     /**
+     * The estimated size of a request about to be queued, as {@code {total, total without Orbit's
+     * own instructions}}, for {@link SmartRouter} (0.8.3.0-beta.5+).
+     *
+     * <p>The same measuring path as the meter: the real request builder assembles the request in
+     * measuring mode (no image is read or encoded, nothing is sent or written) from the history the
+     * request will be built from, which ends with the turn being answered, and kept context counted
+     * once. If assembly fails, a plain character count of what the request carries stands in.
+     */
+    static int[] assembledSize(Context c, List<AssistantClient.History> history, String prompt,
+                               String attachmentText, List<Bitmap> images, boolean explicit,
+                               KeptContext.Prepared kept) {
+        String p = prompt == null ? "" : prompt;
+        List<AssistantClient.History> turns = history == null ? new ArrayList<>() : history;
+        KeptContext.Prepared k = kept == null ? KeptContext.Prepared.NONE : kept;
+        try {
+            String notificationContext = "";
+            if (!p.isEmpty()) {
+                NotificationQueryHelper.Prepared notifications =
+                        NotificationQueryHelper.prepare(c, p, false);
+                if (notifications.recognized && notifications.localReply == null) {
+                    notificationContext = notifications.context;
+                }
+            }
+            String memory = Prefs.memoryEnabled(c) && !p.isEmpty()
+                    ? MemoryStore.select(c, p, attachmentText, turns).promptContext : "";
+            ContextLedger ledger = new ContextLedger(true);
+            AiSelection proxy = AiSelections.FALLBACK;
+            ChatGptClient.requestBody(c, p, attachmentText, images, turns, proxy, explicit,
+                    notificationContext, memory, "", false, false, proxy.model, k, ledger);
+            int total = ledger.total();
+            Integer instructions = ledger.breakdown().get(ContextLedger.Category.INSTRUCTIONS);
+            return new int[]{total, Math.max(0, total - (instructions == null ? 0 : instructions))};
+        } catch (Exception failed) {
+            int content = ContextLedger.tokensFor(p) + ContextLedger.tokensFor(attachmentText)
+                    + ContextLedger.tokensFor(k.block)
+                    + (images == null ? 0 : images.size() * ContextLedger.TOKENS_PER_IMAGE);
+            for (AssistantClient.History h : turns) {
+                if (h == null) continue;
+                content += ContextLedger.tokensFor(h.content) + ContextLedger.tokensFor(h.attachmentText);
+            }
+            return new int[]{content, content};
+        }
+    }
+
+    /**
      * The estimate for the next request in {@code conversationId}, sent with {@code selection}.
      *
      * <p>Does disk reads (the conversation, memories, notification history for a notification
@@ -140,10 +199,14 @@ final class ContextEstimate {
      */
     static ContextEstimate measure(Context c, String conversationId, AiSelection selection,
                                    Draft draft) {
-        AiSelection resolved = AiSelections.resolve(selection);
-        AiModelSpec spec = OrbitModelCatalog.spec(resolved.provider, resolved.model);
+        AiSelection chosen = AiSelections.resolve(selection);
+        final boolean auto = chosen.isAuto();
+        // Auto has no model yet, so its content is measured with the ordinary cloud request builder
+        // (the same one every explicit cloud estimate uses) and shown without any limit.
+        AiSelection resolved = auto ? AiSelections.FALLBACK : chosen;
+        AiModelSpec spec = auto ? null : OrbitModelCatalog.spec(resolved.provider, resolved.model);
         int limit = spec == null ? 0 : spec.contextWindowTokens;
-        String modelName = resolved.modelName();
+        String modelName = chosen.modelName();
         Draft d = draft == null ? Draft.EMPTY : draft;
 
         ConversationStore.Conversation chat = ConversationStore.load(c, conversationId);
@@ -207,9 +270,9 @@ final class ContextEstimate {
                     explicit, notificationContext, memory, "", false, false, resolved.model,
                     kept, ledger);
         } catch (Exception failed) {
-            return new ContextEstimate(0, limit, Collections.emptyMap(), 0, false, modelName);
+            return new ContextEstimate(0, limit, Collections.emptyMap(), 0, false, modelName, auto);
         }
         return new ContextEstimate(ledger.total(), limit, ledger.breakdown(),
-                ledger.olderMessagesNotSent, false, modelName);
+                ledger.olderMessagesNotSent, false, modelName, auto);
     }
 }

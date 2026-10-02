@@ -163,10 +163,15 @@ public final class RichAnswerCoordinator {
         RichAnswerTrace.Attempt trace = new RichAnswerTrace.Attempt();
         trace.enabled = enabled(app);
         // The provider that produced this answer, not today's default: chats can differ.
+        AiSelection chatSelection = AiSelections.forConversation(app, conversationId);
         AiProvider answering = reply.details != null && !reply.details.provider.isEmpty()
                 ? AiProviders.byId(reply.details.provider)
-                : AiProviders.forSelection(app, AiSelections.forConversation(app, conversationId));
-        trace.providerEligible = answering.capabilities().richWebMedia;
+                : AiProviders.forSelection(app, chatSelection);
+        // An Auto chat names no provider of its own, so an answer that records none (Orbit's own)
+        // is never attributed to one.
+        boolean unnamedAuto = (reply.details == null || reply.details.provider.isEmpty())
+                && chatSelection.isAuto();
+        trace.providerEligible = !unnamedAuto && answering.capabilities().richWebMedia;
         trace.intent = RichAnswerRelevance.intentFor(prompt, answer);
         boolean strong = trace.intent == RichAnswerTrace.Intent.STRONG_VISUAL;
 

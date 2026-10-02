@@ -99,6 +99,8 @@ public final class RoadmapFutureOnlyTest {
             "Claude and Grok as providers",
             "Model Library",
             "Favorites and Recents",
+            // v0.8.3.0-beta.5 shipped Smart Routing.
+            "Smart Routing",
     };
 
     private String roadmapText() {

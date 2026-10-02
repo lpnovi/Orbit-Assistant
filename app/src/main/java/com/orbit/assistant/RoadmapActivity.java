@@ -119,6 +119,8 @@ public final class RoadmapActivity extends Activity {
         // What's New now, as does the Edit & resend promise it fulfils, so both leave this page.
         // v0.8.3.0-beta.4 shipped Claude, Grok, the Model Library, Favorites, Recents and
         // provider-aware context metadata. Those are now release history, not future promises.
+        // v0.8.3.0-beta.5 shipped Smart Routing: Auto as a per-chat selection with provider
+        // permissions. It is release history too, so this page still lists only what is ahead.
         addGroup(page, "NOW - ON THE WAY TO 0.9", new String[][]{
                 {OrbitRoadmap.CURRENT, "Direct control over the AI that answers you. Still ahead "
                         + "in later Betas: a visual view of a chat's branches and comparing models "

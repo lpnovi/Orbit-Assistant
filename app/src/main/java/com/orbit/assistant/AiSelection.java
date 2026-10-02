@@ -26,6 +26,20 @@ public final class AiSelection {
         return new AiSelection(provider, model, strength);
     }
 
+    /** The provider and model ids Auto is stored under. Never a real provider or model. */
+    public static final String AUTO_ID = "auto";
+
+    /**
+     * Auto (0.8.3.0-beta.5+): permission for {@link SmartRouter} to choose the provider, model and
+     * strength of each request. Stored per chat exactly like an explicit selection, but never sent
+     * anywhere: a request is routed to an exact selection before it is queued, and the dispatch path
+     * refuses an unrouted Auto rather than guessing.
+     */
+    public static final AiSelection AUTO = new AiSelection(AUTO_ID, AUTO_ID, null);
+
+    /** True for {@link #AUTO}, and for nothing that names a real model. */
+    public boolean isAuto() { return AUTO_ID.equals(provider) && AUTO_ID.equals(model); }
+
     public AiSelection withModel(String value) { return new AiSelection(provider, value, strength); }
 
     public AiSelection withStrength(AiStrength value) { return new AiSelection(provider, model, value); }
@@ -35,6 +49,7 @@ public final class AiSelection {
 
     /** "GPT-6.1 Sol", or the raw id only when Orbit has no name for it. */
     public String modelName() {
+        if (isAuto()) return AUTO_LABEL;
         String name = OrbitModelCatalog.displayName(model);
         return name.isEmpty() ? model : name;
     }
@@ -46,10 +61,17 @@ public final class AiSelection {
         return space < 0 ? name : name.substring(space + 1);
     }
 
-    /** The provider's user-facing name. */
+    /** The provider's user-facing name. Auto belongs to Orbit, not to any one provider. */
     public String providerName() {
+        if (isAuto()) return "Orbit";
         return AiProviders.byId(provider).displayName();
     }
+
+    /** What Auto is called everywhere it is shown. */
+    public static final String AUTO_LABEL = "Auto";
+    /** Auto's one-line description, shared by every picker. */
+    public static final String AUTO_DESCRIPTION =
+            "Orbit chooses the model and reasoning level for each request.";
 
     /** "GPT-6.1 Sol · High", or just the model when there is no strength. */
     public String label() {

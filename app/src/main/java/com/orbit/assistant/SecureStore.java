@@ -109,6 +109,7 @@ public final class SecureStore {
 
     public static void clearAnthropicKey(Context c) {
         Prefs.get(c).edit().remove(ANTHROPIC_ENC).remove(ANTHROPIC_IV).apply();
+        AutoPermissions.revokeOnCredentialRemoval(c, Prefs.PROVIDER_ANTHROPIC);
     }
 
     public static boolean saveXaiKey(Context c, String value) {
@@ -123,6 +124,7 @@ public final class SecureStore {
 
     public static void clearXaiKey(Context c) {
         Prefs.get(c).edit().remove(XAI_ENC).remove(XAI_IV).apply();
+        AutoPermissions.revokeOnCredentialRemoval(c, Prefs.PROVIDER_XAI);
     }
 
     private static boolean saveApiKey(Context c, String alias, String enc, String iv, String value) {

@@ -88,7 +88,8 @@ final class ModelLibraryDialog {
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) { rebuild(); }
             @Override public void afterTextChanged(Editable s) {}
         });
-        if (initial != null) providerFilter = initial.provider;
+        // Opened from Auto, which belongs to no provider, the library shows every provider.
+        if (initial != null && !initial.isAuto()) providerFilter = initial.provider;
         rebuild();
         AlertDialog.Builder builder = new AlertDialog.Builder(context).setTitle("Browse Models")
                 .setView(page).setNegativeButton("Close", null);

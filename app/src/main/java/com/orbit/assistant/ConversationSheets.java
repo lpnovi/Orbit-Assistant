@@ -33,6 +33,9 @@ final class ConversationSheets {
      * The context details. {@code onContinue} is offered when the chat has something to continue
      * from; null leaves the action out.
      */
+    /** The Auto denominator: what the limit is instead of a number Orbit does not have yet. */
+    static final String AUTO_CONTEXT_LINE = "Auto chooses per request";
+
     static AlertDialog showContext(Activity a, ContextEstimate estimate, Runnable onContinue) {
         LinearLayout body = column(a);
         if (estimate == null) {
@@ -43,7 +46,8 @@ final class ConversationSheets {
                             + ContextEstimate.exact(estimate.limit) + " tokens"
                     : ContextEstimate.approx(estimate.tokens) + " tokens", 18, UiKit.TEXT, true);
             body.addView(headline);
-            String sub = estimate.knowsLimit()
+            String sub = estimate.auto ? AUTO_CONTEXT_LINE
+                    : estimate.knowsLimit()
                     ? estimate.percent() + "% used" + (estimate.modelName.isEmpty() ? "" : " · " + estimate.modelName)
                     : (estimate.modelName.isEmpty() ? "Window size unknown" : estimate.modelName + " · window size unknown");
             TextView subline = UiKit.text(a, sub, 13, UiKit.MUTED, false);
@@ -76,7 +80,10 @@ final class ConversationSheets {
                         .append(estimate.olderMessagesNotSent == 1 ? " oldest is" : " oldest are")
                         .append(" not resent.");
             }
-            if (estimate.fittedByProvider) {
+            if (estimate.auto) {
+                notes.append(" Auto picks the model when you send, so no limit is shown here. "
+                        + "Each request only goes to a model whose context window fits it.");
+            } else if (estimate.fittedByProvider) {
                 notes.append(" Orbit Local fits each request into its own small on-device window, "
                         + "keeping your newest messages and the most relevant parts of attachments.");
             } else if (!estimate.knowsLimit()) {

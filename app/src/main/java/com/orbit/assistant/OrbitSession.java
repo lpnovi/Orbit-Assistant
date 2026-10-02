@@ -219,7 +219,7 @@ public class OrbitSession extends VoiceInteractionSession {
         try {
             super.onCreate();
             UiKit.syncTheme(getContext());
-            currentSelection = AiSelections.globalDefault(getContext());
+            currentSelection = AiSelections.newChatSelection(getContext());
             Dialog d = getWindow();
             if (d != null && d.getWindow() != null) {
                 Window w = d.getWindow();
@@ -376,7 +376,7 @@ public class OrbitSession extends VoiceInteractionSession {
 
         OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_HISTORY_START);
         if (Prefs.newChatOnOpen(getContext())) {
-            currentSelection = AiSelections.globalDefault(getContext());
+            currentSelection = AiSelections.newChatSelection(getContext());
             history.clear();
             conversationId = ConversationStore.newId();
             historyMode = false;
@@ -815,28 +815,49 @@ public class OrbitSession extends VoiceInteractionSession {
         if (modeChip == null) return;
         Context c = getContext();
         AiSelection s = currentSelection;
-        List<AiModelSpec> models = compactProviderModels(s.provider, s.model, 6);
+        // Auto first, then the models of the chat's provider. While on Auto, the explicit default's
+        // provider is listed, so leaving Auto is one tap.
+        AiSelection browse = s.isAuto() ? AiSelections.globalDefault(c) : s;
+        List<AiModelSpec> models = compactProviderModels(browse.provider, s.model, 6);
         List<AiStrength> strengths = AiSelections.strengthsFor(s);
         List<AiProvider> providers = AiSelections.pickableProviders(c);
         List<String> labels = new ArrayList<>();
-        int selected = -1;
+        labels.add(AiSelection.AUTO_LABEL + " " + AiSelectorDialog.AUTO_MARK);
+        int selected = s.isAuto() ? 0 : -1;
         for (AiModelSpec spec : models) {
-            if (spec.id.equals(s.model)) selected = labels.size();
+            if (!s.isAuto() && spec.id.equals(s.model)) selected = labels.size();
             labels.add(spec.displayName);
         }
+        final int modelsEnd = labels.size();
         final int strengthIndex = strengths.isEmpty() ? -1 : labels.size();
         if (strengthIndex >= 0) labels.add("Strength · " + s.strength.label);
         final int providerIndex = providers.size() > 1 ? labels.size() : -1;
-        if (providerIndex >= 0) labels.add("Provider · " + s.providerName());
+        if (providerIndex >= 0) {
+            labels.add("Provider · " + (s.isAuto() ? browse.providerName() : s.providerName()));
+        }
         UiKit.showOrbitMenu(c, modeChip, labels.toArray(new String[0]), selected, (index, label) -> {
-            if (index < models.size()) {
-                applyOverlaySelection(AiSelections.withModel(currentSelection, models.get(index).id));
+            if (index == 0) {
+                applyOverlaySelection(AiSelection.AUTO);
+            } else if (index < modelsEnd) {
+                applyOverlaySelection(explicitFor(models.get(index - 1)));
             } else if (index == strengthIndex) {
                 main.postDelayed(this::showStrengthMenu, 160);
             } else if (index == providerIndex) {
                 main.postDelayed(this::showProviderMenu, 160);
             }
         });
+    }
+
+    /**
+     * The selection for a model picked from the compact menu: the current strength when staying
+     * explicit, or the strength last used with that model when leaving Auto.
+     */
+    private AiSelection explicitFor(AiModelSpec spec) {
+        if (!currentSelection.isAuto()) return AiSelections.withModel(currentSelection, spec.id);
+        AiSelection remembered = ModelLibraryStore.providerDefault(getContext(), spec.providerId);
+        AiStrength strength = remembered != null && remembered.model.equals(spec.id)
+                ? remembered.strength : spec.defaultStrength;
+        return AiSelections.resolve(AiSelection.of(spec.providerId, spec.id, strength));
     }
 
     private void showStrengthMenu() {
@@ -883,19 +904,33 @@ public class OrbitSession extends VoiceInteractionSession {
         }
         if (Prefs.haptics(getContext())) vibrate(14);
         AiSelection s = currentSelection;
-        List<AiSelection> choices = quickSendChoices(s, 8);
-        if (choices.isEmpty()) return;
+        // Auto is always the first one-turn choice; the rest are exact models. On an Auto chat the
+        // explicit default's provider supplies them.
+        AiSelection browse = s.isAuto() ? AiSelections.globalDefault(getContext()) : s;
+        List<AiSelection> choices = new ArrayList<>();
+        choices.add(AiSelection.AUTO);
+        choices.addAll(quickSendChoices(browse, 7));
         String[] labels = new String[choices.size()];
-        int selected = -1;
+        int selected = s.isAuto() ? 0 : -1;
         for (int i = 0; i < choices.size(); i++) {
             AiSelection choice = choices.get(i);
+            if (choice.isAuto()) {
+                labels[i] = "Send with " + AiSelection.AUTO_LABEL + " " + AiSelectorDialog.AUTO_MARK;
+                continue;
+            }
             AiModelSpec spec = OrbitModelCatalog.spec(choice.provider, choice.model);
             labels[i] = "Send with " + (spec == null ? choice.model : spec.displayName)
-                    + (choice.provider.equals(s.provider) ? "" : " · " + choice.providerName());
-            if (choice.provider.equals(s.provider) && choice.model.equals(s.model)) selected = i;
+                    + (choice.provider.equals(browse.provider) ? "" : " · " + choice.providerName());
+            if (!s.isAuto() && choice.provider.equals(s.provider) && choice.model.equals(s.model)) {
+                selected = i;
+            }
         }
         UiKit.showOrbitMenu(getContext(), sendButton, labels, selected, (index, label) -> {
             AiSelection model = AiSelections.resolve(choices.get(index));
+            if (model.isAuto()) {
+                sendWith(model);
+                return;
+            }
             List<AiStrength> strengths = AiSelections.strengthsFor(model);
             if (strengths.isEmpty()) {
                 sendWith(model);
@@ -982,6 +1017,12 @@ public class OrbitSession extends VoiceInteractionSession {
     private void updateModeChip() {
         if (modeChip == null) return;
         AiSelection s = currentSelection;
+        if (s.isAuto()) {
+            modeChip.setText(AiSelection.AUTO_LABEL + " " + AiSelectorDialog.AUTO_MARK + "  ▾");
+            modeChip.setContentDescription("AI: Auto. Orbit chooses the model and reasoning level "
+                    + "for each request. Tap to change.");
+            return;
+        }
         modeChip.setText(s.shortLabel() + "  ▾");
         modeChip.setContentDescription("AI: " + s.providerName() + ", " + s.label()
                 + ". Tap to change.");
@@ -1138,7 +1179,7 @@ public class OrbitSession extends VoiceInteractionSession {
             if (chat.id.equals(conversationId)) {
                 history.clear();
                 conversationId = ConversationStore.newId();
-                currentSelection = AiSelections.globalDefault(getContext());
+                currentSelection = AiSelections.newChatSelection(getContext());
                 updateModeChip();
             }
             ConversationStore.delete(c, chat.id);
@@ -1176,7 +1217,7 @@ public class OrbitSession extends VoiceInteractionSession {
         saveCurrentConversation();
         history.clear();
         conversationId = ConversationStore.newId();
-        currentSelection = AiSelections.globalDefault(getContext());
+        currentSelection = AiSelections.newChatSelection(getContext());
         historyMode = false;
         stopListening();
         stopSpeaking();

@@ -11,10 +11,9 @@ import java.util.List;
  *
  * <p>This is the only place that knows which {@link AiProvider} implementations exist. The
  * active provider is the user's explicit choice in {@link Prefs#PROVIDER}; nothing here routes
- * automatically between providers yet. The registry is where future Hybrid Auto routing will
- * live — it already has the capability metadata and availability answers that decision needs —
- * but for this release explicit selection is the entire policy, so a deliberately chosen
- * provider is never silently substituted.
+ * between providers. Auto's routing (0.8.3.0-beta.5+) lives in {@link SmartRouter} and finishes
+ * before a request is queued, so by the time a selection reaches this registry it already names
+ * one exact provider and model, and a deliberately chosen provider is never silently substituted.
  */
 public final class AiProviders {
     private static final ChatGptProvider CHATGPT = new ChatGptProvider();

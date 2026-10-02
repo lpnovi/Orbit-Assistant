@@ -123,8 +123,9 @@ public final class OrbitRequestWorker extends Worker {
         // Hosted search can occasionally return a short-lived capacity error even when ordinary
         // ChatGPT requests are healthy, so a fresh-info request gets one quick second attempt.
         // Same provider, same model, same strength: before 0.8.3.0 this retried on a lighter
-        // model, which answered under the name of a model the user had not chosen.
-        if (outcome.reply == null
+        // model, which answered under the name of a model the user had not chosen. For an Auto
+        // request this is the exact route Auto chose, never a second routing decision.
+        if (outcome.reply == null && !item.selection.isAuto()
                 && AiProviders.forSelection(c, item.selection).capabilities().hostedWebSearch
                 && ChatGptClient.shouldOfferHostedWebSearch(item.prompt)
                 && looksServerOverloaded(outcome.error)) {
@@ -336,6 +337,9 @@ public final class OrbitRequestWorker extends Worker {
                 selection, item.explicitAttachment, item.trustedTaskContext,
                 kept,
                 () -> isStopped() || OrbitRequestManager.isCancelled(c, requestId),
+                // Frozen at enqueue: an Auto request carries the exact route chosen then, and
+                // nothing here routes again.
+                AssistantClient.Routing.of(item),
                 new AssistantClient.Callback() {
                     /**
                      * True once any answer text has streamed. A status update after that point is
@@ -378,6 +382,12 @@ public final class OrbitRequestWorker extends Worker {
                         // an empty provider and model say.
                         ResponseDetails details = reply == null || reply.details == null
                                 ? new ResponseDetails("", "", "", elapsed) : reply.details.withElapsed(elapsed);
+                        // An answer a model produced for an Auto request records that Auto chose it,
+                        // and why. An answer Orbit produced itself names no model, so there is no
+                        // routing to describe.
+                        if (item.route != null && !details.answeredByOrbit()) {
+                            details = details.withRoute(item.route);
+                        }
                         replyRef.set(reply == null ? null : reply.withDetails(details));
                         latch.countDown();
                     }

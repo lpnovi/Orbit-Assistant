@@ -3178,6 +3178,16 @@ public class ChatActivity extends Activity {
     private void updateAiControls() {
         if (modelPill == null || currentSelection == null) return;
         AiSelection s = currentSelection;
+        if (s.isAuto()) {
+            // Auto in the same pill an explicit model uses, and no strength pill beside it: Auto
+            // chooses the strength per request. Nothing about routing is shown here.
+            modelPill.setText(AiSelection.AUTO_LABEL + " " + AiSelectorDialog.AUTO_MARK + "  ▾");
+            modelPill.setMaxWidth(UiKit.dp(this, roomForProvider() ? 300 : narrowModelPillWidthDp()));
+            modelPill.setContentDescription("AI: Auto. Orbit chooses the model and reasoning "
+                    + "level for each request. Tap to change.");
+            strengthPill.setVisibility(View.GONE);
+            return;
+        }
         String model = roomForProvider() ? s.providerName() + " · " + s.modelName() : s.modelName();
         modelPill.setText(model + "  ▾");
         modelPill.setMaxWidth(UiKit.dp(this,

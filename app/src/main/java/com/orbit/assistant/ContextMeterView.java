@@ -95,6 +95,10 @@ final class ContextMeterView extends View {
 
     static String describe(ContextEstimate value) {
         if (value == null) return "Context window. Tap for details.";
+        if (value.auto) {
+            return "Context: about " + ContextEstimate.approx(value.tokens).substring(1)
+                    + " tokens. Auto chooses the model per request. Tap for details.";
+        }
         if (!value.knowsLimit()) {
             return "Context window: about " + ContextEstimate.approx(value.tokens).substring(1)
                     + " tokens, limit unknown. Tap for details.";

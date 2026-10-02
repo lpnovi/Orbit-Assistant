@@ -512,7 +512,8 @@ looked hard.
 
 **Honesty rule.** The selected model is the model that answers. If an account cannot use it, Orbit
 says so, keeps the selection, and lets the user choose another; it never answers with a different
-model under the chosen one's name.
+model under the chosen one's name. From `0.8.3.0-beta.5`, Auto is the one selection that gives
+Orbit permission to choose, and it is a choice the user makes, never a fallback.
 
 #### `0.8.3.0-beta.1` - first AI Control Beta
 
@@ -584,6 +585,27 @@ model under the chosen one's name.
 - **Attachment card redesign.** Sent cards use a 68dp target height, a 52dp preview, a one-line
   filename and muted type/status line. A decoded preview replaces the document icon; the icon is
   used only when no preview exists
+
+#### `0.8.3.0-beta.5` - Smart Routing
+
+- **Auto returns as a selection, not a mode.** Auto sits beside the exact models in every picker,
+  Send with and Retry with. It chooses one model and one reasoning level for each request; Fast,
+  Balanced, Deep and Custom do not come back, and an explicitly chosen model is still always the
+  model that answers
+- **Local, deterministic routing.** One router reads the request's size, images, document text,
+  kept context and the Model Library's capabilities on the phone. It never sends the message to
+  another AI to decide, and the same request under the same settings routes the same way
+- **The user decides what Auto may use.** ChatGPT and Orbit Local are on by default. Anthropic and
+  xAI stay off until switched on, a saved key never enables them, and removing a key turns Auto's
+  permission back off
+- **Resolved before sending.** The exact provider, model and strength are fixed when a message is
+  queued and stored with it, so a restart, a settings change or a catalog refresh never re-routes
+  a pending request
+- **Transparent, not noisy.** Response details show Selection: Auto, the model and strength that
+  answered, and a short reason. Auto chats hide the strength pill, and the context meter shows no
+  invented limit because Auto checks each request against the window of the model it chooses
+- **No pollution.** Auto's choices never enter Recents, and titles, summaries and other internal
+  jobs keep their fixed small policy
 
 #### Still ahead for AI Control
 

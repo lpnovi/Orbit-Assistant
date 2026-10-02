@@ -60,6 +60,8 @@ Orbit does not control how long an AI provider keeps the data it receives. Pleas
 
 Orbit does not switch you to a different provider on its own if a request fails.
 
+If you set a chat to **Auto**, Orbit picks one provider and model for each message on your phone, from things like the message's length and attachments. Your message is not sent to any AI to make that choice; it goes only to the one provider Auto picks. Auto can only use providers you allow in Settings. ChatGPT and Orbit Local are allowed by default. Anthropic and xAI are not, because they charge your own API key, and they stay off until you turn them on.
+
 ## Signing in to ChatGPT
 
 You sign in to ChatGPT in your browser, on OpenAI's own sign-in page. **Orbit never sees your password.** When you sign in, OpenAI sends your browser back to a temporary address on your own phone that only Orbit listens on, and only while that sign-in is in progress; Orbit closes it as soon as sign-in finishes, fails, or is cancelled. If the browser sign-in does not work for you, you can choose to sign in with a one-time code instead. After you sign in, Orbit stores the resulting access tokens on your phone, encrypted with a key held in Android Keystore, so it can make requests on your behalf. Signing out in Orbit removes them.

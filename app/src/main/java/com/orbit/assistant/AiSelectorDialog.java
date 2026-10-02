@@ -27,6 +27,10 @@ import java.util.Set;
  * what that layer says the selected model accepts. There is no disabled "None" on GPT-6.1 Sol; it
  * simply is not offered, and moving from Luna at None to Sol lands visibly on Low.
  *
+ * <p>Auto (0.8.3.0-beta.5+) is the first row: one Orbit-level choice rather than a model of any
+ * provider, so choosing it clears the provider, model and strength selection, and its only option
+ * is the line leading to which providers Auto may use.
+ *
  * <p>The hierarchy is built once. Choosing a model or a strength updates selected states, chip
  * visibility and the confirm label in place; only a provider change, which swaps the whole model
  * list, rebuilds that one list.
@@ -86,8 +90,12 @@ final class AiSelectorDialog {
                 .setTitle(title)
                 .setView(content)
                 .setNegativeButton("Cancel", null)
-                .setPositiveButton(confirmLabel.labelFor(selection),
-                        (d, w) -> chosen.onChosen(AiSelections.resolve(selection)));
+                .setPositiveButton(confirmLabel.labelFor(selection), (d, w) -> {
+                    AiSelection confirmed = AiSelections.resolve(selection);
+                    // The first time Auto is chosen anywhere, one short sheet says what it does.
+                    if (confirmed.isAuto()) AutoSheets.introThen(context, () -> chosen.onChosen(confirmed));
+                    else chosen.onChosen(confirmed);
+                });
         AlertDialog shown = builder.create();
         dialog = shown;
         UiKit.styleOrbitDialog(shown, context, false);
@@ -159,27 +167,53 @@ final class AiSelectorDialog {
         return scroll;
     }
 
+    /**
+     * The provider whose models are listed. Auto belongs to no provider, so while it is selected the
+     * list shows the explicit default's provider, ready for leaving Auto with one tap.
+     */
+    private String browseProvider() {
+        return selection.isAuto() ? AiSelections.globalDefault(context).provider : selection.provider;
+    }
+
     private void buildModelRows() {
         modelList.removeAllViews();
         modelRows.clear();
         modelSpecs.clear();
         modelSections.clear();
+        // Auto first: one Orbit-level choice, not a model of any provider.
+        autoRow = autoRow();
+        LinearLayout.LayoutParams autoLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        autoLp.setMargins(0, UiKit.dp(context, 3), 0, UiKit.dp(context, 3));
+        modelList.addView(autoRow, autoLp);
+        autoProviders = UiKit.text(context, autoProvidersText(), 12, UiKit.accent(context), false);
+        autoProviders.setPadding(UiKit.dp(context, 14), UiKit.dp(context, 2), UiKit.dp(context, 14),
+                UiKit.dp(context, 6));
+        autoProviders.setMinHeight(UiKit.dp(context, 32));
+        autoProviders.setGravity(Gravity.CENTER_VERTICAL);
+        autoProviders.setContentDescription("Choose which providers Auto can use");
+        autoProviders.setOnClickListener(v -> AutoSheets.showSettings(context, () -> {
+            if (autoProviders != null) autoProviders.setText(autoProvidersText());
+        }));
+        modelList.addView(autoProviders);
+
         Set<String> added = new LinkedHashSet<>();
         addGroup("Favorites", ModelLibraryStore.favorites(context), added, Integer.MAX_VALUE);
         addGroup("Recent", ModelLibraryStore.recents(context), added, 4);
 
+        String provider = browseProvider();
         List<AiSelection> common = new ArrayList<>();
         int shown = 0;
-        for (AiModelSpec spec : OrbitModelCatalog.modelsFor(selection.provider)) {
+        for (AiModelSpec spec : OrbitModelCatalog.modelsFor(provider)) {
             if (shown < 6 || spec.id.equals(selection.model)) {
                 common.add(AiSelection.of(spec.providerId, spec.id, spec.defaultStrength));
                 shown++;
             }
         }
-        if (Prefs.PROVIDER_CHATGPT.equals(selection.provider)) {
+        if (Prefs.PROVIDER_CHATGPT.equals(provider)) {
             addFamilyGroups(common, added);
         } else {
-            addGroup(AiProviders.byId(selection.provider).displayName(), common, added,
+            addGroup(AiProviders.byId(provider).displayName(), common, added,
                     Integer.MAX_VALUE);
         }
 
@@ -284,6 +318,50 @@ final class AiSelectorDialog {
         return row;
     }
 
+    private View autoRow;
+    private TextView autoProviders;
+
+    /** "Auto can use ChatGPT, Orbit Local ›": the one line that leads to Auto's settings. */
+    private String autoProvidersText() {
+        return "Auto can use " + AutoPermissions.summary(context) + " ›";
+    }
+
+    /** Auto's row: same shape as a model row, never a Favorite, with no strength of its own. */
+    private View autoRow() {
+        LinearLayout row = new LinearLayout(context);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(UiKit.dp(context, 52));
+        row.setPadding(UiKit.dp(context, 14), UiKit.dp(context, 8), UiKit.dp(context, 12),
+                UiKit.dp(context, 8));
+        row.setClickable(true);
+        row.setFocusable(true);
+        LinearLayout words = new LinearLayout(context);
+        words.setOrientation(LinearLayout.VERTICAL);
+        words.addView(UiKit.text(context, AiSelection.AUTO_LABEL + "  " + AUTO_MARK, 15,
+                UiKit.TEXT, true));
+        words.addView(UiKit.text(context, AiSelection.AUTO_DESCRIPTION, 12, UiKit.MUTED, false));
+        row.addView(words, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        TextView check = UiKit.text(context, "✓", 17, UiKit.accent(context), true);
+        check.setTag("check");
+        check.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        row.addView(check);
+        row.setOnClickListener(v -> chooseAuto(v));
+        UiKit.pressScale(row);
+        return row;
+    }
+
+    /** Auto's restrained mark, shared with the chat header. */
+    static final String AUTO_MARK = "✦";
+
+    private void chooseAuto(View source) {
+        if (selection.isAuto()) return;
+        selection = AiSelection.AUTO;
+        tick(source);
+        buildModelRows();
+        refresh();
+    }
+
     private TextView heading(String text) {
         TextView t = UiKit.text(context, text, 12, UiKit.MUTED, true);
         t.setAllCaps(true);
@@ -318,7 +396,7 @@ final class AiSelectorDialog {
     // ---- choosing ------------------------------------------------------------------------------
 
     private void chooseProvider(String provider, View source) {
-        if (provider.equals(selection.provider)) return;
+        if (!selection.isAuto() && provider.equals(selection.provider)) return;
         selection = AiSelections.withProvider(context, selection, provider);
         buildModelRows();
         tick(source);
@@ -332,8 +410,15 @@ final class AiSelectorDialog {
     }
 
     private void chooseSpec(AiModelSpec spec, View source) {
+        AiStrength strength = selection.strength;
+        if (selection.isAuto()) {
+            // Leaving Auto: the strength last used with this model, when there is one.
+            AiSelection remembered = ModelLibraryStore.providerDefault(context, spec.providerId);
+            strength = remembered != null && remembered.model.equals(spec.id)
+                    ? remembered.strength : spec.defaultStrength;
+        }
         selection = AiSelections.resolve(AiSelection.of(spec.providerId, spec.id,
-                spec.resolveStrength(selection.strength)));
+                spec.resolveStrength(strength)));
         tick(source);
         buildModelRows();
         refresh();
@@ -354,14 +439,28 @@ final class AiSelectorDialog {
     /** Applies the current selection to the existing views. Builds nothing. */
     private void refresh() {
         int accent = UiKit.accent(context);
+        boolean auto = selection.isAuto();
         for (Button chip : providerChips) {
-            styleChip(chip, chip.getTag().equals(selection.provider), accent,
+            styleChip(chip, !auto && chip.getTag().equals(selection.provider), accent,
                     "Provider " + chip.getText());
         }
+        if (autoRow != null) {
+            autoRow.setBackground(auto
+                    ? UiKit.rippleOutlined(UiKit.withAlpha(accent, 38), UiKit.withAlpha(accent, 170),
+                            accent, 14, context)
+                    : UiKit.rippleOutlined(UiKit.SURFACE_2, UiKit.withAlpha(accent, 40),
+                            accent, 14, context));
+            View check = autoRow.findViewWithTag("check");
+            if (check != null) check.setVisibility(auto ? View.VISIBLE : View.INVISIBLE);
+            autoRow.setContentDescription(AiSelection.AUTO_LABEL + ". "
+                    + AiSelection.AUTO_DESCRIPTION + (auto ? ". Selected" : ""));
+            autoRow.setSelected(auto);
+        }
+        if (autoProviders != null) autoProviders.setVisibility(auto ? View.VISIBLE : View.GONE);
         for (int i = 0; i < modelRows.size(); i++) {
             View row = modelRows.get(i);
             AiModelSpec spec = modelSpecs.get(i);
-            boolean selected = spec.providerId.equals(selection.provider)
+            boolean selected = !auto && spec.providerId.equals(selection.provider)
                     && spec.id.equals(selection.model);
             row.setBackground(selected
                     ? UiKit.rippleOutlined(UiKit.withAlpha(accent, 38), UiKit.withAlpha(accent, 170),
@@ -385,7 +484,8 @@ final class AiSelectorDialog {
         boolean hasStrengths = !legal.isEmpty();
         strengthHeading.setVisibility(hasStrengths ? View.VISIBLE : View.GONE);
         strengthRow.setVisibility(hasStrengths ? View.VISIBLE : View.GONE);
-        noStrengthNote.setVisibility(hasStrengths ? View.GONE : View.VISIBLE);
+        // Auto chooses the strength per request, so it has neither chips nor a "no strength" note.
+        noStrengthNote.setVisibility(hasStrengths || auto ? View.GONE : View.VISIBLE);
         if (onChange != null) onChange.run();
     }
 
@@ -417,6 +517,19 @@ final class AiSelectorDialog {
         for (AiModelSpec spec : modelSpecs) out.add(spec.id);
         return out;
     }
+
+    /** Auto's row, and the line leading to its settings. */
+    View autoRowForTest() { return autoRow; }
+    TextView autoProvidersForTest() { return autoProviders; }
+
+    /** Taps Auto, as the user would. */
+    void chooseAutoForTest() { chooseAuto(null); }
+
+    /** Taps a listed model row, as the user would. */
+    void chooseSpecForTest(AiModelSpec spec) { chooseSpec(spec, null); }
+
+    /** Whether the "no strength setting" note is showing. */
+    boolean noStrengthNoteShownForTest() { return noStrengthNote.getVisibility() == View.VISIBLE; }
 
     /** Model list rows; identity is stable across model and strength changes. */
     List<View> modelRowsForTest() { return modelRows; }

@@ -1007,11 +1007,12 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         TextView defaultAiHelp = UiKit.text(this,
                 "Provider, model and strength for new chats and the assistant. Each chat remembers "
                         + "its own choice, so changing this never changes an existing chat. "
-                        + "Orbit always uses exactly the model you choose.",
+                        + "Orbit always uses exactly the model you choose; only Auto chooses for you.",
                 12, UiKit.MUTED, false);
         defaultAiHelp.setLineSpacing(0, 1.12f);
         defaultAiHelp.setPadding(0, UiKit.dp(this, 7), 0, UiKit.dp(this, 4));
         aiCard.addView(defaultAiHelp);
+        aiCard.addView(autoProvidersRow());
         TextView cost = UiKit.text(this, "ChatGPT-account mode uses your account-backed allowance. Orbit never silently switches to the separately metered API-relay fallback.", 12, UiKit.MUTED, false);
         cost.setPadding(0, UiKit.dp(this, 8), 0, 0);
         aiCard.addView(cost);
@@ -2374,7 +2375,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         field.addView(arrow);
         field.setContentDescription("Default AI for new chats: " + defaultAiText());
         field.setOnClickListener(v -> AiSelectorDialog.show(this, "Default for new chats",
-                AiSelections.globalDefault(this), s -> "Use " + s.label(), chosen -> {
+                AiSelections.newChatSelection(this), s -> "Use " + s.label(), chosen -> {
                     AiSelections.setGlobalDefault(this, chosen);
                     value.setText(defaultAiText());
                     field.setContentDescription("Default AI for new chats: " + defaultAiText());
@@ -2384,8 +2385,39 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     }
 
     private String defaultAiText() {
+        if (AiSelections.newChatsUseAuto(this)) return AiSelection.AUTO_LABEL;
         AiSelection s = AiSelections.globalDefault(this);
         return s.providerName() + " · " + s.label();
+    }
+
+    /**
+     * "Auto can use": one row opening Auto's provider switches. A summary of what is on, so the
+     * row says what Auto may spend through without opening it.
+     */
+    private LinearLayout autoProvidersRow() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(UiKit.dp(this, 2), UiKit.dp(this, 8), UiKit.dp(this, 2), UiKit.dp(this, 8));
+        row.setMinimumHeight(UiKit.dp(this, 52));
+        row.setBackground(UiKit.ripple(Color.TRANSPARENT, UiKit.accent(this), 14, this));
+        LinearLayout words = new LinearLayout(this);
+        words.setOrientation(LinearLayout.VERTICAL);
+        words.addView(UiKit.text(this, "Auto can use", 15, UiKit.TEXT, true));
+        TextView summary = UiKit.text(this, AutoPermissions.summary(this), 12, UiKit.MUTED, false);
+        summary.setPadding(0, UiKit.dp(this, 3), 0, 0);
+        words.addView(summary);
+        row.addView(words, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        TextView arrow = UiKit.text(this, "›", 24, UiKit.accent(this), false);
+        arrow.setPadding(UiKit.dp(this, 10), 0, UiKit.dp(this, 4), 0);
+        row.addView(arrow);
+        row.setContentDescription("Auto can use: " + AutoPermissions.summary(this));
+        row.setOnClickListener(v -> AutoSheets.showSettings(this, () -> {
+            summary.setText(AutoPermissions.summary(this));
+            row.setContentDescription("Auto can use: " + AutoPermissions.summary(this));
+        }));
+        UiKit.pressScale(row);
+        return row;
     }
 
     private LinearLayout menuSelector(String[] labels, int selectedIndex,

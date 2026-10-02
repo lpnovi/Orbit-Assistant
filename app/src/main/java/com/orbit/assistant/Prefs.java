@@ -27,6 +27,20 @@ public final class Prefs {
     public static final String AI_MODEL_RECENTS = "ai_model_recents";
     /** JSON object of the last explicitly chosen model per provider. */
     public static final String AI_PROVIDER_DEFAULTS = "ai_provider_defaults";
+    /**
+     * True when new chats start on Auto (0.8.3.0-beta.5+). The explicit default above is kept
+     * either way: it is what planning and other non-chat work use, and what a chat leaving Auto
+     * falls back to. False unless the user chooses Auto as the default.
+     */
+    public static final String AI_DEFAULT_AUTO = "ai_default_auto";
+    /** Whether Auto may route to a provider (0.8.3.0-beta.5+). See {@link AutoPermissions}. */
+    public static final String AUTO_USE_CHATGPT = "auto_use_chatgpt";
+    public static final String AUTO_USE_LOCAL = "auto_use_local";
+    /** Separately billed: off until the user turns them on, and never restored from a backup. */
+    public static final String AUTO_USE_ANTHROPIC = "auto_use_anthropic";
+    public static final String AUTO_USE_XAI = "auto_use_xai";
+    /** Set once the one-sheet Auto introduction has been shown. */
+    public static final String AUTO_INTRO_SEEN = "auto_intro_seen";
     public static final String PROVIDER = "provider";
     public static final String BACKEND_URL = "backend_url";
     public static final String BACKEND_TOKEN = "backend_token";
@@ -281,7 +295,11 @@ public final class Prefs {
             LELO_MODE, BACKGROUND_NOTIFICATIONS, WEATHER_USE_DEVICE_LOCATION,
             MEMORY_ENABLED, MEMORY_USAGE_INDICATOR, MEMORY_SUGGESTIONS,
             NOTIFICATION_AI_ENABLED, AMOLED_MODE, UPDATE_NOTIFICATIONS,
-            ENHANCED_CHAT_BACK, CHAT_SWIPE_ACTIONS, LOCAL_DEVICE_ACTIONS, VAULT_ENABLED));
+            ENHANCED_CHAT_BACK, CHAT_SWIPE_ACTIONS, LOCAL_DEVICE_ACTIONS, VAULT_ENABLED,
+            // Auto's non-metered permissions and the new-chat default travel with a backup. The
+            // Anthropic and xAI opt-ins deliberately do not: credentials never restore, and a key
+            // added later on another phone must not start spending through Auto by itself.
+            AI_DEFAULT_AUTO, AUTO_USE_CHATGPT, AUTO_USE_LOCAL));
     // The Pro styling keys are backed up with the rest of the appearance. They describe a theme
     // the person built, not an entitlement: restoring them onto a Free device stores values that
     // simply do not draw, and restoring them onto a Pro one gives somebody their theme back.

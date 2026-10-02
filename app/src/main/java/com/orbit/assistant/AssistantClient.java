@@ -344,6 +344,40 @@ public final class AssistantClient {
                             boolean explicitAttachment, String trustedTaskContext,
                             KeptContext.Prepared kept,
                             java.util.function.BooleanSupplier cancelled, Callback callback) {
+        send(context, prompt, screenText, images, history, selection, explicitAttachment,
+                trustedTaskContext, kept, cancelled, Routing.EXPLICIT, callback);
+    }
+
+    /**
+     * How one turn's selection was arrived at (0.8.3.0-beta.5+). An explicit turn is the user's own
+     * choice. An Auto turn arrives here already routed to an exact selection; it does not count as
+     * the user choosing that model, so it never enters Recents. An Auto turn that could not be
+     * routed carries the router's explanation instead, and no provider is asked anything.
+     */
+    static final class Routing {
+        static final Routing EXPLICIT = new Routing(false, "");
+
+        final boolean auto;
+        final String error;
+
+        Routing(boolean auto, String error) {
+            this.auto = auto;
+            this.error = error == null ? "" : error;
+        }
+
+        static Routing of(PendingRequestStore.Item item) {
+            if (item == null || item.route == null) return EXPLICIT;
+            return new Routing(true, item.route.error);
+        }
+    }
+
+    /** The full entry point: the same, with how the turn's selection was arrived at. */
+    static void send(Context context, String prompt, String screenText, List<Bitmap> images,
+                     List<History> history, AiSelection selection,
+                     boolean explicitAttachment, String trustedTaskContext,
+                     KeptContext.Prepared kept,
+                     java.util.function.BooleanSupplier cancelled, Routing routing,
+                     Callback callback) {
         // Every answer in Orbit leaves through this callback - the deterministic routers below,
         // Orbit Local, and whichever cloud provider is active - so this is where the reply's prose
         // is checked against what has actually been done. A protected dial that is about to be put
@@ -437,7 +471,7 @@ public final class AssistantClient {
         final Runnable continueToProvider = () -> sendToProvider(context, prompt, screenText,
                 requestImages, history, selection, explicitAttachment, trustedTaskContext,
                 kept,
-                cancelled, resolvedNotificationContext, cb);
+                cancelled, resolvedNotificationContext, routing, cb);
 
         // The last stop before the network. When Orbit Local's action model is installed and
         // enabled, and the message already reads as an instruction about something Orbit can
@@ -465,7 +499,7 @@ public final class AssistantClient {
                                        String trustedTaskContext,
                                        KeptContext.Prepared kept,
                                        java.util.function.BooleanSupplier cancelled,
-                                       String notificationContext, Callback cb) {
+                                       String notificationContext, Routing routing, Callback cb) {
         final Bitmap screenshot = images == null || images.isEmpty() ? null : images.get(0);
         final MemoryStore.Selection memorySelection =
                 MemoryStore.select(context, prompt, screenText, history);
@@ -474,9 +508,16 @@ public final class AssistantClient {
         final Callback responseCallback = decorateMemoryMetadata(
                 cb, memorySelection, memorySuggestion);
 
-        // Resolved once, here, and then sent as it is. There is no routing: the model the user
-        // selected is the model this turn goes to, whatever the question looks like.
+        // Resolved once, here, and then sent as it is. There is no routing here: the model the user
+        // selected, or the one Auto chose when the request was queued, is the model this turn goes
+        // to. An Auto selection that reaches this point unrouted is refused rather than guessed at,
+        // so nothing can ever be sent to a provider nobody chose.
         final AiSelection resolved = AiSelections.resolve(selection);
+        if (resolved.isAuto()) {
+            cb.onError(routing != null && !routing.error.isEmpty() ? routing.error
+                    : "Auto did not choose a model for this request." + SmartRouter.HINT);
+            return;
+        }
         AiModelSpec selectedModel = OrbitModelCatalog.spec(resolved.provider, resolved.model);
         if (selectedModel == null || !selectedModel.selectable()) {
             cb.onError(OrbitModelCatalog.unavailableMessage(resolved.model));
@@ -491,9 +532,10 @@ public final class AssistantClient {
                     + " cannot read images. Choose a vision-capable model or remove the image.");
             return;
         }
-        // Only a validated ordinary conversation dispatch records Recents. Titles, summaries,
-        // catalog jobs, unsupported attachment attempts, and Smart Vault completions never do.
-        ModelLibraryStore.recordRecent(context, resolved);
+        // Only a validated ordinary conversation dispatch the user chose explicitly records Recents.
+        // Titles, summaries, catalog jobs, unsupported attachment attempts, Smart Vault completions
+        // and Auto-routed turns never do.
+        if (routing == null || !routing.auto) ModelLibraryStore.recordRecent(context, resolved);
 
         // Thinking updates are decided once, here, and then travel with the request. Reading the
         // preference again inside a provider would let a setting change mid-flight alter a turn

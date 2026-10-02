@@ -181,7 +181,7 @@ public final class ConversationStore {
         // Read before the store is: a first-ever call may run the one-time selection migration, which
         // rewrites the store, and reading afterwards keeps this save from undoing it. A new chat is
         // pinned to the default it started under, so changing the default later leaves it alone.
-        AiSelection startingSelection = AiSelections.globalDefault(c);
+        AiSelection startingSelection = AiSelections.newChatSelection(c);
         List<Conversation> all = readAll(c);
         String wantedId = id == null || id.isEmpty() ? newId() : id;
         Conversation existing = null;

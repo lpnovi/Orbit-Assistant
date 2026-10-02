@@ -29,6 +29,7 @@ Both surfaces share conversation history, appearance, preferences, and the actio
 | `CHANGELOG.md` | Canonical version-by-version history (also the source of release notes) |
 | `ROADMAP.md` | Completed and future direction, surfaced in-app via `RoadmapActivity` |
 | `docs/EXTENSIONS.md` | Public Extensions v1/v2 schema and security model |
+| `docs/MODEL_LIBRARY.md`, `docs/SMART_ROUTING.md` | Provider/model catalog rules, and Auto's routing invariants |
 | `docs/PLAY_STORE.md` | Google Play edition: build, signing, versioning, policy (plus `PLAY_CONSOLE_CHECKLIST.md`, `PLAY_LISTING_DRAFT.md`) |
 | `app/src/github/`, `app/src/play/`, `app/src/testPlay/` | Per-channel `OrbitEdition`, Play manifest/resource overlays, Play-variant tests |
 | `server/` | Optional private OpenAI API relay (Flask + Dockerfile), not part of the APK |
@@ -158,9 +159,10 @@ code, and never let the Play edition install Orbit Local. See `docs/PLAY_STORE.m
   background completion), `ConversationStore`, `PendingRequestStore`.
 - **AI selection (0.8.3.0+)** — provider → model → strength. `OrbitModelCatalog` (`AiModelSpec`,
   `AiStrength`) holds model facts; `AiSelections` is the one validation/resolution/migration
-  layer; `AiSelection` is what chats, pending requests and `AiRequest` carry. There is no routing:
-  never add per-request model choice outside `AiSelections`. Intelligence modes and `AutoRouter`
-  were removed; legacy `model`/`reasoning`/`intelligence_mode` keys are read once by migration.
+  layer; `AiSelection` is what chats, pending requests and `AiRequest` carry. An explicit
+  selection is never routed: never add per-request model choice outside `AiSelections` and
+  `SmartRouter`. Intelligence modes and `AutoRouter` were removed and must not return;
+  legacy `model`/`reasoning`/`intelligence_mode` keys are read once by migration.
   ChatGPT exposes GPT-6 Luna, GPT-6.1 Sol, GPT-6 Astra and GPT-5.6 Luna/Terra/Sol through this one
   catalog; do not reproduce their ids, strengths or context metadata in a surface.
 - **Model Library (0.8.3.0-beta.4+)**: `AiModelSpec` is also the authority for context size,
@@ -172,6 +174,16 @@ code, and never let the Play edition install Orbit Local. See `docs/PLAY_STORE.m
   `SecureStore`, are never backed up, logged, diagnosed, shown again or passed across providers.
   Requests go through `ProviderRequestMapper` and `ApiKeyProviderClient`; do not add their shapes to
   `ChatGptClient`. See `docs/MODEL_LIBRARY.md`.
+- **Smart Routing / Auto (0.8.3.0-beta.5+)** — `AiSelection.AUTO` (`1|auto|auto|`) is a per-chat
+  selection, never dispatchable. `SmartRouter` is the only router: local, deterministic, a curated
+  7-model candidate set, eligibility then selection, `POLICY_VERSION`. It is called only from
+  `OrbitRequestManager.enqueueFrozen`; the exact result is frozen on `PendingRequestStore.Item`
+  (`selection` + `route`), the worker passes `AssistantClient.Routing.of(item)` and never routes,
+  and `sendToProvider` refuses an unrouted Auto. Routed turns never `recordRecent`, and Auto never
+  becomes a provider default. `AutoPermissions`: ChatGPT/Local on, Anthropic/xAI off by default;
+  only the user's switch writes them, `SecureStore.clear*Key` revokes, and the metered opt-ins are
+  not in backup. `globalDefault` stays explicit; `newChatSelection` adds the optional Auto default.
+  Titles, summaries and Smart Vault keep their fixed selections. See `docs/SMART_ROUTING.md`.
 - **Conversation titles (0.8.3.0-beta.2+)** — `ConversationStore` owns durable default/automatic/
   manual/legacy title state and the compare-and-set job token. `ConversationTitleManager` schedules
   one invisible WorkManager job after the first persisted successful exchange;

@@ -57,6 +57,14 @@ public final class PendingRequestStore {
          * after a process death still lands on the answer the user retried.
          */
         public final String variantTarget;
+        /**
+         * How Auto chose this request's selection (0.8.3.0-beta.5+), or null for a request sent with
+         * an explicit selection. When present, {@link #selection} is the exact provider, model and
+         * strength Auto resolved when the request was queued, and the worker sends exactly that:
+         * nothing re-routes a queued request. A route whose {@code error} is set means Auto found no
+         * permitted model, and the worker reports that error without sending anything.
+         */
+        public final SmartRouter.Route route;
 
         public Item(String id, String conversationId, String prompt, String screenText, String screenshotPath,
                     String status, String error, long createdAt, long updatedAt, boolean voiceRequest, boolean draftReply,
@@ -95,6 +103,18 @@ public final class PendingRequestStore {
                     long updatedAt, boolean voiceRequest, boolean draftReply,
                     AiSelection selection, boolean explicitAttachment, String trustedTaskContext,
                     boolean committed, String variantTarget) {
+            this(id, conversationId, prompt, screenText, screenshotPaths, status, error,
+                    createdAt, updatedAt, voiceRequest, draftReply, selection, explicitAttachment,
+                    trustedTaskContext, committed, variantTarget, null);
+        }
+
+        /** The full constructor, with how Auto routed the request when it did. */
+        public Item(String id, String conversationId, String prompt, String screenText,
+                    List<String> screenshotPaths, String status, String error, long createdAt,
+                    long updatedAt, boolean voiceRequest, boolean draftReply,
+                    AiSelection selection, boolean explicitAttachment, String trustedTaskContext,
+                    boolean committed, String variantTarget, SmartRouter.Route route) {
+            this.route = route;
             this.committed = committed;
             this.variantTarget = variantTarget == null ? "" : variantTarget.trim();
             this.id = id;
@@ -135,6 +155,12 @@ public final class PendingRequestStore {
             String[] parts = variantTarget.split(VARIANT_SEPARATOR, -1);
             return parts.length == 3 ? parts[2] : "";
         }
+
+        /** True when Auto chose this request's selection. */
+        public boolean autoRouted() { return route != null; }
+
+        /** What the user asked for: Auto for a routed request, otherwise the exact selection. */
+        public AiSelection requestedSelection() { return route != null ? AiSelection.AUTO : selection; }
     }
 
     /** A literal "|", as a regular expression. */
@@ -177,11 +203,24 @@ public final class PendingRequestStore {
                                     List<String> screenshotPaths, boolean voiceRequest, boolean draftReply,
                                     AiSelection selection, boolean explicitAttachment,
                                     String trustedTaskContext, String variantTarget) {
+        return create(c, conversationId, prompt, screenText, screenshotPaths, voiceRequest,
+                draftReply, selection, explicitAttachment, trustedTaskContext, variantTarget, null);
+    }
+
+    /**
+     * Queues a request with its selection frozen. For an Auto request {@code selection} is what
+     * Auto resolved and {@code route} records that it did; an explicit request passes null.
+     */
+    static synchronized Item create(Context c, String conversationId, String prompt, String screenText,
+                                    List<String> screenshotPaths, boolean voiceRequest, boolean draftReply,
+                                    AiSelection selection, boolean explicitAttachment,
+                                    String trustedTaskContext, String variantTarget,
+                                    SmartRouter.Route route) {
         long now = System.currentTimeMillis();
         Item item = new Item(UUID.randomUUID().toString(), conversationId, prompt == null ? "" : prompt,
                 screenText == null ? "" : screenText, screenshotPaths,
                 QUEUED, "", now, now, voiceRequest, draftReply, selection, explicitAttachment,
-                trustedTaskContext, false, variantTarget);
+                trustedTaskContext, false, variantTarget, route);
         List<Item> all = readAll(c);
         all.add(0, item);
         trim(all);
@@ -276,7 +315,7 @@ public final class PendingRequestStore {
             all.set(x, new Item(i.id, i.conversationId, i.prompt, i.screenText, i.screenshotPaths,
                     i.status, i.error, i.createdAt, System.currentTimeMillis(), i.voiceRequest,
                     i.draftReply, i.selection, i.explicitAttachment, i.trustedTaskContext,
-                    true, i.variantTarget));
+                    true, i.variantTarget, i.route));
             writeAll(c, all, true);
             return true;
         }
@@ -310,7 +349,8 @@ public final class PendingRequestStore {
             if (!i.id.equals(id)) continue;
             all.set(x, new Item(i.id, i.conversationId, i.prompt, i.screenText, i.screenshotPaths,
                     status, error, i.createdAt, now, i.voiceRequest, i.draftReply,
-                    i.selection, i.explicitAttachment, i.trustedTaskContext, i.committed, i.variantTarget));
+                    i.selection, i.explicitAttachment, i.trustedTaskContext, i.committed, i.variantTarget,
+                    i.route));
             break;
         }
         trim(all);
@@ -330,15 +370,17 @@ public final class PendingRequestStore {
             JSONArray arr = new JSONArray(p.getString(KEY, "[]"));
             for (int x=0; x<arr.length(); x++) {
                 JSONObject o = arr.optJSONObject(x); if (o == null) continue;
+                AiSelection stored = readSelection(c, o);
                 result.add(new Item(o.optString("id"), o.optString("conversationId"), o.optString("prompt"),
                         o.optString("screenText"), readScreenshotPaths(o), o.optString("status", QUEUED),
                         o.optString("error"), o.optLong("createdAt"), o.optLong("updatedAt"),
                         o.optBoolean("voiceRequest"), o.optBoolean("draftReply"),
-                        readSelection(c, o),
+                        stored,
                         o.optBoolean("explicitAttachment", false),
                         o.optString("trustedTaskContext", ""),
                         o.optBoolean("committed", false),
-                        o.optString("variantTarget", "")));
+                        o.optString("variantTarget", ""),
+                        SmartRouter.Route.fromJson(o.optJSONObject("route"), stored)));
             }
         } catch (Exception ignored) {}
         return result;
@@ -401,6 +443,9 @@ public final class PendingRequestStore {
                         .put("committed", i.committed));
                 // Only for a retry, so an ordinary request's record is exactly what it was.
                 if (!i.variantTarget.isEmpty()) arr.getJSONObject(arr.length() - 1).put("variantTarget", i.variantTarget);
+                // Only for an Auto request: what was asked for, why this route, and the policy that
+                // chose it. The exact selection itself is the aiSelection above.
+                if (i.route != null) arr.getJSONObject(arr.length() - 1).put("route", i.route.toJson());
             }
         } catch (Exception ignored) {}
         SharedPreferences.Editor edit = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)

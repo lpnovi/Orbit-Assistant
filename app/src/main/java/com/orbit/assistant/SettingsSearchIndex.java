@@ -271,7 +271,9 @@ public final class SettingsSearchIndex {
                 "Provider, model and strength new chats start with.",
                 S_AI, "ai", KEY_DEFAULT_AI,
                 "model", "ai model", "provider", "strength", "reasoning", "effort", "default",
-                "gpt", "gpt-6", "luna", "sol", "astra", "low", "medium", "high", "max"));
+                "gpt", "gpt-6", "luna", "sol", "astra", "low", "medium", "high", "max",
+                // Auto and its provider switches live in the same card.
+                "auto", "smart routing", "routing", "auto can use"));
         out.add(new Entry("Thinking updates",
                 "Brief status while Orbit prepares an answer.",
                 S_AI, "ai", KEY_THINKING_UPDATES,

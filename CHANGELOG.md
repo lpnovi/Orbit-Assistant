@@ -842,6 +842,12 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.3.0-beta.5**: Smart Routing: Auto is back, and you decide what it may use.
+  - Choose Auto and Orbit picks the model and reasoning level for each message, based on its length, images, documents and how much context it needs.
+  - Picking a specific model still means exactly that model, every time.
+  - Auto uses ChatGPT and Orbit Local by default. Anthropic and xAI stay off until you switch them on, because they use your API credits.
+  - Response details show what Auto chose and a short reason why.
+  - Auto works per chat, from the assistant overlay, and with Send with and Retry with.
 - **v0.8.3.0-beta.4**: Model Library brings Claude and Grok to Orbit without crowding normal chat.
   - Connect an Anthropic or xAI developer API key through AI Providers. Keys are Android Keystore-encrypted, never shown again, and excluded from backups.
   - Browse a searchable provider-aware Model Library, favorite models, and quickly reuse a small deduplicated Recent list across providers.
