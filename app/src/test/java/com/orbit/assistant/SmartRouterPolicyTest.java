@@ -390,7 +390,10 @@ public final class SmartRouterPolicyTest {
     // ---- the curated set -------------------------------------------------------------------------
 
     @Test public void theCandidateSetIsSmallCuratedAndCurrent() {
-        assertEquals(7, SmartRouter.CANDIDATES.size());
+        // Policy 2 (0.8.3.0-beta.6): Beta 5's seven, the three GPT-5.6 models, and four exact
+        // OpenRouter routes. Never OpenRouter Auto, and never anything merely listed by a catalog.
+        assertEquals(14, SmartRouter.CANDIDATES.size());
+        assertFalse(SmartRouter.isCandidate(Prefs.PROVIDER_OPENROUTER, OrbitModelCatalog.OPENROUTER_AUTO));
         for (SmartRouter.Candidate c : SmartRouter.CANDIDATES) {
             AiModelSpec spec = OrbitModelCatalog.spec(c.provider, c.model);
             assertNotNull(c.model + " must be in the trusted catalog", spec);

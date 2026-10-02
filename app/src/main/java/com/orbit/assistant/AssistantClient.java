@@ -518,6 +518,9 @@ public final class AssistantClient {
                     : "Auto did not choose a model for this request." + SmartRouter.HINT);
             return;
         }
+        // A background worker can start in a fresh process: the last-known-good provider catalogs
+        // are read first, so a model only the live catalog lists is not mistaken for a missing one.
+        ProviderCatalogRepository.loadCached(context);
         AiModelSpec selectedModel = OrbitModelCatalog.spec(resolved.provider, resolved.model);
         if (selectedModel == null || !selectedModel.selectable()) {
             cb.onError(OrbitModelCatalog.unavailableMessage(resolved.model));

@@ -842,6 +842,12 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.3.0-beta.6**: OpenRouter Connect: sign in with OpenRouter and use its large model catalog in Orbit.
+  - Sign in with OpenRouter through your browser. No need to create or paste a key, though API keys still work for advanced users.
+  - OpenRouter's models appear in the Model Library, searchable by name, maker or model ID, and clearly marked apart from direct ChatGPT, Claude and Grok.
+  - OpenRouter usage is billed to your OpenRouter credits. Auto never uses it unless you switch it on in Auto settings.
+  - Auto can now choose GPT-5.6 models when they suit a request better, for example when a newer model is unavailable on your account.
+  - Searched answers that end with a source link now show it as a tappable source instead of a code block.
 - **v0.8.3.0-beta.5**: Smart Routing: Auto is back, and you decide what it may use.
   - Choose Auto and Orbit picks the model and reasoning level for each message, based on its length, images, documents and how much context it needs.
   - Picking a specific model still means exactly that model, every time.

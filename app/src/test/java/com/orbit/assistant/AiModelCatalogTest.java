@@ -167,10 +167,24 @@ public final class AiModelCatalogTest {
         assertTrue(AiSelections.isValid(resolved));
     }
 
-    @Test public void openRouterHasNoModelsAndIsNeverASelection() {
-        assertTrue(OrbitModelCatalog.modelsFor(Prefs.PROVIDER_OPENROUTER).isEmpty());
-        assertEquals(Prefs.PROVIDER_CHATGPT, AiSelections.resolve(
-                AiSelection.of(Prefs.PROVIDER_OPENROUTER, "x", null)).provider);
+    /** 0.8.3.0-beta.6: OpenRouter is a real provider with a trusted offline baseline. */
+    @Test public void openRouterHasABaselineAndKeepsItsOwnSelections() {
+        List<AiModelSpec> models = OrbitModelCatalog.modelsFor(Prefs.PROVIDER_OPENROUTER);
+        assertFalse(models.isEmpty());
+        assertEquals("choosing OpenRouter starts on a known model, never the router",
+                OrbitModelCatalog.OR_GPT_6_LUNA, OrbitModelCatalog.defaultModel(
+                        Prefs.PROVIDER_OPENROUTER).id);
+        assertTrue(OrbitModelCatalog.supports(Prefs.PROVIDER_OPENROUTER, OrbitModelCatalog.OPENROUTER_AUTO));
+        AiSelection exact = AiSelections.resolve(AiSelection.of(Prefs.PROVIDER_OPENROUTER,
+                OrbitModelCatalog.OR_CLAUDE_SONNET_5_5, AiStrength.HIGH));
+        assertEquals(Prefs.PROVIDER_OPENROUTER, exact.provider);
+        assertEquals(OrbitModelCatalog.OR_CLAUDE_SONNET_5_5, exact.model);
+        // A slug the current catalog does not list is kept, so it can be reported unavailable
+        // rather than silently becoming another model.
+        AiSelection unknown = AiSelections.resolve(
+                AiSelection.of(Prefs.PROVIDER_OPENROUTER, "maker/retired-model", null));
+        assertEquals(Prefs.PROVIDER_OPENROUTER, unknown.provider);
+        assertEquals("maker/retired-model", unknown.model);
     }
 
     // ---- availability --------------------------------------------------------------------------

@@ -435,19 +435,19 @@ public final class OnboardingActivity extends Activity {
     }
 
     /**
-     * OpenRouter, described as what it actually is today.
-     *
-     * <p>Its key can be stored and its chat path deliberately does not run, so this says so
-     * plainly instead of presenting it as a provider a first-time user could pick and use.
+     * OpenRouter (0.8.3.0-beta.6+): a real optional provider, kept behind More provider options so
+     * ChatGPT and Orbit Local stay the first choices. Connecting happens in AI Providers, where
+     * Sign in with OpenRouter lives; nothing here connects anything on the user's behalf.
      */
     private LinearLayout openRouterCard() {
         AiProvider provider = AiProviders.byId(Prefs.PROVIDER_OPENROUTER);
         LinearLayout card = card();
-        card.addView(providerHeading(provider.displayName(), "Experimental"));
-        card.addView(providerStatusLine(false, provider.statusDetail(this)));
+        card.addView(providerHeading(provider.displayName(), "Optional"));
+        boolean ready = provider.status(this) == AiProvider.Status.READY;
+        card.addView(providerStatusLine(ready, provider.statusDetail(this)));
         addCardDescription(card,
-                "Setup only for now. An OpenRouter key can be saved securely, but Orbit cannot use it for chat yet, so it is not selectable as a provider.");
-        Button manage = secondaryButton("Open provider settings");
+                "Many AI models through one OpenRouter account. Usage is billed to your OpenRouter credits, separately from ChatGPT. Sign in any time from AI Providers.");
+        Button manage = secondaryButton(ready ? "Open provider settings" : "Set up OpenRouter");
         manage.setOnClickListener(v -> startActivity(new Intent(this, AiProvidersActivity.class)));
         card.addView(manage, new LinearLayout.LayoutParams(-1, UiKit.dp(this, 46)));
         return card;

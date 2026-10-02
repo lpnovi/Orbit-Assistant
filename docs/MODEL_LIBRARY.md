@@ -82,7 +82,64 @@ other provider. Removing a key immediately makes that provider require setup aga
 
 Beta 4 does not add arbitrary provider endpoints, user-defined providers, Fusion or judge
 synthesis, benchmark rankings, pricing comparisons, or a broad chat redesign.
-OpenRouter chat remains deferred until it can be validated with a configured account.
+
+## OpenRouter (Beta 6)
+
+**Connection.** *Sign in with OpenRouter* is the primary path: OpenRouter's documented OAuth PKCE
+flow (`https://openrouter.ai/auth` with an S256 `code_challenge`, then `POST /api/v1/auth/keys` with
+the `code_verifier`), returning a user-controlled OpenRouter API key. `OpenRouterAuth` owns it:
+
+- a fresh 86-character verifier and 256-bit state per attempt, from `SecureRandom`, in memory only;
+- the callback is `http://localhost:<ephemeral port>/orbit/openrouter/<state>` (a documented
+  OpenRouter callback form). OpenRouter documents no `state` parameter, so the state travels in the
+  path and must match exactly, compared in constant time;
+- the receiver binds to `127.0.0.1` (and `::1` on the same port when available) only for the
+  transaction, closes on success, failure, cancel, replacement and after ten minutes (OpenRouter's
+  code lifetime), and claims a code atomically so it is exchanged at most once;
+- the key goes straight into `SecureStore`; nothing is logged, shown, backed up, or put in
+  diagnostics, chats or Response Details.
+
+*Use API key instead* remains as the advanced fallback and is how keys saved before Beta 6 arrived.
+Both share one encrypted slot, so a Beta 5 key keeps working untouched; the provider card says
+*Connected with OpenRouter* or *Connected with API key* (a key with no recorded source is an API
+key). *Disconnect* removes the key, its source and OpenRouter's Auto permission, and keeps chats,
+their answers and Favorites.
+
+**Catalog.** `ProviderCatalogRepository` reads the account-filtered `GET /api/v1/models/user` when
+the key may, otherwise the public `GET /api/v1/models`, checks connections with `GET /api/v1/key`,
+and caches a bounded (800) last-known-good list in the no-backup files directory. A failed or empty
+refresh never erases it; a model that disappears is kept as an unavailable historical entry; a
+trusted baseline (OpenRouter Auto plus Auto's four curated slugs) covers a phone that has never
+refreshed. Only chat models are kept: text in and text out only (no image generators, embeddings
+or audio models), no `:batch` variants, and from OpenRouter's own namespace only OpenRouter Auto
+(Fusion, Free and other routers are excluded). Capabilities come only from structured fields:
+images from `architecture.input_modalities`, the window from `context_length`, strengths only from
+`reasoning.supported_efforts` (when `supported_parameters` lists `reasoning`; `minimal` has no
+Orbit equivalent and is dropped), retirement from `expiration_date`. Nothing is inferred from a
+model's name. Tools, web search and native file input stay false: Orbit sends none of them to
+OpenRouter, and PDFs reach OpenRouter models as Orbit-extracted text. OpenRouter Auto has no fixed
+window and no strengths, because its downstream model varies.
+
+**Route identity.** A model reached directly and the same model through OpenRouter are different
+routes: `anthropic/claude-sonnet-5.5` on provider `openrouter` is not `claude-sonnet-5-5` on
+provider `anthropic`. Favorites, Recents, provider defaults and per-chat selections all key on
+provider plus model id, labels add *· OpenRouter*, and Model Library rows lead with
+*OpenRouter · Anthropic*.
+
+**Scale.** The quick picker still shows Favorites, a few Recents and at most six of a provider's
+models (Auto's curated routes, then OpenRouter Auto; choosing OpenRouter starts on GPT-6 Luna, never on the router). Browse Models searches every word against
+name, maker, route and slug, has Vision and Reasoning filters, and builds at most 60 rows, with a
+"Showing 60 of N" line.
+
+**Requests.** OpenRouter uses the OpenAI-compatible Chat Completions shape through
+`ProviderRequestMapper.openRouter` and `ApiKeyProviderClient` (never `ChatGptClient`). It sends
+`reasoning.effort` (with `exclude: true`) only when the model lists that effort, images only to
+vision models, and no tools. The stream reader skips keep-alive comments, treats a mid-stream
+`error` chunk as an error, stops reading on Stop (closing the stream cancels the request and its
+billing on providers that support it), and keeps the reported `model` so OpenRouter Auto answers
+can show what actually answered. Errors (401 per connection type, 402 credits, 403, 404, 408, 413
+or context length, 429, 502, 503, unsupported attachments) become one plain sentence without the
+server's body. OpenRouter models do not run Orbit's device actions.
 
 Beta 5 adds Auto on top of this library without changing it: see `docs/SMART_ROUTING.md`. Auto
 routes only to a small curated subset of these models, never to a model merely because an account

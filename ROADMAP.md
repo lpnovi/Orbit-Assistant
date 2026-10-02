@@ -607,6 +607,30 @@ Orbit permission to choose, and it is a choice the user makes, never a fallback.
 - **No pollution.** Auto's choices never enter Recents, and titles, summaries and other internal
   jobs keep their fixed small policy
 
+#### `0.8.3.0-beta.6` - OpenRouter Connect and Smart Routing 1.1
+
+- **Sign in with OpenRouter.** OpenRouter's documented OAuth PKCE flow in the system browser, with a
+  loopback callback on a random port that exists only for one sign-in and carries a random state
+  in its path. The result is a user-controlled OpenRouter key in Android Keystore storage. Entering
+  an API key stays available as the advanced fallback, and keys saved by earlier versions keep
+  working without reconnecting
+- **A real provider.** OpenRouter models stream answers, appear in the Model Library, and work with
+  per-chat selection, Send with, Retry with, answer versions, branches and kept context. The same
+  model reached directly and through OpenRouter are distinct routes everywhere, including Favorites
+  and Recents
+- **A large catalog, kept manageable.** The account's OpenRouter catalog is filtered to chat models,
+  cached as last-known-good, searchable by name, maker or model ID, and filterable by vision and
+  reasoning. The quick picker stays short, and capabilities come only from OpenRouter's structured
+  metadata
+- **Billing stays explicit.** OpenRouter is billed to the user's OpenRouter credits and is off for
+  Auto until switched on; connecting never enables it, and disconnecting turns it back off
+- **Smart Routing 1.1 (policy 2).** GPT-5.6 Luna, Terra and Sol become Auto candidates with defined
+  roles, four exact OpenRouter models join as opt-in candidates, and a direct route is preferred
+  over the same tier through OpenRouter. OpenRouter Auto is offered only as an explicit model; Orbit
+  Auto never hands a request to it. Earlier answers keep their policy 1 record
+- **Cleaner sourced answers.** A source link the model wrapped in a plain-text code block now shows
+  as Orbit's normal source link, while real code blocks keep their Copy button
+
 #### Still ahead for AI Control
 
 - A visual branch tree
@@ -736,8 +760,6 @@ next.
   voice, recipe intelligence, food-safety care, and optional Orbit-managed timers with the system
   Clock app permanently kept as the default owner of timers
 - **Hands-busy help beyond cooking**: repairs, cleaning, assembly, and other guided tasks
-- **OpenRouter chat**, deferred until there is a configured account to validate it against. The
-  secure setup groundwork and Keystore-only key storage remain intact
 - **Hybrid Auto**: an optional, clearly labelled mode that could choose between Orbit Local and the
   cloud from capability and availability. Since `0.8.3.0-beta.1` nothing routes on the user's behalf,
   and any such mode would have to show which model answered

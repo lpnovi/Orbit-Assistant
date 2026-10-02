@@ -52,11 +52,38 @@ final class ProviderRequestMapper {
         return root;
     }
 
+    /**
+     * OpenRouter's OpenAI-compatible chat completion (0.8.3.0-beta.6+). Only parameters the chosen
+     * model's catalog entry vouches for are sent: {@code reasoning.effort} only when the model lists
+     * supported efforts and the selection carries one of them, images only for a model whose input
+     * modalities include images (handled in {@link #messages}), and never tools or web search.
+     * OpenRouter Auto gets no reasoning parameter: its downstream model varies.
+     */
+    static JSONObject openRouter(Context c, AiRequest request, boolean stream) throws Exception {
+        JSONObject root = new JSONObject();
+        root.put("model", request.selection.model);
+        root.put("stream", stream);
+        JSONArray messages = new JSONArray();
+        messages.put(new JSONObject().put("role", "system").put("content", system(request)));
+        JSONArray mapped = messages(c, request, false);
+        for (int i = 0; i < mapped.length(); i++) messages.put(mapped.get(i));
+        root.put("messages", messages);
+        AiModelSpec spec = OrbitModelCatalog.spec(Prefs.PROVIDER_OPENROUTER, request.selection.model);
+        if (spec != null && spec.supports(request.selection.strength)) {
+            root.put("reasoning", new JSONObject().put("effort", request.selection.effortId())
+                    // Orbit shows only the answer; it never asks for or stores model reasoning.
+                    .put("exclude", true));
+        }
+        return root;
+    }
+
     static JSONObject simple(String provider, AiSelection selection, String system,
                              String prompt) throws Exception {
         AiRequest request = AiRequest.builder().prompt(prompt).selection(selection).build();
         JSONObject root = Prefs.PROVIDER_ANTHROPIC.equals(provider)
-                ? anthropic(null, request, false) : xai(null, request, false);
+                ? anthropic(null, request, false)
+                : Prefs.PROVIDER_OPENROUTER.equals(provider)
+                ? openRouter(null, request, false) : xai(null, request, false);
         if (Prefs.PROVIDER_ANTHROPIC.equals(provider)) root.put("system", system);
         else root.getJSONArray("messages").getJSONObject(0).put("content", system);
         return root;

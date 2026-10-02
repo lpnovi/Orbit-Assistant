@@ -68,7 +68,7 @@ You sign in to ChatGPT in your browser, on OpenAI's own sign-in page. **Orbit ne
 
 Anthropic and xAI developer API keys are encrypted with provider-specific keys held by Android Keystore. Orbit never shows a saved key again, sends it to another provider, or includes it in a backup. If secure storage is unavailable, Orbit refuses to save the key rather than falling back to plaintext.
 
-Secret values you enter for Extensions are also encrypted with Android Keystore, as is an OpenRouter key if you enter one on its setup screen. OpenRouter chat is not currently available, so nothing is sent to OpenRouter. A private-relay access token is encrypted the same way where possible; if Android Keystore storage fails on a device, it falls back to Orbit's private app storage.
+Secret values you enter for Extensions are also encrypted with Android Keystore, as is your OpenRouter key. You connect OpenRouter by signing in on OpenRouter's own page in your browser (Orbit never sees your OpenRouter password; OpenRouter gives Orbit a key you control and can revoke in your OpenRouter account) or by entering a key yourself. When you use an OpenRouter model, your request and the context you chose are sent to OpenRouter, which passes them to the company serving that model and bills your OpenRouter account. Disconnecting OpenRouter in Orbit removes the key from your phone. A private-relay access token is encrypted the same way where possible; if Android Keystore storage fails on a device, it falls back to Orbit's private app storage.
 
 Credentials are never included in Orbit backups. That covers your ChatGPT sign-in, Anthropic and xAI API keys, the private-relay access token, an OpenRouter key, and any secret values you entered for Extensions.
 

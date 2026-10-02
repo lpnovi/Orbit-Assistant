@@ -39,6 +39,8 @@ public final class Prefs {
     /** Separately billed: off until the user turns them on, and never restored from a backup. */
     public static final String AUTO_USE_ANTHROPIC = "auto_use_anthropic";
     public static final String AUTO_USE_XAI = "auto_use_xai";
+    /** OpenRouter spends OpenRouter credits: off until switched on, never restored (0.8.3.0-beta.6+). */
+    public static final String AUTO_USE_OPENROUTER = "auto_use_openrouter";
     /** Set once the one-sheet Auto introduction has been shown. */
     public static final String AUTO_INTRO_SEEN = "auto_intro_seen";
     public static final String PROVIDER = "provider";

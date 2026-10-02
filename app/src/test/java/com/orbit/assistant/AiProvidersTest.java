@@ -53,12 +53,16 @@ public final class AiProvidersTest {
         assertEquals(Prefs.PROVIDER_XAI, AiProviders.byId(Prefs.PROVIDER_XAI).id());
     }
 
-    @Test public void openRouterIsAShellAndCannotBecomeActive() {
+    /** 0.8.3.0-beta.6: OpenRouter is a selectable provider that asks to be connected first. */
+    @Test public void openRouterIsARealProviderThatNeedsConnecting() {
         AiProvider openRouter = AiProviders.byId(Prefs.PROVIDER_OPENROUTER);
-        assertFalse("the shell must not be selectable", openRouter.selectable(context));
-        assertFalse(AiProviders.select(context, Prefs.PROVIDER_OPENROUTER));
-        assertEquals("a refused selection must not change the stored provider",
-                Prefs.PROVIDER_CHATGPT, Prefs.provider(context));
+        assertTrue(openRouter.selectable(context));
+        assertEquals(AiProvider.Status.NEEDS_SETUP, openRouter.status(context));
+        assertEquals("Not connected", openRouter.statusDetail(context));
+        assertFalse("OpenRouter models do not run Orbit's device actions",
+                openRouter.capabilities().deviceActions);
+        assertFalse("Orbit does not invoke OpenRouter web search",
+                openRouter.capabilities().hostedWebSearch);
     }
 
     @Test public void orbitLocalWithoutItsModelCannotBeOrStayActive() {
@@ -142,7 +146,7 @@ public final class AiProvidersTest {
         error.set(null);
         AiProviders.byId(Prefs.PROVIDER_OPENROUTER).send(context, request, callback);
         assertNotNull(error.get());
-        assertTrue(error.get().contains("not available yet"));
+        assertTrue(error.get().contains("OpenRouter is not connected"));
 
         error.set(null);
         AiProviders.byId(Prefs.PROVIDER_ANTHROPIC).send(context, request, callback);

@@ -63,12 +63,15 @@ public final class ThinkingUpdateProviderTest {
         }
     }
 
-    /** OpenRouter stays exactly where v0.7.7.7 left it: setup only, and not activated by this. */
-    @Test public void openRouterIsUnchangedAndStillNotSelectable() {
+    /**
+     * OpenRouter is a real provider since 0.8.3.0-beta.6, but it excludes reasoning from every
+     * request, so it never claims a reasoning summary it cannot show.
+     */
+    @Test public void openRouterNeverClaimsReasoningSummaries() {
         AiProvider openRouter = AiProviders.byId(Prefs.PROVIDER_OPENROUTER);
-        assertFalse(openRouter.selectable(context));
+        assertTrue(openRouter.selectable(context));
         assertFalse(openRouter.capabilities().reasoningSummaries);
-        assertEquals(AiProvider.Status.COMING_SOON, openRouter.status(context));
+        assertEquals(AiProvider.Status.NEEDS_SETUP, openRouter.status(context));
     }
 
     /** Orbit Local answers offline and says only what it is actually doing. */
@@ -218,14 +221,14 @@ public final class ThinkingUpdateProviderTest {
         assertEquals(RelayProvider.NOT_CONFIGURED_ERROR, error.get());
     }
 
-    @Test public void openRouterStillRefusesChatWithTheFeatureOn() {
+    @Test public void unconnectedOpenRouterRefusesChatWithTheFeatureOn() {
         Prefs.get(context).edit().putBoolean(Prefs.THINKING_UPDATES, true).commit();
         AtomicReference<String> error = new AtomicReference<>();
         AiRequest request = AiRequest.builder().prompt("x").thinkingUpdates(true).build();
         AiProviders.byId(Prefs.PROVIDER_OPENROUTER).send(context, request,
                 new AssistantClient.Callback() {
                     @Override public void onThinking(ThinkingUpdate update) {
-                        fail("a provider whose chat does not run must narrate nothing");
+                        fail("a provider that is not connected must narrate nothing");
                     }
                     @Override public void onSuccess(AssistantReply reply) { fail("unreachable"); }
                     @Override public void onError(String message) { error.set(message); }

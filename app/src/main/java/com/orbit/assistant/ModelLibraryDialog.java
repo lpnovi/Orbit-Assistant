@@ -22,12 +22,20 @@ import java.util.Locale;
 final class ModelLibraryDialog {
     interface OnChosen { void onChosen(AiSelection selection); }
 
+    /**
+     * Most rows built at once. OpenRouter alone lists hundreds of models; building a row for each
+     * on every keystroke would stall the dialog, so the rest are reached by searching.
+     */
+    static final int MAX_ROWS = 60;
+
     private final Context context;
     private final OnChosen chosen;
     private final LinearLayout results;
     private final EditText search;
     private String providerFilter = "";
     private boolean favoritesOnly;
+    private boolean visionOnly;
+    private boolean reasoningOnly;
     private AlertDialog dialog;
 
     static void show(Context context, AiSelection initial, OnChosen chosen) {
@@ -47,7 +55,7 @@ final class ModelLibraryDialog {
         int pad = UiKit.dp(context, 18);
         page.setPadding(pad, UiKit.dp(context, 4), pad, UiKit.dp(context, 8));
 
-        search.setHint("Search models or providers");
+        search.setHint("Search models, makers or IDs");
         search.setSingleLine(true);
         search.setTextColor(UiKit.TEXT);
         search.setHintTextColor(UiKit.MUTED);
@@ -57,11 +65,24 @@ final class ModelLibraryDialog {
         LinearLayout filters = new LinearLayout(context);
         filters.setOrientation(LinearLayout.HORIZONTAL);
         Button all = filter("All");
-        all.setOnClickListener(v -> { providerFilter = ""; favoritesOnly = false; rebuild(); });
+        all.setOnClickListener(v -> {
+            providerFilter = "";
+            favoritesOnly = false;
+            visionOnly = false;
+            reasoningOnly = false;
+            rebuild();
+        });
         filters.addView(all);
         Button favorites = filter("Favorites");
         favorites.setOnClickListener(v -> { favoritesOnly = true; rebuild(); });
         filters.addView(favorites);
+        // Two capability filters, each a toggle; they combine with the provider filter.
+        Button vision = filter("Vision");
+        vision.setOnClickListener(v -> { visionOnly = !visionOnly; rebuild(); });
+        filters.addView(vision);
+        Button reasoning = filter("Reasoning");
+        reasoning.setOnClickListener(v -> { reasoningOnly = !reasoningOnly; rebuild(); });
+        filters.addView(reasoning);
         for (AiProvider provider : AiSelections.pickableProviders(context)) {
             Button button = filter(provider.displayName());
             button.setOnClickListener(v -> {
@@ -102,14 +123,24 @@ final class ModelLibraryDialog {
     private void rebuild() {
         results.removeAllViews();
         String query = search.getText().toString().trim().toLowerCase(Locale.US);
+        java.util.Set<String> favoriteKeys = new java.util.HashSet<>();
+        for (AiSelection favorite : ModelLibraryStore.favorites(context)) {
+            favoriteKeys.add(favorite.provider + "/" + favorite.model);
+        }
         int count = 0;
+        int shown = 0;
         for (AiProvider provider : AiSelections.pickableProviders(context)) {
             if (!providerFilter.isEmpty() && !providerFilter.equals(provider.id())) continue;
             for (AiModelSpec spec : modelsForBrowse(provider.id())) {
-                if (favoritesOnly && !ModelLibraryStore.isFavorite(context, provider.id(), spec.id)) continue;
+                if (favoritesOnly && !favoriteKeys.contains(provider.id() + "/" + spec.id)) continue;
+                if (!passesCapabilities(spec, visionOnly, reasoningOnly)) continue;
                 if (!matches(spec, provider.displayName(), query)) continue;
-                results.addView(row(provider, spec));
                 count++;
+                // Count everything, build only the first rows: the list stays quick at any size.
+                if (shown < MAX_ROWS) {
+                    results.addView(row(provider, spec));
+                    shown++;
+                }
             }
         }
         if (count == 0) {
@@ -118,8 +149,24 @@ final class ModelLibraryDialog {
             empty.setPadding(0, UiKit.dp(context, 24), 0, UiKit.dp(context, 24));
             empty.setGravity(Gravity.CENTER);
             results.addView(empty);
+        } else if (count > shown) {
+            TextView more = UiKit.text(context, moreLabel(shown, count), 12.5f, UiKit.MUTED, false);
+            more.setPadding(0, UiKit.dp(context, 12), 0, UiKit.dp(context, 12));
+            more.setGravity(Gravity.CENTER);
+            results.addView(more);
         }
         UiKit.applyTypography(results);
+    }
+
+    /** "Showing 60 of 412 models. Search to find more." */
+    static String moreLabel(int shown, int total) {
+        return "Showing " + shown + " of " + total + " models. Search to find more.";
+    }
+
+    /** The Vision and Reasoning filters: only what the catalog states, never a guess. */
+    static boolean passesCapabilities(AiModelSpec spec, boolean visionOnly, boolean reasoningOnly) {
+        if (visionOnly && !spec.vision) return false;
+        return !reasoningOnly || spec.hasStrengths();
     }
 
     private List<AiModelSpec> modelsForBrowse(String provider) {
@@ -136,9 +183,14 @@ final class ModelLibraryDialog {
     static boolean matches(AiModelSpec spec, String providerName, String rawQuery) {
         String query = rawQuery == null ? "" : rawQuery.trim().toLowerCase(Locale.US);
         if (query.isEmpty()) return true;
+        // Name, family or maker ("Anthropic"), route ("OpenRouter") and the exact id or slug
+        // ("anthropic/claude-sonnet-5.5"), so a model can be found however the user knows it.
         String haystack = (spec.displayName + " " + spec.familyLabel + " "
-                + (providerName == null ? "" : providerName)).toLowerCase(Locale.US);
-        return haystack.contains(query);
+                + (providerName == null ? "" : providerName) + " " + spec.id).toLowerCase(Locale.US);
+        for (String word : query.split("\\s+")) {
+            if (!word.isEmpty() && !haystack.contains(word)) return false;
+        }
+        return true;
     }
 
     private View row(AiProvider provider, AiModelSpec spec) {
@@ -154,9 +206,15 @@ final class ModelLibraryDialog {
         LinearLayout words = new LinearLayout(context);
         words.setOrientation(LinearLayout.VERTICAL);
         words.addView(UiKit.text(context, spec.displayName, 15, UiKit.TEXT, true));
-        String contextLabel = spec.contextWindowTokens <= 0 ? "Context unknown"
+        boolean openRouterAuto = OrbitModelCatalog.OPENROUTER_AUTO.equals(spec.id);
+        String contextLabel = openRouterAuto ? "Context varies by model"
+                : spec.contextWindowTokens <= 0 ? "Context unknown"
                 : "Context " + compact(spec.contextWindowTokens);
-        String detail = provider.displayName() + " · " + contextLabel
+        // The route comes first, so the same model direct and through OpenRouter never look alike.
+        String route = Prefs.PROVIDER_OPENROUTER.equals(provider.id()) && !openRouterAuto
+                && !spec.familyLabel.isEmpty()
+                ? provider.displayName() + " · " + spec.familyLabel : provider.displayName();
+        String detail = route + " · " + contextLabel
                 + " · Vision " + (spec.vision ? "Yes" : "Not listed")
                 + (spec.nativeFiles ? " · Provider file input" : "")
                 + (spec.extractedDocuments ? " · Orbit text extraction" : "")

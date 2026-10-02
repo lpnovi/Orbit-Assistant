@@ -147,22 +147,22 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * 0.8.3.0-beta.5 is the Smart Routing Beta, the fifth AI Control Beta.
+     * 0.8.3.0-beta.6 is the OpenRouter Connect Beta, the sixth AI Control Beta.
      *
      * <p>It must carry Beta metadata, produce a Beta tag, be published as a prerelease, outrank
      * 0.8.2.0 and everything before it, and rank below the 0.8.3.0 Stable it leads to. A Beta build
      * offers the Pro Preview override.
      */
-    @Test public void thisBuildIsTheSmartRoutingBeta() {
+    @Test public void thisBuildIsTheOpenRouterConnectBeta() {
         String version = BuildConfig.VERSION_NAME;
         assertTrue(OrbitVersion.installedIsBeta());
         assertTrue(OrbitVersion.isBeta(version));
         assertFalse(OrbitVersion.isStable(version));
-        assertEquals("0.8.3.0-beta.5", version);
+        assertEquals("0.8.3.0-beta.6", version);
         assertEquals("0.8.3.0", OrbitVersion.baseVersion(version));
-        assertEquals(5, OrbitVersion.betaNumber(version));
+        assertEquals(6, OrbitVersion.betaNumber(version));
 
-        assertEquals("v0.8.3.0-beta.5", OrbitVersion.tagFor(version));
+        assertEquals("v0.8.3.0-beta.6", OrbitVersion.tagFor(version));
         assertTrue("the release workflow must publish it as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
         assertFalse(OrbitVersion.isStableTag(OrbitVersion.tagFor(version)));
@@ -177,16 +177,17 @@ public final class OrbitVersionTest {
                 OrbitVersion.compareVersions(version, "0.8.3.0-beta.2") > 0);
         assertTrue(OrbitVersion.compareVersions(version, "0.8.3.0-beta.1") > 0);
         assertTrue(OrbitVersion.compareVersions(version, "0.8.3.0-beta.4") > 0);
+        assertTrue(OrbitVersion.compareVersions(version, "0.8.3.0-beta.5") > 0);
         assertTrue("and below its own next Beta",
-                OrbitVersion.compareVersions(version, "0.8.3.0-beta.6") < 0);
+                OrbitVersion.compareVersions(version, "0.8.3.0-beta.7") < 0);
         assertTrue("a Beta build offers the Pro Preview override",
                 OrbitProEntitlement.previewAvailable(false, version));
     }
 
-    /** 0.8.3.0-beta.5 must supersede Beta 4, published as versionCode 808. */
+    /** 0.8.3.0-beta.6 must supersede Beta 5, published as versionCode 809. */
     @Test public void thisBuildOutranksThePublishedReleaseItFollows() {
         assertEquals("the Beta must use the next synchronized version code",
-                809, BuildConfig.VERSION_CODE);
-        assertTrue(OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.8.3.0-beta.4") > 0);
+                810, BuildConfig.VERSION_CODE);
+        assertTrue(OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.8.3.0-beta.5") > 0);
     }
 }

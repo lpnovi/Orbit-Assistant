@@ -150,9 +150,9 @@ public final class RoadmapActivity extends Activity {
                 {"Recipe intelligence", "Reading a whole recipe, scaling all of it at once, suggesting substitutions and a sensible order of work."},
                 {"Orbit-managed timers", "An optional alternative to your Clock app for several named timers at once. Off by default; your Clock app stays."}
         });
-        addGroup(page, "DEFERRED", new String[][]{
-                {"OpenRouter chat", "On hold until there's an account to test it with properly. The secure setup already in Orbit stays exactly as it is."}
-        });
+        // v0.8.3.0-beta.6 shipped OpenRouter: browser sign-in, its model catalog in the Model
+        // Library, and an opt-in place in Auto. It was the only DEFERRED entry, so that group is
+        // gone; OpenRouter is release history now, not a promise.
         addGroup(page, "EXPLORING", new String[][]{
                 {"Hybrid Auto", "Orbit choosing on-device or cloud by itself, from the task, what is available, and your preference."},
                 {"Proactive screen intelligence", "Helpful context-aware assistance that remains transparent and controllable."},

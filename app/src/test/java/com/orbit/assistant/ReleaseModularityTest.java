@@ -185,12 +185,12 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * 0.8.3.0-beta.5 is the Smart Routing Beta.
+     * 0.8.3.0-beta.6 is the OpenRouter Connect Beta.
      *
      * <p>It must carry Beta metadata, and the changelog entry the release workflow builds its notes
      * from must already exist for this version name.
      */
-    @Test public void thisReleaseIsTheSmartRoutingBeta() {
+    @Test public void thisReleaseIsTheOpenRouterConnectBeta() {
         assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
                 OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
         assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));

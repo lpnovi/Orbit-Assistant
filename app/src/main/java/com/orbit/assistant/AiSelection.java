@@ -73,14 +73,27 @@ public final class AiSelection {
     public static final String AUTO_DESCRIPTION =
             "Orbit chooses the model and reasoning level for each request.";
 
+    /**
+     * " · OpenRouter" for a model reached through OpenRouter, otherwise "". The same model reached
+     * directly and through OpenRouter are different routes, and every label keeps them apart.
+     * OpenRouter Auto already names OpenRouter, so it carries no suffix.
+     */
+    public String routeSuffix() {
+        if (!Prefs.PROVIDER_OPENROUTER.equals(provider)
+                || OrbitModelCatalog.OPENROUTER_AUTO.equals(model)) return "";
+        return " · OpenRouter";
+    }
+
     /** "GPT-6.1 Sol · High", or just the model when there is no strength. */
     public String label() {
-        return strength == null ? modelName() : modelName() + " · " + strength.label;
+        String name = modelName() + routeSuffix();
+        return strength == null ? name : name + " · " + strength.label;
     }
 
     /** "Sol · High", for the overlay's compact chip. */
     public String shortLabel() {
-        return strength == null ? shortModelName() : shortModelName() + " · " + strength.label;
+        String name = shortModelName() + routeSuffix();
+        return strength == null ? name : name + " · " + strength.label;
     }
 
     /** One storable line. Read back with {@link #decode}. */

@@ -55,7 +55,7 @@ public final class AiSelections {
 
     // ---- validation ----------------------------------------------------------------------------
 
-    /** Providers a selection may name. OpenRouter has no chat yet, so it is never one of them. */
+    /** Providers a selection may name: any provider with a model list. Others become ChatGPT. */
     static String normalizeProvider(String provider) {
         String p = Prefs.normalizeProvider(provider);
         return OrbitModelCatalog.modelsFor(p).isEmpty() ? Prefs.PROVIDER_CHATGPT : p;
@@ -78,8 +78,7 @@ public final class AiSelections {
         String provider = normalizeProvider(raw.provider);
         AiModelSpec spec = OrbitModelCatalog.spec(provider, raw.model);
         if (spec == null) spec = OrbitModelCatalog.spec(provider, OrbitModelCatalog.successorOf(raw.model));
-        if (spec == null && (Prefs.PROVIDER_ANTHROPIC.equals(provider)
-                || Prefs.PROVIDER_XAI.equals(provider))) {
+        if (spec == null && OrbitModelCatalog.isDynamicProvider(provider)) {
             return AiSelection.of(provider, raw.model, null);
         }
         if (spec == null) spec = OrbitModelCatalog.defaultModel(provider);
@@ -115,7 +114,8 @@ public final class AiSelections {
         if (base.isAuto()) {
             // Leaving Auto for a named model: the model's own provider, at the model's default.
             for (String provider : new String[]{Prefs.PROVIDER_CHATGPT, Prefs.PROVIDER_ANTHROPIC,
-                    Prefs.PROVIDER_XAI, Prefs.PROVIDER_LOCAL, Prefs.PROVIDER_RELAY}) {
+                    Prefs.PROVIDER_XAI, Prefs.PROVIDER_LOCAL, Prefs.PROVIDER_RELAY,
+                    Prefs.PROVIDER_OPENROUTER}) {
                 if (OrbitModelCatalog.spec(provider, model) != null) {
                     return resolve(AiSelection.of(provider, model, null));
                 }

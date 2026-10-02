@@ -95,8 +95,7 @@ public final class ModelLibraryStore {
             AiSelection stored = AiSelection.decode(all.optString(provider, ""));
             if (stored != null && provider.equals(stored.provider)
                     && (OrbitModelCatalog.spec(provider, stored.model) != null
-                    || Prefs.PROVIDER_ANTHROPIC.equals(provider)
-                    || Prefs.PROVIDER_XAI.equals(provider))) return stored;
+                    || OrbitModelCatalog.isDynamicProvider(provider))) return stored;
         } catch (Exception ignored) {}
         AiModelSpec first = OrbitModelCatalog.defaultModel(provider);
         return first == null ? null : AiSelection.of(provider, first.id, first.defaultStrength);

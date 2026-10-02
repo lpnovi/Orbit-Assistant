@@ -3188,7 +3188,8 @@ public class ChatActivity extends Activity {
             strengthPill.setVisibility(View.GONE);
             return;
         }
-        String model = roomForProvider() ? s.providerName() + " · " + s.modelName() : s.modelName();
+        String model = roomForProvider() ? s.providerName() + " · " + s.modelName()
+                : s.modelName() + s.routeSuffix();
         modelPill.setText(model + "  ▾");
         modelPill.setMaxWidth(UiKit.dp(this,
                 roomForProvider() ? 300 : narrowModelPillWidthDp()));

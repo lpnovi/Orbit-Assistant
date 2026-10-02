@@ -101,6 +101,8 @@ public final class RoadmapFutureOnlyTest {
             "Favorites and Recents",
             // v0.8.3.0-beta.5 shipped Smart Routing.
             "Smart Routing",
+            // v0.8.3.0-beta.6 shipped OpenRouter.
+            "OpenRouter",
     };
 
     private String roadmapText() {
@@ -202,7 +204,7 @@ public final class RoadmapFutureOnlyTest {
 
         for (String older : new String[]{"Local device actions", "Calendar awareness",
                 "More branch points & conditions", "Deeper Android actions", "Cook with Orbit",
-                "OpenRouter chat", "Hybrid Auto", "Proactive screen intelligence"}) {
+                "Hybrid Auto", "Proactive screen intelligence"}) {
             int at = text.indexOf(older);
             assertTrue(older + " is still genuinely unfinished and must still be listed", at >= 0);
             assertTrue(older + " must not be presented above the active plan", at > current);
@@ -214,7 +216,8 @@ public final class RoadmapFutureOnlyTest {
      */
     @Test public void theProviderAndOnDeviceDirectionIsStillListed() {
         String text = roadmapText();
-        assertTrue("finishing OpenRouter chat is still owed", text.contains("OpenRouter chat"));
+        // 0.8.3.0-beta.6 shipped OpenRouter, so it is release history, not a promise.
+        assertFalse("shipped OpenRouter chat is no longer future work", text.contains("OpenRouter chat"));
         assertTrue("local tool calling is still owed", text.contains("Local device actions"));
         // 0.8.3.0-beta.3 brought it back as Edit, which branches, so the promise is fulfilled.
         assertFalse("the returned Edit action is no longer future work",
@@ -236,16 +239,14 @@ public final class RoadmapFutureOnlyTest {
     }
 
     /**
-     * OpenRouter is not abandoned and not imminent. It needs a real account to validate against,
-     * and until there is one the honest thing is to say so on the page.
+     * OpenRouter shipped in 0.8.3.0-beta.6. It was the page's only deferred entry, so the deferred
+     * group goes with it: a shipped feature belongs to What's New, never here.
      */
-    @Test public void openRouterIsShownAsDeferredRatherThanNext() {
+    @Test public void shippedOpenRouterLeftThePage() {
         String text = roadmapText();
-        assertTrue("the deferred group must exist", text.contains("DEFERRED"));
-        assertTrue("OpenRouter is still promised", text.contains("OpenRouter chat"));
-        assertTrue("and the reason is stated", text.contains("account to test it with"));
-        assertTrue("the existing secure groundwork is not being discarded",
-                text.contains("secure setup already in Orbit stays"));
+        assertFalse(text.contains("DEFERRED"));
+        assertFalse(text.contains("OpenRouter"));
+        assertFalse(text.contains("account to test it with"));
     }
 
     @Test public void thePageStillSaysItIsFutureOnly() {

@@ -37,6 +37,13 @@ public final class OrbitModelCatalog {
     public static final String CLAUDE_SONNET_5_5 = "claude-sonnet-5-5";
     public static final String CLAUDE_HAIKU_4_5 = "claude-haiku-4-5-20251001";
     public static final String GROK_4_7 = "grok-4.7";
+    /** OpenRouter's own router (0.8.3.0-beta.6+): an explicit OpenRouter model, never Orbit Auto. */
+    public static final String OPENROUTER_AUTO = "openrouter/auto";
+    /** Exact OpenRouter slugs Orbit Auto may use once OpenRouter is enabled for it. */
+    public static final String OR_GPT_6_LUNA = "openai/gpt-6-luna";
+    public static final String OR_GPT_6_1_SOL = "openai/gpt-6.1-sol";
+    public static final String OR_CLAUDE_SONNET_5_5 = "anthropic/claude-sonnet-5.5";
+    public static final String OR_CLAUDE_OPUS_5_5 = "anthropic/claude-opus-5.5";
     /** Orbit Local's one on-device chat model. Never sent anywhere. */
     public static final String ORBIT_LOCAL = "orbit-local";
 
@@ -110,8 +117,42 @@ public final class OrbitModelCatalog {
                     "Current xAI chat model", AiStrength.HIGH, 500_000,
                     true, false, true, true, XAI_STRENGTHS));
 
+    /**
+     * Trusted offline OpenRouter baseline (0.8.3.0-beta.6+), checked against OpenRouter's public
+     * model catalog on 2026-10-02: Orbit Auto's curated OpenRouter routes and OpenRouter Auto, so
+     * OpenRouter is usable before its first catalog refresh. The live catalog replaces it. The
+     * first entry is what choosing OpenRouter starts on, so it is a known model, not the router.
+     *
+     * <p>OpenRouter Auto's downstream model varies per request, so it has no fixed context window
+     * and no strength control: neither its 2M routing figure nor any one model's efforts would be
+     * true of every answer it gives.
+     */
+    private static final List<AiModelSpec> OPENROUTER = Collections.unmodifiableList(Arrays.asList(
+            openRouter(OR_GPT_6_LUNA, "GPT-6 Luna", "OpenAI", "OpenAI via OpenRouter",
+                    AiStrength.MEDIUM, OPENAI_CONTEXT_WINDOW, true, LUNA_STRENGTHS),
+            openRouter(OR_GPT_6_1_SOL, "GPT-6.1 Sol", "OpenAI", "OpenAI via OpenRouter",
+                    AiStrength.MEDIUM, OPENAI_CONTEXT_WINDOW, true, NO_NONE_STRENGTHS),
+            openRouter(OR_CLAUDE_SONNET_5_5, "Claude Sonnet 5.5", "Anthropic",
+                    "Anthropic via OpenRouter", AiStrength.HIGH, 1_000_000, true,
+                    NO_NONE_STRENGTHS),
+            openRouter(OR_CLAUDE_OPUS_5_5, "Claude Opus 5.5", "Anthropic",
+                    "Anthropic via OpenRouter", AiStrength.HIGH, 1_000_000, true,
+                    NO_NONE_STRENGTHS),
+            openRouter(OPENROUTER_AUTO, "OpenRouter Auto", "OpenRouter",
+                    "OpenRouter picks a model for each request", null, 0, true)));
+
     private static volatile List<AiModelSpec> dynamicAnthropic = Collections.emptyList();
     private static volatile List<AiModelSpec> dynamicXai = Collections.emptyList();
+    private static volatile List<AiModelSpec> dynamicOpenRouter = Collections.emptyList();
+
+    /** One OpenRouter catalog entry. Tools and web search stay off: Orbit sends neither there. */
+    static AiModelSpec openRouter(String id, String name, String family, String description,
+                                  AiStrength defaultStrength, int context, boolean vision,
+                                  AiStrength... strengths) {
+        return new AiModelSpec(id, name, family, Prefs.PROVIDER_OPENROUTER, description,
+                defaultStrength, true, context, vision, false, true, false, false, true,
+                "static_official", "active", strengths);
+    }
 
     private static AiModelSpec cloud(String id, String name, String family, String provider,
                                      String description, AiStrength defaultStrength, int context,
@@ -142,6 +183,8 @@ public final class OrbitModelCatalog {
         if (Prefs.PROVIDER_ANTHROPIC.equals(providerId)) return dynamicAnthropic.isEmpty()
                 ? ANTHROPIC : dynamicAnthropic;
         if (Prefs.PROVIDER_XAI.equals(providerId)) return dynamicXai.isEmpty() ? XAI : dynamicXai;
+        if (Prefs.PROVIDER_OPENROUTER.equals(providerId)) return dynamicOpenRouter.isEmpty()
+                ? OPENROUTER : dynamicOpenRouter;
         return Collections.emptyList();
     }
 
@@ -151,11 +194,31 @@ public final class OrbitModelCatalog {
         List<AiModelSpec> copy = Collections.unmodifiableList(new ArrayList<>(models));
         if (Prefs.PROVIDER_ANTHROPIC.equals(providerId)) dynamicAnthropic = copy;
         if (Prefs.PROVIDER_XAI.equals(providerId)) dynamicXai = copy;
+        if (Prefs.PROVIDER_OPENROUTER.equals(providerId)) dynamicOpenRouter = copy;
+    }
+
+    /**
+     * Providers whose model list comes from the account's live catalog. A selection naming a model
+     * such a catalog does not list right now is kept as it is, so it can be reported unavailable
+     * instead of silently becoming a different model.
+     */
+    /** True when a live or cached catalog, rather than the trusted baseline, is installed. */
+    static boolean hasDynamic(String providerId) {
+        if (Prefs.PROVIDER_ANTHROPIC.equals(providerId)) return !dynamicAnthropic.isEmpty();
+        if (Prefs.PROVIDER_XAI.equals(providerId)) return !dynamicXai.isEmpty();
+        if (Prefs.PROVIDER_OPENROUTER.equals(providerId)) return !dynamicOpenRouter.isEmpty();
+        return false;
+    }
+
+    public static boolean isDynamicProvider(String providerId) {
+        return Prefs.PROVIDER_ANTHROPIC.equals(providerId) || Prefs.PROVIDER_XAI.equals(providerId)
+                || Prefs.PROVIDER_OPENROUTER.equals(providerId);
     }
 
     static void clearDynamicForTest() {
         dynamicAnthropic = Collections.emptyList();
         dynamicXai = Collections.emptyList();
+        dynamicOpenRouter = Collections.emptyList();
     }
 
     /** The first model a provider offers, or null when it offers none. */
@@ -215,7 +278,7 @@ public final class OrbitModelCatalog {
     public static String displayName(String modelId) {
         if (modelId == null) return "";
         for (String provider : new String[]{Prefs.PROVIDER_CHATGPT, Prefs.PROVIDER_ANTHROPIC,
-                Prefs.PROVIDER_XAI, Prefs.PROVIDER_RELAY, Prefs.PROVIDER_LOCAL}) {
+                Prefs.PROVIDER_XAI, Prefs.PROVIDER_RELAY, Prefs.PROVIDER_LOCAL, Prefs.PROVIDER_OPENROUTER}) {
             AiModelSpec spec = spec(provider, modelId);
             if (spec != null) return spec.displayName;
         }

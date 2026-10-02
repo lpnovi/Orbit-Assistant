@@ -226,7 +226,10 @@ public final class SmartRoutingTest {
         assertFalse(AutoPermissions.allows(context, Prefs.PROVIDER_ANTHROPIC));
         assertFalse(AutoPermissions.allows(context, Prefs.PROVIDER_XAI));
         for (SmartRouter.Option o : SmartRouter.options(context)) {
-            if (AutoPermissions.metered(o.candidate.provider)) {
+            // The two providers connected above; OpenRouter (also metered since 0.8.3.0-beta.6) is
+            // not connected here, and SmartRouting11Test covers it.
+            if (Prefs.PROVIDER_ANTHROPIC.equals(o.candidate.provider)
+                    || Prefs.PROVIDER_XAI.equals(o.candidate.provider)) {
                 assertTrue(o.candidate.model + " is connected", o.ready);
                 assertFalse(o.candidate.model + " is not enabled", o.permitted);
             }
@@ -327,7 +330,7 @@ public final class SmartRoutingTest {
         assertEquals(LUNA_MEDIUM, item.selection);
         assertTrue(item.requestedSelection().isAuto());
         assertEquals(SmartRouter.NORMAL, item.route.reason);
-        assertEquals(1, item.route.policy);
+        assertEquals("a new Auto route is written with Smart Routing 1.1's policy", 2, item.route.policy);
 
         // Everything that might tempt a re-route changes underneath the queued request.
         AutoPermissions.set(context, Prefs.PROVIDER_CHATGPT, false);
@@ -530,7 +533,7 @@ public final class SmartRoutingTest {
         for (String[] row : d.rows()) rows.add(row[0] + "=" + row[1]);
         assertEquals(Arrays.asList("Selection=Auto", "Provider=Anthropic Claude",
                 "Model=Claude Sonnet 5.5", "Strength=High", "Why=Large context + complex reasoning",
-                "Response time=2.4 s"), rows);
+                "Router policy=1", "Response time=2.4 s"), rows);
 
         JSONObject stored = d.toJson();
         assertEquals(new java.util.TreeSet<>(Arrays.asList("provider", "model", "modelName",

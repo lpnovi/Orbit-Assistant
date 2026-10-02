@@ -70,15 +70,50 @@ public final class SecureStore {
      * backups and never logged or exported.
      */
     public static boolean saveOpenRouterKey(Context c, String value) {
+        return saveOpenRouterKey(c, value, OPENROUTER_SOURCE_MANUAL);
+    }
+
+    /** The key came from Sign in with OpenRouter (browser OAuth with PKCE). */
+    public static final String OPENROUTER_SOURCE_OAUTH = "oauth";
+    /** The key was typed or pasted under Use API key instead. Also every key saved before 0.8.3.0-beta.6. */
+    public static final String OPENROUTER_SOURCE_MANUAL = "manual";
+    /** Non-secret: how the saved key arrived. Never backed up, cleared with the key. */
+    private static final String OPENROUTER_SOURCE = "openrouter_key_source";
+
+    /**
+     * Stores an OpenRouter key and records how it arrived. Both sign-in and the manual fallback end
+     * here, in the same encrypted slot, so replacing one with the other simply overwrites it.
+     * Saving never turns on Auto: a new key leaves OpenRouter's Auto permission exactly as it was,
+     * which after any removal is off.
+     */
+    public static boolean saveOpenRouterKey(Context c, String value, String source) {
         try {
             if (value == null || value.trim().isEmpty()) {
-                Prefs.get(c).edit().remove(OPENROUTER_ENC).remove(OPENROUTER_IV).apply();
+                Prefs.get(c).edit().remove(OPENROUTER_ENC).remove(OPENROUTER_IV)
+                        .remove(OPENROUTER_SOURCE).apply();
                 return true;
             }
-            return encrypt(c, OPENROUTER_ALIAS, OPENROUTER_ENC, OPENROUTER_IV, value.trim());
+            boolean saved = encrypt(c, OPENROUTER_ALIAS, OPENROUTER_ENC, OPENROUTER_IV, value.trim());
+            if (saved) {
+                Prefs.get(c).edit().putString(OPENROUTER_SOURCE,
+                        OPENROUTER_SOURCE_OAUTH.equals(source) ? OPENROUTER_SOURCE_OAUTH
+                                : OPENROUTER_SOURCE_MANUAL).apply();
+            }
+            return saved;
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /**
+     * How the saved key arrived: {@link #OPENROUTER_SOURCE_OAUTH}, {@link #OPENROUTER_SOURCE_MANUAL},
+     * or "" when there is no key. A key saved before the source was recorded counts as manual.
+     */
+    public static String openRouterKeySource(Context c) {
+        if (!hasOpenRouterKey(c)) return "";
+        String source = Prefs.get(c).getString(OPENROUTER_SOURCE, "");
+        return OPENROUTER_SOURCE_OAUTH.equals(source) ? OPENROUTER_SOURCE_OAUTH
+                : OPENROUTER_SOURCE_MANUAL;
     }
 
     public static String loadOpenRouterKey(Context c) {
@@ -93,8 +128,14 @@ public final class SecureStore {
         return !loadOpenRouterKey(c).isEmpty();
     }
 
+    /**
+     * Disconnect: the key and its source go, and so does OpenRouter's Auto permission, so a later
+     * connection starts with Auto off. Chats, Favorites and answers that used OpenRouter stay.
+     */
     public static void clearOpenRouterKey(Context c) {
-        Prefs.get(c).edit().remove(OPENROUTER_ENC).remove(OPENROUTER_IV).apply();
+        Prefs.get(c).edit().remove(OPENROUTER_ENC).remove(OPENROUTER_IV)
+                .remove(OPENROUTER_SOURCE).apply();
+        AutoPermissions.revokeOnCredentialRemoval(c, Prefs.PROVIDER_OPENROUTER);
     }
 
     public static boolean saveAnthropicKey(Context c, String value) {

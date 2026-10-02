@@ -252,8 +252,7 @@ final class AiSelectorDialog {
         for (AiSelection item : selections) {
             if (item == null || specs.size() >= max) break;
             AiModelSpec spec = OrbitModelCatalog.spec(item.provider, item.model);
-            if (spec == null && (Prefs.PROVIDER_ANTHROPIC.equals(item.provider)
-                    || Prefs.PROVIDER_XAI.equals(item.provider))) {
+            if (spec == null && OrbitModelCatalog.isDynamicProvider(item.provider)) {
                 spec = OrbitModelCatalog.unavailableReference(item.provider, item.model);
             }
             String key = item.provider + "/" + item.model;

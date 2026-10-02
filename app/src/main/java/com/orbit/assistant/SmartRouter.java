@@ -33,16 +33,28 @@ import java.util.regex.Pattern;
  * unavailable or deprecated models, models without a known context window, requests that do not
  * fit, and images a model cannot read. Selection then orders what is left by how well each model
  * suits the request's demand, prefers a route that can run phone actions or search when the request
- * needs one, prefers non-metered providers, uses a Favorite only to break a remaining tie, and
- * finally falls back to a fixed order.
+ * needs one, prefers non-metered providers, then a direct route over the same tier through
+ * OpenRouter, uses a Favorite only to break a remaining tie, and finally falls back to a fixed
+ * order.
  *
  * <p><b>One model, one attempt.</b> Auto picks a single route. A failure is reported and Retry asks
  * again; nothing here cascades to another provider.
  */
 public final class SmartRouter {
 
-    /** Stored with every routed request. Bump when the policy below changes meaning. */
-    public static final int POLICY_VERSION = 1;
+    /**
+     * Stored with every routed request. Bump when the policy below changes meaning.
+     *
+     * <p>1: Beta 5. 2 (0.8.3.0-beta.6, Smart Routing 1.1): the GPT-5.6 family joins the candidates
+     * as same-tier alternatives to GPT-6 Luna and GPT-6.1 Sol plus Terra between them, OpenRouter
+     * becomes an opt-in provider with a curated set of exact routes, and a direct route is
+     * preferred over the same tier through OpenRouter. Stored records keep the number they were
+     * written with; nothing reinterprets an old answer.
+     */
+    public static final int POLICY_VERSION = 2;
+
+    /** What a stored routing record without a policy number was written by: Beta 5's first policy. */
+    static final int FIRST_POLICY = 1;
 
     /** Room left for the answer when checking that a request fits a model's window. */
     static final int OUTPUT_RESERVE_TOKENS = 8_192;
@@ -85,18 +97,36 @@ public final class SmartRouter {
      * reports is never a candidate merely by appearing there: it has to be named here, still be in
      * the catalog, be active, and have a known context window.
      *
-     * <p>Left out on purpose: GPT-6 Astra (access varies by account), the GPT-5.6 family (the GPT-6
-     * models above cover the same ground), Claude Fable 5.1 (reserved for explicit choice), and the
-     * relay (it spends an operator's metered key).
+     * <p><b>GPT-5.6 (policy 2).</b> All six ChatGPT models share one 1.05M window and the same
+     * capabilities, so what separates them is tier. GPT-5.6 Luna and GPT-5.6 Sol therefore fit
+     * exactly like GPT-6 Luna and GPT-6.1 Sol and are listed after them: an ordinary request still
+     * goes to GPT-6, and the GPT-5.6 model takes it when its GPT-6 tier-mate is known unavailable
+     * on this account, or when the user has made it a Favorite (the tie-break). GPT-5.6 Terra is
+     * the balanced tier between the two: equal to Luna for normal conversation (so a Favorite
+     * Terra is used for it), and the closest fit for complex work when neither Sol is reachable.
+     *
+     * <p><b>OpenRouter (policy 2).</b> Only these exact slugs, never whatever else OpenRouter's
+     * catalog lists, and never OpenRouter Auto: Orbit Auto chooses an exact model itself. Each
+     * fits like the same model reached directly, and loses a tie to a direct route.
+     *
+     * <p>Left out on purpose: GPT-6 Astra (access varies by account), Claude Fable 5.1 (reserved
+     * for explicit choice), and the relay (it spends an operator's metered key).
      */
     static final List<Candidate> CANDIDATES = Collections.unmodifiableList(Arrays.asList(
             new Candidate(Prefs.PROVIDER_LOCAL, OrbitModelCatalog.ORBIT_LOCAL, 0, -1, -1, -1),
             new Candidate(Prefs.PROVIDER_CHATGPT, OrbitModelCatalog.LUNA, 0, 0, 2, 3),
             new Candidate(Prefs.PROVIDER_CHATGPT, OrbitModelCatalog.SOL, 3, 2, 0, 0),
+            new Candidate(Prefs.PROVIDER_CHATGPT, OrbitModelCatalog.GPT_5_6_LUNA, 0, 0, 2, 3),
+            new Candidate(Prefs.PROVIDER_CHATGPT, OrbitModelCatalog.GPT_5_6_TERRA, 1, 0, 1, 1),
+            new Candidate(Prefs.PROVIDER_CHATGPT, OrbitModelCatalog.GPT_5_6_SOL, 3, 2, 0, 0),
             new Candidate(Prefs.PROVIDER_ANTHROPIC, OrbitModelCatalog.CLAUDE_HAIKU_4_5, 0, 1, 3, 3),
             new Candidate(Prefs.PROVIDER_ANTHROPIC, OrbitModelCatalog.CLAUDE_SONNET_5_5, 2, 0, 1, 2),
             new Candidate(Prefs.PROVIDER_ANTHROPIC, OrbitModelCatalog.CLAUDE_OPUS_5_5, 3, 2, 0, 0),
-            new Candidate(Prefs.PROVIDER_XAI, OrbitModelCatalog.GROK_4_7, 1, 0, 0, 1)));
+            new Candidate(Prefs.PROVIDER_XAI, OrbitModelCatalog.GROK_4_7, 1, 0, 0, 1),
+            new Candidate(Prefs.PROVIDER_OPENROUTER, OrbitModelCatalog.OR_GPT_6_LUNA, 0, 0, 2, 3),
+            new Candidate(Prefs.PROVIDER_OPENROUTER, OrbitModelCatalog.OR_GPT_6_1_SOL, 3, 2, 0, 0),
+            new Candidate(Prefs.PROVIDER_OPENROUTER, OrbitModelCatalog.OR_CLAUDE_SONNET_5_5, 2, 0, 1, 2),
+            new Candidate(Prefs.PROVIDER_OPENROUTER, OrbitModelCatalog.OR_CLAUDE_OPUS_5_5, 3, 2, 0, 0)));
 
     /** True when this exact model is in Auto's curated set. */
     public static boolean isCandidate(String provider, String model) {
@@ -135,6 +165,7 @@ public final class SmartRouter {
 
         boolean local() { return Prefs.PROVIDER_LOCAL.equals(candidate.provider); }
         boolean metered() { return AutoPermissions.metered(candidate.provider); }
+        boolean viaOpenRouter() { return Prefs.PROVIDER_OPENROUTER.equals(candidate.provider); }
         boolean vision() { return spec != null && spec.vision && providerImages; }
         boolean webSearch() { return spec != null && spec.webSearch && providerWebSearch; }
     }
@@ -303,7 +334,7 @@ public final class SmartRouter {
             if (o == null || !AiSelection.AUTO_ID.equals(o.optString("requested", ""))) return null;
             String error = o.optString("error", "");
             return new Route(error.isEmpty() && exact != null && !exact.isAuto() ? exact : null,
-                    o.optString("reason", ""), o.optInt("policy", POLICY_VERSION), error);
+                    o.optString("reason", ""), o.optInt("policy", FIRST_POLICY), error);
         }
     }
 
@@ -315,7 +346,12 @@ public final class SmartRouter {
     /** The routing decision itself. Pure: the same inputs always give the same route. */
     static Route route(Request request, List<Option> options) {
         List<Option> usable = new ArrayList<>();
-        for (Option o : options) if (o.permitted && o.ready) usable.add(o);
+        for (Option o : options) {
+            // Orbit Auto never hands a request to another router: OpenRouter Auto is only ever an
+            // explicit choice. The curated list never names it; this keeps it so.
+            if (OrbitModelCatalog.OPENROUTER_AUTO.equals(o.candidate.model)) continue;
+            if (o.permitted && o.ready) usable.add(o);
+        }
         if (usable.isEmpty()) return Route.failed(failureMessage(request, options, usable));
         List<Option> eligible = new ArrayList<>();
         boolean contextExcluded = false;
@@ -336,6 +372,8 @@ public final class SmartRouter {
                 .thenComparingInt(o -> o.candidate.fitFor(demand))
                 // The user's account or the phone before a separately billed API.
                 .thenComparingInt(o -> o.metered() ? 1 : 0)
+                // A direct route before the same tier through OpenRouter (policy 2).
+                .thenComparingInt(o -> o.viaOpenRouter() ? 1 : 0)
                 // A Favorite only breaks a tie that is otherwise exact.
                 .thenComparingInt(o -> o.favorite ? 0 : 1)
                 .thenComparingInt(o -> CANDIDATES.indexOf(o.candidate)));

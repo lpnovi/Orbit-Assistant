@@ -5,7 +5,8 @@ import android.content.Intent;
 import android.os.Bundle;
 
 /**
- * Where the browser's "Return to Orbit" button lands after a ChatGPT sign-in.
+ * Where the browser's "Return to Orbit" button lands after a ChatGPT sign-in, and since
+ * 0.8.3.0-beta.6 after Sign in with OpenRouter too (AI Providers sets {@link #returnTo}).
  *
  * <p>Exported and browsable only because a web page cannot otherwise hand the user back to an app.
  * It is a doorway with nothing behind it: it reads nothing from the link, carries no data, signs

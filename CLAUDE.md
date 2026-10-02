@@ -168,7 +168,7 @@ code, and never let the Play edition install Orbit Local. See `docs/PLAY_STORE.m
 - **Model Library (0.8.3.0-beta.4+)**: `AiModelSpec` is also the authority for context size,
   vision, native-file versus extracted-document handling, tools, web/search, streaming,
   availability and metadata source. `ProviderCatalogRepository` owns bounded last-known-good
-  Anthropic/xAI discovery; never fetch catalogs in an Activity or erase a cache on refresh failure.
+  Anthropic/xAI/OpenRouter discovery; never fetch catalogs in an Activity or erase a cache on refresh failure.
   `ModelLibraryStore` owns Favorites, bounded user-turn Recents and per-provider defaults. Internal
   completion/title/summary jobs never call `recordRecent`. Anthropic and xAI credentials stay in
   `SecureStore`, are never backed up, logged, diagnosed, shown again or passed across providers.
@@ -176,14 +176,28 @@ code, and never let the Play edition install Orbit Local. See `docs/PLAY_STORE.m
   `ChatGptClient`. See `docs/MODEL_LIBRARY.md`.
 - **Smart Routing / Auto (0.8.3.0-beta.5+)** — `AiSelection.AUTO` (`1|auto|auto|`) is a per-chat
   selection, never dispatchable. `SmartRouter` is the only router: local, deterministic, a curated
-  7-model candidate set, eligibility then selection, `POLICY_VERSION`. It is called only from
+  candidate set (policy 2 since beta.6: 14 routes incl. GPT-5.6 and four exact OpenRouter slugs,
+  never `openrouter/auto`), eligibility then selection, `POLICY_VERSION`; bump it whenever routing
+  meaning changes and never reinterpret stored policy numbers. It is called only from
   `OrbitRequestManager.enqueueFrozen`; the exact result is frozen on `PendingRequestStore.Item`
   (`selection` + `route`), the worker passes `AssistantClient.Routing.of(item)` and never routes,
   and `sendToProvider` refuses an unrouted Auto. Routed turns never `recordRecent`, and Auto never
-  becomes a provider default. `AutoPermissions`: ChatGPT/Local on, Anthropic/xAI off by default;
-  only the user's switch writes them, `SecureStore.clear*Key` revokes, and the metered opt-ins are
-  not in backup. `globalDefault` stays explicit; `newChatSelection` adds the optional Auto default.
+  becomes a provider default. `AutoPermissions`: ChatGPT/Local on, Anthropic/xAI/OpenRouter off by
+  default; only the user's switch writes them, `SecureStore.clear*Key` revokes, and the metered
+  opt-ins are not in backup. `globalDefault` stays explicit; `newChatSelection` adds the optional Auto default.
   Titles, summaries and Smart Vault keep their fixed selections. See `docs/SMART_ROUTING.md`.
+- **OpenRouter (0.8.3.0-beta.6+)** — a real provider (`OpenRouterProvider`) on the same
+  `ApiKeyProviderClient`/`ProviderRequestMapper` path. `OpenRouterAuth` is the browser OAuth PKCE
+  sign-in (S256, `http://localhost:<ephemeral>/orbit/openrouter/<state>` loopback callback, state in
+  the path because OpenRouter documents no `state` param, verifier in memory only, code claimed
+  once); its key and a typed key share one `SecureStore` slot, with a non-secret source
+  (`oauth`/`manual`; none recorded = a pre-beta.6 manual key). The catalog (`/models/user`, else
+  `/models`) is filtered to text-in/text-out chat models, excludes `openrouter/*` except
+  `openrouter/auto` (never Fusion) and `:batch`, caps at 800, and is cached in the no-backup dir;
+  strengths come only from `reasoning.supported_efforts`. Direct and OpenRouter routes are distinct
+  (provider + slug everywhere). OpenRouter Auto is an explicit model; `ResponseDetails.servedBy`
+  records its reported downstream model. `OrbitModelCatalog.isDynamicProvider` replaces
+  hard-coded Anthropic/xAI checks.
 - **Conversation titles (0.8.3.0-beta.2+)** — `ConversationStore` owns durable default/automatic/
   manual/legacy title state and the compare-and-set job token. `ConversationTitleManager` schedules
   one invisible WorkManager job after the first persisted successful exchange;

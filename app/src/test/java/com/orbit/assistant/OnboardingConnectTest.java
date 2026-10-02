@@ -182,16 +182,20 @@ public final class OnboardingConnectTest {
         assertFalse(text.contains("Private API relay"));
     }
 
-    @Test public void expandingShowsOpenRouterAsSetupOnlyAndTheRelayAsAdvanced() {
+    /** 0.8.3.0-beta.6: OpenRouter is an optional, billed provider, never a setup-only shell. */
+    @Test public void expandingShowsOpenRouterAsOptionalAndTheRelayAsAdvanced() {
         ActivityController<OnboardingActivity> controller = connectActivity();
         Activity activity = controller.get();
         assertTrue(clickByLabel(activity, "More provider options"));
         String text = textOf(activity);
 
         assertTrue(text.contains("OpenRouter"));
-        assertTrue(text.contains("Experimental"));
-        assertTrue("OpenRouter must not read as a usable chat provider",
+        assertTrue(text.contains("Optional"));
+        assertFalse("OpenRouter is no longer described as setup-only",
                 text.contains("cannot use it for chat yet"));
+        assertFalse(text.contains("Experimental"));
+        assertTrue("the card says who pays", text.contains("billed to your OpenRouter credits"));
+        assertTrue(text.contains("Set up OpenRouter"));
 
         assertTrue(text.contains("Private API relay"));
         assertTrue(text.contains("Advanced"));
@@ -199,11 +203,14 @@ public final class OnboardingConnectTest {
                 text.contains("Save and use private relay"));
     }
 
-    @Test public void openRouterIsStillNotSelectableForChat() {
+    @Test public void openRouterIsOptionalAndOnboardingNeverConnectsIt() {
         AiProvider openRouter = AiProviders.byId(Prefs.PROVIDER_OPENROUTER);
-        assertFalse("onboarding must not imply a provider Orbit refuses to route to",
-                openRouter.selectable(context));
-        assertEquals(AiProvider.Status.COMING_SOON, openRouter.status(context));
+        assertTrue(openRouter.selectable(context));
+        assertEquals(AiProvider.Status.NEEDS_SETUP, openRouter.status(context));
+        String source = source();
+        assertFalse("onboarding hands OpenRouter to AI Providers rather than signing in itself",
+                source.contains("OpenRouterAuth."));
+        assertFalse(source.contains("AUTO_USE_OPENROUTER"));
     }
 
     @Test public void theOldFallbackWordingAndStaleProviderPlansAreGone() {
