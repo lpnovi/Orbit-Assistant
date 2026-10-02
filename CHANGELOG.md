@@ -842,6 +842,13 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.3.0-beta.4**: Model Library brings Claude and Grok to Orbit without crowding normal chat.
+  - Connect an Anthropic or xAI developer API key through AI Providers. Keys are Android Keystore-encrypted, never shown again, and excluded from backups.
+  - Browse a searchable provider-aware Model Library, favorite models, and quickly reuse a small deduplicated Recent list across providers.
+  - Claude uses Anthropic's official Messages API; Grok uses xAI's official Chat Completions API and account model catalog. Both stream into the existing conversation, Retry, variants, branches, Send with, and Response details paths.
+  - Model capabilities, reasoning choices, availability, context limits, vision, document handling, tools, search and metadata source now live in one catalog, with last-known-good dynamic metadata and no silent substitution.
+  - The context meter follows the selected model's verified limit and shows an unknown limit when metadata is unavailable. OpenAI's 1.05M-token entries were rechecked against the current official catalog.
+  - Sent attachment cards are now about 68dp high with a 52dp preview, one-line filename and quiet metadata. A usable PDF preview replaces the document icon instead of duplicating it.
 - **v0.8.3.0-beta.3**: Conversation Control: more say over what each chat remembers and where it goes.
   - A small ring beside the AI shows roughly how full the context window is; tap it for an estimated breakdown.
   - Hold an earlier message to edit it into a new branch, and Retry now keeps every answer so you can flip between versions.

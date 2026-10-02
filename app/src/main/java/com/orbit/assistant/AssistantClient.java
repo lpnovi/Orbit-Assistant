@@ -477,6 +477,23 @@ public final class AssistantClient {
         // Resolved once, here, and then sent as it is. There is no routing: the model the user
         // selected is the model this turn goes to, whatever the question looks like.
         final AiSelection resolved = AiSelections.resolve(selection);
+        AiModelSpec selectedModel = OrbitModelCatalog.spec(resolved.provider, resolved.model);
+        if (selectedModel == null || !selectedModel.selectable()) {
+            cb.onError(OrbitModelCatalog.unavailableMessage(resolved.model));
+            return;
+        }
+        // Extracted document text is still valid context even when a model has no native file or
+        // image input. Only refuse a genuinely image-only turn before any provider dispatch.
+        if (!Prefs.PROVIDER_LOCAL.equals(resolved.provider) && !selectedModel.vision
+                && images != null && !images.isEmpty()
+                && (screenText == null || screenText.trim().isEmpty())) {
+            cb.onError(selectedModel.displayName
+                    + " cannot read images. Choose a vision-capable model or remove the image.");
+            return;
+        }
+        // Only a validated ordinary conversation dispatch records Recents. Titles, summaries,
+        // catalog jobs, unsupported attachment attempts, and Smart Vault completions never do.
+        ModelLibraryStore.recordRecent(context, resolved);
 
         // Thinking updates are decided once, here, and then travel with the request. Reading the
         // preference again inside a provider would let a setting change mid-flight alter a turn

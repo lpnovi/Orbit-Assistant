@@ -95,6 +95,10 @@ public final class RoadmapFutureOnlyTest {
             "What works on this phone",
             "multi-step device actions",
             "live download progress",
+            // v0.8.3.0-beta.4 shipped provider expansion and the library behind it.
+            "Claude and Grok as providers",
+            "Model Library",
+            "Favorites and Recents",
     };
 
     private String roadmapText() {

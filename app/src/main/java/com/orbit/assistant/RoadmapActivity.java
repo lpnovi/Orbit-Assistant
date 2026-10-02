@@ -117,10 +117,12 @@ public final class RoadmapActivity extends Activity {
         // v0.8.3.0-beta.3 shipped Conversation Control: editing into branches, kept answer versions,
         // Send with, kept chat context, the context meter and Continue in new chat. Those belong to
         // What's New now, as does the Edit & resend promise it fulfils, so both leave this page.
+        // v0.8.3.0-beta.4 shipped Claude, Grok, the Model Library, Favorites, Recents and
+        // provider-aware context metadata. Those are now release history, not future promises.
         addGroup(page, "NOW - ON THE WAY TO 0.9", new String[][]{
                 {OrbitRoadmap.CURRENT, "Direct control over the AI that answers you. Still ahead "
-                        + "in later Betas: a visual view of a chat's branches, comparing models "
-                        + "side by side, and Claude and Grok as providers."},
+                        + "in later Betas: a visual view of a chat's branches and comparing models "
+                        + "side by side."},
                 {OrbitRoadmap.ORBIT_LOCAL_2, "More of Orbit working privately on your phone. Still "
                         + "ahead: a choice of a larger Enhanced model on capable phones, and more "
                         + "on-device abilities as they can be done honestly. A request sent to "

@@ -33,10 +33,31 @@ public final class AiModelSpec {
     public final boolean availabilityVaries;
     /** Official input context window, in tokens; zero only when Orbit does not know it. */
     public final int contextWindowTokens;
+    /** Model-level capabilities. Unknown values stay false rather than being guessed. */
+    public final boolean vision;
+    public final boolean nativeFiles;
+    public final boolean extractedDocuments;
+    public final boolean tools;
+    public final boolean webSearch;
+    public final boolean streaming;
+    /** static_official or dynamic_provider. */
+    public final String metadataSource;
+    /** active, deprecated, unavailable, or unknown. */
+    public final String availability;
 
     AiModelSpec(String id, String displayName, String familyLabel, String providerId,
                 String descriptor, AiStrength defaultStrength, boolean availabilityVaries,
                 int contextWindowTokens, AiStrength... strengths) {
+        this(id, displayName, familyLabel, providerId, descriptor, defaultStrength,
+                availabilityVaries, contextWindowTokens, false, false, true, false, false, true,
+                "static_official", "active", strengths);
+    }
+
+    AiModelSpec(String id, String displayName, String familyLabel, String providerId,
+                String descriptor, AiStrength defaultStrength, boolean availabilityVaries,
+                int contextWindowTokens, boolean vision, boolean nativeFiles,
+                boolean extractedDocuments, boolean tools, boolean webSearch, boolean streaming,
+                String metadataSource, String availability, AiStrength... strengths) {
         this.id = id;
         this.displayName = displayName;
         this.familyLabel = familyLabel == null ? "" : familyLabel;
@@ -48,10 +69,20 @@ public final class AiModelSpec {
         this.defaultStrength = list.isEmpty() ? null : defaultStrength;
         this.availabilityVaries = availabilityVaries;
         this.contextWindowTokens = Math.max(0, contextWindowTokens);
+        this.vision = vision;
+        this.nativeFiles = nativeFiles;
+        this.extractedDocuments = extractedDocuments;
+        this.tools = tools;
+        this.webSearch = webSearch;
+        this.streaming = streaming;
+        this.metadataSource = metadataSource == null ? "" : metadataSource;
+        this.availability = availability == null ? "unknown" : availability;
     }
 
     /** Whether the user can be offered a strength control for this model at all. */
     public boolean hasStrengths() { return !strengths.isEmpty(); }
+
+    public boolean selectable() { return !"unavailable".equals(availability); }
 
     public boolean supports(AiStrength strength) {
         return strength != null && strengths.contains(strength);

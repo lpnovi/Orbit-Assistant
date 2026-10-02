@@ -18,13 +18,15 @@ import java.util.List;
  */
 public final class AiProviders {
     private static final ChatGptProvider CHATGPT = new ChatGptProvider();
+    private static final AnthropicProvider ANTHROPIC = new AnthropicProvider();
+    private static final XaiProvider XAI = new XaiProvider();
     private static final OrbitLocalProvider LOCAL = new OrbitLocalProvider();
     private static final OpenRouterProvider OPENROUTER = new OpenRouterProvider();
     private static final RelayProvider RELAY = new RelayProvider();
 
     /** Presentation order for management UI: recommended first, advanced fallback last. */
     private static final List<AiProvider> ALL = Collections.unmodifiableList(
-            Arrays.asList(CHATGPT, LOCAL, OPENROUTER, RELAY));
+            Arrays.asList(CHATGPT, ANTHROPIC, XAI, LOCAL, OPENROUTER, RELAY));
 
     private AiProviders() {}
 
@@ -82,7 +84,7 @@ public final class AiProviders {
             // no longer answer already resolves to ChatGPT, and must still be replaced on disk.
             if (!id.equals(Prefs.provider(c))) {
                 AiSelections.setGlobalDefault(c,
-                        AiSelections.withProvider(AiSelections.globalDefault(c), id));
+                        AiSelections.withProvider(c, AiSelections.globalDefault(c), id));
             }
         }
         return true;

@@ -60,6 +60,12 @@ public final class AiProvidersActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         UiPresence.enter(this);
+        ProviderCatalogRepository.loadCached(this);
+        for (String provider : new String[]{Prefs.PROVIDER_ANTHROPIC, Prefs.PROVIDER_XAI}) {
+            ProviderCatalogRepository.refreshIfStale(this, provider, (changed, error) -> {
+                if (changed) runOnUiThread(this::refreshCards);
+            });
+        }
         if (!UiKit.appearanceSignature(this).equals(appearanceSignature)) {
             recreate();
             return;
@@ -335,6 +341,10 @@ public final class AiProvidersActivity extends Activity {
             showOpenRouterSetup();
             return;
         }
+        if (Prefs.PROVIDER_ANTHROPIC.equals(id) || Prefs.PROVIDER_XAI.equals(id)) {
+            showApiKeySetup(id);
+            return;
+        }
         // ChatGPT sign-in and relay configuration keep living in Settings > AI & account, which
         // already owns those flows.
         Intent intent = new Intent(this, SettingsActivity.class);
@@ -386,6 +396,72 @@ public final class AiProvidersActivity extends Activity {
                 refreshCards();
             });
         }
+        AlertDialog dialog = builder.create();
+        UiKit.styleOrbitDialog(dialog, this, false);
+        dialog.show();
+    }
+
+    private void showApiKeySetup(String provider) {
+        boolean anthropic = Prefs.PROVIDER_ANTHROPIC.equals(provider);
+        String name = anthropic ? "Anthropic" : "xAI";
+        boolean saved = anthropic ? SecureStore.hasAnthropicKey(this) : SecureStore.hasXaiKey(this);
+        LinearLayout wrap = new LinearLayout(this);
+        wrap.setOrientation(LinearLayout.VERTICAL);
+        int pad = UiKit.dp(this, 22);
+        wrap.setPadding(pad, UiKit.dp(this, 8), pad, 0);
+        TextView note = UiKit.text(this,
+                "Enter a developer API key from " + name + ". Orbit encrypts it with Android Keystore, never backs it up, and never shows the saved key again.",
+                13, UiKit.MUTED, false);
+        note.setLineSpacing(0, 1.14f);
+        wrap.addView(note);
+
+        EditText input = new EditText(this);
+        input.setHint(saved ? "Key saved · enter a new key to replace it" : "API key");
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        input.setTextColor(UiKit.TEXT);
+        input.setHintTextColor(UiKit.MUTED);
+        input.setBackgroundTintList(ColorStateList.valueOf(UiKit.accent(this)));
+        LinearLayout.LayoutParams inputLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        inputLp.topMargin = UiKit.dp(this, 10);
+        wrap.addView(input, inputLp);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle(name + " connection")
+                .setView(wrap)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save and check", (d, w) -> {
+                    String value = input.getText().toString().trim();
+                    if (value.isEmpty()) return;
+                    boolean stored = anthropic ? SecureStore.saveAnthropicKey(this, value)
+                            : SecureStore.saveXaiKey(this, value);
+                    if (!stored) {
+                        Toast.makeText(this, "Could not store the key securely, so it was not saved",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    Toast.makeText(this, "Checking " + name + " connection…", Toast.LENGTH_SHORT).show();
+                    ProviderCatalogRepository.refreshAsync(this, provider, (changed, error) ->
+                            runOnUiThread(() -> {
+                                // A credential the provider explicitly rejected is not kept as a
+                                // misleading "ready" connection. A network/provider outage is
+                                // different: keep the encrypted key and cached catalog so the user
+                                // can retry without re-entering a secret.
+                                if (error.contains("saved API key was rejected")) {
+                                    if (anthropic) SecureStore.clearAnthropicKey(this);
+                                    else SecureStore.clearXaiKey(this);
+                                }
+                                Toast.makeText(this, error.isEmpty()
+                                                ? name + " connected" : error,
+                                        error.isEmpty() ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG).show();
+                                refreshCards();
+                            }));
+                });
+        if (saved) builder.setNeutralButton("Remove key", (d, w) -> {
+            if (anthropic) SecureStore.clearAnthropicKey(this); else SecureStore.clearXaiKey(this);
+            Toast.makeText(this, name + " key removed", Toast.LENGTH_SHORT).show();
+            refreshCards();
+        });
         AlertDialog dialog = builder.create();
         UiKit.styleOrbitDialog(dialog, this, false);
         dialog.show();

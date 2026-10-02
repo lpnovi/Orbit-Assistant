@@ -163,6 +163,15 @@ code, and never let the Play edition install Orbit Local. See `docs/PLAY_STORE.m
   were removed; legacy `model`/`reasoning`/`intelligence_mode` keys are read once by migration.
   ChatGPT exposes GPT-6 Luna, GPT-6.1 Sol, GPT-6 Astra and GPT-5.6 Luna/Terra/Sol through this one
   catalog; do not reproduce their ids, strengths or context metadata in a surface.
+- **Model Library (0.8.3.0-beta.4+)**: `AiModelSpec` is also the authority for context size,
+  vision, native-file versus extracted-document handling, tools, web/search, streaming,
+  availability and metadata source. `ProviderCatalogRepository` owns bounded last-known-good
+  Anthropic/xAI discovery; never fetch catalogs in an Activity or erase a cache on refresh failure.
+  `ModelLibraryStore` owns Favorites, bounded user-turn Recents and per-provider defaults. Internal
+  completion/title/summary jobs never call `recordRecent`. Anthropic and xAI credentials stay in
+  `SecureStore`, are never backed up, logged, diagnosed, shown again or passed across providers.
+  Requests go through `ProviderRequestMapper` and `ApiKeyProviderClient`; do not add their shapes to
+  `ChatGptClient`. See `docs/MODEL_LIBRARY.md`.
 - **Conversation titles (0.8.3.0-beta.2+)** — `ConversationStore` owns durable default/automatic/
   manual/legacy title state and the compare-and-set job token. `ConversationTitleManager` schedules
   one invisible WorkManager job after the first persisted successful exchange;

@@ -93,6 +93,27 @@ public final class AiModelCatalogTest {
         }
     }
 
+    @Test public void providerFallbackCatalogsAreCapabilityAwareAndOrdered() {
+        List<AiModelSpec> claude = OrbitModelCatalog.modelsFor(Prefs.PROVIDER_ANTHROPIC);
+        assertEquals(OrbitModelCatalog.CLAUDE_OPUS_5_5, claude.get(0).id);
+        assertEquals(1_000_000, claude.get(0).contextWindowTokens);
+        assertTrue(claude.get(0).vision);
+        assertTrue(claude.get(0).nativeFiles);
+        assertTrue(claude.get(0).tools);
+        assertEquals(200_000, OrbitModelCatalog.spec(Prefs.PROVIDER_ANTHROPIC,
+                OrbitModelCatalog.CLAUDE_HAIKU_4_5).contextWindowTokens);
+        assertFalse(OrbitModelCatalog.spec(Prefs.PROVIDER_ANTHROPIC,
+                OrbitModelCatalog.CLAUDE_HAIKU_4_5).hasStrengths());
+
+        AiModelSpec grok = OrbitModelCatalog.spec(Prefs.PROVIDER_XAI,
+                OrbitModelCatalog.GROK_4_7);
+        assertEquals(500_000, grok.contextWindowTokens);
+        assertTrue(grok.vision);
+        assertEquals(Arrays.asList(AiStrength.LOW, AiStrength.MEDIUM,
+                AiStrength.HIGH, AiStrength.XHIGH), grok.strengths);
+        assertEquals("static_official", grok.metadataSource);
+    }
+
     @Test public void everyGpt56ModelAcceptsNoneThroughMaxAndDefaultsToMedium() {
         for (String id : new String[]{OrbitModelCatalog.GPT_5_6_LUNA,
                 OrbitModelCatalog.GPT_5_6_TERRA, OrbitModelCatalog.GPT_5_6_SOL}) {

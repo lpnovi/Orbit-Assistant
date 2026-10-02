@@ -32,6 +32,11 @@ public final class OrbitModelCatalog {
     public static final String GPT_5_6_LUNA = "gpt-5.6-luna";
     public static final String GPT_5_6_TERRA = "gpt-5.6-terra";
     public static final String GPT_5_6_SOL = "gpt-5.6-sol";
+    public static final String CLAUDE_FABLE_5_1 = "claude-fable-5-1";
+    public static final String CLAUDE_OPUS_5_5 = "claude-opus-5-5";
+    public static final String CLAUDE_SONNET_5_5 = "claude-sonnet-5-5";
+    public static final String CLAUDE_HAIKU_4_5 = "claude-haiku-4-5-20251001";
+    public static final String GROK_4_7 = "grok-4.7";
     /** Orbit Local's one on-device chat model. Never sent anywhere. */
     public static final String ORBIT_LOCAL = "orbit-local";
 
@@ -41,26 +46,28 @@ public final class OrbitModelCatalog {
             AiStrength.MEDIUM, AiStrength.HIGH, AiStrength.XHIGH, AiStrength.MAX};
     private static final AiStrength[] NO_NONE_STRENGTHS = {AiStrength.LOW, AiStrength.MEDIUM,
             AiStrength.HIGH, AiStrength.XHIGH, AiStrength.MAX};
+    private static final AiStrength[] XAI_STRENGTHS = {AiStrength.LOW, AiStrength.MEDIUM,
+            AiStrength.HIGH, AiStrength.XHIGH};
 
     private static final List<AiModelSpec> CHATGPT = Collections.unmodifiableList(Arrays.asList(
-            new AiModelSpec(LUNA, "GPT-6 Luna", "GPT-6", Prefs.PROVIDER_CHATGPT,
-                    "Quick everyday answers", AiStrength.MEDIUM, false, OPENAI_CONTEXT_WINDOW,
-                    LUNA_STRENGTHS),
-            new AiModelSpec(SOL, "GPT-6.1 Sol", "GPT-6", Prefs.PROVIDER_CHATGPT,
-                    "Complex work and coding", AiStrength.MEDIUM, false, OPENAI_CONTEXT_WINDOW,
-                    NO_NONE_STRENGTHS),
-            new AiModelSpec(ASTRA, "GPT-6 Astra", "GPT-6", Prefs.PROVIDER_CHATGPT,
-                    "Deepest reasoning; access varies by account", AiStrength.MEDIUM, true,
-                    OPENAI_CONTEXT_WINDOW, NO_NONE_STRENGTHS),
-            new AiModelSpec(GPT_5_6_LUNA, "GPT-5.6 Luna", "GPT-5.6", Prefs.PROVIDER_CHATGPT,
-                    "Efficient everyday work", AiStrength.MEDIUM, false, OPENAI_CONTEXT_WINDOW,
-                    LUNA_STRENGTHS),
-            new AiModelSpec(GPT_5_6_TERRA, "GPT-5.6 Terra", "GPT-5.6", Prefs.PROVIDER_CHATGPT,
-                    "Balanced intelligence and cost", AiStrength.MEDIUM, false,
-                    OPENAI_CONTEXT_WINDOW, LUNA_STRENGTHS),
-            new AiModelSpec(GPT_5_6_SOL, "GPT-5.6 Sol", "GPT-5.6", Prefs.PROVIDER_CHATGPT,
-                    "Complex professional work", AiStrength.MEDIUM, false, OPENAI_CONTEXT_WINDOW,
-                    LUNA_STRENGTHS)));
+            fixedCloud(LUNA, "GPT-6 Luna", "GPT-6", Prefs.PROVIDER_CHATGPT,
+                    "Quick everyday answers", AiStrength.MEDIUM, OPENAI_CONTEXT_WINDOW,
+                    true, false, true, true, LUNA_STRENGTHS),
+            fixedCloud(SOL, "GPT-6.1 Sol", "GPT-6", Prefs.PROVIDER_CHATGPT,
+                    "Complex work and coding", AiStrength.MEDIUM, OPENAI_CONTEXT_WINDOW,
+                    true, false, true, true, NO_NONE_STRENGTHS),
+            cloud(ASTRA, "GPT-6 Astra", "GPT-6", Prefs.PROVIDER_CHATGPT,
+                    "Deep reasoning; access varies by account", AiStrength.MEDIUM,
+                    OPENAI_CONTEXT_WINDOW, true, false, true, true, NO_NONE_STRENGTHS),
+            fixedCloud(GPT_5_6_LUNA, "GPT-5.6 Luna", "GPT-5.6", Prefs.PROVIDER_CHATGPT,
+                    "Efficient everyday work", AiStrength.MEDIUM, OPENAI_CONTEXT_WINDOW,
+                    true, false, true, true, LUNA_STRENGTHS),
+            fixedCloud(GPT_5_6_TERRA, "GPT-5.6 Terra", "GPT-5.6", Prefs.PROVIDER_CHATGPT,
+                    "Balanced intelligence and cost", AiStrength.MEDIUM, OPENAI_CONTEXT_WINDOW,
+                    true, false, true, true, LUNA_STRENGTHS),
+            fixedCloud(GPT_5_6_SOL, "GPT-5.6 Sol", "GPT-5.6", Prefs.PROVIDER_CHATGPT,
+                    "Complex professional work", AiStrength.MEDIUM, OPENAI_CONTEXT_WINDOW,
+                    true, false, true, true, LUNA_STRENGTHS)));
 
     /**
      * The relay forwards to the OpenAI API with the operator's own key, so it offers the models the
@@ -70,15 +77,60 @@ public final class OrbitModelCatalog {
     private static final List<AiModelSpec> RELAY = Collections.unmodifiableList(Arrays.asList(
             new AiModelSpec(LUNA, "GPT-6 Luna", "GPT-6", Prefs.PROVIDER_RELAY,
                     "Quick everyday answers", AiStrength.MEDIUM, false, OPENAI_CONTEXT_WINDOW,
+                    true, false, true, true, false, false, "static_official", "active",
                     LUNA_STRENGTHS),
             new AiModelSpec(SOL, "GPT-6.1 Sol", "GPT-6", Prefs.PROVIDER_RELAY,
                     "Complex work and coding", AiStrength.MEDIUM, false, OPENAI_CONTEXT_WINDOW,
+                    true, false, true, true, false, false, "static_official", "active",
                     NO_NONE_STRENGTHS)));
 
     /** Orbit Local has one model and no reasoning parameter, so it exposes no strengths. */
     private static final List<AiModelSpec> LOCAL = Collections.singletonList(
             new AiModelSpec(ORBIT_LOCAL, "Orbit Local", "Orbit Local", Prefs.PROVIDER_LOCAL,
                     "Private, on this phone", null, false, 0));
+
+    /** Trusted offline baseline, verified against Anthropic's model overview on 2026-10-02. */
+    private static final List<AiModelSpec> ANTHROPIC = Collections.unmodifiableList(Arrays.asList(
+            cloud(CLAUDE_OPUS_5_5, "Claude Opus 5.5", "Claude 5", Prefs.PROVIDER_ANTHROPIC,
+                    "Long-running knowledge and coding work", AiStrength.MEDIUM, 1_000_000,
+                    true, true, true, false, NO_NONE_STRENGTHS),
+            cloud(CLAUDE_SONNET_5_5, "Claude Sonnet 5.5", "Claude 5", Prefs.PROVIDER_ANTHROPIC,
+                    "Fast, capable general work", AiStrength.HIGH, 1_000_000,
+                    true, true, true, false, NO_NONE_STRENGTHS),
+            cloud(CLAUDE_FABLE_5_1, "Claude Fable 5.1", "Claude 5", Prefs.PROVIDER_ANTHROPIC,
+                    "Demanding reasoning and long tasks", AiStrength.HIGH, 1_000_000,
+                    true, true, true, false, NO_NONE_STRENGTHS),
+            cloud(CLAUDE_HAIKU_4_5, "Claude Haiku 4.5", "Claude 4.5", Prefs.PROVIDER_ANTHROPIC,
+                    "Fast everyday answers", null, 200_000,
+                    true, true, true, false, new AiStrength[0])));
+
+    /** Trusted fallback while xAI's account-scoped language-model catalog is unavailable. */
+    private static final List<AiModelSpec> XAI = Collections.singletonList(
+            cloud(GROK_4_7, "Grok 4.7", "Grok 4", Prefs.PROVIDER_XAI,
+                    "Current xAI chat model", AiStrength.HIGH, 500_000,
+                    true, false, true, true, XAI_STRENGTHS));
+
+    private static volatile List<AiModelSpec> dynamicAnthropic = Collections.emptyList();
+    private static volatile List<AiModelSpec> dynamicXai = Collections.emptyList();
+
+    private static AiModelSpec cloud(String id, String name, String family, String provider,
+                                     String description, AiStrength defaultStrength, int context,
+                                     boolean vision, boolean nativeFiles, boolean tools,
+                                     boolean webSearch, AiStrength... strengths) {
+        return new AiModelSpec(id, name, family, provider, description, defaultStrength, true,
+                context, vision, nativeFiles, true, tools, webSearch, true,
+                "static_official", "active", strengths);
+    }
+
+    /** Static catalog entry whose availability is not described as account-discovered metadata. */
+    private static AiModelSpec fixedCloud(String id, String name, String family, String provider,
+                                          String description, AiStrength defaultStrength, int context,
+                                          boolean vision, boolean nativeFiles, boolean tools,
+                                          boolean webSearch, AiStrength... strengths) {
+        return new AiModelSpec(id, name, family, provider, description, defaultStrength, false,
+                context, vision, nativeFiles, true, tools, webSearch, true,
+                "static_official", "active", strengths);
+    }
 
     private OrbitModelCatalog() {}
 
@@ -87,12 +139,29 @@ public final class OrbitModelCatalog {
         if (Prefs.PROVIDER_CHATGPT.equals(providerId)) return CHATGPT;
         if (Prefs.PROVIDER_RELAY.equals(providerId)) return RELAY;
         if (Prefs.PROVIDER_LOCAL.equals(providerId)) return LOCAL;
+        if (Prefs.PROVIDER_ANTHROPIC.equals(providerId)) return dynamicAnthropic.isEmpty()
+                ? ANTHROPIC : dynamicAnthropic;
+        if (Prefs.PROVIDER_XAI.equals(providerId)) return dynamicXai.isEmpty() ? XAI : dynamicXai;
         return Collections.emptyList();
+    }
+
+    /** Installs a validated cached/discovered catalog atomically; an empty refresh changes nothing. */
+    static void installDynamic(String providerId, List<AiModelSpec> models) {
+        if (models == null || models.isEmpty()) return;
+        List<AiModelSpec> copy = Collections.unmodifiableList(new ArrayList<>(models));
+        if (Prefs.PROVIDER_ANTHROPIC.equals(providerId)) dynamicAnthropic = copy;
+        if (Prefs.PROVIDER_XAI.equals(providerId)) dynamicXai = copy;
+    }
+
+    static void clearDynamicForTest() {
+        dynamicAnthropic = Collections.emptyList();
+        dynamicXai = Collections.emptyList();
     }
 
     /** The first model a provider offers, or null when it offers none. */
     public static AiModelSpec defaultModel(String providerId) {
         List<AiModelSpec> models = modelsFor(providerId);
+        for (AiModelSpec model : models) if (model.selectable()) return model;
         return models.isEmpty() ? null : models.get(0);
     }
 
@@ -103,6 +172,15 @@ public final class OrbitModelCatalog {
         return null;
     }
 
+    /** Display-only tombstone for a Favorite or old chat absent from the current dynamic catalog. */
+    static AiModelSpec unavailableReference(String providerId, String modelId) {
+        String id = modelId == null || modelId.trim().isEmpty() ? "Unknown model" : modelId.trim();
+        return new AiModelSpec(id, id, "Unavailable", providerId,
+                "Not reported by the provider's current catalog", null, true, 0,
+                false, false, true, false, false, true,
+                "historical_reference", "unavailable");
+    }
+
     /** Whether this provider can be asked for this model at all. */
     public static boolean supports(String providerId, String modelId) {
         return spec(providerId, modelId) != null;
@@ -111,8 +189,8 @@ public final class OrbitModelCatalog {
     /** Every current model id across providers, without duplicates. For tests and audits. */
     public static List<String> currentModelIds() {
         List<String> ids = new ArrayList<>();
-        for (String provider : new String[]{Prefs.PROVIDER_CHATGPT, Prefs.PROVIDER_RELAY,
-                Prefs.PROVIDER_LOCAL}) {
+        for (String provider : new String[]{Prefs.PROVIDER_CHATGPT, Prefs.PROVIDER_ANTHROPIC,
+                Prefs.PROVIDER_XAI, Prefs.PROVIDER_RELAY, Prefs.PROVIDER_LOCAL}) {
             for (AiModelSpec spec : modelsFor(provider)) if (!ids.contains(spec.id)) ids.add(spec.id);
         }
         return ids;
@@ -136,7 +214,8 @@ public final class OrbitModelCatalog {
      */
     public static String displayName(String modelId) {
         if (modelId == null) return "";
-        for (String provider : new String[]{Prefs.PROVIDER_CHATGPT, Prefs.PROVIDER_LOCAL}) {
+        for (String provider : new String[]{Prefs.PROVIDER_CHATGPT, Prefs.PROVIDER_ANTHROPIC,
+                Prefs.PROVIDER_XAI, Prefs.PROVIDER_RELAY, Prefs.PROVIDER_LOCAL}) {
             AiModelSpec spec = spec(provider, modelId);
             if (spec != null) return spec.displayName;
         }
@@ -182,8 +261,11 @@ public final class OrbitModelCatalog {
      */
     public static String unavailableMessage(String modelId) {
         String name = displayName(modelId);
-        if (name.isEmpty()) name = "This model";
-        return name + " is not available through this ChatGPT account right now. "
+        if (name.isEmpty()) name = modelId == null || modelId.trim().isEmpty()
+                ? "This model" : modelId.trim();
+        String account = spec(Prefs.PROVIDER_CHATGPT, modelId) == null
+                ? "the selected provider account" : "this ChatGPT account";
+        return name + " is not available through " + account + " right now. "
                 + "Your selection has not been changed. Choose another model from the AI menu, "
                 + "or use Retry with to try this message on a different one.";
     }

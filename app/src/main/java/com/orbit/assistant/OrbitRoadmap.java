@@ -18,7 +18,7 @@ package com.orbit.assistant;
 public final class OrbitRoadmap {
 
     /**
-     * The active milestone: AI Control, through v0.8.3.0-beta.2. Orbit Local 2.0 (Stable in 0.8.2.0)
+     * The active milestone: AI Control, through v0.8.3.0-beta.4. Orbit Local 2.0 (Stable in 0.8.2.0)
      * and Smart Vault (Stable in 0.8.1.0) stay listed beside it for the work still ahead.
      */
     public static final String CURRENT = "AI Control";

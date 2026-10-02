@@ -30,6 +30,13 @@ public final class SecureStore {
     private static final String OPENROUTER_ENC = "openrouter_key_enc";
     private static final String OPENROUTER_IV = "openrouter_key_iv";
 
+    private static final String ANTHROPIC_ALIAS = "orbit_anthropic_key_v1";
+    private static final String ANTHROPIC_ENC = "anthropic_key_enc";
+    private static final String ANTHROPIC_IV = "anthropic_key_iv";
+    private static final String XAI_ALIAS = "orbit_xai_key_v1";
+    private static final String XAI_ENC = "xai_key_enc";
+    private static final String XAI_IV = "xai_key_iv";
+
     private SecureStore() {}
 
     public static void saveRelayToken(Context c, String value) {
@@ -88,6 +95,51 @@ public final class SecureStore {
 
     public static void clearOpenRouterKey(Context c) {
         Prefs.get(c).edit().remove(OPENROUTER_ENC).remove(OPENROUTER_IV).apply();
+    }
+
+    public static boolean saveAnthropicKey(Context c, String value) {
+        return saveApiKey(c, ANTHROPIC_ALIAS, ANTHROPIC_ENC, ANTHROPIC_IV, value);
+    }
+
+    public static String loadAnthropicKey(Context c) {
+        return loadApiKey(c, ANTHROPIC_ALIAS, ANTHROPIC_ENC, ANTHROPIC_IV);
+    }
+
+    public static boolean hasAnthropicKey(Context c) { return !loadAnthropicKey(c).isEmpty(); }
+
+    public static void clearAnthropicKey(Context c) {
+        Prefs.get(c).edit().remove(ANTHROPIC_ENC).remove(ANTHROPIC_IV).apply();
+    }
+
+    public static boolean saveXaiKey(Context c, String value) {
+        return saveApiKey(c, XAI_ALIAS, XAI_ENC, XAI_IV, value);
+    }
+
+    public static String loadXaiKey(Context c) {
+        return loadApiKey(c, XAI_ALIAS, XAI_ENC, XAI_IV);
+    }
+
+    public static boolean hasXaiKey(Context c) { return !loadXaiKey(c).isEmpty(); }
+
+    public static void clearXaiKey(Context c) {
+        Prefs.get(c).edit().remove(XAI_ENC).remove(XAI_IV).apply();
+    }
+
+    private static boolean saveApiKey(Context c, String alias, String enc, String iv, String value) {
+        try {
+            if (value == null || value.trim().isEmpty()) {
+                Prefs.get(c).edit().remove(enc).remove(iv).apply();
+                return true;
+            }
+            return encrypt(c, alias, enc, iv, value.trim());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static String loadApiKey(Context c, String alias, String enc, String iv) {
+        try { return decrypt(c, alias, enc, iv); }
+        catch (Exception e) { return ""; }
     }
 
     public static boolean saveChatGptTokens(Context c, String idToken, String accessToken,

@@ -60,7 +60,9 @@ public final class AiSelections {
      * The legal selection closest to what was asked for.
      *
      * <p>Unknown provider: ChatGPT. Retired model id: its successor. Model the provider does not
-     * offer: the provider's first model. Strength the model refuses: the nearest one it accepts
+     * offer: the provider's first model, except that a dynamic-provider selection is preserved so
+     * a temporarily absent catalog can report it unavailable rather than silently substituting.
+     * Strength the model refuses: the nearest one it accepts
      * (None becomes Low). Model without strengths: no strength. Never returns null.
      */
     public static AiSelection resolve(AiSelection raw) {
@@ -68,6 +70,10 @@ public final class AiSelections {
         String provider = normalizeProvider(raw.provider);
         AiModelSpec spec = OrbitModelCatalog.spec(provider, raw.model);
         if (spec == null) spec = OrbitModelCatalog.spec(provider, OrbitModelCatalog.successorOf(raw.model));
+        if (spec == null && (Prefs.PROVIDER_ANTHROPIC.equals(provider)
+                || Prefs.PROVIDER_XAI.equals(provider))) {
+            return AiSelection.of(provider, raw.model, null);
+        }
         if (spec == null) spec = OrbitModelCatalog.defaultModel(provider);
         return AiSelection.of(provider, spec.id, spec.resolveStrength(raw.strength));
     }
@@ -82,6 +88,14 @@ public final class AiSelections {
         AiModelSpec spec = OrbitModelCatalog.defaultModel(normalizeProvider(provider));
         AiStrength keep = current == null ? null : current.strength;
         return resolve(AiSelection.of(provider, spec.id, keep));
+    }
+
+    /** Provider switch that restores that provider's last explicitly used model when possible. */
+    public static AiSelection withProvider(Context c, AiSelection current, String provider) {
+        String normalized = normalizeProvider(provider);
+        AiSelection remembered = ModelLibraryStore.providerDefault(c, normalized);
+        if (remembered == null) return withProvider(current, normalized);
+        return resolve(remembered);
     }
 
     /**
@@ -112,6 +126,7 @@ public final class AiSelections {
 
     /** Providers the user may pick right now, in management order. */
     public static List<AiProvider> pickableProviders(Context c) {
+        ProviderCatalogRepository.loadCached(c);
         List<AiProvider> result = new ArrayList<>();
         for (AiProvider provider : AiProviders.all()) {
             if (OrbitModelCatalog.modelsFor(provider.id()).isEmpty()) continue;
@@ -124,6 +139,7 @@ public final class AiSelections {
 
     /** The selection new chats and the assistant start with. Migrates legacy settings first. */
     public static AiSelection globalDefault(Context c) {
+        ProviderCatalogRepository.loadCached(c);
         ensureMigrated(c);
         SharedPreferences p = Prefs.get(c);
         AiSelection stored = resolve(AiSelection.of(p.getString(Prefs.PROVIDER, Prefs.PROVIDER_CHATGPT),
@@ -144,6 +160,7 @@ public final class AiSelections {
         ensureMigrated(c);
         AiSelection resolved = resolve(selection);
         writeGlobal(c, resolved);
+        ModelLibraryStore.rememberProviderDefault(c, resolved);
         return resolved;
     }
 
@@ -168,6 +185,7 @@ public final class AiSelections {
     public static AiSelection setForConversation(Context c, String conversationId, AiSelection selection) {
         AiSelection resolved = resolve(selection);
         ConversationStore.setSelection(c, conversationId, resolved);
+        ModelLibraryStore.rememberProviderDefault(c, resolved);
         return resolved;
     }
 

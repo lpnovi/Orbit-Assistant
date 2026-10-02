@@ -564,11 +564,31 @@ model under the chosen one's name.
 - **Continue in new chat.** Near the limit, or any time from the context details, Orbit writes a
   short summary with a fixed small model and starts a new chat with it; the original is untouched
 
+#### `0.8.3.0-beta.4` - Model Library and provider expansion
+
+- **Claude and Grok.** Anthropic and xAI are first-class providers through their supported
+  developer APIs and user-supplied API keys. Keys use Android Keystore storage, never enter a
+  backup, and are never passed to another provider
+- **One Model Library.** Static verified definitions and bounded account-discovered catalogs feed
+  the same provider, model, capability and availability structure. Failed refreshes retain the
+  last known good catalog; removed models remain visible as unavailable historical references
+- **Favorites and Recents.** Favorites persist across refreshes. Recents are bounded, deduplicated,
+  cross-provider and recorded only on the ordinary user conversation path, never by title or
+  background metadata jobs
+- **Capability-aware requests.** Strength controls expose only provider-supported values. Vision,
+  extracted document text, context limits and unavailable models are checked from the selected
+  model's specification, with no automatic provider or model substitution
+- **Compact normal use.** The existing header remains unchanged. The quick picker prioritizes
+  Favorites, Recents and a small common set; search and full capability details live behind Browse
+  Models
+- **Attachment card redesign.** Sent cards use a 68dp target height, a 52dp preview, a one-line
+  filename and muted type/status line. A decoded preview replaces the document icon; the icon is
+  used only when no preview exists
+
 #### Still ahead for AI Control
 
 - A visual branch tree
 - Comparing models side by side
-- Claude and Grok providers, and broader model access
 
 ### Orbit Local 2.0 - more of Orbit, privately on the phone
 

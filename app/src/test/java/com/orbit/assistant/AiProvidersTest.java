@@ -49,6 +49,8 @@ public final class AiProvidersTest {
         assertEquals(Prefs.PROVIDER_LOCAL, AiProviders.byId(Prefs.PROVIDER_LOCAL).id());
         assertEquals(Prefs.PROVIDER_OPENROUTER, AiProviders.byId(Prefs.PROVIDER_OPENROUTER).id());
         assertEquals(Prefs.PROVIDER_RELAY, AiProviders.byId(Prefs.PROVIDER_RELAY).id());
+        assertEquals(Prefs.PROVIDER_ANTHROPIC, AiProviders.byId(Prefs.PROVIDER_ANTHROPIC).id());
+        assertEquals(Prefs.PROVIDER_XAI, AiProviders.byId(Prefs.PROVIDER_XAI).id());
     }
 
     @Test public void openRouterIsAShellAndCannotBecomeActive() {
@@ -100,6 +102,16 @@ public final class AiProvidersTest {
         AiCapabilities relay = AiProviders.byId(Prefs.PROVIDER_RELAY).capabilities();
         assertFalse("the relay returns one complete response", relay.streaming);
         assertFalse(relay.offline);
+
+        for (String id : new String[]{Prefs.PROVIDER_ANTHROPIC, Prefs.PROVIDER_XAI}) {
+            AiCapabilities api = AiProviders.byId(id).capabilities();
+            assertTrue(api.streaming);
+            assertTrue(api.images);
+            assertTrue(api.reasoningLevels);
+            assertTrue(api.needsCredentials);
+            assertFalse("API models cannot claim Orbit's device action envelope", api.deviceActions);
+            assertFalse(api.offline);
+        }
     }
 
     @Test public void unreadyProvidersAnswerWithClearErrorsNotExceptions() {
@@ -131,6 +143,14 @@ public final class AiProvidersTest {
         AiProviders.byId(Prefs.PROVIDER_OPENROUTER).send(context, request, callback);
         assertNotNull(error.get());
         assertTrue(error.get().contains("not available yet"));
+
+        error.set(null);
+        AiProviders.byId(Prefs.PROVIDER_ANTHROPIC).send(context, request, callback);
+        assertTrue(error.get().contains("Anthropic API key"));
+
+        error.set(null);
+        AiProviders.byId(Prefs.PROVIDER_XAI).send(context, request, callback);
+        assertTrue(error.get().contains("xAI API key"));
     }
 
     @Test public void planningOnOrbitLocalFailsWithGuidanceInsteadOfBadJson() {

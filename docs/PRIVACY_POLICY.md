@@ -1,6 +1,6 @@
 # Orbit Assistant Privacy Policy
 
-**Last updated: September 28, 2026**
+**Last updated: October 2, 2026**
 
 This policy explains what Orbit Assistant ("Orbit") does with your information. It applies to both ways Orbit is distributed: the **Google Play edition** and the **GitHub edition**. Where they differ, this policy says so.
 
@@ -49,6 +49,8 @@ Orbit's AI features send your request to the provider you selected:
 | Provider | Where your request goes |
 | --- | --- |
 | **ChatGPT account** | To OpenAI through your own ChatGPT account. OpenAI's terms and privacy policy apply. |
+| **Anthropic Claude** | To Anthropic through its official developer API, using the API key you saved in Orbit. Anthropic's terms and privacy policy apply. |
+| **xAI / Grok** | To xAI through its official developer API, using the API key you saved in Orbit. xAI's terms and privacy policy apply. |
 | **Private relay** (advanced) | To the HTTPS server address you entered. Whoever runs that server controls what happens next. |
 | **Orbit Local** (GitHub edition only) | Nowhere. Answers are generated on your phone (see below). |
 
@@ -62,9 +64,11 @@ Orbit does not switch you to a different provider on its own if a request fails.
 
 You sign in to ChatGPT in your browser, on OpenAI's own sign-in page. **Orbit never sees your password.** When you sign in, OpenAI sends your browser back to a temporary address on your own phone that only Orbit listens on, and only while that sign-in is in progress; Orbit closes it as soon as sign-in finishes, fails, or is cancelled. If the browser sign-in does not work for you, you can choose to sign in with a one-time code instead. After you sign in, Orbit stores the resulting access tokens on your phone, encrypted with a key held in Android Keystore, so it can make requests on your behalf. Signing out in Orbit removes them.
 
+Anthropic and xAI developer API keys are encrypted with provider-specific keys held by Android Keystore. Orbit never shows a saved key again, sends it to another provider, or includes it in a backup. If secure storage is unavailable, Orbit refuses to save the key rather than falling back to plaintext.
+
 Secret values you enter for Extensions are also encrypted with Android Keystore, as is an OpenRouter key if you enter one on its setup screen. OpenRouter chat is not currently available, so nothing is sent to OpenRouter. A private-relay access token is encrypted the same way where possible; if Android Keystore storage fails on a device, it falls back to Orbit's private app storage.
 
-Credentials are never included in Orbit backups. That covers your ChatGPT sign-in, the private-relay access token, an OpenRouter key, and any secret values you entered for Extensions.
+Credentials are never included in Orbit backups. That covers your ChatGPT sign-in, Anthropic and xAI API keys, the private-relay access token, an OpenRouter key, and any secret values you entered for Extensions.
 
 ## Files, images, PDFs, clipboard, and shared content
 
@@ -171,6 +175,8 @@ Orbit works with these third parties only when you use the related feature. Orbi
 | Service | Used for |
 | --- | --- |
 | OpenAI (ChatGPT) | AI requests and sign-in, if you choose ChatGPT account mode. [Privacy Policy](https://openai.com/policies/privacy-policy/) |
+| Anthropic | AI requests, if you connect an Anthropic API key and choose Claude. [Privacy Policy](https://www.anthropic.com/legal/privacy) |
+| xAI | AI requests, if you connect an xAI API key and choose Grok. [Privacy Policy](https://x.ai/legal/privacy-policy) |
 | Open-Meteo | Weather answers. [Terms](https://open-meteo.com/en/terms) |
 | GitHub | Release notes in What's New; update checks and Orbit Local downloads in the GitHub edition. [Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement) |
 | Google Play | Installing and updating the Google Play edition. [Google Privacy Policy](https://policies.google.com/privacy) |

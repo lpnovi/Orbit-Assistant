@@ -39,6 +39,7 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -1096,21 +1097,14 @@ public class ChatActivity extends Activity {
     private void addAttachment(AssistantClient.History h) {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(UiKit.dp(this, 12), UiKit.dp(this, 8), UiKit.dp(this, 12), UiKit.dp(this, 8));
+        row.setMinimumHeight(UiKit.dp(this, 68));
+        row.setPadding(UiKit.dp(this, 8), UiKit.dp(this, 8), UiKit.dp(this, 10), UiKit.dp(this, 8));
         row.setBackground(UiKit.outlined(UiKit.SURFACE_2, UiKit.withAlpha(UiKit.accent(this), 90), 14, this));
         String label = h.attachmentLabel == null || h.attachmentLabel.trim().isEmpty()
                 ? "Attachment" : h.attachmentLabel;
-        // One quiet line. A long filename such as a Samsung screenshot's is still recognisable by
-        // its start and its extension, and no longer wraps across the conversation in bold accent.
-        TextView name = UiKit.text(this, label, 12,
-                UiKit.blend(UiKit.accent(this), UiKit.MUTED, 0.62f), false);
-        name.setSingleLine(true);
-        name.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
-        name.setContentDescription("Attached: " + label);
-        row.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        bindKeepFromHistory(row, h, label);
-        // Up to three thumbnails on the sent turn, so a message that carried several photos looks
-        // like it did rather than like one photo. The label already carries the true count.
+
+        // A preview is the visual identity. It occupies the one leading slot and replaces the
+        // document glyph rather than sitting beside a second, louder icon.
         boolean viewable = AttachmentViewerModel.isViewableImage(h.attachmentKind);
         int drawn = 0;
         for (int position = 0; position < h.attachmentPaths.size(); position++) {
@@ -1134,43 +1128,92 @@ public class ChatActivity extends Activity {
                 image.setOnClickListener(v -> AttachmentViewerActivity.openHistory(
                         this, paths, kind, attachmentLabel, openAt));
                 UiKit.pressScale(image);
+            } else if (drawn < h.documents.size()) {
+                final DocumentReference document = h.documents.get(drawn);
+                image.setContentDescription(document.namesPage()
+                        ? "Open " + document.label + ", " + document.pageLabel()
+                        : "Open " + document.label + " in document viewer");
+                image.setOnClickListener(v -> openDocumentAt(document));
+                UiKit.pressScale(image);
             } else {
                 image.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             }
             LinearLayout.LayoutParams imageLp = new LinearLayout.LayoutParams(
-                    UiKit.dp(this, h.attachmentPaths.size() > 1 ? 44 : 72), UiKit.dp(this, 44));
+                    UiKit.dp(this, h.attachmentPaths.size() > 1 ? 44 : 52), UiKit.dp(this, 52));
             if (drawn > 0) imageLp.setMarginStart(UiKit.dp(this, 4));
             row.addView(image, imageLp);
             drawn++;
         }
-        for (DocumentReference document : h.documents) {
-            // A page reference keeps saying which page it was, and reopens there. A sent turn is
-            // read-only — there is no Remove on history — but it must still be as legible and as
-            // useful as the card that was in the composer a moment earlier.
-            String description = document.namesPage()
-                    ? "Open " + document.label + ", " + document.pageLabel()
-                            + ", in document viewer"
-                    : "Open " + document.label + " in document viewer";
-            if (document.namesPage()) {
-                TextView page = UiKit.text(this, document.pageLabel(), 11, UiKit.MUTED, false);
-                page.setSingleLine(true);
-                page.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-                LinearLayout.LayoutParams pageLp = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                pageLp.setMarginStart(UiKit.dp(this, 6));
-                row.addView(page, pageLp);
-            }
-            ImageButton open = iconButton(R.drawable.ic_document, description);
-            open.setOnClickListener(v -> openDocumentAt(document));
-            UiKit.pressScale(open);
-            LinearLayout.LayoutParams openLp = new LinearLayout.LayoutParams(
-                    UiKit.dp(this, 44), UiKit.dp(this, 44));
-            openLp.setMarginStart(UiKit.dp(this, 4));
-            row.addView(open, openLp);
+
+        // A document without a decoded preview gets one fallback glyph. A document that already
+        // has a thumbnail never gets a duplicate icon beside it.
+        int documentIndex = drawn;
+        while (documentIndex < h.documents.size() && drawn < 3) {
+            DocumentReference document = h.documents.get(documentIndex);
+            ImageButton fallback = iconButton(R.drawable.ic_document,
+                    "Open " + document.label + " in document viewer");
+            fallback.setOnClickListener(v -> openDocumentAt(document));
+            LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(
+                    UiKit.dp(this, 52), UiKit.dp(this, 52));
+            if (drawn > 0) iconLp.setMarginStart(UiKit.dp(this, 4));
+            row.addView(fallback, iconLp);
+            documentIndex++;
+            drawn++;
         }
+        if (drawn == 0) {
+            ImageView fallback = new ImageView(this);
+            fallback.setImageResource(R.drawable.ic_document);
+            fallback.setPadding(UiKit.dp(this, 12), UiKit.dp(this, 12),
+                    UiKit.dp(this, 12), UiKit.dp(this, 12));
+            fallback.setContentDescription("File attachment");
+            row.addView(fallback, new LinearLayout.LayoutParams(
+                    UiKit.dp(this, 52), UiKit.dp(this, 52)));
+        }
+
+        LinearLayout words = new LinearLayout(this);
+        words.setOrientation(LinearLayout.VERTICAL);
+        words.setPadding(UiKit.dp(this, 10), 0, 0, 0);
+        TextView name = UiKit.text(this, label, 14, UiKit.TEXT, false);
+        name.setSingleLine(true);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+        name.setContentDescription("Attached: " + label + ". " + attachmentMetadata(h));
+        words.addView(name);
+        TextView metadata = UiKit.text(this, attachmentMetadata(h), 11.5f, UiKit.MUTED, false);
+        metadata.setSingleLine(true);
+        metadata.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        words.addView(metadata);
+        row.addView(words, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        row.setContentDescription("Attached: " + label + ". " + attachmentMetadata(h));
+        if (h.documents.size() == 1) {
+            DocumentReference document = h.documents.get(0);
+            row.setOnClickListener(v -> openDocumentAt(document));
+            row.setFocusable(true);
+        }
+        bindKeepFromHistory(row, h, label);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.setMargins(UiKit.dp(this, 46), UiKit.dp(this, -3), 0, UiKit.dp(this, 8));
         messages.addView(row, lp);
+    }
+
+    static String attachmentMetadata(AssistantClient.History h) {
+        if (h == null) return "Attachment";
+        String kind = h.attachmentKind == null ? "" : h.attachmentKind.toLowerCase(Locale.US);
+        boolean loaded = h.attachmentText != null && !h.attachmentText.trim().isEmpty();
+        int count = Math.max(h.attachmentCount(), h.documents.size());
+        if (count > 1 || "multiple".equals(kind)) {
+            String countLabel = count > 0 ? String.valueOf(count) : "Multiple";
+            return countLabel + " attachments"
+                    + (loaded ? " · Text loaded" : "");
+        }
+        if (kind.contains("pdf") || !h.documents.isEmpty()) {
+            String page = !h.documents.isEmpty() && h.documents.get(0).namesPage()
+                    ? " · " + h.documents.get(0).pageLabel() : "";
+            return "PDF" + page + (loaded ? " · Text loaded" : "");
+        }
+        if (kind.contains("text") || kind.contains("clipboard") || kind.contains("vault"))
+            return "Text" + (loaded ? " · Loaded" : "");
+        if (AttachmentViewerModel.isViewableImage(kind)) return "Image";
+        return loaded ? "Text · Loaded" : "Attachment";
     }
 
     private void submit(boolean voiceRequest) {

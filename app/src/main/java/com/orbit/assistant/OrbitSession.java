@@ -60,6 +60,7 @@ import org.json.JSONObject;
 import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 
@@ -814,7 +815,7 @@ public class OrbitSession extends VoiceInteractionSession {
         if (modeChip == null) return;
         Context c = getContext();
         AiSelection s = currentSelection;
-        List<AiModelSpec> models = OrbitModelCatalog.modelsFor(s.provider);
+        List<AiModelSpec> models = compactProviderModels(s.provider, s.model, 6);
         List<AiStrength> strengths = AiSelections.strengthsFor(s);
         List<AiProvider> providers = AiSelections.pickableProviders(c);
         List<String> labels = new ArrayList<>();
@@ -862,7 +863,7 @@ public class OrbitSession extends VoiceInteractionSession {
             if (providers.get(i).id().equals(currentSelection.provider)) selected = i;
         }
         UiKit.showOrbitMenu(getContext(), modeChip, labels, selected, (index, label) ->
-                applyOverlaySelection(AiSelections.withProvider(currentSelection,
+                applyOverlaySelection(AiSelections.withProvider(getContext(), currentSelection,
                         providers.get(index).id())));
     }
 
@@ -882,16 +883,19 @@ public class OrbitSession extends VoiceInteractionSession {
         }
         if (Prefs.haptics(getContext())) vibrate(14);
         AiSelection s = currentSelection;
-        List<AiModelSpec> models = OrbitModelCatalog.modelsFor(s.provider);
-        if (models.isEmpty()) return;
-        String[] labels = new String[models.size()];
+        List<AiSelection> choices = quickSendChoices(s, 8);
+        if (choices.isEmpty()) return;
+        String[] labels = new String[choices.size()];
         int selected = -1;
-        for (int i = 0; i < models.size(); i++) {
-            labels[i] = "Send with " + models.get(i).displayName;
-            if (models.get(i).id.equals(s.model)) selected = i;
+        for (int i = 0; i < choices.size(); i++) {
+            AiSelection choice = choices.get(i);
+            AiModelSpec spec = OrbitModelCatalog.spec(choice.provider, choice.model);
+            labels[i] = "Send with " + (spec == null ? choice.model : spec.displayName)
+                    + (choice.provider.equals(s.provider) ? "" : " · " + choice.providerName());
+            if (choice.provider.equals(s.provider) && choice.model.equals(s.model)) selected = i;
         }
         UiKit.showOrbitMenu(getContext(), sendButton, labels, selected, (index, label) -> {
-            AiSelection model = AiSelections.withModel(currentSelection, models.get(index).id);
+            AiSelection model = AiSelections.resolve(choices.get(index));
             List<AiStrength> strengths = AiSelections.strengthsFor(model);
             if (strengths.isEmpty()) {
                 sendWith(model);
@@ -908,6 +912,50 @@ public class OrbitSession extends VoiceInteractionSession {
                         sendWith(AiSelections.withStrength(model, strengths.get(i))));
             }, 160);
         });
+    }
+
+    /** Keeps overlay popups bounded even when an account reports dozens of API models. */
+    private List<AiModelSpec> compactProviderModels(String provider, String current, int max) {
+        List<AiModelSpec> all = OrbitModelCatalog.modelsFor(provider);
+        List<AiModelSpec> out = new ArrayList<>();
+        for (AiModelSpec spec : all) {
+            if (out.size() >= max) break;
+            out.add(spec);
+        }
+        AiModelSpec selected = OrbitModelCatalog.spec(provider, current);
+        if (selected != null && !containsModel(out, current)) {
+            if (out.size() >= max) out.remove(out.size() - 1);
+            out.add(selected);
+        }
+        return out;
+    }
+
+    private boolean containsModel(List<AiModelSpec> models, String id) {
+        for (AiModelSpec model : models) if (model.id.equals(id)) return true;
+        return false;
+    }
+
+    /** Favorites and recents make cross-provider one-turn choices available without a giant menu. */
+    private List<AiSelection> quickSendChoices(AiSelection current, int max) {
+        LinkedHashMap<String, AiSelection> out = new LinkedHashMap<>();
+        putChoice(out, current);
+        for (AiSelection choice : ModelLibraryStore.favorites(getContext())) putChoice(out, choice);
+        for (AiSelection choice : ModelLibraryStore.recents(getContext())) putChoice(out, choice);
+        for (AiModelSpec spec : compactProviderModels(current.provider, current.model, max)) {
+            putChoice(out, AiSelection.of(spec.providerId, spec.id, spec.defaultStrength));
+        }
+        List<AiSelection> bounded = new ArrayList<>();
+        for (AiSelection choice : out.values()) {
+            AiModelSpec spec = OrbitModelCatalog.spec(choice.provider, choice.model);
+            if (spec != null && spec.selectable()) bounded.add(choice);
+            if (bounded.size() >= max) break;
+        }
+        return bounded;
+    }
+
+    private void putChoice(LinkedHashMap<String, AiSelection> out, AiSelection choice) {
+        if (choice == null) return;
+        out.put(choice.provider + "/" + choice.model, choice);
     }
 
     private void sendWith(AiSelection chosen) {

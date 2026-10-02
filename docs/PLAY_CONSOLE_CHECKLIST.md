@@ -52,7 +52,7 @@ The Play edition is signed with its own Google-generated key. The GitHub release
 
 ### Data safety
 Answer from the code at the time you file it, not from this list. As of this document:
-- [ ] **Data is sent off the device** to the AI provider the user selects (ChatGPT account mode or the user's own relay): messages, and any attachments, screen content, notification context, or location the user includes in a request. Declare these as shared with a third party for app functionality.
+- [ ] **Data is sent off the device** to the AI provider the user selects (ChatGPT account mode, Anthropic Claude, xAI/Grok, or the user's own relay): messages, and any attachments, screen content, notification context, or location the user includes in a request. Declare these as shared with a third party for app functionality.
 - [ ] Location (approximate and precise): weather, Saved Places, and Routine IF conditions, while Orbit is open. The initial Play edition does not access location in the background. If the user turns on weather for their current location, the current coordinates are sent to Open-Meteo for the forecast; declare that as shared with a third party for app functionality.
 - [ ] Contacts, calendar, audio (voice input), photos (camera attachments), app activity (notifications, when Notification Intelligence is enabled): processed on the device for the features that use them, and included in an AI request only when the user sends one.
 - [ ] Data is encrypted in transit (HTTPS only; cleartext traffic is disabled).
@@ -82,7 +82,7 @@ Draft, adjust once the reviewer-access decision is made:
 
 > Orbit Assistant works without an account for its device features: Routines, reminders, Orbit Deck, Theme Studio, Orbit Vault, widgets, Quick Settings tiles, and the document viewer.
 >
-> AI chat requires the user to connect their own ChatGPT account. Orbit uses OpenAI's sign-in page in the browser, with a one-time-code sign-in as an alternative; Orbit never receives the password. [OWNER INPUT REQUIRED: either provide a dedicated test account that you are permitted to share and that has no personal data, or explain that AI chat requires the reviewer's own account.]
+> AI chat requires the user to connect their own ChatGPT account or enter their own Anthropic or xAI developer API key. Orbit uses OpenAI's sign-in page in the browser, with a one-time-code sign-in as an alternative; Orbit never receives the ChatGPT password. Provider credentials are excluded from backups. [OWNER INPUT REQUIRED: provide an authorized dedicated test account/key with no personal data, or explain that AI chat requires the reviewer's own provider access.]
 >
 > To test the Side-button assistant: Settings > Apps > Default apps > Digital assistant app > Orbit Assistant, then long-press the Side button (Samsung) or use the system assistant gesture. The in-app onboarding offers a shortcut to this setting.
 

@@ -101,12 +101,14 @@ public final class ConversationControlChatTest {
         return out;
     }
 
-    private static int countDescriptions(View root, String description) {
-        int n = description.contentEquals(root.getContentDescription() == null ? ""
-                : root.getContentDescription()) ? 1 : 0;
+    private static int countDescriptionPrefixes(View root, String prefix) {
+        CharSequence description = root.getContentDescription();
+        int n = description != null && description.toString().startsWith(prefix) ? 1 : 0;
         if (root instanceof ViewGroup) {
             ViewGroup g = (ViewGroup) root;
-            for (int i = 0; i < g.getChildCount(); i++) n += countDescriptions(g.getChildAt(i), description);
+            for (int i = 0; i < g.getChildCount(); i++) {
+                n += countDescriptionPrefixes(g.getChildAt(i), prefix);
+            }
         }
         return n;
     }
@@ -260,8 +262,10 @@ public final class ConversationControlChatTest {
         ConversationStore.appendMessage(context, "k", new AssistantClient.History("user", "Key points?"));
         ConversationStore.appendMessage(context, "k", new AssistantClient.History("assistant", "Three."));
         chat.renderForTest();
-        assertEquals("never repeated under later messages", 1,
-                countDescriptions(chat.messagesForTest(), "Attached: Research.pdf"));
+        // The compact card and its filename expose the same accessible label; neither later turn
+        // receives another copy. The suffix now includes the quiet type and extraction status.
+        assertEquals("one card and its accessible filename, never repeated under later messages", 2,
+                countDescriptionPrefixes(chat.messagesForTest(), "Attached: Research.pdf"));
         assertEquals(View.VISIBLE, chat.keptIndicatorForTest().getVisibility());
     }
 

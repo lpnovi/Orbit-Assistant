@@ -48,10 +48,10 @@ ORBIT DECK AND THEME STUDIO
 Orbit Deck is your own board of apps, prompts, and controls, with sections and folders. Theme Studio restyles the whole app: accent colours, AMOLED black, and Solid, Frosted, or Liquid surfaces, with a live preview and shareable theme files.
 
 AI PROVIDER
-Orbit connects to your own ChatGPT account through a browser sign-in; Orbit never sees your password. Your account's plan and limits apply. Advanced users can point Orbit at their own private HTTPS relay instead.
+Orbit connects to your own ChatGPT account through a browser sign-in; Orbit never sees your password. You can also connect Anthropic Claude or xAI/Grok with your own developer API key. Your provider's plan and limits apply. Advanced users can point Orbit at their own private HTTPS relay instead.
 
 PRIVACY
-There is no Orbit account and no Orbit server. Your chats, Memory, Routines, and settings are stored on your phone. A request, and anything you choose to attach to it, is sent only to the AI provider you selected. Your ChatGPT sign-in is stored encrypted with Android Keystore.
+There is no Orbit account and no Orbit server. Your chats, Memory, Routines, and settings are stored on your phone. A request, and anything you choose to attach to it, is sent only to the AI provider you selected. Your ChatGPT sign-in and Anthropic/xAI API keys are stored encrypted with Android Keystore and excluded from backups.
 
 OPEN SOURCE
 Orbit Assistant is open source under the Mozilla Public License 2.0. The full source is on GitHub.

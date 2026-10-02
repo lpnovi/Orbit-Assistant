@@ -21,6 +21,12 @@ public final class Prefs {
     public static final String AI_DEFAULT_MODEL = "ai_default_model";
     /** Default reasoning strength id for new chats; empty for a model with no strength. */
     public static final String AI_DEFAULT_STRENGTH = "ai_default_strength";
+    /** JSON array of provider/model keys the user starred in Model Library. */
+    public static final String AI_MODEL_FAVORITES = "ai_model_favorites";
+    /** JSON array of recent user-chosen conversational selections, newest first. */
+    public static final String AI_MODEL_RECENTS = "ai_model_recents";
+    /** JSON object of the last explicitly chosen model per provider. */
+    public static final String AI_PROVIDER_DEFAULTS = "ai_provider_defaults";
     public static final String PROVIDER = "provider";
     public static final String BACKEND_URL = "backend_url";
     public static final String BACKEND_TOKEN = "backend_token";
@@ -240,6 +246,8 @@ public final class Prefs {
     public static final String PROVIDER_RELAY = "relay";
     public static final String PROVIDER_LOCAL = "local";
     public static final String PROVIDER_OPENROUTER = "openrouter";
+    public static final String PROVIDER_ANTHROPIC = "anthropic";
+    public static final String PROVIDER_XAI = "xai";
 
     public static final String CHAT_TEXT_SMALL = "small";
     public static final String CHAT_TEXT_DEFAULT = "default";
@@ -258,7 +266,8 @@ public final class Prefs {
     private Prefs() {}
 
     private static final Set<String> BACKUP_STRING_KEYS = new HashSet<>(Arrays.asList(
-            MODEL, REASONING, INTELLIGENCE_MODE, AI_DEFAULT_MODEL, AI_DEFAULT_STRENGTH, ACCENT, USER_BUBBLE_COLOR,
+            MODEL, REASONING, INTELLIGENCE_MODE, AI_DEFAULT_MODEL, AI_DEFAULT_STRENGTH,
+            AI_MODEL_FAVORITES, AI_MODEL_RECENTS, AI_PROVIDER_DEFAULTS, ACCENT, USER_BUBBLE_COLOR,
             ASSISTANT_BUBBLE_COLOR, CHAT_TEXT_SIZE, WEATHER_LOCATION, WEATHER_UNITS, APP_FONT,
             QUICK_SETTINGS_ROUTINE_ID, PAGE_TRANSITION,
             THEME_SURFACE, THEME_BACKGROUND, THEME_ID, THEME_NAME, THEME_MATERIAL,
@@ -343,7 +352,8 @@ public final class Prefs {
     /** Unknown stored provider ids resolve to ChatGPT rather than to undefined behavior. */
     public static String normalizeProvider(String provider) {
         if (PROVIDER_CHATGPT.equals(provider) || PROVIDER_RELAY.equals(provider) ||
-                PROVIDER_LOCAL.equals(provider) || PROVIDER_OPENROUTER.equals(provider)) return provider;
+                PROVIDER_LOCAL.equals(provider) || PROVIDER_OPENROUTER.equals(provider)
+                || PROVIDER_ANTHROPIC.equals(provider) || PROVIDER_XAI.equals(provider)) return provider;
         return PROVIDER_CHATGPT;
     }
     public static String backendUrl(Context c) { return get(c).getString(BACKEND_URL, "").trim(); }

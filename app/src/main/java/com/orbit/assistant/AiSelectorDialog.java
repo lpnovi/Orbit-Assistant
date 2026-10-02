@@ -16,6 +16,8 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * Orbit's one picker for provider, model and strength.
@@ -162,25 +164,84 @@ final class AiSelectorDialog {
         modelRows.clear();
         modelSpecs.clear();
         modelSections.clear();
-        String family = "";
+        Set<String> added = new LinkedHashSet<>();
+        addGroup("Favorites", ModelLibraryStore.favorites(context), added, Integer.MAX_VALUE);
+        addGroup("Recent", ModelLibraryStore.recents(context), added, 4);
+
+        List<AiSelection> common = new ArrayList<>();
+        int shown = 0;
         for (AiModelSpec spec : OrbitModelCatalog.modelsFor(selection.provider)) {
-            if (!spec.familyLabel.isEmpty() && !spec.familyLabel.equals(family)) {
-                TextView section = heading(spec.familyLabel);
-                section.setTextSize(11);
-                section.setPadding(UiKit.dp(context, 2), UiKit.dp(context, 10), 0,
-                        UiKit.dp(context, 2));
-                modelList.addView(section);
-                modelSections.add(section);
-                family = spec.familyLabel;
+            if (shown < 6 || spec.id.equals(selection.model)) {
+                common.add(AiSelection.of(spec.providerId, spec.id, spec.defaultStrength));
+                shown++;
             }
-            View row = modelRow(spec);
-            modelRows.add(row);
-            modelSpecs.add(spec);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.setMargins(0, UiKit.dp(context, 3), 0, UiKit.dp(context, 3));
-            modelList.addView(row, lp);
         }
+        if (Prefs.PROVIDER_CHATGPT.equals(selection.provider)) {
+            addFamilyGroups(common, added);
+        } else {
+            addGroup(AiProviders.byId(selection.provider).displayName(), common, added,
+                    Integer.MAX_VALUE);
+        }
+
+        Button browse = chip("Browse models ›");
+        browse.setContentDescription("Browse all models");
+        browse.setOnClickListener(v -> ModelLibraryDialog.show(context, selection, chosen -> {
+            selection = chosen;
+            buildModelRows();
+            refresh();
+        }));
+        LinearLayout.LayoutParams browseLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(context, 46));
+        browseLp.setMargins(0, UiKit.dp(context, 9), 0, UiKit.dp(context, 2));
+        modelList.addView(browse, browseLp);
+    }
+
+    /** Preserve the concise GPT family headings while Favorites and Recents may span providers. */
+    private void addFamilyGroups(List<AiSelection> selections, Set<String> added) {
+        List<String> families = new ArrayList<>();
+        for (AiSelection item : selections) {
+            AiModelSpec spec = OrbitModelCatalog.spec(item.provider, item.model);
+            if (spec != null && !families.contains(spec.familyLabel)) families.add(spec.familyLabel);
+        }
+        for (String family : families) {
+            List<AiSelection> members = new ArrayList<>();
+            for (AiSelection item : selections) {
+                AiModelSpec spec = OrbitModelCatalog.spec(item.provider, item.model);
+                if (spec != null && family.equals(spec.familyLabel)) members.add(item);
+            }
+            addGroup(family, members, added, Integer.MAX_VALUE);
+        }
+    }
+
+    private void addGroup(String label, List<AiSelection> selections, Set<String> added, int max) {
+        List<AiModelSpec> specs = new ArrayList<>();
+        for (AiSelection item : selections) {
+            if (item == null || specs.size() >= max) break;
+            AiModelSpec spec = OrbitModelCatalog.spec(item.provider, item.model);
+            if (spec == null && (Prefs.PROVIDER_ANTHROPIC.equals(item.provider)
+                    || Prefs.PROVIDER_XAI.equals(item.provider))) {
+                spec = OrbitModelCatalog.unavailableReference(item.provider, item.model);
+            }
+            String key = item.provider + "/" + item.model;
+            if (spec != null && added.add(key)) specs.add(spec);
+        }
+        if (specs.isEmpty()) return;
+        TextView section = heading(label);
+        section.setTextSize(11);
+        section.setPadding(UiKit.dp(context, 2), UiKit.dp(context, 10), 0, UiKit.dp(context, 2));
+        modelList.addView(section);
+        modelSections.add(section);
+        for (AiModelSpec spec : specs) addModelRow(spec);
+    }
+
+    private void addModelRow(AiModelSpec spec) {
+        View row = modelRow(spec);
+        modelRows.add(row);
+        modelSpecs.add(spec);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, UiKit.dp(context, 3), 0, UiKit.dp(context, 3));
+        modelList.addView(row, lp);
     }
 
     private View modelRow(AiModelSpec spec) {
@@ -211,7 +272,14 @@ final class AiSelectorDialog {
         check.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         row.addView(check);
 
-        row.setOnClickListener(v -> chooseModel(spec.id, v));
+        if (spec.selectable()) row.setOnClickListener(v -> chooseSpec(spec, v));
+        row.setOnLongClickListener(v -> {
+            boolean next = !ModelLibraryStore.isFavorite(context, spec.providerId, spec.id);
+            ModelLibraryStore.setFavorite(context, spec.providerId, spec.id, next);
+            buildModelRows();
+            refresh();
+            return true;
+        });
         UiKit.pressScale(row);
         return row;
     }
@@ -251,7 +319,7 @@ final class AiSelectorDialog {
 
     private void chooseProvider(String provider, View source) {
         if (provider.equals(selection.provider)) return;
-        selection = AiSelections.withProvider(selection, provider);
+        selection = AiSelections.withProvider(context, selection, provider);
         buildModelRows();
         tick(source);
         refresh();
@@ -260,6 +328,14 @@ final class AiSelectorDialog {
     void chooseModel(String model, View source) {
         selection = AiSelections.withModel(selection, model);
         tick(source);
+        refresh();
+    }
+
+    private void chooseSpec(AiModelSpec spec, View source) {
+        selection = AiSelections.resolve(AiSelection.of(spec.providerId, spec.id,
+                spec.resolveStrength(selection.strength)));
+        tick(source);
+        buildModelRows();
         refresh();
     }
 
@@ -285,7 +361,8 @@ final class AiSelectorDialog {
         for (int i = 0; i < modelRows.size(); i++) {
             View row = modelRows.get(i);
             AiModelSpec spec = modelSpecs.get(i);
-            boolean selected = spec.id.equals(selection.model);
+            boolean selected = spec.providerId.equals(selection.provider)
+                    && spec.id.equals(selection.model);
             row.setBackground(selected
                     ? UiKit.rippleOutlined(UiKit.withAlpha(accent, 38), UiKit.withAlpha(accent, 170),
                             accent, 14, context)

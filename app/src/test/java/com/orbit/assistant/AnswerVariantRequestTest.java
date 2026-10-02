@@ -36,6 +36,10 @@ public final class AnswerVariantRequestTest {
             OrbitModelCatalog.ASTRA, AiStrength.HIGH);
     private static final AiSelection TERRA = AiSelection.of(Prefs.PROVIDER_CHATGPT,
             OrbitModelCatalog.GPT_5_6_TERRA, AiStrength.MEDIUM);
+    private static final AiSelection CLAUDE = AiSelection.of(Prefs.PROVIDER_ANTHROPIC,
+            OrbitModelCatalog.CLAUDE_SONNET_5_5, AiStrength.HIGH);
+    private static final AiSelection GROK = AiSelection.of(Prefs.PROVIDER_XAI,
+            OrbitModelCatalog.GROK_4_7, AiStrength.XHIGH);
 
     @Before public void setUp() {
         context = RuntimeEnvironment.getApplication();
@@ -164,5 +168,30 @@ public final class AnswerVariantRequestTest {
         assertNotNull(item.selection.strength);
         assertTrue(OrbitModelCatalog.spec(Prefs.PROVIDER_CHATGPT, OrbitModelCatalog.ASTRA)
                 .supports(item.selection.strength));
+    }
+
+    @Test public void sendWithClaudeIsOneTurnAndTheNextTurnReturnsToChatGpt() {
+        String id = chat();
+        PendingRequestStore.Item oneTurn = PendingRequestStore.create(context, id, "Use Claude", "",
+                Collections.emptyList(), false, false, CLAUDE, false, "");
+        assertEquals(CLAUDE, oneTurn.selection);
+        assertEquals(TERRA, AiSelections.forConversation(context, id));
+        PendingRequestStore.Item normal = PendingRequestStore.create(context, id, "Back to default", "",
+                Collections.emptyList(), false, false,
+                AiSelections.forConversation(context, id), false, "");
+        assertEquals(TERRA, normal.selection);
+    }
+
+    @Test public void retryWithGrokKeepsBothProviderVariantsAndChatDefault() {
+        String id = chat();
+        PendingRequestStore.Item item = variantRequest(id, GROK);
+        OrbitRequestWorker.completeProviderReply(context, item,
+                new AssistantReply("Grok answer").withDetails(ResponseDetails.sentWith(GROK)),
+                WorkerAttempt.of(1, false));
+        ConversationStore.Conversation stored = ConversationStore.load(context, id);
+        assertEquals(Prefs.PROVIDER_XAI, stored.messages.get(1).details.provider);
+        assertEquals(OrbitModelCatalog.GROK_4_7, stored.messages.get(1).details.model);
+        assertEquals("Answer A", stored.forkAt(1).variants.get(0).messages.get(0).content);
+        assertEquals(TERRA, AiSelections.forConversation(context, id));
     }
 }
