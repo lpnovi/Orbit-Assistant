@@ -531,9 +531,9 @@ public class OrbitSession extends VoiceInteractionSession {
         modeChip.setGravity(Gravity.CENTER);
         modeChip.setSingleLine(true);
         modeChip.setMinWidth(UiKit.dp(c, 62));
-        // "Astra · Extra High" is the longest label; past this width it ends in an ellipsis rather
+        // "Terra · Extra High" is the longest label; past this width it ends in an ellipsis rather
         // than pushing the overlay's title aside.
-        modeChip.setMaxWidth(UiKit.dp(c, 150));
+        modeChip.setMaxWidth(UiKit.dp(c, 158));
         modeChip.setEllipsize(TextUtils.TruncateAt.END);
         modeChip.setPadding(UiKit.dp(c, 10), 0, UiKit.dp(c, 10), 0);
         modeChip.setBackground(UiKit.rippleOutlined(
@@ -552,6 +552,7 @@ public class OrbitSession extends VoiceInteractionSession {
                 ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(c, 32));
         modeLp.setMargins(0, 0, UiKit.dp(c, 8), 0);
         top.addView(modeChip, modeLp);
+        installModeChipTouchTarget(top, modeChip);
 
         ImageButton recent = tinyIconButton(com.orbit.assistant.R.drawable.ic_history);
         recent.setContentDescription("Recent chats");
@@ -859,6 +860,19 @@ public class OrbitSession extends VoiceInteractionSession {
                 + ". Tap to change.");
     }
 
+    /** Keeps the compact 32dp visual while forwarding a full 44dp vertical touch target to it. */
+    private void installModeChipTouchTarget(View parent, View chip) {
+        if (parent == null || chip == null) return;
+        parent.post(() -> {
+            Rect bounds = new Rect();
+            chip.getHitRect(bounds);
+            int extra = Math.max(0, UiKit.dp(getContext(), 44) - bounds.height());
+            bounds.top -= extra / 2;
+            bounds.bottom += extra - extra / 2;
+            parent.setTouchDelegate(new TouchDelegate(bounds, chip));
+        });
+    }
+
     /** The overlay's current selection. For tests. */
     AiSelection currentSelectionForTest() { return currentSelection; }
 
@@ -910,7 +924,7 @@ public class OrbitSession extends VoiceInteractionSession {
                                     : ReplyDraftOutcome.Kind.DRAFT;
                     addDraftReplyActions(visible, kind, "history-" + i, true);
                 } else {
-                    addSourceLink(rawVisible);
+                    addSourceLink(rawVisible, item.richImages);
                 }
                 addPersistedActionCards(i);
             }
@@ -1992,7 +2006,8 @@ public class OrbitSession extends VoiceInteractionSession {
                             addDraftReplyActions(storedText, outcome.kind, draftTurnId, true);
                         } else {
                             clearDraftReplyActions();
-                            if (!voiceRequest) addSourceLink(storedText);
+                            if (!voiceRequest) addSourceLink(storedText,
+                                    java.util.Collections.emptyList());
                         }
                         executeActions(reply.actions, 0);
                         if (voiceRequest && Prefs.speak(getContext())) speak(OrbitMarkdown.toSpeechText(
@@ -2452,10 +2467,11 @@ public class OrbitSession extends VoiceInteractionSession {
         return b;
     }
 
-    private void addSourceLink(String rawText) {
+    private void addSourceLink(String rawText, List<RichAnswerImage> richImages) {
         if (messages == null || rawText == null) return;
         String url = SourceLinkUtil.sourceUrl(rawText);
         if (url.isEmpty()) return;
+        if (RichAnswerSourcePresentation.isAlreadyAttributed(url, richImages)) return;
         Context c = getContext();
         Button source = new Button(c);
         source.setAllCaps(false);
@@ -2733,7 +2749,8 @@ public class OrbitSession extends VoiceInteractionSession {
                             addDraftReplyActions(storedText, outcome.kind, draftTurnId, true);
                         } else {
                             clearDraftReplyActions();
-                            if (!voiceRequest) addSourceLink(storedText);
+                            if (!voiceRequest) addSourceLink(storedText,
+                                    java.util.Collections.emptyList());
                         }
                         executeActions(reply.actions, 0);
                         if (voiceRequest && Prefs.speak(getContext())) speak(OrbitMarkdown.toSpeechText(

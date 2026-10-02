@@ -352,7 +352,10 @@ final class LocalContextBudget {
             if (content.length() > MAX_HISTORY_TURN_CHARS) {
                 content = content.substring(0, MAX_HISTORY_TURN_CHARS).trim() + " [...]";
             }
-            String line = role + neutralize(content).replace('\n', ' ') + "\n";
+            String rendered = RenderedResultContext.block(h, i == turns.size() - 1)
+                    .replace('\n', ' ');
+            String line = role + neutralize(RenderedResultContext.neutralizeMarkers(content))
+                    .replace('\n', ' ') + rendered + "\n";
             int cost = estimateTokens(line);
             if (cost > historyShare) break;
             historyShare -= cost;

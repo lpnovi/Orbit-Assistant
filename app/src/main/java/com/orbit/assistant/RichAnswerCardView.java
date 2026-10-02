@@ -119,7 +119,15 @@ public final class RichAnswerCardView extends LinearLayout {
             caption.setLineSpacing(0, 1.1f);
             caption.setContentDescription(image.isGenerated()
                     ? "Generated image"
-                    : "Image source: " + attribution);
+                    : "Open image source: " + attribution);
+            if (image.isWebSource() && RichAnswerUrlPolicy.isOpenableWebUrl(image.sourceUrl)) {
+                caption.setClickable(true);
+                caption.setFocusable(true);
+                caption.setBackground(UiKit.ripple(android.graphics.Color.TRANSPARENT,
+                        UiKit.accent(context), 10, context));
+                caption.setOnClickListener(v -> openSource(v, image));
+                UiKit.pressScale(caption);
+            }
             LinearLayout.LayoutParams captionLp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             captionLp.setMargins(UiKit.dp(context, 3), UiKit.dp(context, 6), UiKit.dp(context, 3), 0);
@@ -233,6 +241,21 @@ public final class RichAnswerCardView extends LinearLayout {
         List<RichAnswerImage> set = all == null || all.isEmpty()
                 ? java.util.Collections.singletonList(image) : all;
         AttachmentViewerActivity.openRichAnswer(host, set, image.id);
+    }
+
+    /** The caption is the source control in the answer; no duplicate pill is needed below it. */
+    private static void openSource(View anchor, RichAnswerImage image) {
+        if (anchor == null || image == null
+                || !RichAnswerUrlPolicy.isOpenableWebUrl(image.sourceUrl)) return;
+        UiKit.haptic(anchor, HapticFeedbackConstants.CLOCK_TICK);
+        try {
+            android.content.Intent intent = new android.content.Intent(
+                    android.content.Intent.ACTION_VIEW, android.net.Uri.parse(image.sourceUrl));
+            if (!(anchor.getContext() instanceof android.app.Activity)) {
+                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            }
+            anchor.getContext().startActivity(intent);
+        } catch (Exception ignored) {}
     }
 
     private static android.app.Activity activityOf(View view) {

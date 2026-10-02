@@ -161,6 +161,16 @@ code, and never let the Play edition install Orbit Local. See `docs/PLAY_STORE.m
   layer; `AiSelection` is what chats, pending requests and `AiRequest` carry. There is no routing:
   never add per-request model choice outside `AiSelections`. Intelligence modes and `AutoRouter`
   were removed; legacy `model`/`reasoning`/`intelligence_mode` keys are read once by migration.
+  ChatGPT exposes GPT-6 Luna, GPT-6.1 Sol, GPT-6 Astra and GPT-5.6 Luna/Terra/Sol through this one
+  catalog; do not reproduce their ids, strengths or context metadata in a surface.
+- **Conversation titles (0.8.3.0-beta.2+)** — `ConversationStore` owns durable default/automatic/
+  manual/legacy title state and the compare-and-set job token. `ConversationTitleManager` schedules
+  one invisible WorkManager job after the first persisted successful exchange;
+  `ConversationTitlePolicy` fixes ChatGPT metadata work to GPT-5.6 Luna Low and supplies the local
+  fallback. Never put title prompts/results in chat history or let an async result beat Rename.
+- **Rendered-result follow-ups (0.8.3.0-beta.2+)** — `RenderedResultContext` exposes only the exact
+  count of persisted rich-image cards from the immediately preceding assistant turn. It is bounded
+  untrusted data, not UI markup or an instruction; keep it out of older turns and visible history.
 - **Context** — `ScreenContextExtractor`, `ScreenContextClassifier`, `ScreenActionSuggester`,
   `ScreenSelection*` (crop/markup editor), `AttachmentStore`/`AttachmentLoader`/`AttachmentBridge`.
 - **Actions & automation** — `OrbitActionEngine`, `DeviceActionExecutor` (timers, alarms, brightness,

@@ -40,6 +40,28 @@ public final class RichAnswerRenderingTest {
         return RichAnswerImage.webSource(imageUrl, sourceUrl, "A robin", "a robin", 0);
     }
 
+    @Test public void matchingRichAttributionReplacesOnlyTheRedundantSourceControl() {
+        String page = "https://example.org/birds/robin";
+        List<RichAnswerImage> images = Collections.singletonList(
+                attached("https://cdn.example.org/robin.jpg", page));
+        assertTrue(RichAnswerSourcePresentation.isAlreadyAttributed(page, images));
+        assertFalse("a different citation must remain visible",
+                RichAnswerSourcePresentation.isAlreadyAttributed(
+                        "https://example.org/birds/wren", images));
+        assertFalse("ordinary textual citations are never hidden without a rich card",
+                RichAnswerSourcePresentation.isAlreadyAttributed(page, Collections.emptyList()));
+    }
+
+    @Test public void richCaptionIsTheAccessibleOpenSourceControl() {
+        String card = ComponentUninstallTest.readRepositoryFile(
+                "app/src/main/java/com/orbit/assistant/RichAnswerCardView.java");
+        assertTrue(card.contains("Open image source: "));
+        assertTrue(card.contains("caption.setClickable(true)"));
+        assertTrue(card.contains("caption.setFocusable(true)"));
+        assertTrue(card.contains("openSource(v, image)"));
+        assertTrue(card.contains("RichAnswerUrlPolicy.isOpenableWebUrl(image.sourceUrl)"));
+    }
+
     // ---- duplicate suppression ---------------------------------------------------------------------
 
     /** The same picture written twice is drawn once. */

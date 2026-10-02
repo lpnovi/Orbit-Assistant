@@ -842,6 +842,13 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.3.0-beta.2**: AI Control polish and automatic chat titles.
+  - GPT-5.6 Luna, Terra and Sol return as normal ChatGPT choices beside the GPT-6 family, grouped cleanly in the shared model picker with their supported strengths.
+  - New conversations receive a concise background title after their first successful exchange; local fallback is safe and deterministic, and a manual rename always wins.
+  - Chat-header pills, response actions and the Side-button AI control stay compact with accessible touch targets and safer bounds for long names.
+  - Rich Answer image attribution now opens its source directly and replaces a redundant duplicate source pill when both point to the same page.
+  - Follow-up requests can receive the exact number of Rich Answer image cards Orbit surfaced for the immediately preceding answer.
+  - Browser ChatGPT sign-in, per-chat AI choices, Retry, Reply, Vault saves and response details keep the Beta 1 architecture.
 - **v0.8.3.0-beta.1**: AI Control Beta 1: choose exactly which AI answers you and how hard it thinks.
   - Sign in with ChatGPT in your normal browser with one tap; code sign-in stays available if you need it.
   - Pick the provider, model and strength right from the chat header, replacing Auto, Fast, Balanced and Deep.

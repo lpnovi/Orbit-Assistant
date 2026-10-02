@@ -136,8 +136,10 @@ final class RelayProvider implements AiProvider {
                     for (int i = start; i < end; i++) {
                         JSONObject m = new JSONObject();
                         m.put("role", history.get(i).role);
-                        m.put("content", safe(history.get(i).content, 6000)
-                                + ChatGptClient.quoteBlock(history.get(i)));
+                        m.put("content", RenderedResultContext.neutralizeMarkers(
+                                        safe(history.get(i).content, 6000))
+                                + ChatGptClient.quoteBlock(history.get(i))
+                                + RenderedResultContext.block(history.get(i), i == end - 1));
                         h.put(m);
                     }
                 }

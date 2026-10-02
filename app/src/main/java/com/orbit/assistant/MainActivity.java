@@ -27,6 +27,11 @@ import java.util.List;
 
 /** Full Orbit companion app introduced in 0.4. */
 public class MainActivity extends Activity {
+    /** Multi-window and fast Back navigation update only chat rows when a title lands. */
+    private final ConversationTitleManager.Listener titleListener = (id, title) ->
+            runOnUiThread(() -> {
+                if (!isFinishing() && !isDestroyed()) refreshChats();
+            });
     public static final String EXTRA_OPEN_CONVERSATION_ID = "open_conversation_id";
     private LinearLayout chatList;
     private LinearLayout pendingList;
@@ -110,6 +115,7 @@ public class MainActivity extends Activity {
         super.onResume();
         foregroundActive = true;
         UiPresence.enter(this);
+        ConversationTitleManager.addListener(titleListener);
         if (!syncThemeIfNeeded()) refresh();
         maybeShowForegroundUpdate();
     }
@@ -122,6 +128,7 @@ public class MainActivity extends Activity {
         // meant, and leaving it pending would make it depend on this process staying alive.
         commitPendingDeletion();
         OrbitSwipeRow.resetActive();
+        ConversationTitleManager.removeListener(titleListener);
         UiPresence.leave(this);
         super.onPause();
     }

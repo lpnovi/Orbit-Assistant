@@ -286,11 +286,20 @@ public class ChatActivity extends Activity {
         reloadConversation();
     });
 
+    /** A title completion changes only Android's title metadata; the chat hierarchy stays intact. */
+    private final ConversationTitleManager.Listener titleListener = (chat, title) -> runOnUiThread(() -> {
+        if (chat == null || !chat.equals(conversationId) || isFinishing() || isDestroyed()) return;
+        setTitle(title);
+    });
+
     @Override protected void onResume() {
         super.onResume();
         ComposerTrace.event("chat.onResume");
         UiPresence.enter(this);
         RichAnswerCoordinator.addListener(richImageListener);
+        ConversationTitleManager.addListener(titleListener);
+        ConversationStore.Conversation titled = ConversationStore.load(this, conversationId);
+        setTitle(titled == null ? ConversationStore.NEW_CHAT_TITLE : titled.title);
         updateAiControls();
         // Before the reload below, so a rebuilt hierarchy is the one the conversation is drawn into
         // rather than one that is replaced immediately afterwards.
@@ -536,6 +545,7 @@ public class ChatActivity extends Activity {
     @Override protected void onPause() {
         UiPresence.leave(this);
         RichAnswerCoordinator.removeListener(richImageListener);
+        ConversationTitleManager.removeListener(titleListener);
         detachListeners();
         if (voiceController != null) voiceController.stop(false);
         // Navigating away ends listening, so the microphone must not be left animating.
@@ -824,7 +834,7 @@ public class ChatActivity extends Activity {
         if (!user && !visible.trim().isEmpty() && !visible.startsWith("Orbit could not finish")) {
             addMemoryUsageIndicator(h);
             if (index == history.size() - 1) addMemorySuggestion(h, index);
-            addSourceLink(rawVisible);
+            addSourceLink(rawVisible, h.richImages);
             addPersistedActionCards(index);
         }
         if (user && h.screenAttached) addAttachment(h);
@@ -961,10 +971,11 @@ public class ChatActivity extends Activity {
         return b;
     }
 
-    private void addSourceLink(String rawText) {
+    private void addSourceLink(String rawText, List<RichAnswerImage> richImages) {
         if (rawText == null) return;
         String url = SourceLinkUtil.sourceUrl(rawText);
         if (url.isEmpty()) return;
+        if (RichAnswerSourcePresentation.isAlreadyAttributed(url, richImages)) return;
         Button source = new Button(this);
         source.setAllCaps(false);
         source.setText("Open source · " + SourceLinkUtil.sourceLabel(rawText) + "  ↗");
@@ -2556,7 +2567,7 @@ public class ChatActivity extends Activity {
 
     private Button headerPill() {
         Button pill = new Button(this);
-        pill.setTextSize(13);
+        pill.setTextSize(12.5f);
         pill.setTextColor(UiKit.TEXT);
         pill.setAllCaps(false);
         pill.setSingleLine(true);
@@ -2566,11 +2577,17 @@ public class ChatActivity extends Activity {
         pill.setMinWidth(0);
         pill.setMinimumWidth(0);
         pill.setStateListAnimator(null);
-        pill.setPadding(UiKit.dp(this, 12), 0, UiKit.dp(this, 12), 0);
+        pill.setPadding(UiKit.dp(this, 10), 0, UiKit.dp(this, 10), 0);
         pill.setBackground(UiKit.rippleOutlined(UiKit.SURFACE,
                 UiKit.withAlpha(UiKit.accent(this), 150), UiKit.accent(this), 16, this));
         UiKit.pressScale(pill);
         return pill;
+    }
+
+    /** Width budget that keeps Back, both pills and overflow inside even a narrow phone header. */
+    private int narrowModelPillWidthDp() {
+        int width = getResources().getConfiguration().screenWidthDp;
+        return Math.max(90, Math.min(190, width - 230));
     }
 
     /** True when the header has room to name the provider beside the model. */
@@ -2584,12 +2601,14 @@ public class ChatActivity extends Activity {
         AiSelection s = currentSelection;
         String model = roomForProvider() ? s.providerName() + " · " + s.modelName() : s.modelName();
         modelPill.setText(model + "  ▾");
-        modelPill.setMaxWidth(UiKit.dp(this, roomForProvider() ? 300 : 190));
+        modelPill.setMaxWidth(UiKit.dp(this,
+                roomForProvider() ? 300 : narrowModelPillWidthDp()));
         modelPill.setContentDescription("AI: " + s.providerName() + ", " + s.modelName()
                 + ". Tap to change provider or model.");
         boolean strengths = s.strength != null;
         strengthPill.setVisibility(strengths ? View.VISIBLE : View.GONE);
         if (strengths) {
+            strengthPill.setMaxWidth(UiKit.dp(this, 96));
             strengthPill.setText(s.strength.label + "  ▾");
             strengthPill.setContentDescription("Strength: " + s.strength.label + ". Tap to change.");
         }

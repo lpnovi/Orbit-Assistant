@@ -205,6 +205,9 @@ public final class OrbitRequestWorker extends Worker {
             RequestTrace.lifecycle(id, "completed");
             AttachmentStore.deleteAll(item.screenshotPaths);
             OrbitRequestManager.dispatchSuccess(id, reply);
+            // Metadata work begins only after the answer is persisted and delivered. It uses its
+            // own fixed lightweight policy and never enters visible history or response details.
+            ConversationTitleManager.onSuccessfulExchange(c, item.conversationId, id);
             // Started here and nowhere else, which is what subordinates a picture to the request
             // that earned it: this runs only for a completion that won the claim, so a stopped or
             // superseded execution never begins a lookup, and a picture can never arrive for an

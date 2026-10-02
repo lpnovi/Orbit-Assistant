@@ -34,7 +34,8 @@ public final class AiModelCatalogTest {
     }
 
     @Test public void chatGptOffersExactlyTheCurrentModelsInOrder() {
-        assertEquals(Arrays.asList("gpt-6-luna", "gpt-6.1-sol", "gpt-6-astra"),
+        assertEquals(Arrays.asList("gpt-6-luna", "gpt-6.1-sol", "gpt-6-astra",
+                        "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"),
                 ids(OrbitModelCatalog.modelsFor(Prefs.PROVIDER_CHATGPT)));
         assertEquals("gpt-6-luna", OrbitModelCatalog.LUNA);
         assertEquals("gpt-6.1-sol", OrbitModelCatalog.SOL);
@@ -45,6 +46,9 @@ public final class AiModelCatalogTest {
         assertEquals("GPT-6 Luna", OrbitModelCatalog.displayName("gpt-6-luna"));
         assertEquals("GPT-6.1 Sol", OrbitModelCatalog.displayName("gpt-6.1-sol"));
         assertEquals("GPT-6 Astra", OrbitModelCatalog.displayName("gpt-6-astra"));
+        assertEquals("GPT-5.6 Luna", OrbitModelCatalog.displayName("gpt-5.6-luna"));
+        assertEquals("GPT-5.6 Terra", OrbitModelCatalog.displayName("gpt-5.6-terra"));
+        assertEquals("GPT-5.6 Sol", OrbitModelCatalog.displayName("gpt-5.6-sol"));
         assertEquals("Orbit Local", OrbitModelCatalog.displayName(OrbitModelCatalog.ORBIT_LOCAL));
     }
 
@@ -83,6 +87,22 @@ public final class AiModelCatalogTest {
         }
     }
 
+    @Test public void everyOfficialChatGptModelCarriesTheVerifiedContextWindow() {
+        for (AiModelSpec spec : OrbitModelCatalog.modelsFor(Prefs.PROVIDER_CHATGPT)) {
+            assertEquals(spec.id, 1_050_000, spec.contextWindowTokens);
+        }
+    }
+
+    @Test public void everyGpt56ModelAcceptsNoneThroughMaxAndDefaultsToMedium() {
+        for (String id : new String[]{OrbitModelCatalog.GPT_5_6_LUNA,
+                OrbitModelCatalog.GPT_5_6_TERRA, OrbitModelCatalog.GPT_5_6_SOL}) {
+            AiModelSpec spec = OrbitModelCatalog.spec(Prefs.PROVIDER_CHATGPT, id);
+            assertNotNull(id, spec);
+            assertEquals(id, Arrays.asList(AiStrength.values()), spec.strengths);
+            assertEquals(id, AiStrength.MEDIUM, spec.defaultStrength);
+        }
+    }
+
     @Test public void availabilityIsCatalogDataNotScreenLogic() {
         assertTrue(OrbitModelCatalog.spec(Prefs.PROVIDER_CHATGPT, OrbitModelCatalog.ASTRA).availabilityVaries);
         assertFalse(OrbitModelCatalog.spec(Prefs.PROVIDER_CHATGPT, OrbitModelCatalog.LUNA).availabilityVaries);
@@ -103,16 +123,17 @@ public final class AiModelCatalogTest {
         assertNull(local.resolveStrength(AiStrength.HIGH));
     }
 
-    @Test public void retiredModelsAreNeverOffered() {
-        for (String provider : new String[]{Prefs.PROVIDER_CHATGPT, Prefs.PROVIDER_RELAY}) {
-            List<String> offered = ids(OrbitModelCatalog.modelsFor(provider));
-            assertFalse(offered.contains("gpt-5.6-luna"));
-            assertFalse(offered.contains("gpt-5.6-terra"));
-            assertFalse(offered.contains("gpt-5.6-sol"));
-        }
-        assertEquals(OrbitModelCatalog.LUNA, OrbitModelCatalog.successorOf("gpt-5.6-luna"));
-        assertEquals(OrbitModelCatalog.LUNA, OrbitModelCatalog.successorOf("gpt-5.6-terra"));
-        assertEquals(OrbitModelCatalog.SOL, OrbitModelCatalog.successorOf("gpt-5.6-sol"));
+    @Test public void gpt56IsFirstClassForChatGptAndStoredIdsStayExact() {
+        List<String> offered = ids(OrbitModelCatalog.modelsFor(Prefs.PROVIDER_CHATGPT));
+        assertTrue(offered.contains(OrbitModelCatalog.GPT_5_6_LUNA));
+        assertTrue(offered.contains(OrbitModelCatalog.GPT_5_6_TERRA));
+        assertTrue(offered.contains(OrbitModelCatalog.GPT_5_6_SOL));
+        assertEquals(OrbitModelCatalog.GPT_5_6_LUNA,
+                OrbitModelCatalog.successorOf(OrbitModelCatalog.GPT_5_6_LUNA));
+        assertEquals(OrbitModelCatalog.GPT_5_6_TERRA,
+                OrbitModelCatalog.successorOf(OrbitModelCatalog.GPT_5_6_TERRA));
+        assertEquals(OrbitModelCatalog.GPT_5_6_SOL,
+                OrbitModelCatalog.successorOf(OrbitModelCatalog.GPT_5_6_SOL));
     }
 
     @Test public void unknownModelsResolveSafelyAndAreNeverNamed() {

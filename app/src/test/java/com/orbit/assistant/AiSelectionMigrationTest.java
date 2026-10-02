@@ -70,10 +70,12 @@ public final class AiSelectionMigrationTest {
 
     @Test public void aValidCustomChoiceIsPreserved() {
         assertEquals(ASTRA_MAX, AiSelections.fromLegacy("chatgpt", "custom", "gpt-6-astra", "max"));
-        assertEquals("a retired id moves to its successor and keeps its effort",
-                AiSelection.of(Prefs.PROVIDER_CHATGPT, OrbitModelCatalog.SOL, AiStrength.XHIGH),
+        assertEquals("a restored current id stays exact and keeps its effort",
+                AiSelection.of(Prefs.PROVIDER_CHATGPT, OrbitModelCatalog.GPT_5_6_SOL,
+                        AiStrength.XHIGH),
                 AiSelections.fromLegacy("chatgpt", "custom", "gpt-5.6-sol", "xhigh"));
-        assertEquals(AiSelection.of(Prefs.PROVIDER_CHATGPT, OrbitModelCatalog.LUNA, AiStrength.NONE),
+        assertEquals(AiSelection.of(Prefs.PROVIDER_CHATGPT, OrbitModelCatalog.GPT_5_6_TERRA,
+                        AiStrength.NONE),
                 AiSelections.fromLegacy("chatgpt", "custom", "gpt-5.6-terra", "none"));
     }
 

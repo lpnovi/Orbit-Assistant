@@ -16,6 +16,8 @@ public final class AiModelSpec {
     public final String id;
     /** What the user reads, e.g. "GPT-6.1 Sol". */
     public final String displayName;
+    /** Quiet picker section label, e.g. "GPT-6". */
+    public final String familyLabel;
     /** The {@link Prefs} provider id this model belongs to. */
     public final String providerId;
     /** One short line for the picker. Never a ranking or a benchmark claim. */
@@ -29,11 +31,15 @@ public final class AiModelSpec {
     public final AiStrength defaultStrength;
     /** True when whether this model answers depends on the user's account or a rollout. */
     public final boolean availabilityVaries;
+    /** Official input context window, in tokens; zero only when Orbit does not know it. */
+    public final int contextWindowTokens;
 
-    AiModelSpec(String id, String displayName, String providerId, String descriptor,
-                AiStrength defaultStrength, boolean availabilityVaries, AiStrength... strengths) {
+    AiModelSpec(String id, String displayName, String familyLabel, String providerId,
+                String descriptor, AiStrength defaultStrength, boolean availabilityVaries,
+                int contextWindowTokens, AiStrength... strengths) {
         this.id = id;
         this.displayName = displayName;
+        this.familyLabel = familyLabel == null ? "" : familyLabel;
         this.providerId = providerId;
         this.descriptor = descriptor == null ? "" : descriptor;
         List<AiStrength> list = new ArrayList<>(Arrays.asList(strengths));
@@ -41,6 +47,7 @@ public final class AiModelSpec {
         this.strengths = Collections.unmodifiableList(list);
         this.defaultStrength = list.isEmpty() ? null : defaultStrength;
         this.availabilityVaries = availabilityVaries;
+        this.contextWindowTokens = Math.max(0, contextWindowTokens);
     }
 
     /** Whether the user can be offered a strength control for this model at all. */

@@ -14,12 +14,9 @@ import java.util.Locale;
  * model accepts, whether its availability depends on the account) are data here rather than
  * {@code if (astra)} checks in screens.
  *
- * <p>Current ChatGPT facts, checked against OpenAI's published model notes on 2026-10-01:
- * GPT-6 Luna ({@code gpt-6-luna}) accepts none through max; GPT-6.1 Sol ({@code gpt-6.1-sol}) and
- * GPT-6 Astra ({@code gpt-6-astra}) accept low through max and refuse none.
- *
- * <p>The GPT-5.6 ids are kept only so stored preferences, chats and backups that name them still
- * resolve deterministically. They never appear in a picker.
+ * <p>Current ChatGPT facts, checked against official OpenAI model pages on 2026-10-01: every model
+ * below has a 1,050,000-token context window. GPT-6 Luna and the GPT-5.6 family accept none through
+ * max; GPT-6.1 Sol and GPT-6 Astra accept low through max and refuse none.
  *
  * <p>Nothing here claims to know what an account is entitled to. Orbit finds out by making the
  * request; {@link #looksUnavailable} turns that answer into something truthful and is deliberately
@@ -32,13 +29,13 @@ public final class OrbitModelCatalog {
     public static final String LUNA = "gpt-6-luna";
     public static final String SOL = "gpt-6.1-sol";
     public static final String ASTRA = "gpt-6-astra";
+    public static final String GPT_5_6_LUNA = "gpt-5.6-luna";
+    public static final String GPT_5_6_TERRA = "gpt-5.6-terra";
+    public static final String GPT_5_6_SOL = "gpt-5.6-sol";
     /** Orbit Local's one on-device chat model. Never sent anywhere. */
     public static final String ORBIT_LOCAL = "orbit-local";
 
-    /** Retired ids that older installs, chats and backups may still name. Migration only. */
-    public static final String LEGACY_LUNA = "gpt-5.6-luna";
-    public static final String LEGACY_TERRA = "gpt-5.6-terra";
-    public static final String LEGACY_SOL = "gpt-5.6-sol";
+    public static final int OPENAI_CONTEXT_WINDOW = 1_050_000;
 
     private static final AiStrength[] LUNA_STRENGTHS = {AiStrength.NONE, AiStrength.LOW,
             AiStrength.MEDIUM, AiStrength.HIGH, AiStrength.XHIGH, AiStrength.MAX};
@@ -46,13 +43,24 @@ public final class OrbitModelCatalog {
             AiStrength.HIGH, AiStrength.XHIGH, AiStrength.MAX};
 
     private static final List<AiModelSpec> CHATGPT = Collections.unmodifiableList(Arrays.asList(
-            new AiModelSpec(LUNA, "GPT-6 Luna", Prefs.PROVIDER_CHATGPT,
-                    "Quick everyday answers", AiStrength.MEDIUM, false, LUNA_STRENGTHS),
-            new AiModelSpec(SOL, "GPT-6.1 Sol", Prefs.PROVIDER_CHATGPT,
-                    "Complex work and coding", AiStrength.MEDIUM, false, NO_NONE_STRENGTHS),
-            new AiModelSpec(ASTRA, "GPT-6 Astra", Prefs.PROVIDER_CHATGPT,
+            new AiModelSpec(LUNA, "GPT-6 Luna", "GPT-6", Prefs.PROVIDER_CHATGPT,
+                    "Quick everyday answers", AiStrength.MEDIUM, false, OPENAI_CONTEXT_WINDOW,
+                    LUNA_STRENGTHS),
+            new AiModelSpec(SOL, "GPT-6.1 Sol", "GPT-6", Prefs.PROVIDER_CHATGPT,
+                    "Complex work and coding", AiStrength.MEDIUM, false, OPENAI_CONTEXT_WINDOW,
+                    NO_NONE_STRENGTHS),
+            new AiModelSpec(ASTRA, "GPT-6 Astra", "GPT-6", Prefs.PROVIDER_CHATGPT,
                     "Deepest reasoning; access varies by account", AiStrength.MEDIUM, true,
-                    NO_NONE_STRENGTHS)));
+                    OPENAI_CONTEXT_WINDOW, NO_NONE_STRENGTHS),
+            new AiModelSpec(GPT_5_6_LUNA, "GPT-5.6 Luna", "GPT-5.6", Prefs.PROVIDER_CHATGPT,
+                    "Efficient everyday work", AiStrength.MEDIUM, false, OPENAI_CONTEXT_WINDOW,
+                    LUNA_STRENGTHS),
+            new AiModelSpec(GPT_5_6_TERRA, "GPT-5.6 Terra", "GPT-5.6", Prefs.PROVIDER_CHATGPT,
+                    "Balanced intelligence and cost", AiStrength.MEDIUM, false,
+                    OPENAI_CONTEXT_WINDOW, LUNA_STRENGTHS),
+            new AiModelSpec(GPT_5_6_SOL, "GPT-5.6 Sol", "GPT-5.6", Prefs.PROVIDER_CHATGPT,
+                    "Complex professional work", AiStrength.MEDIUM, false, OPENAI_CONTEXT_WINDOW,
+                    LUNA_STRENGTHS)));
 
     /**
      * The relay forwards to the OpenAI API with the operator's own key, so it offers the models the
@@ -60,15 +68,17 @@ public final class OrbitModelCatalog {
      * it, and a picker entry that only produces a backend error is worse than none.
      */
     private static final List<AiModelSpec> RELAY = Collections.unmodifiableList(Arrays.asList(
-            new AiModelSpec(LUNA, "GPT-6 Luna", Prefs.PROVIDER_RELAY,
-                    "Quick everyday answers", AiStrength.MEDIUM, false, LUNA_STRENGTHS),
-            new AiModelSpec(SOL, "GPT-6.1 Sol", Prefs.PROVIDER_RELAY,
-                    "Complex work and coding", AiStrength.MEDIUM, false, NO_NONE_STRENGTHS)));
+            new AiModelSpec(LUNA, "GPT-6 Luna", "GPT-6", Prefs.PROVIDER_RELAY,
+                    "Quick everyday answers", AiStrength.MEDIUM, false, OPENAI_CONTEXT_WINDOW,
+                    LUNA_STRENGTHS),
+            new AiModelSpec(SOL, "GPT-6.1 Sol", "GPT-6", Prefs.PROVIDER_RELAY,
+                    "Complex work and coding", AiStrength.MEDIUM, false, OPENAI_CONTEXT_WINDOW,
+                    NO_NONE_STRENGTHS)));
 
     /** Orbit Local has one model and no reasoning parameter, so it exposes no strengths. */
     private static final List<AiModelSpec> LOCAL = Collections.singletonList(
-            new AiModelSpec(ORBIT_LOCAL, "Orbit Local", Prefs.PROVIDER_LOCAL,
-                    "Private, on this phone", null, false));
+            new AiModelSpec(ORBIT_LOCAL, "Orbit Local", "Orbit Local", Prefs.PROVIDER_LOCAL,
+                    "Private, on this phone", null, false, 0));
 
     private OrbitModelCatalog() {}
 
@@ -109,16 +119,12 @@ public final class OrbitModelCatalog {
     }
 
     /**
-     * The current model a retired id stands for, or the id unchanged when it is not retired.
-     *
-     * <p>GPT-5.6 Luna and Terra both become GPT-6 Luna, the broadly available successor; GPT-5.6 Sol
-     * becomes GPT-6.1 Sol. Deterministic, so the same stored value always migrates the same way.
+     * The current model a retired id stands for, or the id unchanged when it is current.
+     * GPT-5.6 is selectable again, so its three ids deliberately pass through unchanged.
      */
     public static String successorOf(String modelId) {
         if (modelId == null) return "";
         String id = modelId.trim();
-        if (LEGACY_LUNA.equals(id) || LEGACY_TERRA.equals(id)) return LUNA;
-        if (LEGACY_SOL.equals(id)) return SOL;
         return id;
     }
 
@@ -134,9 +140,6 @@ public final class OrbitModelCatalog {
             AiModelSpec spec = spec(provider, modelId);
             if (spec != null) return spec.displayName;
         }
-        if (LEGACY_LUNA.equals(modelId)) return "GPT-5.6 Luna";
-        if (LEGACY_TERRA.equals(modelId)) return "GPT-5.6 Terra";
-        if (LEGACY_SOL.equals(modelId)) return "GPT-5.6 Sol";
         return "";
     }
 

@@ -103,6 +103,20 @@ public final class ChatAiControlsTest {
         assertTrue(chat.modelPillForTest().getMinimumHeight() >= 0);
     }
 
+    @Test public void everyChatGptNameFitsTheSameBoundedAccessibleHeaderControls() {
+        seed("all-models", "hello", "hi");
+        ChatActivity chat = open("all-models").get();
+        for (AiModelSpec spec : OrbitModelCatalog.modelsFor(Prefs.PROVIDER_CHATGPT)) {
+            chat.applySelection(AiSelection.of(Prefs.PROVIDER_CHATGPT, spec.id,
+                    spec.resolveStrength(AiStrength.XHIGH)));
+            assertTrue(chat.modelPillForTest().getText().toString().startsWith(spec.displayName));
+            assertTrue(chat.modelPillForTest().getMaxWidth() <= UiKit.dp(context, 190));
+            assertEquals(UiKit.dp(context, 44), chat.modelPillForTest().getLayoutParams().height);
+            assertEquals(UiKit.dp(context, 44), chat.strengthPillForTest().getLayoutParams().height);
+            assertTrue(chat.strengthPillForTest().getMaxWidth() <= UiKit.dp(context, 96));
+        }
+    }
+
     @Test public void aModelWithoutStrengthsHidesTheStrengthControl() {
         seed("c1", "hello", "hi");
         AiSelections.setForConversation(context, "c1",

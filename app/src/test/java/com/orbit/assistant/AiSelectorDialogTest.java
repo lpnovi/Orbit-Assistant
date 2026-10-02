@@ -43,8 +43,11 @@ public final class AiSelectorDialogTest {
 
     @Test public void theModelListIsTheCatalogsAndRowsAreNeverRebuiltByAChoice() {
         AiSelectorDialog picker = AiSelectorDialog.forTest(activity, AiSelections.FALLBACK);
-        assertEquals(Arrays.asList(OrbitModelCatalog.LUNA, OrbitModelCatalog.SOL, OrbitModelCatalog.ASTRA),
+        assertEquals(Arrays.asList(OrbitModelCatalog.LUNA, OrbitModelCatalog.SOL,
+                        OrbitModelCatalog.ASTRA, OrbitModelCatalog.GPT_5_6_LUNA,
+                        OrbitModelCatalog.GPT_5_6_TERRA, OrbitModelCatalog.GPT_5_6_SOL),
                 picker.offeredModels());
+        assertEquals(Arrays.asList("GPT-6", "GPT-5.6"), picker.modelSectionsForTest());
         List<View> before = new ArrayList<>(picker.modelRowsForTest());
         picker.chooseModel(OrbitModelCatalog.ASTRA, null);
         picker.chooseStrength(AiStrength.MAX, null);

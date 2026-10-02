@@ -49,6 +49,7 @@ final class AiSelectorDialog {
     private LinearLayout modelList;
     private final List<View> modelRows = new ArrayList<>();
     private final List<AiModelSpec> modelSpecs = new ArrayList<>();
+    private final List<TextView> modelSections = new ArrayList<>();
     private TextView strengthHeading;
     private LinearLayout strengthRow;
     private TextView noStrengthNote;
@@ -160,7 +161,18 @@ final class AiSelectorDialog {
         modelList.removeAllViews();
         modelRows.clear();
         modelSpecs.clear();
+        modelSections.clear();
+        String family = "";
         for (AiModelSpec spec : OrbitModelCatalog.modelsFor(selection.provider)) {
+            if (!spec.familyLabel.isEmpty() && !spec.familyLabel.equals(family)) {
+                TextView section = heading(spec.familyLabel);
+                section.setTextSize(11);
+                section.setPadding(UiKit.dp(context, 2), UiKit.dp(context, 10), 0,
+                        UiKit.dp(context, 2));
+                modelList.addView(section);
+                modelSections.add(section);
+                family = spec.familyLabel;
+            }
             View row = modelRow(spec);
             modelRows.add(row);
             modelSpecs.add(spec);
@@ -331,4 +343,10 @@ final class AiSelectorDialog {
 
     /** Model list rows; identity is stable across model and strength changes. */
     List<View> modelRowsForTest() { return modelRows; }
+
+    List<String> modelSectionsForTest() {
+        List<String> labels = new ArrayList<>();
+        for (TextView section : modelSections) labels.add(section.getText().toString());
+        return labels;
+    }
 }

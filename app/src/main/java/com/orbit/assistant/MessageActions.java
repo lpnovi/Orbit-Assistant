@@ -327,10 +327,12 @@ final class MessageActions {
                                            View.OnClickListener click) {
         ImageButton b = new ImageButton(c);
         b.setImageResource(icon);
-        b.setImageTintList(android.content.res.ColorStateList.valueOf(UiKit.MUTED));
+        b.setImageTintList(android.content.res.ColorStateList.valueOf(
+                UiKit.withAlpha(UiKit.MUTED, 205)));
         b.setBackground(UiKit.ripple(android.graphics.Color.TRANSPARENT, UiKit.accent(c), 14, c));
         b.setContentDescription(description);
-        int pad = UiKit.dp(c, 12);
+        // The target remains 44dp; one extra dp of inset keeps the graphics secondary to the text.
+        int pad = UiKit.dp(c, 13);
         b.setPadding(pad, pad, pad, pad);
         b.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
         b.setLayoutParams(new LinearLayout.LayoutParams(UiKit.dp(c, 44), UiKit.dp(c, 44)));

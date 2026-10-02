@@ -24,6 +24,14 @@ public final class ConversationStore {
     private static final int MAX_CONVERSATIONS = 100;
     private static final int MAX_MESSAGES_PER_CHAT = 40;
     private static final int MAX_MESSAGE_CHARS = 12000;
+    public static final String NEW_CHAT_TITLE = "New Chat";
+    static final String TITLE_DEFAULT = "default";
+    static final String TITLE_AUTOMATIC = "automatic";
+    static final String TITLE_MANUAL = "manual";
+    static final String TITLE_LEGACY = "legacy";
+    static final String TITLE_JOB_IDLE = "idle";
+    static final String TITLE_JOB_PENDING = "pending";
+    static final String TITLE_JOB_DONE = "done";
 
     private ConversationStore() {}
 
@@ -50,6 +58,12 @@ public final class ConversationStore {
          * one-time migration, and still written back unchanged so a downgrade finds what it wrote.
          */
         public final AiSelection aiSelection;
+        /** Who owns the title. Legacy and manual titles are never eligible for automatic rewrite. */
+        public final String titleOwner;
+        /** Durable one-shot title work state. */
+        public final String titleJobState;
+        /** Identity of the one in-flight title result allowed to commit. */
+        public final String titleJobToken;
 
         public Conversation(String id, String title, long updatedAt, List<AssistantClient.History> messages) {
             this(id, title, updatedAt, messages, "");
@@ -66,13 +80,41 @@ public final class ConversationStore {
 
         public Conversation(String id, String title, long updatedAt, List<AssistantClient.History> messages,
                             String intelligenceMode, boolean pinned, AiSelection aiSelection) {
+            this(id, title, updatedAt, messages, intelligenceMode, pinned, aiSelection,
+                    TITLE_LEGACY, TITLE_JOB_DONE, "");
+        }
+
+        Conversation(String id, String title, long updatedAt, List<AssistantClient.History> messages,
+                     String intelligenceMode, boolean pinned, AiSelection aiSelection,
+                     String titleOwner, String titleJobState, String titleJobToken) {
             this.id = id == null || id.isEmpty() ? UUID.randomUUID().toString() : id;
-            this.title = title == null || title.trim().isEmpty() ? "Untitled chat" : title.trim();
+            this.title = title == null || title.trim().isEmpty() ? NEW_CHAT_TITLE : title.trim();
             this.updatedAt = updatedAt;
             this.messages = messages == null ? new ArrayList<>() : new ArrayList<>(messages);
             this.intelligenceMode = intelligenceMode == null ? "" : intelligenceMode.trim();
             this.pinned = pinned;
             this.aiSelection = aiSelection;
+            this.titleOwner = validTitleOwner(titleOwner);
+            this.titleJobState = validTitleJobState(titleJobState);
+            this.titleJobToken = titleJobToken == null ? "" : titleJobToken.trim();
+        }
+    }
+
+    /** Frozen input and ownership token for one automatic-title job. */
+    static final class TitleJob {
+        final String conversationId;
+        final String token;
+        final String firstUserMessage;
+        final String firstAssistantResponse;
+        final AiSelection conversationSelection;
+
+        TitleJob(String conversationId, String token, String firstUserMessage,
+                 String firstAssistantResponse, AiSelection conversationSelection) {
+            this.conversationId = conversationId;
+            this.token = token;
+            this.firstUserMessage = firstUserMessage;
+            this.firstAssistantResponse = firstAssistantResponse;
+            this.conversationSelection = conversationSelection;
         }
     }
 
@@ -138,12 +180,13 @@ public final class ConversationStore {
         // reason: a screen holding a copy from before the picture arrived must not erase it.
         if (existing != null) carryRichImages(clipped, existing.messages);
 
-        String computedTitle = titleFor(clipped);
-        String finalTitle = existing != null && existing.title != null && !existing.title.trim().isEmpty()
-                && !existing.title.equals(titleFor(existing.messages)) ? existing.title : computedTitle;
+        String finalTitle = existing == null ? NEW_CHAT_TITLE : existing.title;
         all.add(new Conversation(wantedId, finalTitle, System.currentTimeMillis(), clipped,
                 existing == null ? "" : existing.intelligenceMode, existing != null && existing.pinned,
-                existing == null ? startingSelection : existing.aiSelection));
+                existing == null ? startingSelection : existing.aiSelection,
+                existing == null ? TITLE_DEFAULT : existing.titleOwner,
+                existing == null ? TITLE_JOB_IDLE : existing.titleJobState,
+                existing == null ? "" : existing.titleJobToken));
         all.sort((a, b) -> Long.compare(b.updatedAt, a.updatedAt));
         if (all.size() > MAX_CONVERSATIONS) all = new ArrayList<>(all.subList(0, MAX_CONVERSATIONS));
         writeAll(c, all);
@@ -270,7 +313,8 @@ public final class ConversationStore {
                 // updatedAt is carried across untouched: a picture arriving is not the user doing
                 // something, and reordering Chats because one resolved would be wrong.
                 all.set(x, new Conversation(existing.id, existing.title, existing.updatedAt,
-                        messages, existing.intelligenceMode, existing.pinned, existing.aiSelection));
+                        messages, existing.intelligenceMode, existing.pinned, existing.aiSelection,
+                        existing.titleOwner, existing.titleJobState, existing.titleJobToken));
                 writeAll(c, all);
                 return true;
             }
@@ -314,7 +358,8 @@ public final class ConversationStore {
             if (last == null || last.isStopped()) return false;
             messages.set(messages.size() - 1, last.withStoppedRequestId(wanted));
             all.set(x, new Conversation(existing.id, existing.title, existing.updatedAt, messages,
-                    existing.intelligenceMode, existing.pinned, existing.aiSelection));
+                    existing.intelligenceMode, existing.pinned, existing.aiSelection,
+                    existing.titleOwner, existing.titleJobState, existing.titleJobToken));
             writeAll(c, all);
             return true;
         }
@@ -350,7 +395,8 @@ public final class ConversationStore {
             if (!id.equals(item.id)) continue;
             if (item.pinned == pinned) return pinned;
             all.set(i, new Conversation(item.id, item.title, item.updatedAt, item.messages,
-                    item.intelligenceMode, pinned, item.aiSelection));
+                    item.intelligenceMode, pinned, item.aiSelection, item.titleOwner,
+                    item.titleJobState, item.titleJobToken));
             writeAll(c, all);
             return pinned;
         }
@@ -370,10 +416,90 @@ public final class ConversationStore {
             Conversation item = all.get(i);
             if (!id.equals(item.id)) continue;
             all.set(i, new Conversation(item.id, title.trim(), System.currentTimeMillis(), item.messages,
-                    item.intelligenceMode, item.pinned, item.aiSelection));
+                    item.intelligenceMode, item.pinned, item.aiSelection, TITLE_MANUAL,
+                    TITLE_JOB_DONE, ""));
             break;
         }
-        writeAll(c, all);
+        // An explicit rename is the strongest title write. Commit it before returning so an
+        // already-running background result can never survive a process death and beat it later.
+        writeAll(c, all, true);
+    }
+
+    /**
+     * Claims the one automatic title job this new chat may create.
+     *
+     * <p>The successful request id must own a persisted assistant message. Failed and cancelled
+     * requests never have one, so they cannot reach the pending state. Existing records from before
+     * this feature are legacy-owned and refused; a manually renamed record is refused for the same
+     * reason. The token is the compare-and-set half of manual-rename race protection.
+     */
+    static synchronized TitleJob beginAutomaticTitle(Context c, String id,
+                                                     String successfulRequestId) {
+        if (c == null || id == null || id.isEmpty() || successfulRequestId == null
+                || successfulRequestId.trim().isEmpty()) return null;
+        List<Conversation> all = readAll(c);
+        for (int x = 0; x < all.size(); x++) {
+            Conversation item = all.get(x);
+            if (!id.equals(item.id)) continue;
+            if (!TITLE_DEFAULT.equals(item.titleOwner)
+                    || !TITLE_JOB_IDLE.equals(item.titleJobState)) return null;
+
+            int completed = -1;
+            for (int i = 0; i < item.messages.size(); i++) {
+                AssistantClient.History h = item.messages.get(i);
+                if (h != null && "assistant".equalsIgnoreCase(h.role)
+                        && successfulRequestId.equals(h.replyRequestId)) {
+                    completed = i;
+                    break;
+                }
+            }
+            if (completed < 0) return null;
+            AssistantClient.History firstUser = null;
+            // The nearest preceding substantive user turn is the user half of this successful
+            // exchange. An earlier failed/cancelled prompt must not title a later successful chat.
+            for (int i = completed - 1; i >= 0; i--) {
+                AssistantClient.History h = item.messages.get(i);
+                if (h != null && "user".equalsIgnoreCase(h.role)
+                        && ConversationTitlePolicy.isSubstantive(h.content)) {
+                    firstUser = h;
+                    break;
+                }
+            }
+            if (firstUser == null) return null;
+            AssistantClient.History answer = item.messages.get(completed);
+            if (answer.content == null || answer.content.trim().isEmpty()) return null;
+
+            String token = UUID.randomUUID().toString();
+            Conversation pending = new Conversation(item.id, item.title, item.updatedAt,
+                    item.messages, item.intelligenceMode, item.pinned, item.aiSelection,
+                    item.titleOwner, TITLE_JOB_PENDING, token);
+            all.set(x, pending);
+            writeAll(c, all, true);
+            return new TitleJob(item.id, token, firstUser.content, answer.content,
+                    item.aiSelection);
+        }
+        return null;
+    }
+
+    /** Applies a generated/fallback result only while its exact default-owned job still exists. */
+    static synchronized boolean applyAutomaticTitle(Context c, String id, String token,
+                                                     String title) {
+        if (c == null || id == null || token == null || token.isEmpty()
+                || title == null || title.trim().isEmpty()) return false;
+        List<Conversation> all = readAll(c);
+        for (int i = 0; i < all.size(); i++) {
+            Conversation item = all.get(i);
+            if (!id.equals(item.id)) continue;
+            if (!TITLE_DEFAULT.equals(item.titleOwner)
+                    || !TITLE_JOB_PENDING.equals(item.titleJobState)
+                    || !token.equals(item.titleJobToken)) return false;
+            all.set(i, new Conversation(item.id, title.trim(), item.updatedAt, item.messages,
+                    item.intelligenceMode, item.pinned, item.aiSelection, TITLE_AUTOMATIC,
+                    TITLE_JOB_DONE, ""));
+            writeAll(c, all, true);
+            return true;
+        }
+        return false;
     }
 
 
@@ -397,7 +523,8 @@ public final class ConversationStore {
             if (!id.equals(item.id)) continue;
             if (selection.equals(item.aiSelection)) return;
             all.set(i, new Conversation(item.id, item.title, item.updatedAt, item.messages,
-                    item.intelligenceMode, item.pinned, selection));
+                    item.intelligenceMode, item.pinned, selection, item.titleOwner,
+                    item.titleJobState, item.titleJobToken));
             writeAll(c, all);
             return;
         }
@@ -419,7 +546,8 @@ public final class ConversationStore {
             Conversation item = all.get(i);
             if (item.aiSelection != null) continue;
             all.set(i, new Conversation(item.id, item.title, item.updatedAt, item.messages,
-                    item.intelligenceMode, item.pinned, mapper.map(item.intelligenceMode)));
+                    item.intelligenceMode, item.pinned, mapper.map(item.intelligenceMode),
+                    item.titleOwner, item.titleJobState, item.titleJobToken));
             changed = true;
         }
         if (changed) writeAll(c, all);
@@ -431,8 +559,9 @@ public final class ConversationStore {
         for (int i = 0; i < all.size(); i++) {
             Conversation item = all.get(i);
             if (!id.equals(item.id)) continue;
-            all.set(i, new Conversation(item.id, "Untitled chat", System.currentTimeMillis(), new ArrayList<>(),
-                    item.intelligenceMode, item.pinned, item.aiSelection));
+            all.set(i, new Conversation(item.id, NEW_CHAT_TITLE, System.currentTimeMillis(),
+                    new ArrayList<>(), item.intelligenceMode, item.pinned, item.aiSelection,
+                    TITLE_DEFAULT, TITLE_JOB_IDLE, ""));
             writeAll(c, all);
             ActionResultStore.clearConversation(c, id);
             return;
@@ -455,7 +584,8 @@ public final class ConversationStore {
             // This is an intentional edit, not a lifecycle save, so bypass the
             // stale-prefix protection used by save().
             all.set(x, new Conversation(existing.id, existing.title, System.currentTimeMillis(), messages,
-                    existing.intelligenceMode, existing.pinned, existing.aiSelection));
+                    existing.intelligenceMode, existing.pinned, existing.aiSelection,
+                    existing.titleOwner, existing.titleJobState, existing.titleJobToken));
             writeAll(c, all);
             return messages;
         }
@@ -648,17 +778,6 @@ public final class ConversationStore {
         return false;
     }
 
-    private static String titleFor(List<AssistantClient.History> history) {
-        for (AssistantClient.History h : history) {
-            if (h != null && "user".equalsIgnoreCase(h.role) && h.content != null) {
-                String s = h.content.trim().replaceAll("\\s+", " ");
-                if (s.length() > 48) s = s.substring(0, 47).trim() + "…";
-                if (!s.isEmpty()) return s;
-            }
-        }
-        return "Untitled chat";
-    }
-
     private static List<Conversation> readAll(Context c) {
         ArrayList<Conversation> result = new ArrayList<>();
         try {
@@ -709,19 +828,31 @@ public final class ConversationStore {
                         o.optBoolean("pinned", false),
                         // Absent from every chat written before 0.8.3.0; null means "not migrated
                         // yet" and is filled in once by AiSelections.ensureMigrated.
-                        AiSelection.decode(o.optString("aiSelection", ""))));
+                        AiSelection.decode(o.optString("aiSelection", "")),
+                        // A record from before automatic titles is protected as legacy. Orbit
+                        // cannot prove whether its text was chosen by the user, so it never guesses.
+                        o.has("titleOwner") ? o.optString("titleOwner", TITLE_LEGACY) : TITLE_LEGACY,
+                        o.optString("titleJobState", TITLE_JOB_DONE),
+                        o.optString("titleJobToken", "")));
             }
         } catch (Exception ignored) {}
         return result;
     }
 
     private static void writeAll(Context c, List<Conversation> all) {
+        writeAll(c, all, false);
+    }
+
+    private static void writeAll(Context c, List<Conversation> all, boolean sync) {
         JSONArray arr = new JSONArray();
         try {
             for (Conversation item : all) {
                 JSONObject o = new JSONObject();
                 o.put("id", item.id);
                 o.put("title", item.title);
+                o.put("titleOwner", item.titleOwner);
+                o.put("titleJobState", item.titleJobState);
+                if (!item.titleJobToken.isEmpty()) o.put("titleJobToken", item.titleJobToken);
                 o.put("updatedAt", item.updatedAt);
                 o.put("intelligenceMode", item.intelligenceMode);
                 if (item.aiSelection != null) o.put("aiSelection", item.aiSelection.encode());
@@ -782,7 +913,9 @@ public final class ConversationStore {
                 arr.put(o);
             }
         } catch (Exception ignored) {}
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putString(KEY, arr.toString()).apply();
+        SharedPreferences.Editor edit = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+                .edit().putString(KEY, arr.toString());
+        if (sync) edit.commit(); else edit.apply();
     }
 
     /**
@@ -875,6 +1008,18 @@ public final class ConversationStore {
     }
 
     private static String safe(String s) { return s == null ? "" : s; }
+
+    private static String validTitleOwner(String value) {
+        if (TITLE_DEFAULT.equals(value) || TITLE_AUTOMATIC.equals(value)
+                || TITLE_MANUAL.equals(value) || TITLE_LEGACY.equals(value)) return value;
+        return TITLE_LEGACY;
+    }
+
+    private static String validTitleJobState(String value) {
+        if (TITLE_JOB_IDLE.equals(value) || TITLE_JOB_PENDING.equals(value)
+                || TITLE_JOB_DONE.equals(value)) return value;
+        return TITLE_JOB_DONE;
+    }
 
     private static String clip(String s, int max) {
         if (s == null) return "";

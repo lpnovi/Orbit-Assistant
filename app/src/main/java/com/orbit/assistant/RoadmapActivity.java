@@ -112,6 +112,8 @@ public final class RoadmapActivity extends Activity {
         // entry already listed only that, so its text is unchanged.
         // v0.8.3.0-beta.1 made AI Control the active line. What its first Beta shipped belongs to
         // What's New; this entry names only what later Betas are planned to add.
+        // v0.8.3.0-beta.2 polished that shipped foundation and added automatic titles; neither is
+        // future work, so the user-facing entry remains limited to the later AI Control plan.
         addGroup(page, "NOW - ON THE WAY TO 0.9", new String[][]{
                 {OrbitRoadmap.CURRENT, "Direct control over the AI that answers you. Still ahead "
                         + "in later Betas: conversation branching, editing an earlier message and "

@@ -530,6 +530,22 @@ model under the chosen one's name.
 - **No silent substitution.** The Astra-to-Sol fallback and the capacity retry on a lighter model
   are gone; an unavailable model is reported for any model, never for a network failure
 
+#### `0.8.3.0-beta.2` - AI Control polish
+
+- **GPT-5.6 restored.** Luna, Terra and Sol are first-class ChatGPT choices again, grouped beside
+  the GPT-6 family with the exact strengths and context metadata from OpenAI's model catalog
+- **Automatic conversation titles.** A new chat stays New Chat until its first successful exchange,
+  then receives a small background metadata request or a deterministic local fallback. Manual
+  renames have durable ownership and always beat an in-flight result
+- **Quieter chat controls.** Header pills and response actions are slightly lighter while keeping
+  their accessible targets, stable start alignment and narrow-screen bounds
+- **Cleaner Rich Answer attribution.** The visible image caption opens its source, and Orbit omits
+  a separate source pill only when it points to that exact same page
+- **Honest visual follow-ups.** The next turn can carry the exact number of Rich Answer image cards
+  Orbit surfaced, as bounded untrusted data rather than UI implementation detail
+- **Overlay polish.** The compact Side-button selector accommodates restored model names without
+  turning the overlay into the full chat interface
+
 #### Still ahead for AI Control
 
 - Conversation branching and a branch view

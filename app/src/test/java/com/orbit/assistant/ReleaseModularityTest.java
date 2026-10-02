@@ -185,12 +185,12 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * 0.8.3.0-beta.1 is the first AI Control Beta.
+     * 0.8.3.0-beta.2 is the AI Control polish Beta.
      *
      * <p>It must carry Beta metadata, and the changelog entry the release workflow builds its notes
      * from must already exist for this version name.
      */
-    @Test public void thisReleaseIsTheFirstAiControlBeta() {
+    @Test public void thisReleaseIsTheSecondAiControlBeta() {
         assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
                 OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
         assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
