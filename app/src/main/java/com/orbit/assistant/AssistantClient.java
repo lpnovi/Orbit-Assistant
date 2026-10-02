@@ -331,6 +331,19 @@ public final class AssistantClient {
                             List<History> history, AiSelection selection,
                             boolean explicitAttachment, String trustedTaskContext,
                             java.util.function.BooleanSupplier cancelled, Callback callback) {
+        send(context, prompt, screenText, images, history, selection, explicitAttachment,
+                trustedTaskContext, KeptContext.Prepared.NONE, cancelled, callback);
+    }
+
+    /**
+     * The same, with what the user kept in this chat (0.8.3.0-beta.3+). Kept context reaches only
+     * a provider; the deterministic local routers below answer from the prompt alone, as before.
+     */
+    public static void send(Context context, String prompt, String screenText, List<Bitmap> images,
+                            List<History> history, AiSelection selection,
+                            boolean explicitAttachment, String trustedTaskContext,
+                            KeptContext.Prepared kept,
+                            java.util.function.BooleanSupplier cancelled, Callback callback) {
         // Every answer in Orbit leaves through this callback - the deterministic routers below,
         // Orbit Local, and whichever cloud provider is active - so this is where the reply's prose
         // is checked against what has actually been done. A protected dial that is about to be put
@@ -423,6 +436,7 @@ public final class AssistantClient {
         final String resolvedNotificationContext = notificationContext;
         final Runnable continueToProvider = () -> sendToProvider(context, prompt, screenText,
                 requestImages, history, selection, explicitAttachment, trustedTaskContext,
+                kept,
                 cancelled, resolvedNotificationContext, cb);
 
         // The last stop before the network. When Orbit Local's action model is installed and
@@ -449,6 +463,7 @@ public final class AssistantClient {
                                        List<Bitmap> images, List<History> history,
                                        AiSelection selection, boolean explicitAttachment,
                                        String trustedTaskContext,
+                                       KeptContext.Prepared kept,
                                        java.util.function.BooleanSupplier cancelled,
                                        String notificationContext, Callback cb) {
         final Bitmap screenshot = images == null || images.isEmpty() ? null : images.get(0);
@@ -491,6 +506,7 @@ public final class AssistantClient {
                 .notificationContext(notificationContext)
                 .memoryContext(memorySelection.promptContext)
                 .trustedTaskContext(trustedTaskContext)
+                .keptContext(kept)
                 .cancelled(cancelled)
                 .thinkingUpdates(thinkingUpdates)
                 .build();

@@ -524,6 +524,9 @@ public class OrbitSession extends VoiceInteractionSession {
         stateText.setSingleLine(true);
         stateText.setEllipsize(TextUtils.TruncateAt.END);
         stateText.setPadding(0, UiKit.dp(c, 1), UiKit.dp(c, 8), 0);
+        // Inert unless this chat keeps context, in which case it lists what is kept.
+        stateText.setOnClickListener(v -> showKeptMenu());
+        stateText.setClickable(readyState().endsWith(" kept"));
         statusRow.addView(stateText, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -744,6 +747,13 @@ public class OrbitSession extends VoiceInteractionSession {
         // One control, one footprint. While a reply is being generated the same button becomes
         // Stop rather than a second button appearing beside it.
         sendButton.setOnClickListener(v -> { if (showingStop) stopGenerating(); else submit(); });
+        // Hold Send to pick the AI for this one message, from the same compact Orbit menus the
+        // header chip uses. The overlay gains no new control.
+        sendButton.setOnLongClickListener(v -> {
+            if (showingStop || busy) return false;
+            showSendWithMenu();
+            return true;
+        });
         LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(UiKit.dp(c, 44), UiKit.dp(c, 44));
         sendLp.setMargins(UiKit.dp(c, 5), 0, 0, 0);
         composer.addView(sendButton, sendLp);
@@ -775,8 +785,24 @@ public class OrbitSession extends VoiceInteractionSession {
         // The overlay stays quiet about the default cloud setup; only a deliberately different
         // provider choice earns a subtle mention, so the user always knows who is answering.
         AiProvider active = AiProviders.active(getContext());
-        if (active.capabilities().offline) return "Ready · " + active.displayName();
-        return "Ready";
+        String ready = active.capabilities().offline ? "Ready · " + active.displayName() : "Ready";
+        // The overlay's one mention of kept context: a count on the status line it already has,
+        // never a row under each message. Tapping the status line lists the items.
+        int kept = conversationId == null ? 0 : ConversationStore.kept(getContext(), conversationId).size();
+        return kept == 0 ? ready : ready + " · " + kept + " kept";
+    }
+
+    /** The status line, tapped while this chat keeps context: what is kept, each removable. */
+    private void showKeptMenu() {
+        if (stateText == null || conversationId == null) return;
+        List<KeptContext> items = ConversationStore.kept(getContext(), conversationId);
+        if (items.isEmpty()) return;
+        String[] labels = new String[items.size()];
+        for (int i = 0; i < items.size(); i++) labels[i] = "Stop keeping " + items.get(i).label;
+        UiKit.showOrbitMenu(getContext(), stateText, labels, -1, (index, label) -> {
+            ConversationStore.removeKept(getContext(), conversationId, items.get(index).id);
+            stateTextSafe(readyState());
+        });
     }
 
     /**
@@ -840,6 +866,59 @@ public class OrbitSession extends VoiceInteractionSession {
                         providers.get(index).id())));
     }
 
+    /**
+     * The AI for the next message only (Send with), or null. Consumed by the send that uses it, so
+     * it can never leak into a later message; the chat's own selection is never touched.
+     */
+    private AiSelection oneTurnSelection;
+
+    /** Hold Send: model, then strength where the model has one, then send this one message. */
+    private void showSendWithMenu() {
+        if (sendButton == null || input == null) return;
+        if (input.getText().toString().trim().isEmpty() && composerAttachments.isEmpty()) {
+            stateTextSafe("Write a message, then hold Send");
+            main.postDelayed(() -> stateTextSafe(readyState()), 1200);
+            return;
+        }
+        if (Prefs.haptics(getContext())) vibrate(14);
+        AiSelection s = currentSelection;
+        List<AiModelSpec> models = OrbitModelCatalog.modelsFor(s.provider);
+        if (models.isEmpty()) return;
+        String[] labels = new String[models.size()];
+        int selected = -1;
+        for (int i = 0; i < models.size(); i++) {
+            labels[i] = "Send with " + models.get(i).displayName;
+            if (models.get(i).id.equals(s.model)) selected = i;
+        }
+        UiKit.showOrbitMenu(getContext(), sendButton, labels, selected, (index, label) -> {
+            AiSelection model = AiSelections.withModel(currentSelection, models.get(index).id);
+            List<AiStrength> strengths = AiSelections.strengthsFor(model);
+            if (strengths.isEmpty()) {
+                sendWith(model);
+                return;
+            }
+            main.postDelayed(() -> {
+                String[] names = new String[strengths.size()];
+                int current = -1;
+                for (int i = 0; i < strengths.size(); i++) {
+                    names[i] = strengths.get(i).label;
+                    if (strengths.get(i) == model.strength) current = i;
+                }
+                UiKit.showOrbitMenu(getContext(), sendButton, names, current, (i, n) ->
+                        sendWith(AiSelections.withStrength(model, strengths.get(i))));
+            }, 160);
+        });
+    }
+
+    private void sendWith(AiSelection chosen) {
+        oneTurnSelection = AiSelections.resolve(chosen);
+        stateTextSafe("Sending with " + oneTurnSelection.shortLabel());
+        submit();
+        // A send that did not go ahead (an empty composer, a duplicate gesture) must not carry the
+        // choice over to whatever is sent next.
+        oneTurnSelection = null;
+    }
+
     /** This overlay conversation's selection only; the default and other chats are untouched. */
     private void applyOverlaySelection(AiSelection chosen) {
         AiSelection resolved = AiSelections.resolve(chosen);
@@ -892,7 +971,14 @@ public class OrbitSession extends VoiceInteractionSession {
             addBubbleNow("What can I help with?", false, false);
             return;
         }
-        for (int i = 0; i < history.size(); i++) {
+        // While a retry is running its answer, and anything after it, step aside so the new version
+        // arrives where the old one was. Nothing is removed: a failed retry redraws the original.
+        int shown = history.size();
+        for (PendingRequestStore.Item pending
+                : PendingRequestStore.activeForConversation(getContext(), conversationId)) {
+            if (pending.isAnswerVariant()) shown = Math.min(shown, Math.max(0, pending.variantAt()));
+        }
+        for (int i = 0; i < shown; i++) {
             AssistantClient.History item = history.get(i);
             boolean user = "user".equals(item.role);
             String rawVisible = user ? item.content : removeEmDashes(item.content);
@@ -2047,8 +2133,11 @@ public class OrbitSession extends VoiceInteractionSession {
             }
         };
 
+        // Send with: this one message goes to the AI chosen by holding Send, and the choice is spent.
+        AiSelection requestSelection = oneTurnSelection == null ? currentSelection : oneTurnSelection;
+        oneTurnSelection = null;
         OrbitRequestManager.enqueue(getContext(), requestConversationId, submitted, submittedScreenText,
-                submittedImages, voiceRequest, draftedReply, currentSelection,
+                submittedImages, voiceRequest, draftedReply, requestSelection,
                 hasManual || submittedSelection, listener);
     }
 
@@ -2471,7 +2560,9 @@ public class OrbitSession extends VoiceInteractionSession {
         if (messages == null || rawText == null) return;
         String url = SourceLinkUtil.sourceUrl(rawText);
         if (url.isEmpty()) return;
-        if (RichAnswerSourcePresentation.isAlreadyAttributed(url, richImages)) return;
+        // Only a page nothing else in the answer already opens gets a control of its own.
+        if (!RichAnswerSourcePresentation.needsStandaloneSource(url,
+                SourceLinkUtil.displayText(rawText), richImages)) return;
         Context c = getContext();
         Button source = new Button(c);
         source.setAllCaps(false);
@@ -2653,6 +2744,15 @@ public class OrbitSession extends VoiceInteractionSession {
         }
         if (userIndex < 0) return;
         AssistantClient.History user = history.get(userIndex);
+        // An ordinary answer is retried as another version of itself (0.8.3.0-beta.3), exactly as
+        // in full chat: the earlier answer is kept and a failed retry changes nothing. A drafted
+        // reply keeps its own regeneration, because its controls belong to one live draft.
+        int answerAt = history.size() - 1;
+        if (!isDraftReplyRequest(user.content) && userIndex == answerAt - 1
+                && "assistant".equalsIgnoreCase(history.get(answerAt).role)) {
+            retryAsVariant(answerAt, user, null);
+            return;
+        }
         history.clear();
         history.addAll(ConversationStore.removeLastAssistantTurn(getContext(), conversationId));
         renderConversation();
@@ -2669,6 +2769,78 @@ public class OrbitSession extends VoiceInteractionSession {
                     : "Regenerating with " + savedScreen.size() + " of "
                             + user.attachmentCount() + " original images");
         }
+    }
+
+    /**
+     * Asks the question at {@code answerAt - 1} again and keeps the result as another version of
+     * the answer at {@code answerAt}. Full chat is where the versions are browsed; the overlay
+     * shows whichever is current.
+     */
+    private void retryAsVariant(int answerAt, AssistantClient.History user, AiSelection override) {
+        if (!ConversationStore.canAddVariant(getContext(), conversationId, answerAt)) {
+            stateTextSafe("This answer already has " + ConversationBranches.MAX_VARIANTS + " versions");
+            main.postDelayed(() -> stateTextSafe(readyState()), 1400);
+            return;
+        }
+        // The retry is built from the stored conversation, so it must hold what this sheet shows.
+        ConversationStore.save(getContext(), conversationId, history);
+        List<Bitmap> savedScreen = user.screenAttached
+                ? AttachmentStore.loadAll(user.attachmentPaths) : new ArrayList<>();
+        boolean explicit = user.screenAttached && "screen_selection".equals(user.attachmentKind);
+        final String requestConversationId = conversationId;
+        busy = true;
+        uiRequestConversationId = requestConversationId;
+        OrbitRequestManager.Listener listener = new OrbitRequestManager.Listener() {
+            private boolean ownsCurrentUi() {
+                return requestConversationId.equals(conversationId)
+                        && requestConversationId.equals(uiRequestConversationId);
+            }
+            @Override public void onDelta(String requestId, String text) {
+                if (text == null || text.isEmpty()) return;
+                main.post(() -> {
+                    if (ownsCurrentUi() && sessionVisible) {
+                        stopThinkingIndicator();
+                        updateStreamingBubble(removeEmDashes(text));
+                    }
+                });
+            }
+            @Override public void onSuccess(String requestId, AssistantReply reply) {
+                main.post(() -> finishVariant(ownsCurrentUi(), readyState()));
+            }
+            @Override public void onError(String requestId, String message) {
+                main.post(() -> finishVariant(ownsCurrentUi(), "Retry failed · earlier answer kept"));
+            }
+            @Override public void onCancelled(String requestId, String partialText) {
+                main.post(() -> finishVariant(ownsCurrentUi(), readyState()));
+            }
+        };
+        OrbitRequestManager.enqueueAnswerVariant(getContext(), conversationId, answerAt,
+                user.content, user.attachmentText, savedScreen,
+                override == null ? currentSelection : AiSelections.resolve(override), explicit, listener);
+        renderConversation();
+        showThinkingIndicator();
+        stateTextSafe("Thinking");
+        updateComposerAction();
+    }
+
+    /** Redraws from storage after a retry, whichever way it ended. */
+    private void finishVariant(boolean ownsUi, String state) {
+        if (!ownsUi) {
+            updateComposerAction();
+            return;
+        }
+        busy = false;
+        uiRequestConversationId = null;
+        stopThinkingIndicator();
+        ConversationStore.Conversation stored = ConversationStore.load(getContext(), conversationId);
+        if (stored != null) {
+            history.clear();
+            history.addAll(stored.messages);
+        }
+        if (sessionVisible) renderConversation();
+        stateTextSafe(state);
+        if (!state.equals(readyState())) main.postDelayed(() -> stateTextSafe(readyState()), 1800);
+        updateComposerAction();
     }
 
     private void addFailureRetryAction(PendingRequestStore.Item failed) {
@@ -3691,8 +3863,13 @@ public class OrbitSession extends VoiceInteractionSession {
     private void addScreenAttachmentBadge(String label) {
         if (messages == null) return;
         Context c = getContext();
-        TextView badge = UiKit.text(c, label == null ? "Screen attached" : label,
-                11, UiKit.accent(c), true);
+        String name = label == null ? "Screen attached" : label;
+        TextView badge = UiKit.text(c, name, 11, UiKit.accent(c), true);
+        // One line, however long the filename: its start and extension stay, the middle gives way.
+        badge.setSingleLine(true);
+        badge.setEllipsize(TextUtils.TruncateAt.MIDDLE);
+        badge.setMaxWidth(UiKit.dp(c, 250));
+        badge.setContentDescription("Attached: " + name);
         badge.setGravity(Gravity.CENTER_VERTICAL);
         badge.setMinHeight(0);
         badge.setMinimumHeight(0);
@@ -3744,15 +3921,9 @@ public class OrbitSession extends VoiceInteractionSession {
     private void addBubbleNow(String text, boolean user, boolean error) {
         if (messages == null) return;
         TextView bubble = makeBubbleText(text, user, error);
-        if (user && !error) MessageActions.bindUser(bubble, text,
-                () -> {
-                    // The overlay keeps Edit & resend deliberately simple: the message returns to
-                    // the compact composer, and the state line says why, using the same brief
-                    // acknowledgement Copy already uses rather than adding overlay chrome.
-                    placeInComposer(text);
-                    stateTextSafe("Editing previous message");
-                    main.postDelayed(() -> stateTextSafe(readyState()), 1200);
-                },
+        // No Edit in the overlay: editing an earlier message creates a branch (0.8.3.0-beta.3), and
+        // branch editing and navigation live in full chat, where there is room to show them.
+        if (user && !error) MessageActions.bindUser(bubble, text, null,
                 () -> {
                     stateTextSafe("Copied");
                     main.postDelayed(() -> stateTextSafe(readyState()), 800);
@@ -4001,7 +4172,13 @@ public class OrbitSession extends VoiceInteractionSession {
     private void stateTextSafe(String s) {
         main.post(() -> {
             // Cross-faded so Listening → Thinking → Ready reads as a transition, not a flicker.
-            if (stateText != null) UiKit.swapText(stateText, s);
+            if (stateText != null) {
+                UiKit.swapText(stateText, s);
+                // A control only while it has something to open: the kept list.
+                boolean opens = s != null && s.endsWith(" kept");
+                stateText.setClickable(opens);
+                stateText.setFocusable(opens);
+            }
         });
     }
 

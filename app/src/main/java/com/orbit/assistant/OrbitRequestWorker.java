@@ -28,6 +28,9 @@ public final class OrbitRequestWorker extends Worker {
         }
     }
 
+    /** What this execution sends from the chat's kept context. Set once per execution. */
+    private KeptContext.Prepared kept = KeptContext.Prepared.NONE;
+
     public OrbitRequestWorker(@NonNull Context appContext, @NonNull WorkerParameters params) {
         super(appContext, params);
     }
@@ -85,6 +88,20 @@ public final class OrbitRequestWorker extends Worker {
 
         ConversationStore.Conversation chat = ConversationStore.load(c, item.conversationId);
         List<AssistantClient.History> history = chat == null ? new ArrayList<>() : new ArrayList<>(chat.messages);
+        if (item.isAnswerVariant()) {
+            // A retry is asked of the conversation as it stood before the answer being retried,
+            // so neither that answer nor anything after it reaches the model.
+            int at = item.variantAt();
+            if (at > history.size()
+                    || !ConversationBranches.parentKey(history, at).equals(item.variantParent())) {
+                failVariant(c, item, id, "This chat changed before the retry could run.");
+                return Result.success();
+            }
+            history = new ArrayList<>(history.subList(0, at));
+        }
+        // Read with the history, at the same moment and from the same record: what the user kept
+        // in this chat is sent with this turn. See KeptContext.
+        kept = keptFor(chat, history);
         List<Bitmap> images = AttachmentStore.loadAll(item.screenshotPaths);
 
         // Handle deterministic weather requests before invoking the language model.
@@ -154,6 +171,12 @@ public final class OrbitRequestWorker extends Worker {
         // Stopping a request is not a failure. Cancelling interrupts this worker, which surfaces
         // here as an ordinary error, so the same gate the success path uses decides whether
         // anything visible gets written at all.
+        if (item.isAnswerVariant()) {
+            // A failed retry writes nothing into the conversation: the answer it was asked beside
+            // is still there, which is the whole point of keeping variants.
+            failVariant(c, item, id, visible);
+            return Result.success();
+        }
         OrbitRequestManager.completeIfNotCancelled(c, id, CompletionSource.WORKER_ERROR,
                 attempt(), () -> {
             ConversationStore.appendMessage(c, item.conversationId, new AssistantClient.History("assistant", visible));
@@ -199,8 +222,23 @@ public final class OrbitRequestWorker extends Worker {
         RequestTrace.responseReady(id, attempt, state(PendingRequestStore.load(c, id)));
         OrbitRequestManager.completeIfNotCancelled(c, id, CompletionSource.WORKER_RESPONSE,
                 attempt, () -> {
-            ConversationStore.appendMessage(c, item.conversationId,
-                    message.withReplyProvenance(id, reply.sourceUrls));
+            if (item.isAnswerVariant()) {
+                boolean stored = ConversationStore.commitAnswerVariant(c, item.conversationId,
+                        item.variantAt(), item.variantParent(),
+                        message.withReplyProvenance(id, reply.sourceUrls));
+                if (!stored) {
+                    // The chat moved on (cleared, edited, or already at its version limit) while
+                    // the retry ran. Nothing is written over it; the retry reports that it failed.
+                    String why = "Orbit could not keep this retry because the chat changed.";
+                    PendingRequestStore.markFailed(c, id, why);
+                    AttachmentStore.deleteAll(item.screenshotPaths);
+                    OrbitRequestManager.dispatchError(id, why);
+                    return;
+                }
+            } else {
+                ConversationStore.appendMessage(c, item.conversationId,
+                        message.withReplyProvenance(id, reply.sourceUrls));
+            }
             PendingRequestStore.markDone(c, id);
             RequestTrace.lifecycle(id, "completed");
             AttachmentStore.deleteAll(item.screenshotPaths);
@@ -217,6 +255,37 @@ public final class OrbitRequestWorker extends Worker {
                 NotificationHelper.notifyResponseComplete(c, item.conversationId, item.prompt, notificationText);
             }
         });
+    }
+
+    /** Reports a retry that produced no answer, writing nothing into the conversation. */
+    private void failVariant(Context c, PendingRequestStore.Item item, String id, String visible) {
+        OrbitRequestManager.completeIfNotCancelled(c, id, CompletionSource.WORKER_ERROR,
+                attempt(), () -> {
+            PendingRequestStore.markFailed(c, id, visible);
+            DiagnosticStore.recordError(c, visible);
+            AttachmentStore.deleteAll(item.screenshotPaths);
+            OrbitRequestManager.dispatchError(id, visible);
+        });
+    }
+
+    /**
+     * The kept-context part of this request, read from the same conversation record as its history.
+     * The message being answered is the last user message in that history.
+     */
+    static KeptContext.Prepared keptFor(ConversationStore.Conversation chat,
+                                        List<AssistantClient.History> history) {
+        if (chat == null || chat.kept.isEmpty()) return KeptContext.Prepared.NONE;
+        String current = "";
+        if (history != null) {
+            for (int i = history.size() - 1; i >= 0; i--) {
+                AssistantClient.History h = history.get(i);
+                if (h != null && "user".equalsIgnoreCase(h.role)) {
+                    current = ConversationBranches.fingerprint(h);
+                    break;
+                }
+            }
+        }
+        return KeptContext.prepare(chat.kept, current);
     }
 
     /** True once the user's Stop has been accepted, in this process or a previous one. */
@@ -265,6 +334,7 @@ public final class OrbitRequestWorker extends Worker {
 
         AssistantClient.send(c, item.prompt, item.screenText, images, history,
                 selection, item.explicitAttachment, item.trustedTaskContext,
+                kept,
                 () -> isStopped() || OrbitRequestManager.isCancelled(c, requestId),
                 new AssistantClient.Callback() {
                     /**

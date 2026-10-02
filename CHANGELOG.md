@@ -842,6 +842,13 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.3.0-beta.3**: Conversation Control: more say over what each chat remembers and where it goes.
+  - A small ring beside the AI shows roughly how full the context window is; tap it for an estimated breakdown.
+  - Hold an earlier message to edit it into a new branch, and Retry now keeps every answer so you can flip between versions.
+  - Hold Send to pick a different model or strength for just that one message.
+  - Hold an attached document, text file or Vault item to keep it for the whole chat without repeating it under every message.
+  - Near the context limit, Continue in new chat carries a short summary forward and leaves the original untouched.
+  - Rename keeps its field inside the dialog, duplicate source buttons are gone, and long attachment names stay on one line.
 - **v0.8.3.0-beta.2**: AI Control polish and automatic chat titles.
   - GPT-5.6 Luna, Terra and Sol return as normal ChatGPT choices beside the GPT-6 family, grouped cleanly in the shared model picker with their supported strengths.
   - New conversations receive a concise background title after their first successful exchange; local fallback is safe and deterministic, and a manual rename always wins.

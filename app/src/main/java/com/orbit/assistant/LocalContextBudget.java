@@ -74,6 +74,8 @@ final class LocalContextBudget {
         boolean screenContextAllowed;
         String notificationContext = "";
         String trustedTaskContext = "";
+        /** What the user kept in this chat, as attachment segments (see KeptContext.localSegments). */
+        String keptText = "";
         String prompt = "";
         /** The earlier message the current turn replies to, as an untrusted block, or "". */
         String quote = "";
@@ -229,6 +231,17 @@ final class LocalContextBudget {
         r.imageCount = Math.max(0, in.imageCount);
 
         String attachmentText = in.explicitAttachment ? safe(in.screenText).trim() : "";
+        String keptText = safe(in.keptText).trim();
+        if (!keptText.isEmpty()) {
+            // Kept items are attachments the user chose for the whole chat, so they compete for the
+            // same evidence share as this message's own attachment. A single attachment carries no
+            // header of its own, so it is given one or the split below would lose it.
+            if (!attachmentText.isEmpty()
+                    && !ATTACHMENT_HEADER.matcher("\n\n" + attachmentText).find()) {
+                attachmentText = "\n\n--- Attachment 1 of 1: This message ---\n" + attachmentText;
+            }
+            attachmentText = (attachmentText + "\n\n" + keptText).trim();
+        }
         String screenText = !in.explicitAttachment && in.screenContextAllowed
                 ? safe(in.screenText).trim() : "";
         String notifications = safe(in.notificationContext).trim();

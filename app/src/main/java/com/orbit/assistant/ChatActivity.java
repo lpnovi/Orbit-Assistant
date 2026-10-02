@@ -174,6 +174,7 @@ public class ChatActivity extends Activity {
     /** An unsent draft Edit &amp; resend displaced, put back if the user leaves without sending. */
     private String displacedDraft;
     private LinearLayout editingBar;
+    private TextView editingLabel;
     /**
      * The compact card above the composer naming the message being replied to, built once and only
      * shown or hidden. {@link #pendingQuote} is the state; the card just draws it.
@@ -181,6 +182,33 @@ public class ChatActivity extends Activity {
     private LinearLayout quoteCard;
     private TextView quoteCardText;
     private QuotedMessage pendingQuote;
+
+    // ---- Conversation Control (0.8.3.0-beta.3) ---------------------------------------------------
+    /** The header's quiet context-window ring. Details open on tap; it carries no number itself. */
+    private ContextMeterView contextMeter;
+    /** One chat-level line naming what is kept in this chat, present only when something is. */
+    private LinearLayout keptIndicator;
+    private TextView keptIndicatorText;
+    /** The near-full notice, present only near the top of a known window and dismissible. */
+    private LinearLayout contextNotice;
+    private TextView contextNoticeText;
+    private ContextEstimate latestEstimate;
+    private final ExecutorService contextExecutor = Executors.newSingleThreadExecutor();
+    private final android.os.Handler contextHandler =
+            new android.os.Handler(android.os.Looper.getMainLooper());
+    /** Drops a measurement that finished after a newer one was asked for. */
+    private int estimateGeneration;
+    private final Runnable estimateRunnable = this::measureContextNow;
+    /**
+     * The earlier message being edited, by position and fingerprint, or -1 while not editing one.
+     * Sending then creates a branch from that message rather than a new turn at the end.
+     */
+    private int editingIndex = -1;
+    private String editingKey = "";
+    /** Staged attachments the user marked Keep in this chat, by attachment id. */
+    private final java.util.Set<String> keptAttachmentIds = new java.util.HashSet<>();
+    /** True while Continue in new chat is writing its summary, so it cannot be started twice. */
+    private boolean continuing;
 
     private AttachmentStripView attachmentStrip;
     /**
@@ -577,6 +605,13 @@ public class ChatActivity extends Activity {
         // search, and rename actions, but never crowd the conversation header.
         View headerSpacer = new View(this);
         top.addView(headerSpacer, new LinearLayout.LayoutParams(0, 1, 1));
+        // The context window, as one thin ring beside the AI it belongs to. No number and no
+        // label: it recedes at ordinary usage, and a tap opens the details.
+        contextMeter = new ContextMeterView(this);
+        contextMeter.setBackground(UiKit.ripple(Color.TRANSPARENT, UiKit.accent(this), 16, this));
+        contextMeter.setOnClickListener(v -> showContextDetails());
+        contextMeter.setEstimate(latestEstimate);
+        top.addView(contextMeter, new LinearLayout.LayoutParams(UiKit.dp(this, 34), UiKit.dp(this, 44)));
         // The active AI, visible and one tap from changing. Two compact pills rather than three:
         // the provider is named inside the model pill when there is width for it and always in
         // the picker, so the controls never crowd the header on a phone.
@@ -621,11 +656,25 @@ public class ChatActivity extends Activity {
         conversation.addView(buildJumpLatest(), jumpLatestLayoutParams());
         root.addView(conversation, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
+        // Both are absent in an ordinary chat. Each appears only when it has something to say, and
+        // neither repeats anything under the messages above.
+        LinearLayout.LayoutParams noticeLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        noticeLp.gravity = Gravity.START;
+        noticeLp.setMargins(UiKit.dp(this, 2), 0, 0, UiKit.dp(this, 6));
+        root.addView(buildContextNotice(), noticeLp);
+        LinearLayout.LayoutParams keptLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        keptLp.gravity = Gravity.START;
+        keptLp.setMargins(UiKit.dp(this, 2), 0, 0, UiKit.dp(this, 6));
+        root.addView(buildKeptIndicator(), keptLp);
+
         // One row whatever it holds. Removing an item removes exactly that item, by id, and
         // leaves the composer text and any screen context alone.
         attachmentStrip = new AttachmentStripView(this);
         attachmentStrip.setOnRemove(this::removeComposerAttachment);
         attachmentStrip.setOnOpen(this::openComposerAttachment);
+        attachmentStrip.setOnLongPress(this::showAttachmentKeepMenu);
         LinearLayout.LayoutParams trayLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         trayLp.setMargins(UiKit.dp(this, 2), 0, UiKit.dp(this, 2), UiKit.dp(this, 8));
@@ -722,6 +771,13 @@ public class ChatActivity extends Activity {
             if (showingStop) stopGenerating();
             else submit(false, SubmissionGate.SOURCE_BUTTON);
         });
+        // Hold Send to choose the AI for this one message. No second button: the same control,
+        // the same footprint, and nothing on screen until it is asked for.
+        send.setOnLongClickListener(v -> {
+            if (showingStop) return false;
+            showSendWith();
+            return true;
+        });
         composer.addView(send, new LinearLayout.LayoutParams(UiKit.dp(this, 44), UiKit.dp(this, 44)));
         input.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId != android.view.inputmethod.EditorInfo.IME_ACTION_SEND) return false;
@@ -736,7 +792,7 @@ public class ChatActivity extends Activity {
         input.addTextChangedListener(new android.text.TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
             @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
-            @Override public void afterTextChanged(android.text.Editable s) { updateSendState(); }
+            @Override public void afterTextChanged(android.text.Editable s) { updateSendState(); scheduleContextEstimate(); }
         });
         updateSendState();
         root.addView(composer);
@@ -754,6 +810,23 @@ public class ChatActivity extends Activity {
         }
         updateAiControls();
         render();
+        updateKeptIndicator(c);
+        scheduleContextEstimate();
+    }
+
+    /**
+     * Where a retry that is still running will put its answer, or -1 when none is running.
+     *
+     * <p>While a retry runs, the answer it was asked about and anything after it are not drawn, so
+     * the new answer streams in where the old one was. Nothing is removed: if the retry fails or is
+     * stopped before it writes anything, the next redraw shows the original answer again.
+     */
+    private int pendingVariantAt() {
+        for (PendingRequestStore.Item item
+                : PendingRequestStore.activeForConversation(this, conversationId)) {
+            if (item.isAnswerVariant()) return item.variantAt();
+        }
+        return -1;
     }
 
     private void render() {
@@ -778,8 +851,12 @@ public class ChatActivity extends Activity {
             welcome.setBackground(UiKit.rounded(UiKit.SURFACE, 18, this));
             messages.addView(welcome, bubbleLp(Gravity.START, UiKit.dp(this, 240)));
         } else {
-            for (int i = 0; i < history.size(); i++) {
-                addHistoryBubble(history.get(i), i);
+            ConversationStore.Conversation stored = ConversationStore.load(this, conversationId);
+            int hideFrom = pendingVariantAt();
+            int shown = hideFrom >= 0 ? Math.min(hideFrom, history.size()) : history.size();
+            for (int i = 0; i < shown; i++) {
+                addHistoryBubble(history.get(i), i,
+                        stored == null || i >= stored.messages.size() ? null : stored.forkAt(i));
                 // The mark is part of the turn it ended, so it is drawn inside the same pass that
                 // draws the turn. Later turns are appended after it and cannot displace it.
                 addStoppedMarkerFor(history.get(i));
@@ -799,7 +876,14 @@ public class ChatActivity extends Activity {
         scroll.post(this::updateJumpLatest);
     }
 
-    private void addHistoryBubble(AssistantClient.History h, int index) {
+    /**
+     * One message, and - only when it has other versions - a compact navigator for them.
+     *
+     * <p>{@code fork} is non-null exactly when this position of the visible path has stored
+     * alternatives. An ordinary message with a single version is drawn exactly as before.
+     */
+    private void addHistoryBubble(AssistantClient.History h, int index,
+                                  ConversationBranches.Fork fork) {
         boolean user = "user".equalsIgnoreCase(h.role);
         String rawVisible = h.content == null ? "" : h.content.replace("—", "-");
         String visible = user ? rawVisible : SourceLinkUtil.displayText(rawVisible);
@@ -811,10 +895,13 @@ public class ChatActivity extends Activity {
             UiKit.applyBubbleTextMetrics(bubble);
             bubble.setPadding(UiKit.dp(this, 15), UiKit.dp(this, 12), UiKit.dp(this, 15), UiKit.dp(this, 12));
             bubble.setBackground(UiKit.bubbleSurface(this, fill));
-            MessageActions.bindUser(bubble, rawVisible, () -> beginEditResend(rawVisible),
+            MessageActions.bindUser(bubble, rawVisible, () -> beginEdit(index, h),
                     () -> beginReplyTo(h), null);
             if (h.quote != null) addSentQuote(h.quote);
             messages.addView(bubble, bubbleLp(Gravity.END, UiKit.dp(this, 310)));
+            if (h.screenAttached) addAttachment(h);
+            if (fork != null) addBranchNavigator(fork, index, true);
+            return;
         } else {
             View bubble = OrbitRichResponseRenderer.render(this, visible, fill, false, h.richImages);
             LinearLayout.LayoutParams richLp = new LinearLayout.LayoutParams(
@@ -829,15 +916,17 @@ public class ChatActivity extends Activity {
             MessageActions.AssistantActions actions = finished ? responseActions(h, index) : null;
             if (finished) MessageActions.bindAssistant(bubble, rawVisible, actions);
             messages.addView(bubble, richLp);
-            if (finished) addResponseStrip(rawVisible, actions);
+            // A source that nothing in the answer already opens belongs with the answer, above its
+            // actions, never floating below them.
+            if (finished) addSourceLink(rawVisible, visible, h.richImages);
+            if (finished) addResponseStrip(rawVisible, actions, fork, index);
+            else if (fork != null) addBranchNavigator(fork, index, false);
         }
-        if (!user && !visible.trim().isEmpty() && !visible.startsWith("Orbit could not finish")) {
+        if (!visible.trim().isEmpty() && !visible.startsWith("Orbit could not finish")) {
             addMemoryUsageIndicator(h);
             if (index == history.size() - 1) addMemorySuggestion(h, index);
-            addSourceLink(rawVisible, h.richImages);
-            addPersistedActionCards(index);
+            addPersistedActionCards(index, h);
         }
-        if (user && h.screenAttached) addAttachment(h);
     }
 
     private void addMemoryUsageIndicator(AssistantClient.History h) {
@@ -971,11 +1060,12 @@ public class ChatActivity extends Activity {
         return b;
     }
 
-    private void addSourceLink(String rawText, List<RichAnswerImage> richImages) {
+    private void addSourceLink(String rawText, String displayText, List<RichAnswerImage> richImages) {
         if (rawText == null) return;
         String url = SourceLinkUtil.sourceUrl(rawText);
         if (url.isEmpty()) return;
-        if (RichAnswerSourcePresentation.isAlreadyAttributed(url, richImages)) return;
+        // Only a page nothing else in the answer already opens gets a control of its own.
+        if (!RichAnswerSourcePresentation.needsStandaloneSource(url, displayText, richImages)) return;
         Button source = new Button(this);
         source.setAllCaps(false);
         source.setText("Open source · " + SourceLinkUtil.sourceLabel(rawText) + "  ↗");
@@ -1010,8 +1100,15 @@ public class ChatActivity extends Activity {
         row.setBackground(UiKit.outlined(UiKit.SURFACE_2, UiKit.withAlpha(UiKit.accent(this), 90), 14, this));
         String label = h.attachmentLabel == null || h.attachmentLabel.trim().isEmpty()
                 ? "Attachment" : h.attachmentLabel;
-        row.addView(UiKit.text(this, label, 12, UiKit.accent(this), true),
-                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        // One quiet line. A long filename such as a Samsung screenshot's is still recognisable by
+        // its start and its extension, and no longer wraps across the conversation in bold accent.
+        TextView name = UiKit.text(this, label, 12,
+                UiKit.blend(UiKit.accent(this), UiKit.MUTED, 0.62f), false);
+        name.setSingleLine(true);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+        name.setContentDescription("Attached: " + label);
+        row.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        bindKeepFromHistory(row, h, label);
         // Up to three thumbnails on the sent turn, so a message that carried several photos looks
         // like it did rather than like one photo. The label already carries the true count.
         boolean viewable = AttachmentViewerModel.isViewableImage(h.attachmentKind);
@@ -1090,6 +1187,14 @@ public class ChatActivity extends Activity {
      * none of them may start a second turn.
      */
     private void submit(boolean voiceRequest, String source) {
+        submit(voiceRequest, source, null);
+    }
+
+    /**
+     * @param oneTurn the AI for this message only (Send with), or null for the chat's own. It is
+     *     frozen into this message's request and never becomes the chat's or the app's selection.
+     */
+    private void submit(boolean voiceRequest, String source, AiSelection oneTurn) {
         String q = input.getText().toString().trim();
         // Frozen here, before the gate and before anything can clear the composer. Everything past
         // this line describes the message that was sent, never the composer as it now is, so
@@ -1105,13 +1210,18 @@ public class ChatActivity extends Activity {
             return;
         }
         try {
-            acceptedSubmit(q, voiceRequest, attached);
+            AiSelection selection = oneTurn == null ? currentSelection : AiSelections.resolve(oneTurn);
+            if (editingIndex >= 0) acceptedEditSubmit(q, voiceRequest, attached, selection);
+            else acceptedSubmit(q, voiceRequest, attached, selection);
         } finally {
             SubmissionGate.settle(conversationId);
         }
     }
 
-    private void acceptedSubmit(String q, boolean voiceRequest, List<ComposerAttachment> attached) {
+    private void acceptedSubmit(String q, boolean voiceRequest, List<ComposerAttachment> attached,
+                                AiSelection selection) {
+        // Read before anything below clears the composer: which staged items the user kept.
+        java.util.Set<String> kept = new java.util.HashSet<>(keptAttachmentIds);
         traceComposer("submit.before-clear");
         clearComposerInPlace();
         // The revised message has gone through the ordinary Send path, so the editing state has
@@ -1139,7 +1249,9 @@ public class ChatActivity extends Activity {
         clearQuote();
         history.add(user);
         ConversationStore.save(this, conversationId, history);
+        // The chat's own selection, even when this message goes with another (Send with).
         AiSelections.setForConversation(this, conversationId, currentSelection);
+        keepAttachments(attached, kept);
 
         clearComposerAttachments();
         animateNewestOnRender = true;
@@ -1147,12 +1259,400 @@ public class ChatActivity extends Activity {
 
         OrbitRequestManager.Listener listener = createRequestListener(voiceRequest);
         String requestId = OrbitRequestManager.enqueue(this, conversationId, q,
-                requestContext, requestImages, voiceRequest, false, currentSelection,
+                requestContext, requestImages, voiceRequest, false, selection,
                 hasAttachment, listener);
         listeners.put(requestId, listener);
         addThinkingRow();
         updateComposerAction();
         scrollBottom();
+    }
+
+    /**
+     * Sends an edited copy of an earlier message as a new branch from that point.
+     *
+     * <p>The original message and everything after it stay, as the original branch; the edited
+     * message gets its own answer. The edited message keeps the attachments, documents and quote
+     * the original carried, because editing the words of a question about a PDF is still a
+     * question about that PDF. Anything staged in the composer stays staged for the next message.
+     */
+    private void acceptedEditSubmit(String q, boolean voiceRequest,
+                                    List<ComposerAttachment> attached, AiSelection selection) {
+        int index = editingIndex;
+        String key = editingKey;
+        if (index < 0 || index >= history.size()) {
+            Toast.makeText(this, "That message is no longer here", Toast.LENGTH_SHORT).show();
+            finishEditResend();
+            return;
+        }
+        AssistantClient.History original = history.get(index);
+        AssistantClient.History edited = new AssistantClient.History("user", q,
+                original.screenAttached, original.attachmentPaths, original.attachmentKind,
+                original.attachmentLabel, original.attachmentText, "", "", "", "",
+                original.documents).withQuote(original.quote);
+        ConversationStore.BranchResult result =
+                ConversationStore.branchFromUserMessage(this, conversationId, index, key, edited);
+        if (!result.ok()) {
+            // Nothing was written, so the composer keeps the edit for another try.
+            Toast.makeText(this, result.error, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        traceComposer("edit.before-clear");
+        clearComposerInPlace();
+        finishEditResend();
+        history.clear();
+        history.addAll(result.messages);
+        animateNewestOnRender = true;
+        followBottom = true;
+        render();
+        List<Bitmap> images = edited.screenAttached
+                ? AttachmentStore.loadAll(edited.attachmentPaths) : new ArrayList<>();
+        boolean explicit = edited.screenAttached && !"screen".equals(edited.attachmentKind);
+        OrbitRequestManager.Listener listener = createRequestListener(voiceRequest);
+        String requestId = OrbitRequestManager.enqueue(this, conversationId, q,
+                edited.attachmentText, images, voiceRequest, false, selection, explicit, listener);
+        listeners.put(requestId, listener);
+        addThinkingRow();
+        updateComposerAction();
+        scrollBottom();
+        scheduleContextEstimate();
+    }
+
+    // ---- Send with -----------------------------------------------------------------------------------
+
+    /** Hold Send: choose the AI for this one message. The chat's own AI is unchanged afterwards. */
+    private void showSendWith() {
+        String q = input == null ? "" : input.getText().toString().trim();
+        if (q.isEmpty() && composerAttachments.isEmpty()) {
+            Toast.makeText(this, "Write a message, then hold Send to choose its AI",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (Prefs.haptics(this) && send != null) {
+            UiKit.haptic(send, android.view.HapticFeedbackConstants.LONG_PRESS);
+        }
+        AiSelectorDialog.show(this, "Send this message with", currentSelection,
+                s -> "Send with " + s.label(),
+                chosen -> submit(false, SubmissionGate.SOURCE_BUTTON, chosen));
+    }
+
+    /** Sends what the composer holds with a one-turn AI, as Send with does. For tests. */
+    void submitWithForTest(AiSelection oneTurn) { submit(false, SubmissionGate.SOURCE_BUTTON, oneTurn); }
+
+    // ---- kept in this chat -----------------------------------------------------------------------
+
+    /** Hold a staged attachment: This message only, or Keep in this chat. */
+    private void showAttachmentKeepMenu(String attachmentId, View card) {
+        ComposerAttachment attachment = composerAttachments.find(attachmentId);
+        if (attachment == null) return;
+        if (!KeptContext.isKeepable(attachment)) {
+            Toast.makeText(this, "Only documents, text and Vault items can be kept in this chat",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        boolean kept = keptAttachmentIds.contains(attachmentId);
+        if (Prefs.haptics(this)) UiKit.haptic(card, android.view.HapticFeedbackConstants.LONG_PRESS);
+        String[] labels = {"This message only", "Keep in this chat"};
+        UiKit.showOrbitMenu(this, card, labels, kept ? 1 : 0, (index, label) -> {
+            if (index == 1) keptAttachmentIds.add(attachmentId);
+            else keptAttachmentIds.remove(attachmentId);
+            refreshAttachmentStrip(false);
+        });
+    }
+
+    /** Marks a staged attachment Keep in this chat, as the menu does. For tests. */
+    void keepAttachmentForTest(String attachmentId) {
+        keptAttachmentIds.add(attachmentId);
+        refreshAttachmentStrip(false);
+    }
+
+    /**
+     * Stores the attachments marked Keep in this chat, once, at chat level. They stay shown on the
+     * message they came with and nowhere else.
+     */
+    private void keepAttachments(List<ComposerAttachment> attached, java.util.Set<String> kept) {
+        if (kept.isEmpty() || attached.isEmpty()) return;
+        ConversationStore.Conversation stored = ConversationStore.load(this, conversationId);
+        if (stored == null || stored.messages.isEmpty()) return;
+        AssistantClient.History origin = stored.messages.get(stored.messages.size() - 1);
+        String originKey = ConversationBranches.fingerprint(origin);
+        int textItems = 0;
+        int keptTextItems = 0;
+        for (ComposerAttachment a : attached) {
+            if (a == null || a.contextText.trim().isEmpty()) continue;
+            textItems++;
+            if (kept.contains(a.id) && KeptContext.isKeepable(a)) keptTextItems++;
+        }
+        // When every piece of text that message carried is kept, its own copy can be left out of
+        // later requests and the text is sent once.
+        boolean covers = textItems > 0 && textItems == keptTextItems;
+        int refused = 0;
+        for (ComposerAttachment a : attached) {
+            if (a == null || !kept.contains(a.id) || !KeptContext.isKeepable(a)) continue;
+            KeptContext item = KeptContext.create(a.kind, a.label, a.contextText,
+                    a.isDocument() ? a.document.path : "", originKey, covers);
+            if (!ConversationStore.keep(this, conversationId, item)) refused++;
+        }
+        if (refused > 0) {
+            Toast.makeText(this, "A chat keeps up to " + KeptContext.MAX_ITEMS
+                    + " items. This one was sent with this message only.", Toast.LENGTH_LONG).show();
+        }
+        updateKeptIndicator(ConversationStore.load(this, conversationId));
+    }
+
+    /**
+     * Hold an earlier message's attachment row to keep it from then on. Offered only for a single
+     * keepable item whose text Orbit still has, which is what can be kept honestly.
+     */
+    private void bindKeepFromHistory(View row, AssistantClient.History h, String label) {
+        if (h == null || !KeptContext.isKeepable(h.attachmentKind)
+                || h.attachmentText == null || h.attachmentText.trim().isEmpty()) return;
+        row.setOnLongClickListener(v -> {
+            String origin = ConversationBranches.fingerprint(h);
+            KeptContext existing = null;
+            for (KeptContext item : ConversationStore.kept(this, conversationId)) {
+                if (origin.equals(item.originKey)) { existing = item; break; }
+            }
+            final KeptContext current = existing;
+            if (Prefs.haptics(this)) UiKit.haptic(v, android.view.HapticFeedbackConstants.LONG_PRESS);
+            String[] labels = {current == null ? "Keep in this chat" : "Stop keeping in this chat"};
+            UiKit.showOrbitMenu(this, v, labels, -1, (index, chosen) -> {
+                if (current != null) {
+                    ConversationStore.removeKept(this, conversationId, current.id);
+                } else if (!ConversationStore.keep(this, conversationId, KeptContext.create(
+                        h.attachmentKind, label, h.attachmentText,
+                        h.documents.isEmpty() ? "" : h.documents.get(0).path, origin, true))) {
+                    Toast.makeText(this, "A chat keeps up to " + KeptContext.MAX_ITEMS + " items",
+                            Toast.LENGTH_SHORT).show();
+                }
+                updateKeptIndicator(ConversationStore.load(this, conversationId));
+                scheduleContextEstimate();
+            });
+            return true;
+        });
+    }
+
+    private View buildKeptIndicator() {
+        keptIndicator = new LinearLayout(this);
+        keptIndicator.setGravity(Gravity.CENTER_VERTICAL);
+        keptIndicator.setPadding(UiKit.dp(this, 10), UiKit.dp(this, 5), UiKit.dp(this, 12),
+                UiKit.dp(this, 5));
+        keptIndicator.setBackground(UiKit.rippleOutlined(UiKit.SURFACE,
+                UiKit.withAlpha(UiKit.accent(this), 60), UiKit.accent(this), 13, this));
+        keptIndicator.setVisibility(View.GONE);
+        ImageView pin = new ImageView(this);
+        pin.setImageResource(R.drawable.ic_pin);
+        pin.setColorFilter(UiKit.accent(this));
+        pin.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        keptIndicator.addView(pin, new LinearLayout.LayoutParams(UiKit.dp(this, 13), UiKit.dp(this, 13)));
+        keptIndicatorText = UiKit.text(this, "", 12, UiKit.MUTED, false);
+        keptIndicatorText.setSingleLine(true);
+        LinearLayout.LayoutParams textLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        textLp.setMarginStart(UiKit.dp(this, 6));
+        keptIndicator.addView(keptIndicatorText, textLp);
+        keptIndicator.setOnClickListener(v -> showKeptSheet());
+        UiKit.pressScale(keptIndicator);
+        keptIndicator.setMinimumHeight(UiKit.dp(this, 32));
+        return keptIndicator;
+    }
+
+    /** Shows the one chat-level line when something is kept, and nothing otherwise. */
+    private void updateKeptIndicator(ConversationStore.Conversation chat) {
+        if (keptIndicator == null) return;
+        int count = chat == null ? 0 : chat.keptItems().size();
+        if (count == 0) {
+            keptIndicator.setVisibility(View.GONE);
+            return;
+        }
+        String text = count == 1 ? chat.keptItems().get(0).label : count + " kept in this chat";
+        if (count == 1 && text.length() > 34) text = text.substring(0, 33).trim() + "…";
+        keptIndicatorText.setText(count == 1 ? "Kept: " + text : text);
+        keptIndicator.setContentDescription((count == 1 ? "1 item" : count + " items")
+                + " kept in this chat. Opens the list.");
+        boolean appearing = keptIndicator.getVisibility() != View.VISIBLE;
+        keptIndicator.setVisibility(View.VISIBLE);
+        if (appearing) UiKit.enterContent(keptIndicator);
+    }
+
+    /** The chat-level kept indicator. For tests. */
+    View keptIndicatorForTest() { return keptIndicator; }
+
+    private void showKeptSheet() {
+        ConversationSheets.showKept(this, ConversationStore.kept(this, conversationId), item -> {
+            ConversationStore.removeKept(this, conversationId, item.id);
+            updateKeptIndicator(ConversationStore.load(this, conversationId));
+            scheduleContextEstimate();
+        });
+    }
+
+    // ---- the context window ----------------------------------------------------------------------
+
+    /**
+     * Measures again shortly. Typing re-measures after a pause rather than on every key, and an
+     * older measurement that finishes late is dropped.
+     */
+    private void scheduleContextEstimate() {
+        contextHandler.removeCallbacks(estimateRunnable);
+        contextHandler.postDelayed(estimateRunnable, 350);
+    }
+
+    private void measureContextNow() {
+        if (isFinishing() || isDestroyed() || contextExecutor.isShutdown()) return;
+        final int generation = ++estimateGeneration;
+        final String id = conversationId;
+        final AiSelection selection = currentSelection;
+        final ContextEstimate.Draft draft = new ContextEstimate.Draft(
+                input == null ? "" : input.getText().toString(),
+                composerAttachments.snapshot(), pendingQuote);
+        final Context app = getApplicationContext();
+        try {
+            contextExecutor.execute(() -> {
+                ContextEstimate estimate;
+                try {
+                    estimate = ContextEstimate.measure(app, id, selection, draft);
+                } catch (Exception failed) {
+                    return;
+                }
+                runOnUiThread(() -> {
+                    if (generation != estimateGeneration || isFinishing() || isDestroyed()) return;
+                    applyEstimate(estimate);
+                });
+            });
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {}
+    }
+
+    private void applyEstimate(ContextEstimate estimate) {
+        latestEstimate = estimate;
+        if (contextMeter != null) contextMeter.setEstimate(estimate);
+        updateContextNotice();
+    }
+
+    /** The latest estimate, for tests. */
+    ContextEstimate latestEstimateForTest() { return latestEstimate; }
+
+    /** Measures synchronously, as the debounced path does in the background. For tests. */
+    void measureContextForTest() {
+        applyEstimate(ContextEstimate.measure(this, conversationId, currentSelection,
+                new ContextEstimate.Draft(input == null ? "" : input.getText().toString(),
+                        composerAttachments.snapshot(), pendingQuote)));
+    }
+
+    ContextMeterView contextMeterForTest() { return contextMeter; }
+
+    private void showContextDetails() {
+        ConversationStore.Conversation chat = ConversationStore.load(this, conversationId);
+        boolean canContinue = chat != null && !chat.messages.isEmpty();
+        ConversationSheets.showContext(this, latestEstimate,
+                canContinue ? this::confirmContinueInNewChat : null);
+    }
+
+    private View buildContextNotice() {
+        contextNotice = new LinearLayout(this);
+        contextNotice.setGravity(Gravity.CENTER_VERTICAL);
+        contextNotice.setPadding(UiKit.dp(this, 12), 0, UiKit.dp(this, 2), 0);
+        contextNotice.setBackground(UiKit.outlined(UiKit.SURFACE,
+                UiKit.withAlpha(ContextMeterView.AMBER, 110), 13, this));
+        contextNotice.setVisibility(View.GONE);
+        contextNoticeText = UiKit.text(this, "", 12, UiKit.TEXT, false);
+        contextNoticeText.setSingleLine(true);
+        contextNoticeText.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        contextNoticeText.setOnClickListener(v -> confirmContinueInNewChat());
+        contextNoticeText.setMinHeight(UiKit.dp(this, 36));
+        contextNoticeText.setGravity(Gravity.CENTER_VERTICAL);
+        contextNotice.addView(contextNoticeText, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        ImageButton dismiss = new ImageButton(this);
+        dismiss.setImageResource(R.drawable.ic_close);
+        dismiss.setColorFilter(UiKit.MUTED);
+        dismiss.setBackground(UiKit.ripple(Color.TRANSPARENT, UiKit.accent(this), 14, this));
+        int pad = UiKit.dp(this, 11);
+        dismiss.setPadding(pad, pad, pad, pad);
+        dismiss.setContentDescription("Dismiss context notice");
+        dismiss.setOnClickListener(v -> {
+            if (latestEstimate != null) {
+                Prefs.get(this).edit().putString(NOTICE_DISMISSED_PREFIX + conversationId,
+                        latestEstimate.level().name()).apply();
+            }
+            contextNotice.setVisibility(View.GONE);
+        });
+        contextNotice.addView(dismiss, new LinearLayout.LayoutParams(UiKit.dp(this, 36), UiKit.dp(this, 36)));
+        return contextNotice;
+    }
+
+    static final String NOTICE_DISMISSED_PREFIX = "context_notice_dismissed_";
+
+    /**
+     * Offers Continue in new chat once the window is genuinely nearly full. A dismissal holds until
+     * the window gets fuller than it was when dismissed; it is never shown constantly.
+     */
+    private void updateContextNotice() {
+        if (contextNotice == null) return;
+        ContextEstimate e = latestEstimate;
+        boolean show = e != null && e.nearlyFull() && !history.isEmpty();
+        if (show) {
+            String dismissed = Prefs.get(this).getString(NOTICE_DISMISSED_PREFIX + conversationId, "");
+            if (!dismissed.isEmpty()) {
+                try {
+                    show = e.level().ordinal() > ContextEstimate.Level.valueOf(dismissed).ordinal();
+                } catch (IllegalArgumentException ignored) {}
+            }
+        }
+        if (!show) {
+            contextNotice.setVisibility(View.GONE);
+            return;
+        }
+        contextNoticeText.setText("Context " + e.percent() + "% full · Continue in new chat");
+        contextNoticeText.setContentDescription("Context window " + e.percent()
+                + " percent full. Continue in a new chat.");
+        boolean appearing = contextNotice.getVisibility() != View.VISIBLE;
+        contextNotice.setVisibility(View.VISIBLE);
+        if (appearing) UiKit.enterContent(contextNotice);
+    }
+
+    View contextNoticeForTest() { return contextNotice; }
+
+    void applyEstimateForTest(ContextEstimate estimate) { applyEstimate(estimate); }
+
+    private void confirmContinueInNewChat() {
+        if (continuing) return;
+        if (PendingRequestStore.hasActiveForConversation(this, conversationId)) {
+            Toast.makeText(this, "Wait for the current response to finish", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        ConversationSheets.confirmContinue(this, this::startContinueInNewChat);
+    }
+
+    /**
+     * Writes the summary and opens the new chat. On any failure the user stays here, the original
+     * chat untouched, and is told why.
+     */
+    private void startContinueInNewChat() {
+        if (continuing) return;
+        continuing = true;
+        Toast.makeText(this, "Writing a summary for the new chat…", Toast.LENGTH_SHORT).show();
+        ConversationStore.Conversation current = ConversationStore.load(this, conversationId);
+        final String fromTitle = current == null ? "" : current.title;
+        ContinueChat.start(this, conversationId, new ContinueChat.Callback() {
+            @Override public void onReady(String newConversationId) {
+                continuing = false;
+                if (isFinishing() || isDestroyed()) return;
+                Intent open = new Intent(ChatActivity.this, ChatActivity.class)
+                        .putExtra(EXTRA_CONVERSATION_ID, newConversationId)
+                        .putExtra(EXTRA_FOCUS_COMPOSER, true);
+                startActivity(open);
+                UiKit.applyPageTransition(ChatActivity.this);
+                Toast.makeText(ChatActivity.this, fromTitle.isEmpty()
+                        ? "New chat started with a summary of the last one"
+                        : "New chat started with a summary of “" + fromTitle + "”",
+                        Toast.LENGTH_LONG).show();
+            }
+
+            @Override public void onFailed(String message) {
+                continuing = false;
+                if (isFinishing() || isDestroyed()) return;
+                Toast.makeText(ChatActivity.this, message, Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     /**
@@ -1183,6 +1683,32 @@ public class ChatActivity extends Activity {
 
     private OrbitRequestManager.Listener createRequestListener() {
         return createRequestListener(false);
+    }
+
+    /**
+     * A retry's listener: the ordinary one, except that a failure writes nothing into the chat, so
+     * the user is told in one line that the earlier answer is still there.
+     */
+    private OrbitRequestManager.Listener createRetryListener() {
+        OrbitRequestManager.Listener ordinary = createRequestListener(false);
+        return new OrbitRequestManager.Listener() {
+            @Override public void onStarted(String requestId) { ordinary.onStarted(requestId); }
+            @Override public void onThinking(String requestId, ThinkingUpdate update) {
+                ordinary.onThinking(requestId, update);
+            }
+            @Override public void onDelta(String requestId, String delta) { ordinary.onDelta(requestId, delta); }
+            @Override public void onSuccess(String requestId, AssistantReply reply) {
+                ordinary.onSuccess(requestId, reply);
+            }
+            @Override public void onCancelled(String requestId, String partialText) {
+                ordinary.onCancelled(requestId, partialText);
+            }
+            @Override public void onError(String requestId, String message) {
+                ordinary.onError(requestId, message);
+                runOnUiThread(() -> Toast.makeText(ChatActivity.this,
+                        "Retry failed. The earlier answer is still here.", Toast.LENGTH_LONG).show());
+            }
+        };
     }
 
     private OrbitRequestManager.Listener createRequestListener(boolean voiceRequest) {
@@ -1545,8 +2071,11 @@ public class ChatActivity extends Activity {
                 });
     }
 
-    private void addPersistedActionCards(int assistantIndex) {
-        List<ActionResultStore.Entry> entries = ActionResultStore.forAssistant(this, conversationId, assistantIndex);
+    private void addPersistedActionCards(int assistantIndex, AssistantClient.History message) {
+        // Matched to the answer itself, not only its position, so another version of an answer
+        // at the same place never shows cards this one did not produce.
+        List<ActionResultStore.Entry> entries = ActionResultStore.forAssistant(this, conversationId,
+                assistantIndex, message);
         for (ActionResultStore.Entry entry : entries) addPersistedActionCard(entry);
     }
 
@@ -2428,7 +2957,13 @@ public class ChatActivity extends Activity {
         // Adding or removing an attachment changes whether there is anything to send.
         updateSendState();
         if (attachmentStrip == null) return;
+        // A kept mark belongs to an attachment that is still staged, and to nothing else.
+        java.util.Set<String> staged = new java.util.HashSet<>();
+        for (ComposerAttachment a : composerAttachments.items()) if (a != null) staged.add(a.id);
+        keptAttachmentIds.retainAll(staged);
+        attachmentStrip.setKeptIds(keptAttachmentIds);
         attachmentStrip.bind(composerAttachments.items());
+        scheduleContextEstimate();
         if (haptic && Prefs.haptics(this)) attachmentStrip.performHapticFeedback(
                 android.view.HapticFeedbackConstants.CLOCK_TICK);
     }
@@ -2587,7 +3122,8 @@ public class ChatActivity extends Activity {
     /** Width budget that keeps Back, both pills and overflow inside even a narrow phone header. */
     private int narrowModelPillWidthDp() {
         int width = getResources().getConfiguration().screenWidthDp;
-        return Math.max(90, Math.min(190, width - 230));
+        // 34dp of the budget belongs to the context ring beside the pill.
+        return Math.max(90, Math.min(190, width - 264));
     }
 
     /** True when the header has room to name the provider beside the model. */
@@ -2653,6 +3189,7 @@ public class ChatActivity extends Activity {
         currentSelection = resolved;
         AiSelections.setForConversation(this, conversationId, resolved);
         updateAiControls();
+        scheduleContextEstimate();
         if (Prefs.haptics(this) && modelPill != null) {
             UiKit.haptic(modelPill, android.view.HapticFeedbackConstants.CLOCK_TICK);
         }
@@ -2783,6 +3320,7 @@ public class ChatActivity extends Activity {
                 new LinearLayout.LayoutParams(UiKit.dp(this, 15), UiKit.dp(this, 15)));
 
         TextView label = UiKit.text(this, "Editing previous message", 12, UiKit.TEXT, false);
+        editingLabel = label;
         LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         labelLp.setMargins(UiKit.dp(this, 7), 0, UiKit.dp(this, 2), 0);
@@ -2818,13 +3356,43 @@ public class ChatActivity extends Activity {
             displacedDraft = current.trim().isEmpty() ? null : current;
         }
         editingMessage = value;
+        if (editingLabel != null) {
+            editingLabel.setText(editingIndex >= 0 ? "Editing message · sends as a new branch"
+                    : "Editing previous message");
+        }
         setEditingBarVisible(true);
         placeInComposer(value);
     }
 
+    /**
+     * Edit, from holding an earlier message (0.8.3.0-beta.3+). Sending the edit creates a branch
+     * from that message: the original and everything after it are kept, and the edited message
+     * gets its own answer. Nothing is sent until the user presses Send.
+     */
+    void beginEdit(int index, AssistantClient.History message) {
+        if (message == null || index < 0 || index >= history.size()) return;
+        if (PendingRequestStore.hasActiveForConversation(this, conversationId)) {
+            Toast.makeText(this, "Wait for the current response to finish", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // The stored message is the one the branch is checked against, so its identity is read from
+        // storage rather than from this screen's copy.
+        ConversationStore.Conversation stored = ConversationStore.load(this, conversationId);
+        AssistantClient.History target = stored != null && index < stored.messages.size()
+                ? stored.messages.get(index) : history.get(index);
+        editingIndex = index;
+        editingKey = ConversationBranches.fingerprint(target);
+        beginEditResend(message.content == null ? "" : message.content.replace("—", "-"));
+    }
+
+    /** The position of the message being edited into a branch, or -1. For tests. */
+    int editingIndexForTest() { return editingIndex; }
+
     /** Leaves Edit &amp; resend, putting back whatever draft the mode displaced. */
     private void cancelEditResend() {
         if (editingMessage == null) return;
+        editingIndex = -1;
+        editingKey = "";
         String restore = displacedDraft;
         editingMessage = null;
         displacedDraft = null;
@@ -2837,6 +3405,8 @@ public class ChatActivity extends Activity {
      * dropped rather than restored: the user finished the message they were editing.
      */
     private void finishEditResend() {
+        editingIndex = -1;
+        editingKey = "";
         if (editingMessage == null && displacedDraft == null) return;
         editingMessage = null;
         displacedDraft = null;
@@ -2873,12 +3443,13 @@ public class ChatActivity extends Activity {
     private boolean retryStarting;
 
     /**
-     * Asks the latest question again and replaces its answer.
+     * Asks the latest question again and keeps the new answer as another version of it.
      *
-     * <p>Orbit's existing regeneration model, unchanged in shape: the latest assistant turn is
-     * removed and the same stored user turn is sent again, so the conversation never gains a second
-     * copy of the question or a ghost of the old answer. Attachments, documents and a quoted
-     * message all live on that stored user turn and therefore travel with it.
+     * <p>The same stored user turn is sent again, so the conversation never gains a second copy of
+     * the question. Attachments, documents and a quoted message all live on that stored user turn
+     * and therefore travel with it. Since 0.8.3.0-beta.3 the earlier answer is kept: a finished
+     * retry is added beside it as a version the user can move between, and a retry that fails or
+     * is stopped before it writes anything leaves the earlier answer exactly where it was.
      *
      * @param override the AI to use for this one retry (Retry with), or null for the chat's own.
      *     It never becomes the chat's selection; only the header changes that.
@@ -2889,15 +3460,23 @@ public class ChatActivity extends Activity {
             Toast.makeText(this, "Wait for the current response to finish", Toast.LENGTH_SHORT).show();
             return;
         }
-        int userIndex = -1;
-        for (int i = history.size() - 1; i >= 0; i--) {
-            if ("user".equalsIgnoreCase(history.get(i).role)) { userIndex = i; break; }
+        // The answer being retried is the latest one, and the question it answers sits just before
+        // it. Since 0.8.3.0-beta.3 the retry is kept beside that answer as another version rather
+        // than replacing it, so nothing is removed here.
+        int answerAt = history.size() - 1;
+        if (answerAt < 1 || !"assistant".equalsIgnoreCase(history.get(answerAt).role)
+                || !"user".equalsIgnoreCase(history.get(answerAt - 1).role)) return;
+        if (!Prefs.historyEnabled(this)) {
+            // With history off nothing is stored to keep versions in, so a retry simply asks again.
+            retryWithoutHistory(history.get(answerAt - 1), override);
+            return;
         }
-        if (userIndex < 0) return;
-        AssistantClient.History user = history.get(userIndex);
-        history.clear();
-        history.addAll(ConversationStore.removeLastAssistantTurn(this, conversationId));
-        render();
+        if (!ConversationStore.canAddVariant(this, conversationId, answerAt)) {
+            Toast.makeText(this, "This answer already has " + ConversationBranches.MAX_VARIANTS
+                    + " versions", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        AssistantClient.History user = history.get(answerAt - 1);
         // The original attachment set, in the original order. Regenerating asks the same question
         // again, so it must carry everything that question carried and not just its first image.
         List<Bitmap> images = user.screenAttached
@@ -2908,10 +3487,12 @@ public class ChatActivity extends Activity {
         // the retry already started rather than a conversation that briefly has no request.
         retryStarting = true;
         try {
-            OrbitRequestManager.Listener listener = createRequestListener();
-            String id = OrbitRequestManager.enqueue(this, conversationId, user.content,
-                    user.attachmentText, images, false, false, selection,
-                    explicit, listener);
+            OrbitRequestManager.Listener listener = createRetryListener();
+            String id = OrbitRequestManager.enqueueAnswerVariant(this, conversationId, answerAt,
+                    user.content, user.attachmentText, images, selection, explicit, listener);
+            // The answer being retried steps aside while its replacement streams into its place.
+            followBottom = true;
+            render();
             listeners.put(id, listener);
             addThinkingRow();
             updateComposerAction();
@@ -2928,6 +3509,24 @@ public class ChatActivity extends Activity {
         } else if (override != null) {
             Toast.makeText(this, "Retrying with " + selection.label(), Toast.LENGTH_SHORT).show();
         }
+    }
+
+    /** Retry as it was before answer versions, for a chat that keeps no history to store them in. */
+    private void retryWithoutHistory(AssistantClient.History user, AiSelection override) {
+        history.remove(history.size() - 1);
+        render();
+        List<Bitmap> images = user.screenAttached
+                ? AttachmentStore.loadAll(user.attachmentPaths) : new ArrayList<>();
+        boolean explicit = user.screenAttached && !"screen".equals(user.attachmentKind);
+        OrbitRequestManager.Listener listener = createRequestListener();
+        String id = OrbitRequestManager.enqueue(this, conversationId, user.content,
+                user.attachmentText, images, false, false,
+                override == null ? currentSelection : AiSelections.resolve(override),
+                explicit, listener);
+        listeners.put(id, listener);
+        addThinkingRow();
+        updateComposerAction();
+        scrollBottom();
     }
 
     /** Retry with: one retry on a chosen AI. The chat keeps its own selection afterwards. */
@@ -2961,14 +3560,140 @@ public class ChatActivity extends Activity {
         return a;
     }
 
-    /** The quiet strip under a finished reply. Muted and small, so the answer stays first. */
-    private void addResponseStrip(String rawVisible, MessageActions.AssistantActions actions) {
+    /**
+     * The quiet strip under a finished reply. Muted and small, so the answer stays first. When the
+     * answer has other versions, their navigator leads the strip; otherwise the strip is exactly
+     * what it always was.
+     */
+    private void addResponseStrip(String rawVisible, MessageActions.AssistantActions actions,
+                                  ConversationBranches.Fork fork, int index) {
         LinearLayout strip = MessageActions.actionStrip(this, rawVisible, actions);
+        if (fork != null) strip.addView(branchNavigator(fork, index, false), 0);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.gravity = Gravity.START;
         lp.setMargins(0, -UiKit.dp(this, 4), 0, UiKit.dp(this, 2));
         messages.addView(strip, lp);
+    }
+
+    // ---- versions: answer variants and edited branches ---------------------------------------------
+
+    /** A navigator on its own line: under an edited message, or under an answer with no strip. */
+    private void addBranchNavigator(ConversationBranches.Fork fork, int index, boolean user) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.gravity = user ? Gravity.END : Gravity.START;
+        lp.setMargins(0, -UiKit.dp(this, 4), user ? UiKit.dp(this, 2) : 0, UiKit.dp(this, 2));
+        messages.addView(branchNavigator(fork, index, user), lp);
+    }
+
+    /**
+     * "‹ 2 / 3 ›": previous, position, next. Muted, compact and secondary to everything around it.
+     *
+     * <p>The ends do not wrap: at the first version Previous is dimmed and inert, and likewise
+     * Next at the last. While a reply is being written the navigator is inert too, because the
+     * path a reply is being written onto cannot change under it.
+     */
+    private LinearLayout branchNavigator(ConversationBranches.Fork fork, int index, boolean user) {
+        LinearLayout nav = new LinearLayout(this);
+        nav.setGravity(Gravity.CENTER_VERTICAL);
+        nav.setTag(BRANCH_NAV_TAG + index);
+        String noun = user ? "Message version" : "Answer version";
+        int position = fork.selected + 1;
+        int total = fork.count();
+        boolean busy = PendingRequestStore.hasActiveForConversation(this, conversationId);
+        ImageButton previous = navButton(R.drawable.ic_chevron_left, "Previous " + noun.toLowerCase(
+                java.util.Locale.US), fork.selected > 0 && !busy,
+                v -> switchVersion(index, fork.selected - 1, v));
+        TextView label = UiKit.text(this, position + " / " + total, 12,
+                UiKit.withAlpha(UiKit.MUTED, 220), false);
+        label.setContentDescription(noun + " " + position + " of " + total);
+        label.setPadding(UiKit.dp(this, 1), 0, UiKit.dp(this, 1), 0);
+        ImageButton next = navButton(R.drawable.ic_chevron_right, "Next " + noun.toLowerCase(
+                java.util.Locale.US), fork.selected < total - 1 && !busy,
+                v -> switchVersion(index, fork.selected + 1, v));
+        nav.addView(previous);
+        nav.addView(label);
+        nav.addView(next);
+        return nav;
+    }
+
+    static final String BRANCH_NAV_TAG = "orbit-branch-nav-";
+
+    private ImageButton navButton(int icon, String description, boolean enabled,
+                                  View.OnClickListener click) {
+        ImageButton b = new ImageButton(this);
+        b.setImageResource(icon);
+        b.setImageTintList(ColorStateList.valueOf(UiKit.withAlpha(UiKit.MUTED, 205)));
+        b.setBackground(UiKit.ripple(Color.TRANSPARENT, UiKit.accent(this), 14, this));
+        b.setContentDescription(description);
+        int padX = UiKit.dp(this, 9);
+        int padY = UiKit.dp(this, 13);
+        b.setPadding(padX, padY, padX, padY);
+        b.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        b.setLayoutParams(new LinearLayout.LayoutParams(UiKit.dp(this, 34), UiKit.dp(this, 44)));
+        b.setEnabled(enabled);
+        b.setAlpha(enabled ? 1f : 0.32f);
+        if (enabled) {
+            b.setOnClickListener(click);
+            UiKit.pressScale(b);
+        }
+        return b;
+    }
+
+    /**
+     * Shows another version of the message at {@code index}, keeping the view still.
+     *
+     * <p>Only the conversation's rows are redrawn; the composer, its draft, its attachments, the
+     * keyboard and the header are untouched. The navigator that was tapped is kept at the same
+     * height on screen, so the conversation changes under the user's finger instead of jumping.
+     */
+    private void switchVersion(int index, int target, View tapped) {
+        if (PendingRequestStore.hasActiveForConversation(this, conversationId)) return;
+        int anchorOnScreen = Integer.MIN_VALUE;
+        View nav = tapped == null ? null : (View) tapped.getParent();
+        if (nav != null && scroll != null) anchorOnScreen = offsetInContent(nav) - scroll.getScrollY();
+        ConversationStore.BranchResult result =
+                ConversationStore.selectVariant(this, conversationId, index, target);
+        if (!result.ok()) {
+            Toast.makeText(this, result.error, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (Prefs.haptics(this) && tapped != null) {
+            UiKit.haptic(tapped, android.view.HapticFeedbackConstants.CLOCK_TICK);
+        }
+        followBottom = false;
+        history.clear();
+        history.addAll(result.messages);
+        render();
+        scheduleContextEstimate();
+        final int keepAt = anchorOnScreen;
+        if (keepAt == Integer.MIN_VALUE || scroll == null) return;
+        // After the redrawn rows have been laid out, and once: the position is restored from the
+        // new layout, never guessed from the old one.
+        messages.getViewTreeObserver().addOnGlobalLayoutListener(
+                new ViewTreeObserver.OnGlobalLayoutListener() {
+                    @Override public void onGlobalLayout() {
+                        messages.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                        View moved = messages.findViewWithTag(BRANCH_NAV_TAG + index);
+                        if (moved == null) return;
+                        scroll.scrollTo(0, Math.max(0, offsetInContent(moved) - keepAt));
+                        followBottom = nearBottom();
+                        updateJumpLatest();
+                    }
+                });
+    }
+
+    /** A view's top within the scrolled content, however deeply it is nested. */
+    private int offsetInContent(View view) {
+        int top = 0;
+        View v = view;
+        while (v != null && v != messages) {
+            top += v.getTop();
+            if (!(v.getParent() instanceof View)) break;
+            v = (View) v.getParent();
+        }
+        return top;
     }
 
     /** Only what Orbit actually knows about the reply, on request; never under every answer. */
@@ -3090,20 +3815,8 @@ public class ChatActivity extends Activity {
         UiKit.showOrbitMenu(this, anchor, actions, -1, (index, title) -> {
             if (index == 0) {
                 ConversationStore.Conversation current = ConversationStore.load(this, conversationId);
-                EditText edit = new EditText(this);
-                edit.setText(current == null ? "" : current.title);
-                edit.setSelectAllOnFocus(true);
-                edit.setTextColor(UiKit.TEXT);
-                edit.setHintTextColor(UiKit.MUTED);
-                edit.setBackgroundTintList(ColorStateList.valueOf(UiKit.accent(this)));
-                AlertDialog dialog = new AlertDialog.Builder(this)
-                        .setTitle("Rename chat").setView(edit)
-                        .setNegativeButton("Cancel", null)
-                        .setPositiveButton("Save", (d,w) ->
-                                ConversationStore.rename(this, conversationId,
-                                        edit.getText().toString())).create();
-                styleOrbitDialog(dialog);
-                dialog.show();
+                OrbitRenameDialog.show(this, current == null ? "" : current.title,
+                        name -> ConversationStore.rename(this, conversationId, name));
             } else if (index == 1) {
                 if (PendingRequestStore.hasActiveForConversation(this, conversationId)) {
                     Toast.makeText(this, "Wait for the current response to finish",
@@ -3117,6 +3830,8 @@ public class ChatActivity extends Activity {
                                 ConversationStore.clearMessages(this, conversationId);
                                 history.clear();
                                 render();
+                                updateKeptIndicator(null);
+                                scheduleContextEstimate();
                             }).create();
                     styleOrbitDialog(dialog);
                     dialog.show();
@@ -3388,6 +4103,8 @@ public class ChatActivity extends Activity {
         if (backHandler != null) backHandler.detach();
         if (predictiveBack != null) predictiveBack.detach();
         attachmentExecutor.shutdownNow();
+        contextHandler.removeCallbacks(estimateRunnable);
+        contextExecutor.shutdownNow();
         if (voiceController != null) voiceController.destroy();
         if (listeningHalo != null) listeningHalo.stop();
         if (isFinishing()) {

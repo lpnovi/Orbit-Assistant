@@ -72,11 +72,15 @@ Files, images, selected text, shared content, and PDF pages enter Orbit through 
 
 Document viewing and PDF text search run locally. **Ask Orbit about this page** attaches page context to the conversation; the chosen provider boundary then applies.
 
+**Keep in this chat.** An attached document, text file, clipboard text or Vault item can be kept for a whole chat. Orbit stores one bounded copy of its text with that chat and sends it with every later request in the chat until the user removes it from the chat's kept list; it is not repeated under later messages. The live screen, screen selections, photos, notifications and device state are never kept. **Continue in new chat** sends the visible conversation text (not Orbit's instructions, memories or hidden branches) to GPT-5.6 Luna at Low strength through the user's ChatGPT sign-in to write a short summary, which becomes the new chat's kept context.
+
+**Branches and answer versions.** Editing an earlier message and retrying an answer keep the earlier versions in that chat. Only the visible branch is ever sent with a request. Deleting a chat deletes all of its branches and the files they reference.
+
 ## Backups
 
 Orbit Backup & Restore uses Android's system file picker. Orbit writes the backup to the location the user selects and does not upload it to an Orbit-operated backup service.
 
-Backups can include chats, retained conversation images, Memory, Orbit Vault items and their saved pictures, Routines and triggers, safe Extension manifests and non-secret setup, Custom Commands, reminders, saved places, app profiles, notification configuration, and personalization. Credentials, Extension secrets, Android permission grants, default-assistant status, and Beta-channel enrollment are excluded. The user's Deck layout is not currently part of the portable backup.
+Backups can include chats, including every branch and answer version and any context kept in a chat, retained conversation images, Memory, Orbit Vault items and their saved pictures, Routines and triggers, safe Extension manifests and non-secret setup, Custom Commands, reminders, saved places, app profiles, notification configuration, and personalization. Credentials, Extension secrets, Android permission grants, default-assistant status, and Beta-channel enrollment are excluded. The user's Deck layout is not currently part of the portable backup.
 
 **Backup files are not encrypted.** Anyone who can read the file may be able to read personal content inside it. Store it privately and inspect it before sharing.
 

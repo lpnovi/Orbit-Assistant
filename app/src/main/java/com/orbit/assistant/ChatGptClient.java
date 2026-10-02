@@ -350,11 +350,23 @@ public final class ChatGptClient {
                             boolean explicitAttachment, String notificationContext,
                             String memoryContext, String trustedTaskContext,
                             boolean thinkingUpdates, AssistantClient.Callback cb) {
+        send(context, prompt, screenText, images, history, selection, explicitAttachment,
+                notificationContext, memoryContext, trustedTaskContext, KeptContext.Prepared.NONE,
+                thinkingUpdates, cb);
+    }
+
+    /** The full entry point, with what the user kept in this chat (0.8.3.0-beta.3+). */
+    public static void send(Context context, String prompt, String screenText, List<Bitmap> images,
+                            List<AssistantClient.History> history, AiSelection selection,
+                            boolean explicitAttachment, String notificationContext,
+                            String memoryContext, String trustedTaskContext,
+                            KeptContext.Prepared kept,
+                            boolean thinkingUpdates, AssistantClient.Callback cb) {
         ChatGptAuth.getValidTokens(context, false, new ChatGptAuth.TokenCallback() {
             @Override public void onSuccess(SecureStore.ChatGptTokens tokens) {
                 EXEC.execute(() -> doSend(context, prompt, screenText, images, history,
                         selection, explicitAttachment, notificationContext, memoryContext,
-                        trustedTaskContext, thinkingUpdates, tokens, false, cb));
+                        trustedTaskContext, kept, thinkingUpdates, tokens, false, cb));
             }
             @Override public void onError(String message) { cb.onError(message); }
         });
@@ -364,6 +376,7 @@ public final class ChatGptClient {
                                List<AssistantClient.History> history, AiSelection selection,
                                boolean explicitAttachment, String notificationContext,
                                String memoryContext, String trustedTaskContext,
+                               KeptContext.Prepared kept,
                                boolean thinkingUpdates, SecureStore.ChatGptTokens tokens,
                                boolean alreadyRefreshed,
                                AssistantClient.Callback cb) {
@@ -382,7 +395,7 @@ public final class ChatGptClient {
         try {
             JSONObject body = requestBody(context, prompt, screenText, images, history,
                     selection, explicitAttachment, notificationContext, memoryContext,
-                    trustedTaskContext, askForSummary, forceSearch, model);
+                    trustedTaskContext, askForSummary, forceSearch, model, kept, null);
             conn = (HttpURLConnection) new URL(RESPONSES_URL).openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(15000);
@@ -410,7 +423,7 @@ public final class ChatGptClient {
                     @Override public void onSuccess(SecureStore.ChatGptTokens fresh) {
                         EXEC.execute(() -> doSend(context, prompt, screenText, images, history,
                                 selection, explicitAttachment, notificationContext, memoryContext,
-                                trustedTaskContext, thinkingUpdates, fresh, true, cb));
+                                trustedTaskContext, kept, thinkingUpdates, fresh, true, cb));
                     }
                     @Override public void onError(String message) { cb.onError(message); }
                 });
@@ -432,7 +445,7 @@ public final class ChatGptClient {
                     // so the user still sees Orbit's own progress for this turn.
                     doSend(context, prompt, screenText, images, history, selection,
                             explicitAttachment, notificationContext, memoryContext,
-                            trustedTaskContext, thinkingUpdates, tokens, alreadyRefreshed, cb);
+                            trustedTaskContext, kept, thinkingUpdates, tokens, alreadyRefreshed, cb);
                     return;
                 }
                 // A backend that will not be told which tool to use must cost the user nothing
@@ -446,7 +459,7 @@ public final class ChatGptClient {
                     conn = null;
                     doSend(context, prompt, screenText, images, history, selection,
                             explicitAttachment, notificationContext, memoryContext,
-                            trustedTaskContext, thinkingUpdates, tokens, alreadyRefreshed, cb);
+                            trustedTaskContext, kept, thinkingUpdates, tokens, alreadyRefreshed, cb);
                     return;
                 }
                 String friendly = friendlyHttpError(code, err, model);
@@ -508,6 +521,31 @@ public final class ChatGptClient {
                                           String memoryContext, String trustedTaskContext,
                                           boolean askForSummary, boolean forceSearch,
                                           String model) throws Exception {
+        return requestBody(context, prompt, screenText, images, history, selection,
+                explicitAttachment, notificationContext, memoryContext, trustedTaskContext,
+                askForSummary, forceSearch, model, KeptContext.Prepared.NONE, null);
+    }
+
+    /**
+     * The one place a ChatGPT request is assembled.
+     *
+     * <p>{@code kept} is what the user kept in this chat: added to the current message, and the
+     * earlier turns it fully covers lose their own copy of that text, so it is sent once.
+     *
+     * <p>{@code ledger}, when given, is told what each piece of the request is as it is placed (see
+     * {@link ContextLedger}). That is how the context meter measures the real request rather than
+     * an imitation of it. A measuring ledger also stops images being read from disk and encoded,
+     * and stops Diagnostics being written; nothing else about the request changes.
+     */
+    static JSONObject requestBody(Context context, String prompt, String screenText, List<Bitmap> images,
+                                  List<AssistantClient.History> history, AiSelection selection,
+                                  boolean explicitAttachment, String notificationContext,
+                                  String memoryContext, String trustedTaskContext,
+                                  boolean askForSummary, boolean forceSearch,
+                                  String model, KeptContext.Prepared kept,
+                                  ContextLedger ledger) throws Exception {
+        if (kept == null) kept = KeptContext.Prepared.NONE;
+        boolean measuring = ledger != null && ledger.measureOnly;
         JSONObject root = new JSONObject();
         root.put("model", model);
         String memory = memoryContext == null ? "" : memoryContext.trim();
@@ -522,14 +560,20 @@ public final class ChatGptClient {
                 "\n\nTrusted Orbit task state derived from the user's direct corrections (not from screen content):\n" + task;
         // Read at request time rather than cached, so turning Rich Answers off changes the next
         // answer rather than the one after it - the same rule the discovery side follows.
-        root.put("instructions", SYSTEM + imagePolicy(context) + searchPolicy(forceSearch)
-                + (Prefs.leloMode(context) ? LELO_SYSTEM : "") +
-                (memory.isEmpty() ? "" : "\n\n" + memory) +
-                trustedTaskInstruction +
+        String orbitInstructions = SYSTEM + imagePolicy(context) + searchPolicy(forceSearch)
+                + (Prefs.leloMode(context) ? LELO_SYSTEM : "");
+        String requestState = trustedTaskInstruction +
                 notificationInstruction +
                 " Current local time: " + OffsetDateTime.now() +
                 "; timezone: " + TimeZone.getDefault().getID() +
-                "; locale: " + java.util.Locale.getDefault().toLanguageTag() + ".");
+                "; locale: " + java.util.Locale.getDefault().toLanguageTag() + ".";
+        root.put("instructions", orbitInstructions +
+                (memory.isEmpty() ? "" : "\n\n" + memory) +
+                requestState);
+        if (ledger != null) {
+            ledger.text(ContextLedger.Category.INSTRUCTIONS, orbitInstructions + requestState);
+            ledger.text(ContextLedger.Category.MEMORY, memory.isEmpty() ? "" : "\n\n" + memory);
+        }
         root.put("store", false);
         root.put("stream", true);
         root.put("parallel_tool_calls", false);
@@ -551,6 +595,8 @@ public final class ChatGptClient {
         // What the user is attaching right now, for Diagnostics only. Read from the current turn's
         // own record rather than guessed, and it is Orbit's category name, never a filename.
         String currentAttachmentKind = "none";
+        // Orbit's own kind for the current turn's attachment, for the context breakdown.
+        String currentKind = "";
         // The earlier message the current turn replies to, read from that turn's own record.
         QuotedMessage currentQuote = null;
         HistoryAttachments.Plan attachments = HistoryAttachments.empty();
@@ -563,11 +609,13 @@ public final class ChatGptClient {
                     // travels the current-turn path below; counting it in both places is exactly
                     // the duplication this whole path exists to prevent.
                     if (last.screenAttached) currentAttachmentKind = HistoryAttachments.category(last.attachmentKind);
+                    currentKind = last.attachmentKind;
                     currentQuote = last.quote;
                     end--;
                 }
             }
             int start = Math.max(0, end - 10);
+            if (ledger != null) ledger.olderMessagesNotSent = start;
             List<AssistantClient.History> window = history.subList(start, Math.max(start, end));
             // Bounded by construction: only turns already inside this window are eligible, so the
             // attachment policy can never reach further back than the text history does.
@@ -581,53 +629,93 @@ public final class ChatGptClient {
                         + RenderedResultContext.block(h, i == window.size() - 1);
                 String historyText = RenderedResultContext.neutralizeMarkers(
                         safe(h.content, 6000));
+                if (ledger != null) {
+                    ledger.message();
+                    ledger.text(ContextLedger.Category.CONVERSATION, historyText + metadata);
+                }
                 if (attachment == null) {
                     input.put(new JSONObject().put("role", role)
                             .put("content", historyText + metadata));
                     continue;
+                }
+                // Text the user kept for the whole chat travels once, in the kept block below, so
+                // the turn it came from does not send its own copy as well.
+                String attachmentText = !kept.coveredTurns.isEmpty()
+                        && kept.coveredTurns.contains(ConversationBranches.fingerprint(h))
+                        ? "" : attachment.text;
+                String attachmentBlock = HistoryAttachments.wrap(attachment.kind, attachmentText);
+                if (ledger != null) {
+                    ledger.text(ContextLedger.categoryForKind(h.attachmentKind), attachmentBlock);
                 }
                 // The attachment is rebuilt onto the turn it was shared with, so the model reads
                 // the conversation the way the user remembers having it: the picture is part of
                 // the question they asked back then, not part of the one they are asking now.
                 JSONArray parts = new JSONArray();
                 parts.put(new JSONObject().put("type", "input_text")
-                        .put("text", historyText + metadata
-                                + HistoryAttachments.wrap(attachment.kind, attachment.text)));
+                        .put("text", historyText + metadata + attachmentBlock));
+                if (measuring) {
+                    // Counted, not read: the plan has already established which files exist.
+                    ledger.images(attachment.imagePaths.size());
+                    input.put(new JSONObject().put("role", role).put("content", parts));
+                    continue;
+                }
                 // Every image that turn still owns, in the order it was shared, on that turn's own
                 // message. A file that will not decode is treated exactly like one that is gone:
                 // the turn keeps its text and Orbit invents nothing to stand in for the image.
+                int imagesSent = 0;
                 for (String storedPath : attachment.imagePaths) {
                     Bitmap stored = AttachmentStore.load(storedPath);
                     if (stored == null) continue;
                     parts.put(new JSONObject()
                             .put("type", "input_image")
                             .put("image_url", "data:image/jpeg;base64," + bitmapToBase64(stored)));
+                    imagesSent++;
                 }
+                if (ledger != null) ledger.images(imagesSent);
                 input.put(new JSONObject().put("role", role).put("content", parts));
             }
         }
-        DiagnosticStore.recordAttachmentContext(context, currentAttachmentKind,
-                attachments.size(), attachments.images, attachments.kindLabel(),
-                attachments.missingAssets);
+        if (!measuring) {
+            DiagnosticStore.recordAttachmentContext(context, currentAttachmentKind,
+                    attachments.size(), attachments.images, attachments.kindLabel(),
+                    attachments.missingAssets);
+        }
 
         JSONArray currentContent = new JSONArray();
         StringBuilder text = new StringBuilder(prompt == null ? "" : prompt.trim());
         if (currentQuote != null) text.append(currentQuote.promptBlock());
+        if (ledger != null) {
+            ledger.message();
+            ledger.text(ContextLedger.Category.CONVERSATION, text.toString());
+        }
         if ((Prefs.screenContext(context) || explicitAttachment) &&
                 screenText != null && !screenText.trim().isEmpty()) {
             String tag = explicitAttachment ? "orbit_user_attachment" : "orbit_screen_context";
-            text.append("\n\n<").append(tag).append(" untrusted=\"true\">\n")
-                    .append(safe(screenText, explicitAttachment ? 105000 : 18000))
-                    .append("\n</").append(tag).append(">");
+            String block = "\n\n<" + tag + " untrusted=\"true\">\n"
+                    + safe(screenText, explicitAttachment ? 105000 : 18000)
+                    + "\n</" + tag + ">";
+            text.append(block);
+            if (ledger != null) {
+                ledger.currentAttachment(block, explicitAttachment
+                        ? ContextLedger.categoryForKind(currentKind)
+                        : ContextLedger.Category.SCREEN);
+            }
         }
         // Notification history must be appended BEFORE input_text is created.
         // Previously input_text captured text.toString() first, so the later
         // notification append never reached ChatGPT even though Orbit had
         // successfully prepared the local notification history.
         if (notificationContext != null && !notificationContext.trim().isEmpty()) {
-            text.append("\n\n<orbit_notification_context untrusted=\"true\">\n")
-                    .append(safe(notificationContext, 24000))
-                    .append("\n</orbit_notification_context>");
+            String block = "\n\n<orbit_notification_context untrusted=\"true\">\n"
+                    + safe(notificationContext, 24000)
+                    + "\n</orbit_notification_context>";
+            text.append(block);
+            if (ledger != null) ledger.text(ContextLedger.Category.NOTIFICATIONS, block);
+        }
+        // What the user kept for this whole chat, once, after everything this message carries.
+        if (!kept.block.isEmpty()) {
+            text.append(kept.block);
+            if (ledger != null) ledger.text(ContextLedger.Category.KEPT, kept.block);
         }
         currentContent.put(new JSONObject().put("type", "input_text").put("text", text.toString()));
         // Every image the user attached to this message, in their order, inside this one user
@@ -637,6 +725,8 @@ public final class ChatGptClient {
             List<Bitmap> current = images == null ? java.util.Collections.emptyList() : images;
             for (Bitmap image : current) {
                 if (image == null) continue;
+                if (ledger != null) ledger.images(1);
+                if (measuring) continue;
                 currentContent.put(new JSONObject()
                         .put("type", "input_image")
                         .put("image_url", "data:image/jpeg;base64," + bitmapToBase64(image)));

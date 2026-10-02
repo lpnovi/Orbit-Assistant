@@ -114,11 +114,13 @@ public final class RoadmapActivity extends Activity {
         // What's New; this entry names only what later Betas are planned to add.
         // v0.8.3.0-beta.2 polished that shipped foundation and added automatic titles; neither is
         // future work, so the user-facing entry remains limited to the later AI Control plan.
+        // v0.8.3.0-beta.3 shipped Conversation Control: editing into branches, kept answer versions,
+        // Send with, kept chat context, the context meter and Continue in new chat. Those belong to
+        // What's New now, as does the Edit & resend promise it fulfils, so both leave this page.
         addGroup(page, "NOW - ON THE WAY TO 0.9", new String[][]{
                 {OrbitRoadmap.CURRENT, "Direct control over the AI that answers you. Still ahead "
-                        + "in later Betas: conversation branching, editing an earlier message and "
-                        + "branching from it, comparing models side by side, and a view of exactly "
-                        + "what a request carried."},
+                        + "in later Betas: a visual view of a chat's branches, comparing models "
+                        + "side by side, and Claude and Grok as providers."},
                 {OrbitRoadmap.ORBIT_LOCAL_2, "More of Orbit working privately on your phone. Still "
                         + "ahead: a choice of a larger Enhanced model on capable phones, and more "
                         + "on-device abilities as they can be done honestly. A request sent to "
@@ -139,7 +141,6 @@ public final class RoadmapActivity extends Activity {
                 {"Stronger Custom Commands", "Personal phrases that accept variation and detail, beyond today's exact wording."},
                 {"Deeper Android actions", "Broader device controls through supported Android surfaces."},
                 {"More local models", "A choice of on-device models sized to different phones and needs."},
-                {"Edit & resend, reliably", "The message action returns once editing and resending an earlier message is dependable."},
                 {"Cook with Orbit", "A cooking session you start on purpose and end when you're done, following a recipe with you step by step."},
                 {"Kitchen hands-free", "Short spoken commands while cooking, on the Voice you already use: next, back, repeat, how much."},
                 {"Recipe intelligence", "Reading a whole recipe, scaling all of it at once, suggesting substitutions and a sensible order of work."},

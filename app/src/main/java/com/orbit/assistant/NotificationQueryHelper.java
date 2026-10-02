@@ -46,6 +46,14 @@ public final class NotificationQueryHelper {
     }
 
     public static Prepared prepare(Context c, String prompt) {
+        return prepare(c, prompt, true);
+    }
+
+    /**
+     * The same preparation without recording that a query happened. The context meter uses this to
+     * measure what a draft would send; only a real request counts as the user asking.
+     */
+    static Prepared prepare(Context c, String prompt, boolean record) {
         if (!looksLikeNotificationQuery(prompt)) return new Prepared(false, "", null);
 
         if (!NotificationAccess.enabled(c)) {
@@ -75,7 +83,7 @@ public final class NotificationQueryHelper {
                     "I have notification history, but there was not enough usable text to summarize."));
         }
 
-        Prefs.get(c).edit().putLong("notification_last_query_time", now).apply();
+        if (record) Prefs.get(c).edit().putLong("notification_last_query_time", now).apply();
         return new Prepared(true, context, null);
     }
 

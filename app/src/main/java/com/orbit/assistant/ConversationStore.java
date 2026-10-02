@@ -64,6 +64,14 @@ public final class ConversationStore {
         public final String titleJobState;
         /** Identity of the one in-flight title result allowed to commit. */
         public final String titleJobToken;
+        /**
+         * The forks along {@link #messages} (0.8.3.0-beta.3+): every stored alternative of this
+         * chat's edited messages and retried answers. Empty for a chat that has never branched,
+         * which is every chat written before branches existed. See {@link ConversationBranches}.
+         */
+        final List<ConversationBranches.Fork> forks;
+        /** Context the user kept for this whole chat (0.8.3.0-beta.3+). See {@link KeptContext}. */
+        final List<KeptContext> kept;
 
         public Conversation(String id, String title, long updatedAt, List<AssistantClient.History> messages) {
             this(id, title, updatedAt, messages, "");
@@ -87,6 +95,14 @@ public final class ConversationStore {
         Conversation(String id, String title, long updatedAt, List<AssistantClient.History> messages,
                      String intelligenceMode, boolean pinned, AiSelection aiSelection,
                      String titleOwner, String titleJobState, String titleJobToken) {
+            this(id, title, updatedAt, messages, intelligenceMode, pinned, aiSelection, titleOwner,
+                    titleJobState, titleJobToken, null, null);
+        }
+
+        Conversation(String id, String title, long updatedAt, List<AssistantClient.History> messages,
+                     String intelligenceMode, boolean pinned, AiSelection aiSelection,
+                     String titleOwner, String titleJobState, String titleJobToken,
+                     List<ConversationBranches.Fork> forks, List<KeptContext> kept) {
             this.id = id == null || id.isEmpty() ? UUID.randomUUID().toString() : id;
             this.title = title == null || title.trim().isEmpty() ? NEW_CHAT_TITLE : title.trim();
             this.updatedAt = updatedAt;
@@ -97,6 +113,44 @@ public final class ConversationStore {
             this.titleOwner = validTitleOwner(titleOwner);
             this.titleJobState = validTitleJobState(titleJobState);
             this.titleJobToken = titleJobToken == null ? "" : titleJobToken.trim();
+            // Validated against the very messages they hang off, so a stale or damaged fork can
+            // never graft an alternative onto the wrong place; it is dropped instead.
+            this.forks = Collections.unmodifiableList(
+                    ConversationBranches.validate(this.messages, forks, true));
+            this.kept = Collections.unmodifiableList(KeptContext.normalize(kept));
+        }
+
+        /** The fork at this position of {@link #messages}, or null when it has no alternatives. */
+        ConversationBranches.Fork forkAt(int index) {
+            for (ConversationBranches.Fork fork : forks) if (fork.at == index) return fork;
+            return null;
+        }
+
+        /** Whether this chat has any stored branch or answer variant. */
+        boolean isBranched() { return !forks.isEmpty(); }
+
+        /** Kept-context items, oldest first. */
+        public List<KeptContext> keptItems() { return kept; }
+
+        /** The same chat with a new active path and forks, everything else carried across. */
+        Conversation withState(ConversationBranches.State state, long updated) {
+            return new Conversation(id, title, updated, state.messages, intelligenceMode, pinned,
+                    aiSelection, titleOwner, titleJobState, titleJobToken, state.forks, kept);
+        }
+
+        /** The same chat with these messages, its forks and kept context carried across. */
+        Conversation withMessages(List<AssistantClient.History> list, long updated) {
+            return new Conversation(id, title, updated, list, intelligenceMode, pinned,
+                    aiSelection, titleOwner, titleJobState, titleJobToken, forks, kept);
+        }
+
+        Conversation withKept(List<KeptContext> items) {
+            return new Conversation(id, title, updatedAt, messages, intelligenceMode, pinned,
+                    aiSelection, titleOwner, titleJobState, titleJobToken, forks, items);
+        }
+
+        ConversationBranches.State state() {
+            return new ConversationBranches.State(messages, forks);
         }
     }
 
@@ -137,14 +191,11 @@ public final class ConversationStore {
                 break;
             }
         }
-        all.removeIf(item -> wantedId.equals(item.id));
-
-        List<AssistantClient.History> clipped = new ArrayList<>();
-        int start = Math.max(0, history.size() - MAX_MESSAGES_PER_CHAT);
-        for (int i = start; i < history.size(); i++) {
+        List<AssistantClient.History> incoming = new ArrayList<>();
+        for (int i = 0; i < history.size(); i++) {
             AssistantClient.History h = history.get(i);
             if (h == null || h.content == null || h.content.trim().isEmpty()) continue;
-            clipped.add(new AssistantClient.History(
+            incoming.add(new AssistantClient.History(
                     "assistant".equalsIgnoreCase(h.role) ? "assistant" : "user",
                     clip(h.content, MAX_MESSAGE_CHARS),
                     h.screenAttached,
@@ -161,6 +212,24 @@ public final class ConversationStore {
                     // lifecycle save must not be able to rub a picture off an answer that has one.
                     h.richImages, h.replyRequestId, h.sourceUrls, h.quote, h.details));
         }
+        // A branched chat's active path is changed only by the branch operations below. A surface
+        // still holding a copy from before a branch switch would otherwise write that old path back
+        // over the new one and leave the forks describing a path that is no longer there. Every
+        // ordinary save of such a chat is an append to, or a shorter copy of, what is stored; one
+        // that disagrees with it is stale and changes nothing.
+        boolean branched = existing != null && existing.isBranched();
+        if (branched && !agreesAsPrefix(incoming, existing.messages)) {
+            // The one legitimate disagreement: the stored path was clipped from the front by a
+            // background write since this copy was read. Line the copy up with what is stored and
+            // keep its newer messages; anything else is a stale branch and changes nothing.
+            int offset = frontClipOffset(incoming, existing.messages);
+            if (offset <= 0) return;
+            incoming = new ArrayList<>(incoming.subList(offset, incoming.size()));
+        }
+        all.removeIf(item -> wantedId.equals(item.id));
+
+        int start = Math.max(0, incoming.size() - MAX_MESSAGES_PER_CHAT);
+        List<AssistantClient.History> clipped = new ArrayList<>(incoming.subList(start, incoming.size()));
         // A background response may be appended to disk after the assistant sheet
         // is hidden, while that old sheet still holds a shorter in-memory copy.
         // Never let a later lifecycle save erase that newer persisted suffix.
@@ -180,13 +249,29 @@ public final class ConversationStore {
         // reason: a screen holding a copy from before the picture arrived must not erase it.
         if (existing != null) carryRichImages(clipped, existing.messages);
 
+        // Forks are positions on the stored path. The incoming copy agrees with it from the first
+        // message (checked above), so they keep their positions, less whatever the clip removed.
+        // A copy no longer than the stored path adds nothing to a branched chat, so the stored path
+        // and its forks stand exactly as they are.
+        List<ConversationBranches.Fork> forks = new ArrayList<>();
+        if (branched) {
+            if (incoming.size() > existing.messages.size()) {
+                ConversationBranches.State shifted = ConversationBranches.clipFront(
+                        new ConversationBranches.State(incoming, existing.forks), start);
+                forks.addAll(shifted.forks);
+            } else {
+                clipped = new ArrayList<>(existing.messages);
+                forks.addAll(existing.forks);
+            }
+        }
         String finalTitle = existing == null ? NEW_CHAT_TITLE : existing.title;
         all.add(new Conversation(wantedId, finalTitle, System.currentTimeMillis(), clipped,
                 existing == null ? "" : existing.intelligenceMode, existing != null && existing.pinned,
                 existing == null ? startingSelection : existing.aiSelection,
                 existing == null ? TITLE_DEFAULT : existing.titleOwner,
                 existing == null ? TITLE_JOB_IDLE : existing.titleJobState,
-                existing == null ? "" : existing.titleJobToken));
+                existing == null ? "" : existing.titleJobToken,
+                forks, existing == null ? null : existing.kept));
         all.sort((a, b) -> Long.compare(b.updatedAt, a.updatedAt));
         if (all.size() > MAX_CONVERSATIONS) all = new ArrayList<>(all.subList(0, MAX_CONVERSATIONS));
         writeAll(c, all);
@@ -314,7 +399,7 @@ public final class ConversationStore {
                 // something, and reordering Chats because one resolved would be wrong.
                 all.set(x, new Conversation(existing.id, existing.title, existing.updatedAt,
                         messages, existing.intelligenceMode, existing.pinned, existing.aiSelection,
-                        existing.titleOwner, existing.titleJobState, existing.titleJobToken));
+                        existing.titleOwner, existing.titleJobState, existing.titleJobToken, existing.forks, existing.kept));
                 writeAll(c, all);
                 return true;
             }
@@ -359,7 +444,7 @@ public final class ConversationStore {
             messages.set(messages.size() - 1, last.withStoppedRequestId(wanted));
             all.set(x, new Conversation(existing.id, existing.title, existing.updatedAt, messages,
                     existing.intelligenceMode, existing.pinned, existing.aiSelection,
-                    existing.titleOwner, existing.titleJobState, existing.titleJobToken));
+                    existing.titleOwner, existing.titleJobState, existing.titleJobToken, existing.forks, existing.kept));
             writeAll(c, all);
             return true;
         }
@@ -396,7 +481,7 @@ public final class ConversationStore {
             if (item.pinned == pinned) return pinned;
             all.set(i, new Conversation(item.id, item.title, item.updatedAt, item.messages,
                     item.intelligenceMode, pinned, item.aiSelection, item.titleOwner,
-                    item.titleJobState, item.titleJobToken));
+                    item.titleJobState, item.titleJobToken, item.forks, item.kept));
             writeAll(c, all);
             return pinned;
         }
@@ -417,7 +502,7 @@ public final class ConversationStore {
             if (!id.equals(item.id)) continue;
             all.set(i, new Conversation(item.id, title.trim(), System.currentTimeMillis(), item.messages,
                     item.intelligenceMode, item.pinned, item.aiSelection, TITLE_MANUAL,
-                    TITLE_JOB_DONE, ""));
+                    TITLE_JOB_DONE, "", item.forks, item.kept));
             break;
         }
         // An explicit rename is the strongest title write. Commit it before returning so an
@@ -472,7 +557,7 @@ public final class ConversationStore {
             String token = UUID.randomUUID().toString();
             Conversation pending = new Conversation(item.id, item.title, item.updatedAt,
                     item.messages, item.intelligenceMode, item.pinned, item.aiSelection,
-                    item.titleOwner, TITLE_JOB_PENDING, token);
+                    item.titleOwner, TITLE_JOB_PENDING, token, item.forks, item.kept);
             all.set(x, pending);
             writeAll(c, all, true);
             return new TitleJob(item.id, token, firstUser.content, answer.content,
@@ -495,7 +580,7 @@ public final class ConversationStore {
                     || !token.equals(item.titleJobToken)) return false;
             all.set(i, new Conversation(item.id, title.trim(), item.updatedAt, item.messages,
                     item.intelligenceMode, item.pinned, item.aiSelection, TITLE_AUTOMATIC,
-                    TITLE_JOB_DONE, ""));
+                    TITLE_JOB_DONE, "", item.forks, item.kept));
             writeAll(c, all, true);
             return true;
         }
@@ -524,7 +609,7 @@ public final class ConversationStore {
             if (selection.equals(item.aiSelection)) return;
             all.set(i, new Conversation(item.id, item.title, item.updatedAt, item.messages,
                     item.intelligenceMode, item.pinned, selection, item.titleOwner,
-                    item.titleJobState, item.titleJobToken));
+                    item.titleJobState, item.titleJobToken, item.forks, item.kept));
             writeAll(c, all);
             return;
         }
@@ -547,7 +632,7 @@ public final class ConversationStore {
             if (item.aiSelection != null) continue;
             all.set(i, new Conversation(item.id, item.title, item.updatedAt, item.messages,
                     item.intelligenceMode, item.pinned, mapper.map(item.intelligenceMode),
-                    item.titleOwner, item.titleJobState, item.titleJobToken));
+                    item.titleOwner, item.titleJobState, item.titleJobToken, item.forks, item.kept));
             changed = true;
         }
         if (changed) writeAll(c, all);
@@ -576,6 +661,14 @@ public final class ConversationStore {
             List<AssistantClient.History> messages = new ArrayList<>(existing.messages);
             for (int i = messages.size() - 1; i >= 0; i--) {
                 if ("assistant".equalsIgnoreCase(messages.get(i).role)) {
+                    // A message that starts or precedes a stored alternative is part of a branch,
+                    // and removing it would orphan that branch. Nothing is removed; the caller
+                    // still gets the conversation exactly as it is.
+                    boolean anchorsBranch = false;
+                    for (ConversationBranches.Fork fork : existing.forks) {
+                        if (fork.at >= i) { anchorsBranch = true; break; }
+                    }
+                    if (anchorsBranch) return messages;
                     messages.remove(i);
                     ActionResultStore.removeAssistantIndex(c, id, i);
                     break;
@@ -585,11 +678,211 @@ public final class ConversationStore {
             // stale-prefix protection used by save().
             all.set(x, new Conversation(existing.id, existing.title, System.currentTimeMillis(), messages,
                     existing.intelligenceMode, existing.pinned, existing.aiSelection,
-                    existing.titleOwner, existing.titleJobState, existing.titleJobToken));
+                    existing.titleOwner, existing.titleJobState, existing.titleJobToken, existing.forks, existing.kept));
             writeAll(c, all);
             return messages;
         }
         return new ArrayList<>();
+    }
+
+    // ---- branches and answer variants (0.8.3.0-beta.3) -------------------------------------------
+
+    /** What a branch operation produced: the new visible path, or why nothing changed. */
+    static final class BranchResult {
+        final List<AssistantClient.History> messages;
+        final String error;
+
+        private BranchResult(List<AssistantClient.History> messages, String error) {
+            this.messages = messages == null ? new ArrayList<>() : new ArrayList<>(messages);
+            this.error = error == null ? "" : error;
+        }
+
+        static BranchResult ok(List<AssistantClient.History> messages) { return new BranchResult(messages, ""); }
+        static BranchResult refused(String why) { return new BranchResult(null, why); }
+        boolean ok() { return error.isEmpty(); }
+    }
+
+    /**
+     * Sends an edited copy of an earlier user message as a new branch.
+     *
+     * <p>The original message and everything after it are kept, untouched, as the original branch;
+     * the edited message becomes the visible continuation from that point and gets its own answer.
+     * {@code expectedKey} is the fingerprint of the message the user long-pressed, so an edit can
+     * never land on a different message than the one they chose.
+     */
+    static synchronized BranchResult branchFromUserMessage(Context c, String id, int index,
+                                                          String expectedKey,
+                                                          AssistantClient.History edited) {
+        if (c == null || id == null || edited == null || edited.content == null
+                || edited.content.trim().isEmpty() || !"user".equalsIgnoreCase(edited.role)) {
+            return BranchResult.refused("Nothing to send");
+        }
+        if (!Prefs.historyEnabled(c)) return BranchResult.refused("Chat history is off");
+        List<Conversation> all = readAll(c);
+        for (int x = 0; x < all.size(); x++) {
+            Conversation existing = all.get(x);
+            if (!id.equals(existing.id)) continue;
+            if (index < 0 || index >= existing.messages.size()
+                    || !"user".equalsIgnoreCase(existing.messages.get(index).role)
+                    || !ConversationBranches.fingerprint(existing.messages.get(index)).equals(expectedKey)) {
+                return BranchResult.refused("That message has changed. Try again.");
+            }
+            try {
+                ConversationBranches.State next = ConversationBranches.branch(existing.state(), index,
+                        new ConversationBranches.Path(Collections.singletonList(edited), null));
+                ActionResultStore.bindToMessages(c, id, existing.messages);
+                Conversation updated = existing.withState(next, System.currentTimeMillis());
+                all.set(x, updated);
+                writeAll(c, all, true);
+                return BranchResult.ok(updated.messages);
+            } catch (ConversationBranches.Refusal refusal) {
+                return BranchResult.refused(refusal.getMessage());
+            }
+        }
+        return BranchResult.refused("This chat is no longer available");
+    }
+
+    /**
+     * Adds a finished retry as a new answer variant, keeping the answer it was asked beside.
+     *
+     * <p>Called only for a retry that produced an answer, so a failed or empty retry never touches
+     * the conversation and the existing answer simply stays. {@code at} is the position of the
+     * answer being retried and {@code parentKey} the fingerprint of the question before it; if the
+     * conversation no longer has that question there, nothing is written.
+     */
+    static synchronized boolean commitAnswerVariant(Context c, String id, int at, String parentKey,
+                                                    AssistantClient.History answer) {
+        if (c == null || id == null || answer == null || answer.content == null
+                || answer.content.trim().isEmpty() || !Prefs.historyEnabled(c)) return false;
+        List<Conversation> all = readAll(c);
+        for (int x = 0; x < all.size(); x++) {
+            Conversation existing = all.get(x);
+            if (!id.equals(existing.id)) continue;
+            if (at <= 0 || at > existing.messages.size()
+                    || !"user".equalsIgnoreCase(existing.messages.get(at - 1).role)
+                    || !ConversationBranches.parentKey(existing.messages, at).equals(parentKey)) {
+                return false;
+            }
+            if (at < existing.messages.size()
+                    && !"assistant".equalsIgnoreCase(existing.messages.get(at).role)) return false;
+            try {
+                ConversationBranches.State next = ConversationBranches.branch(existing.state(), at,
+                        new ConversationBranches.Path(Collections.singletonList(answer), null));
+                ActionResultStore.bindToMessages(c, id, existing.messages);
+                all.set(x, existing.withState(next, System.currentTimeMillis()));
+                writeAll(c, all, true);
+                return true;
+            } catch (ConversationBranches.Refusal refusal) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /** Whether one more answer variant can be added at {@code at}, before a retry is started. */
+    static synchronized boolean canAddVariant(Context c, String id, int at) {
+        Conversation existing = load(c, id);
+        if (existing == null) return true;
+        ConversationBranches.Fork fork = existing.forkAt(at);
+        if (fork != null) return fork.count() < ConversationBranches.MAX_VARIANTS;
+        return ConversationBranches.countForks(existing.forks) < ConversationBranches.MAX_FORKS;
+    }
+
+    /**
+     * Shows another version of the message at {@code at}. Only the visible path changes: every
+     * alternative, including the one being left, stays stored exactly as it was.
+     */
+    static synchronized BranchResult selectVariant(Context c, String id, int at, int target) {
+        if (c == null || id == null) return BranchResult.refused("This chat is no longer available");
+        List<Conversation> all = readAll(c);
+        for (int x = 0; x < all.size(); x++) {
+            Conversation existing = all.get(x);
+            if (!id.equals(existing.id)) continue;
+            try {
+                ConversationBranches.State next =
+                        ConversationBranches.select(existing.state(), at, target);
+                ActionResultStore.bindToMessages(c, id, existing.messages);
+                // Not new activity: looking at another version must not reorder Chats.
+                Conversation updated = existing.withState(next, existing.updatedAt);
+                all.set(x, updated);
+                writeAll(c, all, true);
+                return BranchResult.ok(updated.messages);
+            } catch (ConversationBranches.Refusal refusal) {
+                return BranchResult.refused(refusal.getMessage());
+            }
+        }
+        return BranchResult.refused("This chat is no longer available");
+    }
+
+    // ---- kept context (0.8.3.0-beta.3) -----------------------------------------------------------
+
+    /** The context kept for this chat, oldest first. Empty for an unknown chat. */
+    static synchronized List<KeptContext> kept(Context c, String id) {
+        Conversation existing = load(c, id);
+        return existing == null ? new ArrayList<>() : new ArrayList<>(existing.kept);
+    }
+
+    /**
+     * Keeps one item for this whole chat.
+     *
+     * <p>Refused for a chat with no saved record yet, a full list, or an item that is not keepable.
+     * Keeping the same item from the same message twice keeps it once.
+     */
+    static synchronized boolean keep(Context c, String id, KeptContext item) {
+        if (c == null || id == null || item == null || !item.isUsable()) return false;
+        List<Conversation> all = readAll(c);
+        for (int x = 0; x < all.size(); x++) {
+            Conversation existing = all.get(x);
+            if (!id.equals(existing.id)) continue;
+            for (KeptContext kept : existing.kept) {
+                if (kept.kind.equals(item.kind) && kept.label.equals(item.label)
+                        && kept.originKey.equals(item.originKey)) return true;
+            }
+            if (existing.kept.size() >= KeptContext.MAX_ITEMS) return false;
+            List<KeptContext> items = new ArrayList<>(existing.kept);
+            items.add(item);
+            all.set(x, existing.withKept(items));
+            writeAll(c, all, true);
+            return true;
+        }
+        return false;
+    }
+
+    /** Stops keeping one item. Later requests no longer carry it; nothing already sent changes. */
+    static synchronized boolean removeKept(Context c, String id, String keptId) {
+        if (c == null || id == null || keptId == null) return false;
+        List<Conversation> all = readAll(c);
+        for (int x = 0; x < all.size(); x++) {
+            Conversation existing = all.get(x);
+            if (!id.equals(existing.id)) continue;
+            List<KeptContext> items = new ArrayList<>(existing.kept);
+            if (!items.removeIf(item -> keptId.equals(item.id))) return false;
+            all.set(x, existing.withKept(items));
+            writeAll(c, all, true);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Creates a new, empty chat that starts with context carried forward (Continue in new chat).
+     *
+     * <p>The chat has no messages, an ordinary New Chat title that the normal automatic-title
+     * lifecycle replaces after its first exchange, and the given selection. Nothing about the chat
+     * it continues from is touched.
+     */
+    static synchronized boolean createContinuation(Context c, String newId, AiSelection selection,
+                                                   List<KeptContext> items) {
+        if (c == null || newId == null || newId.trim().isEmpty() || !Prefs.historyEnabled(c)) return false;
+        List<Conversation> all = readAll(c);
+        for (Conversation item : all) if (newId.equals(item.id)) return false;
+        all.add(new Conversation(newId, NEW_CHAT_TITLE, System.currentTimeMillis(),
+                new ArrayList<>(), "", false, selection, TITLE_DEFAULT, TITLE_JOB_IDLE, "",
+                null, items));
+        all.sort((a, b) -> Long.compare(b.updatedAt, a.updatedAt));
+        if (all.size() > MAX_CONVERSATIONS) all = new ArrayList<>(all.subList(0, MAX_CONVERSATIONS));
+        writeAll(c, all, true);
+        return true;
     }
 
     public static synchronized List<Conversation> search(Context c, String query) {
@@ -787,40 +1080,7 @@ public final class ConversationStore {
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject o = arr.optJSONObject(i);
                 if (o == null) continue;
-                JSONArray msgs = o.optJSONArray("messages");
-                ArrayList<AssistantClient.History> history = new ArrayList<>();
-                if (msgs != null) {
-                    for (int j = 0; j < msgs.length(); j++) {
-                        JSONObject m = msgs.optJSONObject(j);
-                        if (m == null) continue;
-                        String content = m.optString("content", "");
-                        if (content.isEmpty()) continue;
-                        boolean attached = m.optBoolean("screenAttached", false);
-                        history.add(new AssistantClient.History(
-                                "assistant".equals(m.optString("role")) ? "assistant" : "user",
-                                content,
-                                attached,
-                                // A conversation written before v0.7.8.0 Beta 3 has no
-                                // attachmentPaths array and simply reads back as the one path it
-                                // always had. Nothing stored is rewritten and no migration runs.
-                                readAttachmentPaths(m),
-                                m.optString("attachmentKind", attached ? "screen" : ""),
-                                m.optString("attachmentLabel", attached ? "Screen attached" : ""),
-                                m.optString("attachmentText", ""),
-                                m.optString("memoryUsage", ""),
-                                m.optString("memorySuggestionText", ""),
-                                m.optString("memorySuggestionCategory", ""),
-                                m.optString("stoppedRequestId", ""),
-                                readDocuments(m),
-                                // Absent from every message written before v0.7.8.5, and absent
-                                // from every answer that never had a picture. Missing means none,
-                                // which is what none already means, so nothing is migrated.
-                                readRichImages(m), m.optString("replyRequestId", ""), readSourceUrls(m),
-                                // Both absent before 0.8.3.0, and absent means none.
-                                QuotedMessage.fromJson(m.optJSONObject("quote")),
-                                ResponseDetails.fromJson(m.optJSONObject("details"))));
-                    }
-                }
+                List<AssistantClient.History> history = readMessages(o.optJSONArray("messages"));
                 // A chat stored before pinning existed simply has no "pinned" key, and false is
                 // exactly what an unpinned chat means, so old data needs no migration step.
                 result.add(new Conversation(o.optString("id"), o.optString("title"),
@@ -833,10 +1093,96 @@ public final class ConversationStore {
                         // cannot prove whether its text was chosen by the user, so it never guesses.
                         o.has("titleOwner") ? o.optString("titleOwner", TITLE_LEGACY) : TITLE_LEGACY,
                         o.optString("titleJobState", TITLE_JOB_DONE),
-                        o.optString("titleJobToken", "")));
+                        o.optString("titleJobToken", ""),
+                        // Both absent before 0.8.3.0-beta.3, and absent means a linear chat with
+                        // nothing kept: exactly what every older chat is, so nothing is migrated.
+                        readForks(o.optJSONArray("forks")),
+                        readKept(o.optJSONArray("kept"))));
             }
         } catch (Exception ignored) {}
         return result;
+    }
+
+    /** One stored message list, dropping anything empty or damaged. */
+    private static List<AssistantClient.History> readMessages(JSONArray msgs) {
+        ArrayList<AssistantClient.History> history = new ArrayList<>();
+        if (msgs == null) return history;
+        for (int j = 0; j < msgs.length(); j++) {
+            AssistantClient.History message = readMessage(msgs.optJSONObject(j));
+            if (message != null) history.add(message);
+        }
+        return history;
+    }
+
+    private static AssistantClient.History readMessage(JSONObject m) {
+        if (m == null) return null;
+        String content = m.optString("content", "");
+        if (content.isEmpty()) return null;
+        boolean attached = m.optBoolean("screenAttached", false);
+        return new AssistantClient.History(
+                "assistant".equals(m.optString("role")) ? "assistant" : "user",
+                content,
+                attached,
+                // A conversation written before v0.7.8.0 Beta 3 has no
+                // attachmentPaths array and simply reads back as the one path it
+                // always had. Nothing stored is rewritten and no migration runs.
+                readAttachmentPaths(m),
+                m.optString("attachmentKind", attached ? "screen" : ""),
+                m.optString("attachmentLabel", attached ? "Screen attached" : ""),
+                m.optString("attachmentText", ""),
+                m.optString("memoryUsage", ""),
+                m.optString("memorySuggestionText", ""),
+                m.optString("memorySuggestionCategory", ""),
+                m.optString("stoppedRequestId", ""),
+                readDocuments(m),
+                // Absent from every message written before v0.7.8.5, and absent
+                // from every answer that never had a picture. Missing means none,
+                // which is what none already means, so nothing is migrated.
+                readRichImages(m), m.optString("replyRequestId", ""), readSourceUrls(m),
+                // Both absent before 0.8.3.0, and absent means none.
+                QuotedMessage.fromJson(m.optJSONObject("quote")),
+                ResponseDetails.fromJson(m.optJSONObject("details")));
+    }
+
+    /**
+     * Stored forks, or none at all when anything about them is unreadable.
+     *
+     * <p>Damaged branch data costs the hidden alternatives, never the conversation: the visible path
+     * is read separately and loads exactly as it would for a chat that never branched.
+     */
+    private static List<ConversationBranches.Fork> readForks(JSONArray stored) {
+        List<ConversationBranches.Fork> forks = new ArrayList<>();
+        if (stored == null) return forks;
+        try {
+            for (int i = 0; i < stored.length(); i++) {
+                JSONObject f = stored.optJSONObject(i);
+                if (f == null) continue;
+                JSONArray variants = f.optJSONArray("variants");
+                if (variants == null) continue;
+                List<ConversationBranches.Path> paths = new ArrayList<>();
+                for (int v = 0; v < variants.length(); v++) {
+                    JSONObject path = variants.optJSONObject(v);
+                    paths.add(path == null || path.optBoolean("active", false) ? null
+                            : new ConversationBranches.Path(readMessages(path.optJSONArray("messages")),
+                                    readForks(path.optJSONArray("forks"))));
+                }
+                forks.add(new ConversationBranches.Fork(f.optInt("at", -1), f.optString("parent", ""),
+                        f.optInt("selected", -1), paths));
+            }
+        } catch (Exception damaged) {
+            return new ArrayList<>();
+        }
+        return forks;
+    }
+
+    private static List<KeptContext> readKept(JSONArray stored) {
+        List<KeptContext> items = new ArrayList<>();
+        if (stored == null) return items;
+        for (int i = 0; i < stored.length(); i++) {
+            KeptContext item = KeptContext.fromJson(stored.optJSONObject(i));
+            if (item != null) items.add(item);
+        }
+        return items;
     }
 
     private static void writeAll(Context c, List<Conversation> all) {
@@ -859,63 +1205,95 @@ public final class ConversationStore {
                 // Written only when true, so an unpinned chat's record is byte-for-byte what it
                 // was before pinning existed and a downgrade reads it back unchanged.
                 if (item.pinned) o.put("pinned", true);
-                JSONArray msgs = new JSONArray();
-                for (AssistantClient.History h : item.messages) {
-                    JSONObject message = new JSONObject();
-                    // Both are written: attachmentPath keeps a turn readable by anything that only
-                    // knows the old shape, and attachmentPaths is what a current Orbit reads. They
-                    // can never disagree because History derives the first from the list.
-                    if (h.attachmentPaths.size() > 1) {
-                        JSONArray paths = new JSONArray();
-                        for (String path : h.attachmentPaths) paths.put(path);
-                        message.put("attachmentPaths", paths);
-                    }
-                    if (!h.documents.isEmpty()) {
-                        JSONArray documents = new JSONArray();
-                        for (DocumentReference document : h.documents) {
-                            // "page" is written only when the reference names one, so a record
-                            // saved before page context existed reads back exactly as it was.
-                            JSONObject entry = new JSONObject()
-                                    .put("path", safe(document.path))
-                                    .put("label", safe(document.label))
-                                    .put("pageCount", document.pageCount);
-                            if (document.namesPage()) entry.put("page", document.page);
-                            documents.put(entry);
-                        }
-                        message.put("documents", documents);
-                    }
-                    // Written only for an answer that has one, so a conversation of ordinary text
-                    // is byte-for-byte the document v0.7.8.4 wrote and an older build reading the
-                    // same store finds nothing new in it.
-                    if (!h.richImages.isEmpty()) {
-                        JSONArray pictures = new JSONArray();
-                        for (RichAnswerImage image : h.richImages) pictures.put(image.toJson());
-                        message.put("richImages", pictures);
-                    }
-                    if (!h.replyRequestId.isEmpty()) message.put("replyRequestId", h.replyRequestId);
-                    if (!h.sourceUrls.isEmpty()) message.put("sourceUrls", new JSONArray(h.sourceUrls));
-                    if (h.quote != null) message.put("quote", h.quote.toJson());
-                    if (h.details != null) message.put("details", h.details.toJson());
-                    msgs.put(message
-                            .put("role", h.role)
-                            .put("content", h.content)
-                            .put("screenAttached", h.screenAttached)
-                            .put("attachmentPath", safe(h.attachmentPath))
-                            .put("attachmentKind", safe(h.attachmentKind))
-                            .put("attachmentLabel", safe(h.attachmentLabel))
-                            .put("attachmentText", safe(h.attachmentText))
-                            .put("memoryUsage", safe(h.memoryUsage))
-                            .put("memorySuggestionText", safe(h.memorySuggestionText))
-                            .put("memorySuggestionCategory", safe(h.memorySuggestionCategory))
-                            .put("stoppedRequestId", safe(h.stoppedRequestId)));
+                o.put("messages", writeMessages(item.messages));
+                // Written only when present, for the same reason: a chat that never branched and
+                // keeps nothing is byte-for-byte what Beta 2 wrote.
+                if (!item.forks.isEmpty()) o.put("forks", writeForks(item.forks));
+                if (!item.kept.isEmpty()) {
+                    JSONArray kept = new JSONArray();
+                    for (KeptContext k : item.kept) kept.put(k.toJson());
+                    o.put("kept", kept);
                 }
-                o.put("messages", msgs);
                 arr.put(o);
             }
         } catch (Exception ignored) {}
         SharedPreferences.Editor edit = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
                 .edit().putString(KEY, arr.toString());
         if (sync) edit.commit(); else edit.apply();
+    }
+
+    private static JSONArray writeForks(List<ConversationBranches.Fork> forks) throws Exception {
+        JSONArray out = new JSONArray();
+        for (ConversationBranches.Fork fork : forks) {
+            JSONArray variants = new JSONArray();
+            for (ConversationBranches.Path path : fork.variants) {
+                if (path == null) {
+                    // The visible alternative is the active path itself, stored once, above.
+                    variants.put(new JSONObject().put("active", true));
+                    continue;
+                }
+                JSONObject stored = new JSONObject().put("messages", writeMessages(path.messages));
+                if (!path.forks.isEmpty()) stored.put("forks", writeForks(path.forks));
+                variants.put(stored);
+            }
+            out.put(new JSONObject().put("at", fork.at).put("parent", fork.parent)
+                    .put("selected", fork.selected).put("variants", variants));
+        }
+        return out;
+    }
+
+    private static JSONArray writeMessages(List<AssistantClient.History> messages) throws Exception {
+        JSONArray msgs = new JSONArray();
+        for (AssistantClient.History h : messages) {
+            JSONObject message = new JSONObject();
+            // Both are written: attachmentPath keeps a turn readable by anything that only
+            // knows the old shape, and attachmentPaths is what a current Orbit reads. They
+            // can never disagree because History derives the first from the list.
+            if (h.attachmentPaths.size() > 1) {
+                JSONArray paths = new JSONArray();
+                for (String path : h.attachmentPaths) paths.put(path);
+                message.put("attachmentPaths", paths);
+            }
+            if (!h.documents.isEmpty()) {
+                JSONArray documents = new JSONArray();
+                for (DocumentReference document : h.documents) {
+                    // "page" is written only when the reference names one, so a record
+                    // saved before page context existed reads back exactly as it was.
+                    JSONObject entry = new JSONObject()
+                            .put("path", safe(document.path))
+                            .put("label", safe(document.label))
+                            .put("pageCount", document.pageCount);
+                    if (document.namesPage()) entry.put("page", document.page);
+                    documents.put(entry);
+                }
+                message.put("documents", documents);
+            }
+            // Written only for an answer that has one, so a conversation of ordinary text
+            // is byte-for-byte the document v0.7.8.4 wrote and an older build reading the
+            // same store finds nothing new in it.
+            if (!h.richImages.isEmpty()) {
+                JSONArray pictures = new JSONArray();
+                for (RichAnswerImage image : h.richImages) pictures.put(image.toJson());
+                message.put("richImages", pictures);
+            }
+            if (!h.replyRequestId.isEmpty()) message.put("replyRequestId", h.replyRequestId);
+            if (!h.sourceUrls.isEmpty()) message.put("sourceUrls", new JSONArray(h.sourceUrls));
+            if (h.quote != null) message.put("quote", h.quote.toJson());
+            if (h.details != null) message.put("details", h.details.toJson());
+            msgs.put(message
+                    .put("role", h.role)
+                    .put("content", h.content)
+                    .put("screenAttached", h.screenAttached)
+                    .put("attachmentPath", safe(h.attachmentPath))
+                    .put("attachmentKind", safe(h.attachmentKind))
+                    .put("attachmentLabel", safe(h.attachmentLabel))
+                    .put("attachmentText", safe(h.attachmentText))
+                    .put("memoryUsage", safe(h.memoryUsage))
+                    .put("memorySuggestionText", safe(h.memorySuggestionText))
+                    .put("memorySuggestionCategory", safe(h.memorySuggestionCategory))
+                    .put("stoppedRequestId", safe(h.stoppedRequestId)));
+        }
+        return msgs;
     }
 
     /**
@@ -998,13 +1376,49 @@ public final class ConversationStore {
     private static List<String> ownedAttachmentPaths(Conversation conversation) {
         List<String> paths = new ArrayList<>();
         if (conversation == null) return paths;
-        for (AssistantClient.History h : conversation.messages) {
+        // Hidden branches and answer variants own their files exactly as the visible path does,
+        // so deleting a chat cleans them up and deleting another chat never touches them.
+        List<AssistantClient.History> all = new ArrayList<>(conversation.messages);
+        ConversationBranches.collectStoredMessages(conversation.forks, all);
+        for (AssistantClient.History h : all) {
             if (h != null) {
                 paths.addAll(h.attachmentPaths);
                 for (DocumentReference document : h.documents) paths.add(document.path);
             }
         }
+        for (KeptContext item : conversation.kept) {
+            if (!item.documentPath.isEmpty()) paths.add(item.documentPath);
+        }
         return paths;
+    }
+
+    /**
+     * True when one list is a prefix of the other, message by message.
+     *
+     * <p>The test a save of a branched chat must pass: an append to the stored path, or a shorter
+     * copy of it. Uses the same notion of "same message" the alignment code does.
+     */
+    /**
+     * How many leading messages of {@code incoming} the stored path has since clipped away, or -1
+     * when the two do not line up that way. At least two stored messages must agree, for the same
+     * reason the alignment code refuses a single matching message: it could be a coincidence.
+     */
+    private static int frontClipOffset(List<AssistantClient.History> incoming,
+                                       List<AssistantClient.History> stored) {
+        if (incoming == null || stored == null || stored.size() < 2) return -1;
+        for (int k = 1; k + 1 < incoming.size(); k++) {
+            List<AssistantClient.History> rest = incoming.subList(k, incoming.size());
+            if (Math.min(rest.size(), stored.size()) >= 2 && agreesAsPrefix(rest, stored)) return k;
+        }
+        return -1;
+    }
+
+    private static boolean agreesAsPrefix(List<AssistantClient.History> a,
+                                          List<AssistantClient.History> b) {
+        if (a == null || b == null) return false;
+        int n = Math.min(a.size(), b.size());
+        for (int i = 0; i < n; i++) if (!sameMessage(a.get(i), b.get(i))) return false;
+        return true;
     }
 
     private static String safe(String s) { return s == null ? "" : s; }

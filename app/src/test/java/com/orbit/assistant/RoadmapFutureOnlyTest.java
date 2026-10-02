@@ -210,7 +210,8 @@ public final class RoadmapFutureOnlyTest {
         String text = roadmapText();
         assertTrue("finishing OpenRouter chat is still owed", text.contains("OpenRouter chat"));
         assertTrue("local tool calling is still owed", text.contains("Local device actions"));
-        assertTrue("the withdrawn Edit & resend action must be promised back",
+        // 0.8.3.0-beta.3 brought it back as Edit, which branches, so the promise is fulfilled.
+        assertFalse("the returned Edit action is no longer future work",
                 text.contains("Edit & resend, reliably"));
         assertTrue(text.contains("Hybrid Auto"));
     }

@@ -23,8 +23,8 @@ import java.util.List;
  * <p>The conversation stays visually quiet. Long-pressing a message gives one haptic
  * acknowledgement, sends {@link OrbitMessageHighlight}'s accent ripple through the bubble, and
  * opens one Orbit menu: Copy, Save to Vault and Retry on assistant replies (Retry only on the latest
- * turn), plus Retry with, Reply to this and Response details where the surface supports them; Copy
- * and Reply to this on the user's own messages. Finished replies in full chat also carry a small
+ * turn), plus Retry with, Reply to this and Response details where the surface supports them; Copy,
+ * Edit (full chat only, where it starts a branch) and Reply to this on the user's own messages. Finished replies in full chat also carry a small
  * strip of the same actions ({@link #actionStrip}). Save to Vault writes one local item and does
  * not leave the conversation.
  */
@@ -35,7 +35,7 @@ final class MessageActions {
     static final String RETRY_WITH_MENU_LABEL = "Retry with…";
     static final String REPLY_MENU_LABEL = "Reply to this";
     static final String DETAILS_MENU_LABEL = "Response details";
-    static final String EDIT_MENU_LABEL = "Edit & resend";
+    static final String EDIT_MENU_LABEL = "Edit";
 
     /** Both surfaces draw message bubbles at this radius, so the selection matches their shape. */
     private static final float BUBBLE_RADIUS_DP = 18f;
@@ -163,7 +163,7 @@ final class MessageActions {
     static List<Entry> moreMenu(AssistantActions a) {
         List<Entry> out = new ArrayList<>();
         if (a.retryWith != null) out.add(new Entry(RETRY_WITH_MENU_LABEL, R.drawable.ic_tune, a.retryWith));
-        if (a.reply != null) out.add(new Entry(REPLY_MENU_LABEL, R.drawable.ic_edit, a.reply));
+        if (a.reply != null) out.add(new Entry(REPLY_MENU_LABEL, R.drawable.ic_reply, a.reply));
         if (a.details != null) out.add(new Entry(DETAILS_MENU_LABEL, R.drawable.ic_settings, a.details));
         return out;
     }
@@ -247,7 +247,29 @@ final class MessageActions {
     }
 
     static int[] userIcons(boolean canReply) {
-        return canReply ? new int[]{R.drawable.ic_copy, R.drawable.ic_edit} : userIcons();
+        return canReply ? new int[]{R.drawable.ic_copy, R.drawable.ic_reply} : userIcons();
+    }
+
+    /**
+     * The user-message menu in full chat (0.8.3.0-beta.3+): Copy, Edit, and Reply to this. Edit is
+     * offered only by a surface that turns an edit into a real branch; the overlay offers none.
+     */
+    static String[] userLabels(boolean canEdit, boolean canReply) {
+        List<String> out = new ArrayList<>();
+        out.add(COPY_MENU_LABEL);
+        if (canEdit) out.add(EDIT_MENU_LABEL);
+        if (canReply) out.add(REPLY_MENU_LABEL);
+        return out.toArray(new String[0]);
+    }
+
+    static int[] userIcons(boolean canEdit, boolean canReply) {
+        List<Integer> out = new ArrayList<>();
+        out.add(R.drawable.ic_copy);
+        if (canEdit) out.add(R.drawable.ic_edit);
+        if (canReply) out.add(R.drawable.ic_reply);
+        int[] icons = new int[out.size()];
+        for (int i = 0; i < icons.length; i++) icons[i] = out.get(i);
+        return icons;
     }
 
     static void bindAssistant(View bubble, String rawText, boolean canRegenerate,
@@ -385,7 +407,8 @@ final class MessageActions {
     private static void showUserMenu(View bubble, String text, Runnable editResend,
                                      Runnable reply, AfterCopy afterCopy) {
         boolean canReply = reply != null;
-        showMenu(bubble, userLabels(canReply), userIcons(canReply), (index, label) -> {
+        boolean canEdit = editResend != null;
+        showMenu(bubble, userLabels(canEdit, canReply), userIcons(canEdit, canReply), (index, label) -> {
             if (COPY_MENU_LABEL.equals(label)) {
                 copy(bubble.getContext(), "Orbit message", text, afterCopy);
             } else if (REPLY_MENU_LABEL.equals(label) && reply != null) {

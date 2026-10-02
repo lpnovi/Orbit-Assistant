@@ -171,6 +171,22 @@ code, and never let the Play edition install Orbit Local. See `docs/PLAY_STORE.m
 - **Rendered-result follow-ups (0.8.3.0-beta.2+)** — `RenderedResultContext` exposes only the exact
   count of persisted rich-image cards from the immediately preceding assistant turn. It is bounded
   untrusted data, not UI markup or an instruction; keep it out of older turns and visible history.
+- **Conversation Control (0.8.3.0-beta.3+)** — `ConversationStore.messages` is always the *active
+  path*; every request, renderer and search reads only it, so hidden branches can never leak into a
+  request. Alternatives live in `forks` (`ConversationBranches`): a fork at position N holds whole
+  alternative *tails* (messages from N on, plus forks inside them), the visible one is a `null`
+  slot, and each fork carries its parent message's fingerprint so a stale fork is dropped, never
+  grafted. Change the path only through `branchFromUserMessage` (Edit), `commitAnswerVariant`
+  (Retry, committed only on success or a stopped partial) and `selectVariant`; `save()` refuses a
+  divergent copy of a branched chat. Every `new Conversation(...)` must carry `forks` and `kept`.
+  Retry requests carry `PendingRequestStore.Item.variantTarget` and are built from the path before
+  the retried answer. `ActionResultStore` cards bind to their answer's fingerprint before a path
+  first changes. Kept context (`KeptContext`) is chat-level, stored once, injected by the request
+  builder, never drawn under later messages; screen, photos and notifications are never keepable.
+  The context meter (`ContextEstimate`/`ContextLedger`) runs the real `ChatGptClient.requestBody`
+  in measuring mode; never add a parallel model of what a request contains. Continue in new chat
+  (`ContinueChat`) uses the fixed GPT-5.6 Luna Low summary policy and never touches the original.
+  Backups walk branch messages too (`OrbitBackupManager.allMessages`).
 - **Context** — `ScreenContextExtractor`, `ScreenContextClassifier`, `ScreenActionSuggester`,
   `ScreenSelection*` (crop/markup editor), `AttachmentStore`/`AttachmentLoader`/`AttachmentBridge`.
 - **Actions & automation** — `OrbitActionEngine`, `DeviceActionExecutor` (timers, alarms, brightness,

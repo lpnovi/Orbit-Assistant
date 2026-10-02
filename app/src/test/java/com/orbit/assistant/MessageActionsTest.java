@@ -67,14 +67,25 @@ public final class MessageActionsTest {
         assertEquals(2, MessageActions.assistantIcons(false).length);
     }
 
-    /**
-     * Edit &amp; resend is temporarily withdrawn from the menu until its resend state handling is
-     * reliable on device; the composer-side editing machinery remains and is still tested below.
-     */
+    /** A surface that offers neither editing nor quoting offers Copy alone. */
     @Test public void userTurnsOfferCopyOnly() {
         assertArrayEquals(new String[]{MessageActions.COPY_MENU_LABEL},
                 MessageActions.userLabels());
         assertEquals(1, MessageActions.userIcons().length);
+    }
+
+    /**
+     * Edit returned in 0.8.3.0-beta.3, in full chat only, as a branch rather than a resend: Copy,
+     * Edit, then Reply to this, each with its own icon.
+     */
+    @Test public void fullChatUserTurnsOfferCopyEditAndReply() {
+        assertArrayEquals(new String[]{MessageActions.COPY_MENU_LABEL,
+                        MessageActions.EDIT_MENU_LABEL, MessageActions.REPLY_MENU_LABEL},
+                MessageActions.userLabels(true, true));
+        int[] icons = MessageActions.userIcons(true, true);
+        assertEquals(3, icons.length);
+        assertEquals(R.drawable.ic_edit, icons[1]);
+        assertEquals("Reply no longer borrows the edit pencil", R.drawable.ic_reply, icons[2]);
     }
 
     @Test public void copyingPutsTheAssistantTextOnTheClipboard() {

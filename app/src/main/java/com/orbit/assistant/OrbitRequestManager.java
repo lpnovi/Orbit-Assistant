@@ -269,17 +269,42 @@ public final class OrbitRequestManager {
         String trustedTaskContext = ReplyDraftContext.observeAndGet(
                 c, conversationId, prompt, screenText, first, history);
         return enqueueFrozen(c, conversationId, prompt, screenText, images, voiceRequest,
-                draftReply, selection, explicitAttachment, trustedTaskContext, listener);
+                draftReply, selection, explicitAttachment, trustedTaskContext, "", listener);
+    }
+
+    /**
+     * Queues a retry of the answer at {@code answerAt} that becomes a new answer variant
+     * (0.8.3.0-beta.3+) rather than replacing it.
+     *
+     * <p>The conversation is not changed here. The request is built from the conversation as it
+     * stood before that answer, and only a finished answer is written, beside the one it was
+     * asked about; a failed retry leaves the existing answer exactly where it was.
+     */
+    public static String enqueueAnswerVariant(Context c, String conversationId, int answerAt,
+                                              String prompt, String screenText, List<Bitmap> images,
+                                              AiSelection selection, boolean explicitAttachment,
+                                              Listener listener) {
+        ConversationStore.Conversation conversation = ConversationStore.load(c, conversationId);
+        List<AssistantClient.History> history = conversation == null
+                ? java.util.Collections.emptyList()
+                : conversation.messages.subList(0, Math.max(0, Math.min(answerAt, conversation.messages.size())));
+        Bitmap first = images == null || images.isEmpty() ? null : images.get(0);
+        String trustedTaskContext = ReplyDraftContext.observeAndGet(
+                c, conversationId, prompt, screenText, first, history);
+        String target = PendingRequestStore.variantTarget(answerAt,
+                ConversationBranches.parentKey(history, history.size()));
+        return enqueueFrozen(c, conversationId, prompt, screenText, images, false, false,
+                selection, explicitAttachment, trustedTaskContext, target, listener);
     }
 
     private static String enqueueFrozen(Context c, String conversationId, String prompt, String screenText,
                                         List<Bitmap> images, boolean voiceRequest, boolean draftReply,
                                         AiSelection selection, boolean explicitAttachment,
-                                        String trustedTaskContext, Listener listener) {
+                                        String trustedTaskContext, String variantTarget, Listener listener) {
         List<String> pendingScreens = AttachmentStore.savePendingScreens(c, images);
         PendingRequestStore.Item item = PendingRequestStore.create(c, conversationId, prompt, screenText,
                 pendingScreens, voiceRequest, draftReply, selection, explicitAttachment,
-                trustedTaskContext);
+                trustedTaskContext, variantTarget);
         if (listener != null) addListener(item.id, listener);
         Data input = new Data.Builder().putString(OrbitRequestWorker.KEY_REQUEST_ID, item.id).build();
         // An offline-capable provider (Orbit Local) must not wait for connectivity: its whole
@@ -313,7 +338,7 @@ public final class OrbitRequestManager {
         PendingRequestStore.markSuperseded(c, failedRequestId);
         String next = enqueueFrozen(c, failed.conversationId, failed.prompt, failed.screenText, images,
                 failed.voiceRequest, failed.draftReply, failed.selection,
-                failed.explicitAttachment, failed.trustedTaskContext, listener);
+                failed.explicitAttachment, failed.trustedTaskContext, failed.variantTarget, listener);
         AttachmentStore.deleteAll(failed.screenshotPaths);
         return next;
     }
@@ -349,19 +374,33 @@ public final class OrbitRequestManager {
             PROGRESS.remove(requestId);
             PendingRequestStore.markCancelled(c, requestId);
             partial = takePartial(requestId);
-            // The manager is the single owner of partial persistence: whatever had streamed is
-            // written here exactly once, so reopening the conversation shows it and no other path
-            // can append it a second time.
-            if (!partial.isEmpty()) {
-                ConversationStore.appendMessage(c, current.conversationId,
-                        new AssistantClient.History("assistant", partial));
+            if (current.isAnswerVariant()) {
+                // A stopped retry keeps whatever it had written as one more version of the answer,
+                // marked as stopped, and keeps the answer it was asked beside. A retry stopped
+                // before any text arrived changes nothing at all: the existing answer stays.
+                if (!partial.isEmpty()) {
+                    ConversationStore.commitAnswerVariant(c, current.conversationId,
+                            current.variantAt(), current.variantParent(),
+                            new AssistantClient.History("assistant", partial)
+                                    .withReplyProvenance(requestId, java.util.Collections.emptyList())
+                                    .withStoppedRequestId(requestId));
+                }
+            } else {
+                // The manager is the single owner of partial persistence: whatever had streamed is
+                // written here exactly once, so reopening the conversation shows it and no other
+                // path can append it a second time.
+                if (!partial.isEmpty()) {
+                    ConversationStore.appendMessage(c, current.conversationId,
+                            new AssistantClient.History("assistant", partial));
+                }
+                // Anchor the stopped mark to this turn, after the partial answer has been written so
+                // it lands on the end of the turn rather than in the middle of it. This is the only
+                // place a stop is recorded against the conversation, so both surfaces read one fact
+                // and neither can invent its own. It is representation only: cancellation is
+                // already complete above, and nothing below this line may depend on the write
+                // succeeding.
+                ConversationStore.markTurnStopped(c, current.conversationId, requestId);
             }
-            // Anchor the stopped mark to this turn, after the partial answer has been written so
-            // it lands on the end of the turn rather than in the middle of it. This is the only
-            // place a stop is recorded against the conversation, so both surfaces read one fact
-            // and neither can invent its own. It is representation only: cancellation is already
-            // complete above, and nothing below this line may depend on the write succeeding.
-            ConversationStore.markTurnStopped(c, current.conversationId, requestId);
             cancelWork(c, requestId);
         }
         AttachmentStore.deleteAll(item.screenshotPaths);

@@ -824,22 +824,10 @@ public class MainActivity extends Activity {
                 return;
             }
             if (index == 0) {
-                EditText input = new EditText(this);
-                input.setText(chat.title);
-                input.setSelectAllOnFocus(true);
-                input.setTextColor(UiKit.TEXT);
-                input.setHintTextColor(UiKit.MUTED);
-                input.setBackgroundTintList(ColorStateList.valueOf(UiKit.accent(this)));
-                AlertDialog dialog = new AlertDialog.Builder(this)
-                        .setTitle("Rename chat").setView(input)
-                        .setNegativeButton("Cancel", null)
-                        .setPositiveButton("Save", (d,w) -> {
-                            ConversationStore.rename(this, chat.id,
-                                    input.getText().toString());
-                            refreshChats();
-                        }).create();
-                styleOrbitDialog(dialog);
-                dialog.show();
+                OrbitRenameDialog.show(this, chat.title, name -> {
+                    ConversationStore.rename(this, chat.id, name);
+                    refreshChats();
+                });
             } else {
                 AlertDialog dialog = new AlertDialog.Builder(this)
                         .setTitle("Delete chat?")
@@ -928,7 +916,13 @@ public class MainActivity extends Activity {
     }
 
     private String preview(ConversationStore.Conversation chat) {
-        if (chat.messages.isEmpty()) return "Empty chat";
+        if (chat.messages.isEmpty()) {
+            // A chat started by Continue in new chat has no messages yet, only what it carried.
+            for (KeptContext item : chat.keptItems()) {
+                if (KeptContext.KIND_SUMMARY.equals(item.kind)) return "Continues an earlier chat";
+            }
+            return "Empty chat";
+        }
         AssistantClient.History h = chat.messages.get(chat.messages.size()-1);
         // Display only. The stored message keeps its Markdown and still renders in full when the
         // conversation is opened; this just spends the card's characters on words, not syntax.

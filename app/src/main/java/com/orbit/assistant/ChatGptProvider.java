@@ -64,6 +64,7 @@ final class ChatGptProvider implements AiProvider {
         ChatGptClient.send(context, request.prompt, request.screenText, request.images,
                 request.history, request.selection, request.explicitAttachment,
                 request.notificationContext, request.memoryContext, request.trustedTaskContext,
+                request.keptContext,
                 request.thinkingUpdates, callback);
     }
 

@@ -546,12 +546,29 @@ model under the chosen one's name.
 - **Overlay polish.** The compact Side-button selector accommodates restored model names without
   turning the overlay into the full chat interface
 
+#### `0.8.3.0-beta.3` - Conversation Control
+
+- **Context-window meter.** A thin ring beside the AI estimates how full the next request's context
+  window is, measured from the request Orbit would actually send: the visible branch, re-sent
+  attachments, kept context and the draft, never hidden branches. Tap for an approximate breakdown;
+  a model whose window Orbit does not know gets no invented percentage
+- **Edit and branch.** Holding an earlier message offers Edit; sending the edit starts a new branch
+  from that point and keeps the original timeline whole. A compact "2 / 3" navigator switches
+  between branches without a tree view
+- **Retry keeps every answer.** Retry and Retry with add a new version beside the earlier answer,
+  each recording the model that wrote it; a failed retry changes nothing
+- **Send with.** Holding Send picks a model and strength for one message only
+- **Keep in this chat.** Documents, text files, clipboard text and Vault items can be kept for the
+  whole chat. They show once where they were attached and are summarized by one quiet line, never
+  repeated under later messages. The screen, photos and notifications are never kept
+- **Continue in new chat.** Near the limit, or any time from the context details, Orbit writes a
+  short summary with a fixed small model and starts a new chat with it; the original is untouched
+
 #### Still ahead for AI Control
 
-- Conversation branching and a branch view
-- Editing an earlier message and branching from it
+- A visual branch tree
 - Comparing models side by side
-- A context inspector showing what a request carried
+- Claude and Grok providers, and broader model access
 
 ### Orbit Local 2.0 - more of Orbit, privately on the phone
 

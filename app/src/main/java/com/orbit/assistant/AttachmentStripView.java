@@ -116,6 +116,22 @@ public final class AttachmentStripView extends HorizontalScrollView {
 
     public void setOnOpen(OnOpen listener) { this.onOpen = listener; }
 
+    /** Long-press on a card, for the actions a card offers beyond opening and removing it. */
+    public interface OnLongPress {
+        void onLongPress(String attachmentId, View card);
+    }
+
+    private OnLongPress onLongPress;
+    /** Ids of attachments the user chose to keep for the whole chat (0.8.3.0-beta.3+). */
+    private java.util.Set<String> keptIds = java.util.Collections.emptySet();
+
+    public void setOnLongPress(OnLongPress listener) { this.onLongPress = listener; }
+
+    /** Which staged attachments are marked Keep in this chat. Takes effect on the next bind. */
+    public void setKeptIds(java.util.Set<String> ids) {
+        this.keptIds = ids == null ? java.util.Collections.emptySet() : new java.util.HashSet<>(ids);
+    }
+
     /**
      * What a redraw from {@code previous} to {@code next} should do with the viewport.
      *
@@ -279,6 +295,19 @@ public final class AttachmentStripView extends HorizontalScrollView {
         // strip is the same problem in a smaller form.
         boolean photo = AttachmentLabels.isPhoto(attachment);
         int maxLabelWidth = UiKit.dp(c, photo ? 96 : (compact ? 104 : 124));
+        boolean kept = keptIds.contains(attachment.id);
+        if (kept) {
+            // One small pin, in the card the user marked and nowhere else: kept context is shown
+            // here before sending, then by a single chat-level indicator, never under later turns.
+            ImageView pin = new ImageView(c);
+            pin.setImageResource(com.orbit.assistant.R.drawable.ic_pin);
+            pin.setColorFilter(UiKit.accent(c));
+            pin.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+            LinearLayout.LayoutParams pinLp = new LinearLayout.LayoutParams(
+                    UiKit.dp(c, 13), UiKit.dp(c, 13));
+            pinLp.setMarginEnd(UiKit.dp(c, 4));
+            card.addView(pin, pinLp);
+        }
         TextView label = UiKit.text(c, AttachmentLabels.displayLabel(attachment, position),
                 compact ? 11.5f : 12, UiKit.TEXT, true);
         label.setSingleLine(true);
@@ -335,7 +364,15 @@ public final class AttachmentStripView extends HorizontalScrollView {
         // remove control, so the order is "what this is" then "how to remove it". The shortened
         // caption never reaches this: a screen reader is told the kind and the position, and a
         // document is still told its name.
-        String description = AttachmentLabels.cardDescription(attachment, position, total);
+        String description = AttachmentLabels.cardDescription(attachment, position, total)
+                + (kept ? ", kept in this chat" : "");
+        if (onLongPress != null) {
+            final String held = attachment.id;
+            card.setOnLongClickListener(v -> {
+                onLongPress.onLongPress(held, v);
+                return true;
+            });
+        }
         // A card opens the full-screen viewer only when there is something full screen to see. A
         // PDFs now open their own native, page-aware viewer. They still never enter the image
         // viewer: the rendered bitmap on this card is only a compact attachment preview.

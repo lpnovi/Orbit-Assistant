@@ -345,6 +345,7 @@ final class OrbitLocalProvider implements AiProvider {
         in.screenContextAllowed = Prefs.screenContext(context);
         in.notificationContext = request.notificationContext;
         in.trustedTaskContext = request.trustedTaskContext;
+        in.keptText = KeptContext.localSegments(request.keptContext.included);
         in.prompt = request.prompt;
         in.quote = currentQuote(request);
         in.imageCount = picturesIn(request);

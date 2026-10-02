@@ -50,6 +50,13 @@ public final class PendingRequestStore {
          * after a process death cannot produce a second assistant message for one user turn.
          */
         public final boolean committed;
+        /**
+         * The answer this request is a retry of (0.8.3.0-beta.3+), or "" for an ordinary turn. A
+         * retry becomes a new answer variant beside the one it was asked about rather than
+         * replacing it; see {@link #variantAt()}. Frozen with the request, so a retry that runs
+         * after a process death still lands on the answer the user retried.
+         */
+        public final String variantTarget;
 
         public Item(String id, String conversationId, String prompt, String screenText, String screenshotPath,
                     String status, String error, long createdAt, long updatedAt, boolean voiceRequest, boolean draftReply,
@@ -77,7 +84,19 @@ public final class PendingRequestStore {
                     long updatedAt, boolean voiceRequest, boolean draftReply,
                     AiSelection selection, boolean explicitAttachment, String trustedTaskContext,
                     boolean committed) {
+            this(id, conversationId, prompt, screenText, screenshotPaths, status, error,
+                    createdAt, updatedAt, voiceRequest, draftReply, selection, explicitAttachment,
+                    trustedTaskContext, committed, "");
+        }
+
+        /** The full constructor, with the answer a retry is a variant of. */
+        public Item(String id, String conversationId, String prompt, String screenText,
+                    List<String> screenshotPaths, String status, String error, long createdAt,
+                    long updatedAt, boolean voiceRequest, boolean draftReply,
+                    AiSelection selection, boolean explicitAttachment, String trustedTaskContext,
+                    boolean committed, String variantTarget) {
             this.committed = committed;
+            this.variantTarget = variantTarget == null ? "" : variantTarget.trim();
             this.id = id;
             this.conversationId = conversationId;
             this.prompt = prompt;
@@ -100,6 +119,47 @@ public final class PendingRequestStore {
             this.explicitAttachment = explicitAttachment;
             this.trustedTaskContext = trustedTaskContext == null ? "" : trustedTaskContext;
         }
+
+        /** Whether this request is a retry that becomes a new answer variant. */
+        public boolean isAnswerVariant() { return variantAt() > 0; }
+
+        /** Position of the answer being retried, or -1 for an ordinary turn. */
+        public int variantAt() {
+            String[] parts = variantTarget.split(VARIANT_SEPARATOR, -1);
+            if (parts.length != 3 || !"v1".equals(parts[0])) return -1;
+            try { return Integer.parseInt(parts[1]); } catch (Exception e) { return -1; }
+        }
+
+        /** Fingerprint of the question before that answer, or "". */
+        public String variantParent() {
+            String[] parts = variantTarget.split(VARIANT_SEPARATOR, -1);
+            return parts.length == 3 ? parts[2] : "";
+        }
+    }
+
+    /** A literal "|", as a regular expression. */
+    private static final String VARIANT_SEPARATOR = java.util.regex.Pattern.quote("|");
+
+    /** The stored form of a variant target: the answer's position and its question's fingerprint. */
+    static String variantTarget(int at, String parentKey) {
+        if (at <= 0 || parentKey == null || parentKey.trim().isEmpty()) return "";
+        return "v1|" + at + "|" + parentKey.trim();
+    }
+
+    static Item createVariant(Context c, String conversationId, String prompt, String screenText,
+                              List<String> screenshotPaths, boolean voiceRequest, boolean draftReply,
+                              AiSelection selection, boolean explicitAttachment,
+                              String trustedTaskContext, String variantTarget) {
+        return create(c, conversationId, prompt, screenText, screenshotPaths, voiceRequest,
+                draftReply, selection, explicitAttachment, trustedTaskContext, variantTarget);
+    }
+
+    public static synchronized Item create(Context c, String conversationId, String prompt, String screenText,
+                                           List<String> screenshotPaths, boolean voiceRequest, boolean draftReply,
+                                           AiSelection selection, boolean explicitAttachment,
+                                           String trustedTaskContext) {
+        return create(c, conversationId, prompt, screenText, screenshotPaths, voiceRequest,
+                draftReply, selection, explicitAttachment, trustedTaskContext, "");
     }
 
     public static synchronized Item create(Context c, String conversationId, String prompt, String screenText,
@@ -113,15 +173,15 @@ public final class PendingRequestStore {
                 voiceRequest, draftReply, selection, explicitAttachment, trustedTaskContext);
     }
 
-    public static synchronized Item create(Context c, String conversationId, String prompt, String screenText,
-                                           List<String> screenshotPaths, boolean voiceRequest, boolean draftReply,
-                                           AiSelection selection, boolean explicitAttachment,
-                                           String trustedTaskContext) {
+    static synchronized Item create(Context c, String conversationId, String prompt, String screenText,
+                                    List<String> screenshotPaths, boolean voiceRequest, boolean draftReply,
+                                    AiSelection selection, boolean explicitAttachment,
+                                    String trustedTaskContext, String variantTarget) {
         long now = System.currentTimeMillis();
         Item item = new Item(UUID.randomUUID().toString(), conversationId, prompt == null ? "" : prompt,
                 screenText == null ? "" : screenText, screenshotPaths,
                 QUEUED, "", now, now, voiceRequest, draftReply, selection, explicitAttachment,
-                trustedTaskContext, false);
+                trustedTaskContext, false, variantTarget);
         List<Item> all = readAll(c);
         all.add(0, item);
         trim(all);
@@ -216,7 +276,7 @@ public final class PendingRequestStore {
             all.set(x, new Item(i.id, i.conversationId, i.prompt, i.screenText, i.screenshotPaths,
                     i.status, i.error, i.createdAt, System.currentTimeMillis(), i.voiceRequest,
                     i.draftReply, i.selection, i.explicitAttachment, i.trustedTaskContext,
-                    true));
+                    true, i.variantTarget));
             writeAll(c, all, true);
             return true;
         }
@@ -250,7 +310,7 @@ public final class PendingRequestStore {
             if (!i.id.equals(id)) continue;
             all.set(x, new Item(i.id, i.conversationId, i.prompt, i.screenText, i.screenshotPaths,
                     status, error, i.createdAt, now, i.voiceRequest, i.draftReply,
-                    i.selection, i.explicitAttachment, i.trustedTaskContext, i.committed));
+                    i.selection, i.explicitAttachment, i.trustedTaskContext, i.committed, i.variantTarget));
             break;
         }
         trim(all);
@@ -277,7 +337,8 @@ public final class PendingRequestStore {
                         readSelection(c, o),
                         o.optBoolean("explicitAttachment", false),
                         o.optString("trustedTaskContext", ""),
-                        o.optBoolean("committed", false)));
+                        o.optBoolean("committed", false),
+                        o.optString("variantTarget", "")));
             }
         } catch (Exception ignored) {}
         return result;
@@ -338,6 +399,8 @@ public final class PendingRequestStore {
                         .put("explicitAttachment", i.explicitAttachment)
                         .put("trustedTaskContext", i.trustedTaskContext)
                         .put("committed", i.committed));
+                // Only for a retry, so an ordinary request's record is exactly what it was.
+                if (!i.variantTarget.isEmpty()) arr.getJSONObject(arr.length() - 1).put("variantTarget", i.variantTarget);
             }
         } catch (Exception ignored) {}
         SharedPreferences.Editor edit = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)

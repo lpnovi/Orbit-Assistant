@@ -44,6 +44,8 @@ public final class AiRequest {
     public final String notificationContext;
     public final String memoryContext;
     public final String trustedTaskContext;
+    /** What the user kept in this chat, already framed as untrusted data. Never null. */
+    public final KeptContext.Prepared keptContext;
     /**
      * True once the user has stopped this request. Providers poll it between streamed tokens so
      * a cancelled local generation stops burning battery; cloud providers may ignore it because
@@ -79,6 +81,7 @@ public final class AiRequest {
         this.notificationContext = b.notificationContext == null ? "" : b.notificationContext;
         this.memoryContext = b.memoryContext == null ? "" : b.memoryContext;
         this.trustedTaskContext = b.trustedTaskContext == null ? "" : b.trustedTaskContext;
+        this.keptContext = b.keptContext == null ? KeptContext.Prepared.NONE : b.keptContext;
         this.cancelled = b.cancelled == null ? () -> false : b.cancelled;
         this.thinkingUpdates = b.thinkingUpdates;
     }
@@ -96,6 +99,7 @@ public final class AiRequest {
         private String notificationContext;
         private String memoryContext;
         private String trustedTaskContext;
+        private KeptContext.Prepared keptContext;
         private BooleanSupplier cancelled;
         private boolean thinkingUpdates;
 
@@ -109,6 +113,7 @@ public final class AiRequest {
         public Builder notificationContext(String v) { notificationContext = v; return this; }
         public Builder memoryContext(String v) { memoryContext = v; return this; }
         public Builder trustedTaskContext(String v) { trustedTaskContext = v; return this; }
+        public Builder keptContext(KeptContext.Prepared v) { keptContext = v; return this; }
         public Builder cancelled(BooleanSupplier v) { cancelled = v; return this; }
         public Builder thinkingUpdates(boolean v) { thinkingUpdates = v; return this; }
         public AiRequest build() { return new AiRequest(this); }

@@ -360,26 +360,107 @@ public final class OrbitBackupManager {
             String selection = o.optString("aiSelection", "");
             if (!selection.isEmpty() && AiSelection.decode(selection) == null) invalid("conversation history");
             JSONArray messages = o.optJSONArray("messages");
-            if (messages == null || messages.length() > 40) invalid("conversation history");
-            for (int j = 0; j < messages.length(); j++) {
-                JSONObject m = messages.optJSONObject(j);
-                if (m == null) invalid("conversation history");
-                String role = m.optString("role", "");
-                String content = m.optString("content", "");
-                if (!("user".equals(role) || "assistant".equals(role)) || content.isEmpty() ||
-                        content.length() > 12000 || m.optString("attachmentText", "").length() > 105000)
-                    invalid("conversation history");
-                // Local paths are never accepted from an imported file, in either shape. A path in
-                // a backup is a path into someone else's device; the bytes travel as attachment
-                // records and are written to fresh files on this one.
-                if (!m.optString("attachmentPath", "").isEmpty()) invalid("conversation attachments");
-                JSONArray importedPaths = m.optJSONArray("attachmentPaths");
-                if (importedPaths != null && importedPaths.length() > 0) {
-                    invalid("conversation attachments");
+            validateMessages(messages);
+            // Branches and kept context (0.8.3.0-beta.3+). Both are optional, so a backup from any
+            // earlier Orbit restores unchanged; when present they are bounded and path-free.
+            JSONArray forks = o.optJSONArray("forks");
+            if (forks != null) {
+                int[] budget = {ConversationBranches.MAX_FORKS};
+                validateForks(forks, budget);
+            }
+            JSONArray kept = o.optJSONArray("kept");
+            if (kept != null) {
+                if (kept.length() > KeptContext.MAX_ITEMS) invalid("kept chat context");
+                for (int k = 0; k < kept.length(); k++) {
+                    JSONObject item = kept.optJSONObject(k);
+                    if (item == null || KeptContext.fromJson(item) == null
+                            || item.optString("text", "").length() > KeptContext.MAX_TEXT_CHARS
+                            || !item.optString("documentPath", "").isEmpty()) invalid("kept chat context");
                 }
             }
         }
         return ids;
+    }
+
+    private static void validateMessages(JSONArray messages) throws Exception {
+        if (messages == null || messages.length() > 40) invalid("conversation history");
+        for (int j = 0; j < messages.length(); j++) {
+            JSONObject m = messages.optJSONObject(j);
+            if (m == null) invalid("conversation history");
+            String role = m.optString("role", "");
+            String content = m.optString("content", "");
+            if (!("user".equals(role) || "assistant".equals(role)) || content.isEmpty() ||
+                    content.length() > 12000 || m.optString("attachmentText", "").length() > 105000)
+                invalid("conversation history");
+            // Local paths are never accepted from an imported file, in either shape. A path in
+            // a backup is a path into someone else's device; the bytes travel as attachment
+            // records and are written to fresh files on this one.
+            if (!m.optString("attachmentPath", "").isEmpty()) invalid("conversation attachments");
+            JSONArray importedPaths = m.optJSONArray("attachmentPaths");
+            if (importedPaths != null && importedPaths.length() > 0) {
+                invalid("conversation attachments");
+            }
+        }
+    }
+
+    /**
+     * Stored branches, bounded the way Orbit itself bounds them: no more forks in total than a chat
+     * keeps, no more alternatives per fork, and every stored message held to the same rules as a
+     * visible one. Whether a fork still fits its path is decided again on read, where an
+     * inconsistent one is dropped rather than trusted.
+     */
+    private static void validateForks(JSONArray forks, int[] budget) throws Exception {
+        for (int i = 0; i < forks.length(); i++) {
+            if (--budget[0] < 0) invalid("conversation branches");
+            JSONObject fork = forks.optJSONObject(i);
+            JSONArray variants = fork == null ? null : fork.optJSONArray("variants");
+            if (variants == null || variants.length() < 2
+                    || variants.length() > ConversationBranches.MAX_VARIANTS) invalid("conversation branches");
+            int active = 0;
+            for (int v = 0; v < variants.length(); v++) {
+                JSONObject variant = variants.optJSONObject(v);
+                if (variant == null) invalid("conversation branches");
+                if (variant.optBoolean("active", false)) { active++; continue; }
+                validateMessages(variant.optJSONArray("messages"));
+                JSONArray nested = variant.optJSONArray("forks");
+                if (nested != null) validateForks(nested, budget);
+            }
+            if (active != 1) invalid("conversation branches");
+        }
+    }
+
+    /**
+     * Every message object in one conversation record, live: the visible path first, then every
+     * message stored in a branch. Attachments travel with all of them, because a hidden branch is
+     * still part of the chat the user backed up.
+     */
+    private static List<JSONObject> allMessages(JSONObject conversation) {
+        List<JSONObject> out = new ArrayList<>();
+        collectMessages(conversation.optJSONArray("messages"), conversation.optJSONArray("forks"),
+                out, 0);
+        return out;
+    }
+
+    private static void collectMessages(JSONArray messages, JSONArray forks, List<JSONObject> out,
+                                        int depth) {
+        if (messages != null) {
+            for (int i = 0; i < messages.length(); i++) {
+                JSONObject m = messages.optJSONObject(i);
+                if (m != null) out.add(m);
+            }
+        }
+        if (forks == null || depth > ConversationBranches.MAX_FORKS) return;
+        for (int i = 0; i < forks.length(); i++) {
+            JSONObject fork = forks.optJSONObject(i);
+            JSONArray variants = fork == null ? null : fork.optJSONArray("variants");
+            if (variants == null) continue;
+            for (int v = 0; v < variants.length(); v++) {
+                JSONObject variant = variants.optJSONObject(v);
+                if (variant == null || variant.optBoolean("active", false)) continue;
+                collectMessages(variant.optJSONArray("messages"), variant.optJSONArray("forks"),
+                        out, depth + 1);
+            }
+        }
     }
 
     private static void validateActionResults(JSONObject results, Set<String> conversations) throws Exception {
@@ -583,9 +664,8 @@ public final class OrbitBackupManager {
         }
         Set<String> referenced = new HashSet<>();
         for (int i = 0; i < conversations.length(); i++) {
-            JSONArray messages = conversations.getJSONObject(i).getJSONArray("messages");
-            for (int j = 0; j < messages.length(); j++) {
-                String ref = messages.getJSONObject(j).optString("attachmentRef", "").trim();
+            for (JSONObject message : allMessages(conversations.getJSONObject(i))) {
+                String ref = message.optString("attachmentRef", "").trim();
                 if (!ref.isEmpty()) {
                     if (!decoded.containsKey(ref)) invalid("conversation attachments");
                     referenced.add(ref);
@@ -603,9 +683,17 @@ public final class OrbitBackupManager {
         String rootPrefix = historyRoot.getPath() + File.separator;
         long total = 0L;
         for (int i = 0; i < conversations.length(); i++) {
-            JSONArray messages = conversations.getJSONObject(i).getJSONArray("messages");
-            for (int j = 0; j < messages.length(); j++) {
-                JSONObject message = messages.getJSONObject(j);
+            JSONObject conversation = conversations.getJSONObject(i);
+            // A kept document's path is device-local like any other: the kept text travels, the
+            // path to the file it came from does not.
+            JSONArray kept = conversation.optJSONArray("kept");
+            if (kept != null) {
+                for (int k = 0; k < kept.length(); k++) {
+                    JSONObject item = kept.optJSONObject(k);
+                    if (item != null) item.remove("documentPath");
+                }
+            }
+            for (JSONObject message : allMessages(conversation)) {
                 // Both shapes are read and both are blanked, so no device-local path leaves this
                 // phone whichever way the turn was written.
                 List<String> paths = new ArrayList<>();
@@ -780,9 +868,7 @@ public final class OrbitBackupManager {
         }
         JSONArray conversations = data.getJSONArray("conversations");
         for (int i = 0; i < conversations.length(); i++) {
-            JSONArray messages = conversations.getJSONObject(i).getJSONArray("messages");
-            for (int j = 0; j < messages.length(); j++) {
-                JSONObject message = messages.getJSONObject(j);
+            for (JSONObject message : allMessages(conversations.getJSONObject(i))) {
                 JSONArray refs = message.optJSONArray("attachmentRefs");
                 if (refs == null) {
                     String single = message.optString("attachmentRef", "");

@@ -209,17 +209,20 @@ public final class ChatAiControlsTest {
 
     // ---- retry ---------------------------------------------------------------------------------
 
-    @Test public void retryReplacesTheAnswerWithoutDuplicatingTheQuestion() {
+    /** Since 0.8.3.0-beta.3 the answer being retried is kept; the retry becomes another version. */
+    @Test public void retryKeepsTheAnswerWithoutDuplicatingTheQuestion() {
         seed("c1", "What is Saturn?", "A planet.");
         ChatActivity chat = open("c1").get();
         chat.retryLastResponse(null);
         ConversationStore.Conversation after = ConversationStore.load(context, "c1");
-        assertEquals("only the user turn remains while the new answer is on its way",
-                1, after.messages.size());
+        assertEquals("nothing is removed while the new answer is on its way",
+                2, after.messages.size());
+        assertEquals("A planet.", after.messages.get(1).content);
         assertEquals("What is Saturn?", after.messages.get(0).content);
         List<PendingRequestStore.Item> active = PendingRequestStore.activeForConversation(context, "c1");
         assertEquals(1, active.size());
         assertEquals("What is Saturn?", active.get(0).prompt);
+        assertTrue("it is a variant of the answer, not a new turn", active.get(0).isAnswerVariant());
     }
 
     @Test public void aSecondTapCannotStartASecondRetry() {
@@ -229,7 +232,7 @@ public final class ChatAiControlsTest {
         chat.retryLastResponse(null);
         assertEquals(1, PendingRequestStore.activeForConversation(context, "c1").size());
         assertEquals("and no older answer is removed by the second tap",
-                1, ConversationStore.load(context, "c1").messages.size());
+                2, ConversationStore.load(context, "c1").messages.size());
     }
 
     @Test public void retryWithUsesTheChosenAiForThatRetryOnly() {

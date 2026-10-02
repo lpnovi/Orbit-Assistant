@@ -104,7 +104,9 @@ final class RelayProvider implements AiProvider {
                         ? request.prompt + "\n\n[Orbit note: the user attached " + offeredImages
                                 + " images. This backend accepts one image per message, so only the"
                                 + " first was sent. Say so if the answer depends on the others.]"
-                        : request.prompt) + (quote.isEmpty() ? "" : "\n\n" + quote));
+                        : request.prompt) + (quote.isEmpty() ? "" : "\n\n" + quote)
+                        // What the user kept in this chat, already framed as untrusted data.
+                        + request.keptContext.block);
                 payload.put("model", request.selection.model);
                 payload.put("reasoning", request.selection.effortId());
                 payload.put("clientTime", OffsetDateTime.now().toString());
