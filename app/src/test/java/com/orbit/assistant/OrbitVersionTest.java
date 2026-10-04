@@ -147,47 +147,45 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * 0.8.3.0-beta.6 is the OpenRouter Connect Beta, the sixth AI Control Beta.
+     * The 0.8.3.0 AI Control line is finished, and must be published as Stable.
      *
-     * <p>It must carry Beta metadata, produce a Beta tag, be published as a prerelease, outrank
-     * 0.8.2.0 and everything before it, and rank below the 0.8.3.0 Stable it leads to. A Beta build
-     * offers the Pro Preview override.
+     * <p>Six Betas built AI Control. Beta 6 passed real-device testing and is promoted with release
+     * metadata only. A Stable build must carry Stable metadata, produce a Stable tag, never be
+     * published as a prerelease, outrank every Beta it follows, and as a release build never offer
+     * the developer Pro Preview override.
      */
-    @Test public void thisBuildIsTheOpenRouterConnectBeta() {
+    @Test public void thisBuildIsTheAiControlStableRelease() {
         String version = BuildConfig.VERSION_NAME;
-        assertTrue(OrbitVersion.installedIsBeta());
-        assertTrue(OrbitVersion.isBeta(version));
-        assertFalse(OrbitVersion.isStable(version));
-        assertEquals("0.8.3.0-beta.6", version);
+        assertFalse(OrbitVersion.installedIsBeta());
+        assertTrue(OrbitVersion.isStable(version));
+        assertFalse(OrbitVersion.isBeta(version));
+        assertEquals("0.8.3.0", version);
         assertEquals("0.8.3.0", OrbitVersion.baseVersion(version));
-        assertEquals(6, OrbitVersion.betaNumber(version));
+        assertEquals("a Stable release has no beta counter", 0, OrbitVersion.betaNumber(version));
 
-        assertEquals("v0.8.3.0-beta.6", OrbitVersion.tagFor(version));
-        assertTrue("the release workflow must publish it as a prerelease",
+        assertEquals("Orbit Assistant v0.8.3.0", OrbitVersion.releaseTitle(version));
+        assertEquals("v0.8.3.0", OrbitVersion.tagFor(version));
+        assertTrue("the release workflow must publish it as a normal release",
+                OrbitVersion.isStableTag(OrbitVersion.tagFor(version)));
+        assertFalse("and never as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
-        assertFalse(OrbitVersion.isStableTag(OrbitVersion.tagFor(version)));
 
-        assertTrue("it must outrank the Stable release it follows",
+        assertTrue("it must outrank the previous Stable release",
                 OrbitVersion.compareVersions(version, "0.8.2.0") > 0);
-        assertTrue(OrbitVersion.compareVersions(version, "0.8.2.0-beta.2") > 0);
-        assertTrue(OrbitVersion.compareVersions(version, "0.8.1.0") > 0);
-        assertTrue("and rank below the Stable it leads to",
-                OrbitVersion.compareVersions(version, "0.8.3.0") < 0);
-        assertTrue("and above the AI Control Betas before it",
-                OrbitVersion.compareVersions(version, "0.8.3.0-beta.2") > 0);
-        assertTrue(OrbitVersion.compareVersions(version, "0.8.3.0-beta.1") > 0);
-        assertTrue(OrbitVersion.compareVersions(version, "0.8.3.0-beta.4") > 0);
+        assertTrue("and every Beta of its own line",
+                OrbitVersion.compareVersions(version, "0.8.3.0-beta.1") > 0);
         assertTrue(OrbitVersion.compareVersions(version, "0.8.3.0-beta.5") > 0);
-        assertTrue("and below its own next Beta",
-                OrbitVersion.compareVersions(version, "0.8.3.0-beta.7") < 0);
-        assertTrue("a Beta build offers the Pro Preview override",
+        assertTrue("including the tested Beta it was promoted from",
+                OrbitVersion.compareVersions(version, "0.8.3.0-beta.6") > 0);
+        assertFalse("a Stable release build never offers the Pro Preview override",
                 OrbitProEntitlement.previewAvailable(false, version));
     }
 
-    /** 0.8.3.0-beta.6 must supersede Beta 5, published as versionCode 809. */
+    /** Stable must supersede Beta 6, published as versionCode 810. */
     @Test public void thisBuildOutranksThePublishedReleaseItFollows() {
-        assertEquals("the Beta must use the next synchronized version code",
-                810, BuildConfig.VERSION_CODE);
-        assertTrue(OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.8.3.0-beta.5") > 0);
+        assertEquals("Stable must use the next synchronized version code",
+                811, BuildConfig.VERSION_CODE);
+        assertTrue(OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.8.3.0-beta.6") > 0);
+        assertTrue(OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.8.2.0") > 0);
     }
 }

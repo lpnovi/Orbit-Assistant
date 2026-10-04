@@ -127,6 +127,10 @@ public final class RoadmapSyncTest {
                 file.indexOf("### `0.8.2.0` Stable - Orbit Local 2.0") >= 0);
         assertTrue("above the active plan as well",
                 file.indexOf("### `0.8.2.0` Stable - Orbit Local 2.0") < current);
+        assertTrue("the 0.8.3.0 AI Control line is recorded as Stable",
+                file.indexOf("### `0.8.3.0` Stable - AI Control") >= 0);
+        assertTrue("above the active plan as well",
+                file.indexOf("### `0.8.3.0` Stable - AI Control") < current);
         assertTrue("and the active plan still names its milestone",
                 file.indexOf(OrbitRoadmap.CURRENT, current) > current);
 

@@ -842,6 +842,12 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.3.0**: AI Control is now Stable: choose exactly which AI answers you, and how hard it thinks.
+  - Pick the provider, model and strength for each chat from a searchable Model Library with ChatGPT, Claude, Grok and OpenRouter.
+  - Sign in with ChatGPT or OpenRouter through your browser; API keys still work for Claude, Grok and OpenRouter.
+  - Auto can pick a model for each message, but only from the providers you allow, and a model you choose is always the one that answers.
+  - Edit earlier messages into branches, flip between retried answers, and watch a ring show how full the chat is.
+  - New chats get automatic titles, and Continue in new chat carries a short summary forward.
 - **v0.8.3.0-beta.6**: OpenRouter Connect: sign in with OpenRouter and use its large model catalog in Orbit.
   - Sign in with OpenRouter through your browser. No need to create or paste a key, though API keys still work for advanced users.
   - OpenRouter's models appear in the Model Library, searchable by name, maker or model ID, and clearly marked apart from direct ChatGPT, Claude and Grok.

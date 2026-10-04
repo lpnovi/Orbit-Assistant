@@ -9,6 +9,16 @@ canonical record of what actually shipped.
 
 ## Shipped / Stable
 
+### `0.8.3.0` Stable - AI Control
+
+Released from the tested Beta 6 line with no product-behavior changes. Per-chat provider, model and
+strength choice, browser sign-in for ChatGPT and OpenRouter, Claude and Grok through developer API
+keys, the searchable Model Library with Favorites and Recents, Smart Routing's Auto with its
+per-provider permissions, Conversation Control (branches, answer versions, Send with, kept context,
+the context meter and Continue in new chat), automatic conversation titles and response details are
+now Stable. A model the user chooses is always the model that answers, and Auto only ever uses the
+providers the user allows. The record of the six Betas and what is still ahead is under Current below.
+
 ### `0.8.2.0` Stable - Orbit Local 2.0
 
 Released from the tested Beta 2 line with no product-behavior changes. Offline Ask Vault, the
@@ -508,7 +518,8 @@ Planned after this completed line:
 The 0.8.3 line replaces Auto, Fast, Balanced, Deep and Custom with three direct choices:
 **provider, model and strength**. The user always knows which model answers and how much reasoning
 it is asked to use, and Orbit never quietly sends a request somewhere else because a question
-looked hard.
+looked hard. It was released as `0.8.3.0` Stable after six Betas; the work still ahead below
+continues the same line.
 
 **Honesty rule.** The selected model is the model that answers. If an account cannot use it, Orbit
 says so, keeps the selection, and lets the user choose another; it never answers with a different

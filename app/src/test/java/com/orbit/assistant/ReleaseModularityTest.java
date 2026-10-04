@@ -185,16 +185,17 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * 0.8.3.0-beta.6 is the OpenRouter Connect Beta.
+     * The 0.8.3.0 AI Control line reaches Stable after six Betas.
      *
-     * <p>It must carry Beta metadata, and the changelog entry the release workflow builds its notes
-     * from must already exist for this version name.
+     * <p>Beta 6 is the tested behavior and is promoted unchanged, so this build must carry Stable
+     * metadata, and the changelog entry the release workflow builds its notes from must exist for
+     * the Stable version name.
      */
-    @Test public void thisReleaseIsTheOpenRouterConnectBeta() {
-        assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
-                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
-        assertTrue(OrbitVersion.installedIsBeta());
+    @Test public void thisReleaseIsAiControlStable() {
+        assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
+                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.installedIsBeta());
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
     }
 
