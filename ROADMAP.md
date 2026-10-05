@@ -673,6 +673,20 @@ missing because of the look a user picked.
   conversation grows with its content
 - **Classic is unchanged** and stays selectable
 
+#### `0.8.4.0-beta.4` - responsive Float, Peek and quick controls
+
+- **Float adapts to the window.** On landscape phones, tablets and other wide windows Float becomes
+  a bounded card in the bottom-right corner instead of stretching across the screen, clear of the
+  navigation bar and cutouts, and the keyboard only lifts it
+- **Peek.** Tapping Float's handle folds it into a small capsule in the same corner. The chat,
+  draft, reply, voice and background completion carry on; tapping the capsule unfolds it. Swiping
+  the handle down still closes Orbit, and swiping up still opens the full chat
+- **Quick controls.** Look & Feel gains an Overlay section where the AI model, Recent chats, New
+  chat, screen buttons, Attach and Voice can each be hidden from the overlay. Hiding moves a
+  control into the overlay's More menu; it never removes the feature
+- **Live preview.** The Overlay section draws the selected style with the chosen controls and
+  updates as they change
+
 ### Orbit Local 2.0 - more of Orbit, privately on the phone
 
 Orbit Local began as private offline chat. The 0.8.2 line makes it a first-class part of Orbit:

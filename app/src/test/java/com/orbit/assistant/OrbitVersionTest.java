@@ -147,22 +147,22 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * 0.8.4.0-beta.3 is the third Overlay Styles Beta: overlay polish.
+     * 0.8.4.0-beta.4 is the fourth Overlay Styles Beta: responsive Float, Peek and quick controls.
      *
      * <p>It must carry Beta metadata, produce a Beta tag, be published as a prerelease, outrank
      * 0.8.3.0 Stable and everything before it, and rank below its own next Beta and the 0.8.4.0
      * Stable it leads to. A Beta build offers the Pro Preview override.
      */
-    @Test public void thisBuildIsOverlayStylesBeta3() {
+    @Test public void thisBuildIsOverlayStylesBeta4() {
         String version = BuildConfig.VERSION_NAME;
         assertTrue(OrbitVersion.installedIsBeta());
         assertTrue(OrbitVersion.isBeta(version));
         assertFalse(OrbitVersion.isStable(version));
-        assertEquals("0.8.4.0-beta.3", version);
+        assertEquals("0.8.4.0-beta.4", version);
         assertEquals("0.8.4.0", OrbitVersion.baseVersion(version));
-        assertEquals(3, OrbitVersion.betaNumber(version));
+        assertEquals(4, OrbitVersion.betaNumber(version));
 
-        assertEquals("v0.8.4.0-beta.3", OrbitVersion.tagFor(version));
+        assertEquals("v0.8.4.0-beta.4", OrbitVersion.tagFor(version));
         assertTrue("the release workflow must publish it as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
         assertFalse(OrbitVersion.isStableTag(OrbitVersion.tagFor(version)));
@@ -170,19 +170,19 @@ public final class OrbitVersionTest {
         assertTrue("it must outrank the previous Stable release",
                 OrbitVersion.compareVersions(version, "0.8.3.0") > 0);
         assertTrue("and every Beta before it",
-                OrbitVersion.compareVersions(version, "0.8.4.0-beta.2") > 0);
+                OrbitVersion.compareVersions(version, "0.8.4.0-beta.3") > 0);
         assertTrue("and below its own next Beta",
-                OrbitVersion.compareVersions(version, "0.8.4.0-beta.4") < 0);
+                OrbitVersion.compareVersions(version, "0.8.4.0-beta.5") < 0);
         assertTrue("and below the Stable it leads to",
                 OrbitVersion.compareVersions(version, "0.8.4.0") < 0);
         assertTrue("a Beta build offers the Pro Preview override",
                 OrbitProEntitlement.previewAvailable(false, version));
     }
 
-    /** 0.8.4.0-beta.3 must supersede 0.8.4.0-beta.2, published as versionCode 813. */
+    /** 0.8.4.0-beta.4 must supersede 0.8.4.0-beta.3, published as versionCode 814. */
     @Test public void thisBuildOutranksThePublishedReleaseItFollows() {
         assertEquals("the Beta must use the next synchronized version code",
-                814, BuildConfig.VERSION_CODE);
-        assertTrue(OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.8.4.0-beta.2") > 0);
+                815, BuildConfig.VERSION_CODE);
+        assertTrue(OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.8.4.0-beta.3") > 0);
     }
 }

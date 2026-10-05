@@ -17,6 +17,25 @@ final class OverlayStretch {
 
     private OverlayStretch() {}
 
+    /** What letting go of the drag handle means. */
+    enum Release { OPEN_CHAT, DISMISS, PEEK, SETTLE }
+
+    /**
+     * Classifies a finished handle touch. Up past the threshold opens the chat and down past it
+     * closes Orbit, exactly as before. Only a touch that never left the touch slop, and was let go
+     * before a long press, is a tap, and a tap folds a style that can peek into Peek. Everything in
+     * between, including a hesitant half-drag either way, settles back where it was, so a sloppy
+     * tap can neither close Orbit nor minimise it.
+     */
+    static Release release(float totalDy, boolean moved, long heldMs, int thresholdPx,
+                           long longPressMs, boolean canPeek, boolean cancelled) {
+        if (cancelled) return Release.SETTLE;
+        if (totalDy <= -thresholdPx) return Release.OPEN_CHAT;
+        if (totalDy >= thresholdPx) return Release.DISMISS;
+        if (!moved && heldMs < longPressMs && canPeek) return Release.PEEK;
+        return Release.SETTLE;
+    }
+
     /**
      * Conversation height for a finger that has moved {@code dy} pixels from where it started,
      * negative being upward.

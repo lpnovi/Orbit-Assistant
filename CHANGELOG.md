@@ -842,6 +842,13 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.4.0-beta.4**: Overlay Styles Beta 4: a smarter Float and a new Overlay section in Look & Feel.
+  - Float now adapts to landscape and larger screens, resting as a neat card in the bottom-right corner.
+  - Tap Float's handle to fold it into a compact Peek that keeps your chat, reply and voice going.
+  - Choose which quick controls stay on the overlay; hidden ones remain one tap away in its More menu.
+  - A live overlay preview in Look & Feel shows your style and controls as you change them.
+  - Further animation, sizing and interaction polish across the overlay.
+
 - **v0.8.4.0-beta.3**: Overlay Styles Beta 3: a small polish pass on the Side-button assistant.
   - Refined how the overlay is drawn and sized, so compact styles stay tidy near the bottom of the screen.
   - The Overlay style setting now describes every style consistently.

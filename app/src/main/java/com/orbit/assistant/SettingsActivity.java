@@ -71,6 +71,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     private Button assistantAction;
     /** The Vault card's way into Smart Vault, hidden with the Vault itself. */
     private Button smartVaultButton;
+    private OverlayPreviewView overlayPreview;
     private TextView quickRoutineSelection;
     private TextView chatGptStatus;
     private LinearLayout providerDetails;
@@ -1123,6 +1124,9 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         studioCard.addView(themeStudioRow());
         page.addView(target(SettingsSearchIndex.KEY_THEME_STUDIO, studioCard));
 
+        page.addView(sectionTitle("OVERLAY", "appearance"));
+        page.addView(target(SettingsSearchIndex.KEY_OVERLAY, overlayCard()));
+
         // A heading of its own rather than a bare second card. It says what the card below is for,
         // and it carries the same spacing every other section break on this page has, which is what
         // stops the two surfaces from appearing fused into one.
@@ -1147,16 +1151,6 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
                 12, UiKit.MUTED, false);
         chatSizeNote.setPadding(0, UiKit.dp(this, 8), 0, UiKit.dp(this, 14));
         styleCard.addView(chatSizeNote);
-
-        TextView overlayStyleLabel = label("Overlay style");
-        overlayStyleLabel.setPadding(UiKit.dp(this, 2), 0, 0, UiKit.dp(this, 6));
-        styleCard.addView(controlGroup(SettingsSearchIndex.KEY_OVERLAY_STYLE,
-                overlayStyleLabel, overlayStyleSelector(), null));
-        TextView overlayStyleNote = UiKit.text(this,
-                "How the Side-button assistant looks. Modern is Orbit's full floating assistant. Float is a compact assistant that stays near the bottom of the screen and grows only when a conversation needs the room. Classic is the original Orbit side-button overlay. Every style works the same way, and the change applies the next time you open the assistant.",
-                12, UiKit.MUTED, false);
-        overlayStyleNote.setPadding(0, UiKit.dp(this, 8), 0, UiKit.dp(this, 14));
-        styleCard.addView(overlayStyleNote);
 
         // Haptics stays here on purpose. It is not a color, it is not saved in a theme, and
         // applying a Theme Studio preset must never silently change how the phone feels.
@@ -2191,6 +2185,78 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         return selector;
     }
 
+    /**
+     * Look &amp; Feel's Overlay card: a live preview, the style, and which quick controls stay on the
+     * sheet. Every row writes the same preferences the overlay reads on its next opening, and the
+     * preview redraws from them at once. The styles offered come from {@link OverlayStyle#choices},
+     * so Lelo mode's page rebuild is all it takes for the list and the preview to follow it.
+     */
+    private View overlayCard() {
+        LinearLayout card = card();
+        tagSectionCard(card, "appearance");
+        TextView intro = UiKit.text(this, "Customize how Orbit appears over other apps.",
+                13, UiKit.MUTED, false);
+        intro.setPadding(UiKit.dp(this, 2), 0, 0, UiKit.dp(this, 12));
+        card.addView(intro);
+
+        overlayPreview = new OverlayPreviewView(this);
+        LinearLayout.LayoutParams previewLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        previewLp.setMargins(0, 0, 0, UiKit.dp(this, 16));
+        card.addView(target(SettingsSearchIndex.KEY_OVERLAY_PREVIEW, overlayPreview), previewLp);
+
+        TextView styleLabel = label("Overlay style");
+        styleLabel.setPadding(UiKit.dp(this, 2), 0, 0, UiKit.dp(this, 6));
+        card.addView(controlGroup(SettingsSearchIndex.KEY_OVERLAY_STYLE,
+                styleLabel, overlayStyleSelector(), null));
+        TextView styleNote = UiKit.text(this,
+                "Modern is Orbit's full floating assistant. Float is compact and grows only when a conversation needs the room; on wider screens it rests in the bottom-right corner, and tapping its handle folds it into a small Peek that keeps your chat going. Classic is the original overlay. Every style works the same way, and changes apply the next time you open the assistant.",
+                12, UiKit.MUTED, false);
+        styleNote.setPadding(0, UiKit.dp(this, 2), 0, UiKit.dp(this, 6));
+        card.addView(styleNote);
+
+        LinearLayout quick = new LinearLayout(this);
+        quick.setOrientation(LinearLayout.VERTICAL);
+        TextView quickLabel = label("Quick controls");
+        quickLabel.setPadding(UiKit.dp(this, 2), UiKit.dp(this, 14), 0, UiKit.dp(this, 2));
+        quick.addView(quickLabel);
+        TextView quickNote = UiKit.text(this,
+                "Choose which controls stay on the overlay. Hidden ones are still one tap away in its More menu, where Float always keeps Recent chats and New chat.",
+                12, UiKit.MUTED, false);
+        quickNote.setPadding(UiKit.dp(this, 2), 0, 0, UiKit.dp(this, 4));
+        quick.addView(quickNote);
+        quick.addView(overlayToggle("AI model", null, Prefs.OVERLAY_SHOW_MODEL));
+        quick.addView(overlayToggle("Recent chats", null, Prefs.OVERLAY_SHOW_HISTORY));
+        quick.addView(overlayToggle("New chat", null, Prefs.OVERLAY_SHOW_NEW_CHAT));
+        quick.addView(overlayToggle("Screen buttons",
+                "Use screen and Select area. Also in Attach, under Screen.", Prefs.OVERLAY_SHOW_SCREEN));
+        quick.addView(overlayToggle("Attach", null, Prefs.OVERLAY_SHOW_ATTACH));
+        quick.addView(overlayToggle("Voice",
+                "Auto-listen still works, and the mic appears while Orbit is listening.",
+                Prefs.OVERLAY_SHOW_VOICE));
+        card.addView(target(SettingsSearchIndex.KEY_OVERLAY_QUICK_CONTROLS, quick));
+
+        refreshOverlayPreview();
+        return card;
+    }
+
+    private View overlayToggle(String label, String description, String key) {
+        OrbitSwitch control = new OrbitSwitch(this);
+        control.setChecked(Prefs.get(this).getBoolean(key, true), false);
+        control.setOnCheckedChangeListener((button, checked) -> {
+            Prefs.get(this).edit().putBoolean(key, checked).apply();
+            refreshOverlayPreview();
+        });
+        return UiKit.switchRow(this, label, description, control);
+    }
+
+    /** Redraws the preview from the stored overlay settings. */
+    private void refreshOverlayPreview() {
+        if (overlayPreview == null) return;
+        OverlayStyle style = OverlayStyle.current(this);
+        overlayPreview.show(style, OverlayControls.of(this, style));
+    }
+
     private View overlayStyleSelector() {
         List<OverlayStyle> choices = OverlayStyle.choices(this);
         String[] keys = new String[choices.size()];
@@ -2203,6 +2269,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         LinearLayout selector = menuSelector(labels, selected, (position, label) -> {
             String key = keys[Math.max(0, Math.min(keys.length - 1, position))];
             Prefs.setOverlayStyle(this, key);
+            refreshOverlayPreview();
         });
         selector.setLayoutParams(selectorLp());
         return selector;

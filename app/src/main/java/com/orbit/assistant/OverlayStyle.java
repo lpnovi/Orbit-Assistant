@@ -110,6 +110,40 @@ final class OverlayStyle {
         return compact ? "What can I help with?" : "Ask anything…";
     }
 
+    /** Float's minimised capsule: only the compact styles can fold into one. */
+    boolean canPeek() {
+        return compact;
+    }
+
+    /** Gap from the window's edges while the card sits in the corner, in dp. */
+    static final int CORNER_MARGIN_DP = 16;
+
+    /**
+     * The card's width for a window of this size in dp, or 0 to span the window between the
+     * style's margins. A compact style spans a narrow portrait window, and on anything wider or
+     * landscape it becomes a bounded card in the bottom-right corner: a little narrower on a
+     * short (phone landscape) window, a little wider on a large one. Decided from the window, not
+     * the device, so split screen and resizing land on the right arrangement too.
+     */
+    int cardWidthDp(int windowWidthDp, int windowHeightDp) {
+        if (!compact || windowWidthDp <= 0) return 0;
+        if (windowWidthDp < 600 && windowWidthDp <= windowHeightDp) return 0;
+        int target = windowHeightDp < 480 ? 400 : windowWidthDp >= 840 ? 480 : 440;
+        int available = windowWidthDp - 2 * CORNER_MARGIN_DP;
+        return target >= available ? 0 : target;
+    }
+
+    /**
+     * How tall the conversation may grow before it scrolls. A cornered card on a tall window gets
+     * more room than a phone does; nothing else changes.
+     */
+    int conversationCapDp(int windowWidthDp, int windowHeightDp) {
+        if (cardWidthDp(windowWidthDp, windowHeightDp) > 0 && windowHeightDp >= 720) {
+            return Math.round(conversationDp * 1.6f);
+        }
+        return conversationDp;
+    }
+
     static OverlayStyle of(String id) {
         if (Prefs.OVERLAY_STYLE_CLASSIC.equals(id)) return CLASSIC;
         if (Prefs.OVERLAY_STYLE_FLOAT.equals(id)) return FLOAT;

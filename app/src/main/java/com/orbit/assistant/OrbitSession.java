@@ -37,6 +37,7 @@ import android.view.MotionEvent;
 import android.view.TouchDelegate;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewOutlineProvider;
 import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.view.WindowInsets;
@@ -103,6 +104,44 @@ public class OrbitSession extends VoiceInteractionSession {
     private int stretchBaseHeight;
     private int stretchMaxHeight;
     private ValueAnimator stretchSettle;
+    /** Which optional controls this sheet shows in place, and what waits in More. */
+    private OverlayControls controls;
+    private ImageButton moreButton;
+    /** How tall the conversation may grow before it scrolls, from the window it sits in. */
+    private int conversationCapPx;
+    private boolean imeShowing;
+    /**
+     * Peek: a compact style folded into a capsule at the sheet's bottom-right corner. The sheet is
+     * never rebuilt or hidden for it. Its outline clips down to the capsule while a copy of its own
+     * surface, drawn as the foreground, covers the content, so the conversation, draft, request and
+     * microphone all carry on underneath exactly as they were.
+     */
+    private boolean peeking;
+    /** 0 is the full sheet, 1 the capsule; drives the outline, the cover and the label together. */
+    private float peekProgress;
+    private ValueAnimator peekMorph;
+    private LinearLayout peekView;
+    private TextView peekStatus;
+    private GradientDrawable peekCover;
+    private int peekWidth;
+    private int peekHeight;
+    /** True once a request has run while folded, so the capsule can say Done afterwards. */
+    private boolean peekSawWork;
+    /** Waiting for the keyboard to leave before folding, so the two motions do not overlap. */
+    private boolean pendingPeek;
+    private final Runnable pendingPeekFallback = () -> { if (pendingPeek) enterPeek(); };
+    private final ViewOutlineProvider peekOutline = new ViewOutlineProvider() {
+        @Override public void getOutline(View view, android.graphics.Outline outline) {
+            int w = view.getWidth();
+            int h = view.getHeight();
+            float p = peekProgress;
+            float rest = UiKit.dp(view.getContext(), style.cornerDp);
+            outline.setRoundRect(Math.round(Math.max(0, w - peekWidth) * p),
+                    Math.round(Math.max(0, h - peekHeight) * p), w, h,
+                    rest + (peekHeight / 2f - rest) * p);
+            outline.setAlpha(style.sheetAlpha / 255f);
+        }
+    };
     private AttachmentStripView attachmentStrip;
     private TextView stateText;
     private TextView modeChip;
@@ -267,6 +306,11 @@ public class OrbitSession extends VoiceInteractionSession {
                                     .flag("sessionVisible", sessionVisible));
                 }
                 @Override public void onViewDetachedFromWindow(View v) {}
+            });
+            // Rotation, split screen and window resizing change what a compact card should be, so
+            // a new window size re-runs the same placement the insets do.
+            root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+                if (r - l != or - ol || b - t != ob - ot) v.post(v::requestApplyInsets);
             });
             buildSheet(c);
             prepareHiddenState();
@@ -457,11 +501,18 @@ public class OrbitSession extends VoiceInteractionSession {
         dismissOwnershipToken++;
         if (sheet != null) sheet.animate().cancel();
         if (scrim != null) scrim.animate().cancel();
+        cancelPeekMorph();
+        peeking = false;
+        pendingPeek = false;
+        peekProgress = 0f;
+        peekSawWork = false;
         root.removeAllViews();
         root.setBackgroundColor(Color.TRANSPARENT);
         // Read once per build, which happens on every new invocation, so a Settings change shows
         // up on the next press without touching a sheet that is already on screen.
         style = OverlayStyle.current(c);
+        controls = OverlayControls.of(c, style);
+        conversationCapPx = UiKit.dp(c, style.conversationDp);
 
         // Keep the assistant card fully opaque during motion. Only this dedicated
         // scrim fades, which prevents launcher icons from ghosting through the sheet.
@@ -492,8 +543,13 @@ public class OrbitSession extends VoiceInteractionSession {
         root.addView(sheet, sheetLp);
 
         FrameLayout handleZone = new FrameLayout(c);
-        handleZone.setContentDescription("Swipe up to open this chat. Swipe down to close Orbit.");
+        handleZone.setContentDescription(style.canPeek()
+                ? "Tap to minimize Orbit. Swipe up to open this chat. Swipe down to close Orbit."
+                : "Swipe up to open this chat. Swipe down to close Orbit.");
         handleZone.setClickable(true);
+        // A tap on the handle arrives here (and so does an accessibility click): Peek, for a style
+        // that has one. Drags never reach it; installHandleGestures classifies them first.
+        if (style.canPeek()) handleZone.setOnClickListener(v -> requestPeek());
         View handle = new View(c);
         handle.setBackground(UiKit.rounded(style.cute ? CutieTouches.pastel(c)
                 : Color.rgb(74, 79, 92), 3, c));
@@ -568,35 +624,37 @@ public class OrbitSession extends VoiceInteractionSession {
                 ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(c, 32));
         modeLp.setMargins(0, 0, UiKit.dp(c, 8), 0);
         top.addView(modeChip, modeLp);
-        installModeChipTouchTarget(top, modeChip);
+        if (controls.model) installModeChipTouchTarget(top, modeChip);
+        else modeChip.setVisibility(View.GONE);
 
+        // Header slots come from OverlayControls: whatever is not shown in place waits in one More
+        // menu, which only exists while it has something in it.
         int icon = UiKit.dp(c, style.iconDp);
-        if (style.compact) {
-            // Float keeps one slot for the two secondary destinations; both stay one tap away.
-            ImageButton more = tinyIconButton(com.orbit.assistant.R.drawable.ic_more);
-            more.setContentDescription("More options");
-            more.setOnClickListener(v -> UiKit.showOrbitMenu(c, more,
-                    new String[]{"Recent chats", "New chat"}, -1, (index, label) -> {
-                        if (index == 0) showHistoryPicker();
-                        else startNewChat();
-                    }));
-            LinearLayout.LayoutParams moreLp = new LinearLayout.LayoutParams(icon, icon);
-            moreLp.setMargins(0, 0, UiKit.dp(c, 6), 0);
-            top.addView(more, moreLp);
-        } else {
+        if (controls.history) {
             ImageButton recent = tinyIconButton(com.orbit.assistant.R.drawable.ic_history);
             recent.setContentDescription("Recent chats");
             recent.setOnClickListener(v -> showHistoryPicker());
             LinearLayout.LayoutParams recentLp = new LinearLayout.LayoutParams(icon, icon);
             recentLp.setMargins(0, 0, UiKit.dp(c, 6), 0);
             top.addView(recent, recentLp);
-
+        }
+        if (controls.newChat) {
             ImageButton newChat = tinyIconButton(com.orbit.assistant.R.drawable.ic_add);
             newChat.setContentDescription("New chat");
             newChat.setOnClickListener(v -> startNewChat());
             LinearLayout.LayoutParams newChatLp = new LinearLayout.LayoutParams(icon, icon);
             newChatLp.setMargins(0, 0, UiKit.dp(c, 6), 0);
             top.addView(newChat, newChatLp);
+        }
+        moreButton = null;
+        if (controls.hasOverflow()) {
+            ImageButton more = tinyIconButton(com.orbit.assistant.R.drawable.ic_more);
+            more.setContentDescription("More options");
+            more.setOnClickListener(v -> showOverflowMenu(more));
+            LinearLayout.LayoutParams moreLp = new LinearLayout.LayoutParams(icon, icon);
+            moreLp.setMargins(0, 0, UiKit.dp(c, 6), 0);
+            top.addView(more, moreLp);
+            moreButton = more;
         }
 
         ImageButton close = tinyIconButton(com.orbit.assistant.R.drawable.ic_close);
@@ -675,6 +733,11 @@ public class OrbitSession extends VoiceInteractionSession {
         LinearLayout.LayoutParams selectLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(c, 32));
         screenActions.addView(selectScreenButton, selectLp);
+        if (!controls.screen) {
+            // Hidden in place only: Attach > Screen still offers both, and More carries Attach.
+            screenButton.setVisibility(View.GONE);
+            selectScreenButton.setVisibility(View.GONE);
+        }
         if (!style.integratedComposer) {
             contextBar.addView(screenActions, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -701,14 +764,14 @@ public class OrbitSession extends VoiceInteractionSession {
         if (style.compact) suggestionScroll.setVisibility(View.GONE);
 
         final OverlayStyle built = style;
-        final int conversationCap = UiKit.dp(c, style.conversationDp);
         messageScroll = new ScrollView(c) {
             @Override protected void onMeasure(int widthSpec, int heightSpec) {
-                // A content-fitting conversation stops growing at its style's cap and scrolls.
+                // A content-fitting conversation stops growing at its cap and scrolls. The cap
+                // follows the window (see placeSheet), so it is read here rather than captured.
                 int mode = MeasureSpec.getMode(heightSpec);
                 if (built.fitsContent() && mode != MeasureSpec.EXACTLY) {
-                    int size = mode == MeasureSpec.UNSPECIFIED ? conversationCap
-                            : Math.min(conversationCap, MeasureSpec.getSize(heightSpec));
+                    int size = mode == MeasureSpec.UNSPECIFIED ? conversationCapPx
+                            : Math.min(conversationCapPx, MeasureSpec.getSize(heightSpec));
                     heightSpec = MeasureSpec.makeMeasureSpec(size, MeasureSpec.AT_MOST);
                 }
                 super.onMeasure(widthSpec, heightSpec);
@@ -769,6 +832,7 @@ public class OrbitSession extends VoiceInteractionSession {
         ImageButton attach = tinyIconButton(com.orbit.assistant.R.drawable.ic_add);
         attach.setContentDescription("Attach to message");
         attach.setOnClickListener(v -> showAttachmentMenu(attach));
+        if (!controls.attach) attach.setVisibility(View.GONE);
 
         // Behaves as an ordinary EditText; it additionally records when Android asks it for an
         // input connection, which is the one thing no previous investigation could observe.
@@ -808,6 +872,9 @@ public class OrbitSession extends VoiceInteractionSession {
         mic = tinyIconButton(com.orbit.assistant.R.drawable.ic_mic);
         mic.setContentDescription("Voice input");
         mic.setOnClickListener(v -> toggleListening());
+        // A hidden mic still appears while it is listening, so a voice turn started from More or
+        // by auto-listen always has its stop control in the usual place.
+        if (!controls.voice && !listening) mic.setVisibility(View.GONE);
 
         // A freshly built control starts as Send, so the remembered state starts there too and a
         // rebuilt composer cannot be left showing the wrong one.
@@ -877,9 +944,242 @@ public class OrbitSession extends VoiceInteractionSession {
             return false;
         });
 
+        buildPeek(c);
         updateContextUi();
         UiKit.applyTypography(root);
         root.post(root::requestApplyInsets);
+    }
+
+    /**
+     * The capsule's label, laid over the corner the sheet folds into. It has no surface of its own:
+     * the sheet's clipped outline is the capsule, so nothing new appears or teleports, and the label
+     * only fades in once the sheet has nearly arrived. Sized once for its longest state, so a status
+     * change never resizes it.
+     */
+    private void buildPeek(Context c) {
+        peekView = null;
+        peekStatus = null;
+        peekCover = null;
+        if (!style.canPeek() || sheet == null) return;
+        peekCover = UiKit.gradientSheet(c, style.cornerDp);
+        peekCover.setAlpha(0);
+
+        LinearLayout pill = new LinearLayout(c);
+        pill.setGravity(Gravity.CENTER_VERTICAL);
+        pill.setPadding(UiKit.dp(c, 14), 0, UiKit.dp(c, 18), 0);
+        peekHeight = UiKit.dp(c, 54);
+        // A hairline in the user's accent, so the capsule reads as a whole shape at every edge.
+        GradientDrawable ring = new GradientDrawable();
+        ring.setCornerRadius(peekHeight / 2f);
+        ring.setStroke(UiKit.dp(c, 1), UiKit.withAlpha(style.cute ? CutieTouches.pastel(c)
+                : UiKit.accent(c), 96));
+        pill.setBackground(ring);
+        GradientDrawable mask = new GradientDrawable();
+        mask.setCornerRadius(peekHeight / 2f);
+        mask.setColor(Color.WHITE);
+        pill.setForeground(new android.graphics.drawable.RippleDrawable(
+                ColorStateList.valueOf(UiKit.withAlpha(UiKit.accent(c), 46)), null, mask));
+        // The sheet below casts the shadow; a second one here would double it.
+        pill.setOutlineProvider(null);
+        pill.setElevation(sheet.getElevation() + UiKit.dp(c, 1));
+
+        View mark = UiKit.orbitMark(c, 22);
+        int markPx = UiKit.dp(c, style.cute ? 30 : 24);
+        if (style.cute) mark = CutieTouches.dressMark(c, mark, UiKit.dp(c, 24));
+        LinearLayout.LayoutParams markLp = new LinearLayout.LayoutParams(markPx, markPx);
+        markLp.rightMargin = UiKit.dp(c, 8);
+        pill.addView(mark, markLp);
+        TextView title = UiKit.text(c, UiKit.appTitle(c), 14, UiKit.TEXT, true);
+        title.setSingleLine(true);
+        title.setEllipsize(TextUtils.TruncateAt.END);
+        title.setMaxWidth(UiKit.dp(c, 120));
+        pill.addView(title);
+        peekStatus = UiKit.text(c, " · Listening…", 13, UiKit.MUTED, false);
+        peekStatus.setSingleLine(true);
+        pill.addView(peekStatus);
+        // Measured in the app's own font, which may be wider than the default.
+        UiKit.applyTypography(pill);
+        pill.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                View.MeasureSpec.makeMeasureSpec(peekHeight, View.MeasureSpec.EXACTLY));
+        peekWidth = Math.min(UiKit.dp(c, 264), Math.max(UiKit.dp(c, 150), pill.getMeasuredWidth()));
+        peekStatus.setText(" · Ready");
+
+        pill.setClickable(true);
+        pill.setContentDescription(UiKit.appTitle(c) + " minimized. Tap to expand.");
+        pill.setOnClickListener(v -> expandFromPeek());
+        pill.setAlpha(0f);
+        pill.setVisibility(View.GONE);
+        root.addView(pill, new FrameLayout.LayoutParams(peekWidth, peekHeight,
+                Gravity.BOTTOM | Gravity.RIGHT));
+        peekView = pill;
+        syncPeekFrame();
+    }
+
+    /** Keeps the capsule's label on the sheet's bottom-right corner, wherever the sheet sits. */
+    private void syncPeekFrame() {
+        if (peekView == null || sheet == null) return;
+        FrameLayout.LayoutParams s = (FrameLayout.LayoutParams) sheet.getLayoutParams();
+        FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) peekView.getLayoutParams();
+        if (p.rightMargin == s.rightMargin && p.bottomMargin == s.bottomMargin) return;
+        p.rightMargin = s.rightMargin;
+        p.bottomMargin = s.bottomMargin;
+        peekView.setLayoutParams(p);
+    }
+
+    /** The handle was tapped. Waits for Orbit's own keyboard to leave first, if it is up. */
+    private void requestPeek() {
+        if (!style.canPeek() || peeking || pendingPeek || dismissAnimating || peekView == null) return;
+        MessageActions.dismiss();
+        OrbitAttachmentMenu.dismiss(root);
+        if (imeShowing) {
+            pendingPeek = true;
+            hideKeyboard();
+            // The insets normally say when the keyboard has gone; this covers a device that never
+            // reports it.
+            main.postDelayed(pendingPeekFallback, 400);
+            return;
+        }
+        enterPeek();
+    }
+
+    private void enterPeek() {
+        pendingPeek = false;
+        main.removeCallbacks(pendingPeekFallback);
+        if (peeking || dismissAnimating || sheet == null || peekView == null) return;
+        peeking = true;
+        peekSawWork = busy;
+        if (stretchSettle != null) stretchSettle.cancel();
+        sheet.animate().cancel();
+        sheet.setTranslationY(0f);
+        // The entrance fade would otherwise keep writing the dim the fold now owns.
+        if (scrim != null) scrim.animate().cancel();
+        if (Prefs.haptics(getContext())) vibrate(12);
+        refreshPeek(null);
+        // Hidden content stays laid out, so nothing reflows; it is only withheld from TalkBack.
+        sheet.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        morphPeek(1f);
+        // Touches outside the capsule now belong to the app underneath (see onComputeInsets).
+        root.requestLayout();
+    }
+
+    private void expandFromPeek() {
+        if (!peeking || sheet == null) return;
+        peeking = false;
+        sheet.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+        morphPeek(0f);
+        root.requestLayout();
+        // Whatever finished while folded is what the person came back for.
+        if (peekSawWork) scrollBottom();
+        peekSawWork = false;
+    }
+
+    /**
+     * One animator for the whole fold, both ways: the outline, the cover over the content, the
+     * label and the dim all read the same progress, so nothing can drift out of step. Reversing
+     * mid-way starts from wherever the last one was, and the duration shrinks with the distance.
+     * Same emphasised easing and roughly the same length as Orbit's own sheet entrance.
+     */
+    private void morphPeek(float target) {
+        if (sheet == null || peekView == null) return;
+        cancelPeekMorph();
+        sheet.setOutlineProvider(peekOutline);
+        sheet.setClipToOutline(true);
+        sheet.setForeground(peekCover);
+        peekView.setVisibility(View.VISIBLE);
+        float from = peekProgress;
+        ValueAnimator morph = ValueAnimator.ofFloat(from, target);
+        morph.setDuration(UiKit.animationsEnabled() ? Math.round(280 * Math.abs(target - from)) : 0);
+        morph.setInterpolator(new PathInterpolator(0.20f, 0.00f, 0.00f, 1.00f));
+        morph.addUpdateListener(a -> applyPeekProgress((float) a.getAnimatedValue()));
+        morph.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator animation) {
+                if (animation != peekMorph) return;
+                peekMorph = null;
+                applyPeekProgress(target);
+                if (target == 0f) clearPeekSurface();
+            }
+        });
+        peekMorph = morph;
+        morph.start();
+    }
+
+    private void applyPeekProgress(float p) {
+        peekProgress = p;
+        if (sheet != null) sheet.invalidateOutline();
+        // The content is covered by its own surface in the first half, and the label arrives in
+        // the second, so the two never overlap into a jumble.
+        if (peekCover != null) peekCover.setAlpha(Math.round(255 * Math.min(1f, p / 0.5f)));
+        if (peekView != null) peekView.setAlpha(Math.max(0f, (p - 0.55f) / 0.45f));
+        if (scrim != null) scrim.setAlpha(1f - p);
+    }
+
+    /** Back to an ordinary sheet: the outline follows its background again and nothing covers it. */
+    private void clearPeekSurface() {
+        if (sheet != null) {
+            sheet.setClipToOutline(false);
+            sheet.setOutlineProvider(ViewOutlineProvider.BACKGROUND);
+            sheet.setForeground(null);
+            sheet.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+        }
+        if (peekView != null) {
+            peekView.setAlpha(0f);
+            peekView.setVisibility(View.GONE);
+        }
+    }
+
+    private void cancelPeekMorph() {
+        ValueAnimator running = peekMorph;
+        peekMorph = null;
+        if (running != null) running.cancel();
+    }
+
+    /** Puts a folded or folding sheet straight back, for a fresh show. */
+    private void resetPeek() {
+        cancelPeekMorph();
+        main.removeCallbacks(pendingPeekFallback);
+        peeking = false;
+        pendingPeek = false;
+        peekSawWork = false;
+        peekProgress = 0f;
+        clearPeekSurface();
+        if (peekView != null) peekView.setTranslationY(0f);
+    }
+
+    /**
+     * The capsule's status, from the same state the sheet shows: listening, thinking or speaking
+     * while that is happening, then Done once something finished while folded.
+     */
+    private void refreshPeek(String sheetState) {
+        if (!peeking || peekStatus == null || peekView == null) return;
+        if (busy) peekSawWork = true;
+        String status;
+        if (listening) status = "Listening…";
+        else if (busy) status = "Thinking…";
+        else if (speaking) status = "Speaking…";
+        else if ("Needs attention".equals(sheetState)) status = "Needs attention";
+        else status = peekSawWork ? "Done" : "Ready";
+        peekStatus.setTextColor("Done".equals(status) ? UiKit.accent(getContext()) : UiKit.MUTED);
+        UiKit.swapText(peekStatus, " · " + status);
+        peekView.setContentDescription(UiKit.appTitle(getContext()) + " minimized, " + status
+                + ". Tap to expand.");
+    }
+
+    /** True while folded into Peek. For tests. */
+    boolean isPeekingForTest() { return peeking; }
+
+    /**
+     * While folded, only the capsule takes touches; the rest of the screen goes to the app
+     * underneath, which is the point of folding. Otherwise the whole window does, as before.
+     */
+    @Override
+    public void onComputeInsets(Insets outInsets) {
+        super.onComputeInsets(outInsets);
+        if (!peeking || peekView == null || peekView.getWidth() <= 0) return;
+        int[] at = new int[2];
+        peekView.getLocationInWindow(at);
+        outInsets.touchableRegion.set(at[0], at[1],
+                at[0] + peekView.getWidth(), at[1] + peekView.getHeight());
+        outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION;
     }
 
     private String readyState() {
@@ -904,6 +1204,38 @@ public class OrbitSession extends VoiceInteractionSession {
             ConversationStore.removeKept(getContext(), conversationId, items.get(index).id);
             stateTextSafe(readyState());
         });
+    }
+
+    /**
+     * More: every optional control the user moved out of its own place, each doing exactly what
+     * its button does. Built from {@link OverlayControls}, so it can never list something the
+     * sheet already shows, nor leave something hidden with no way back to it.
+     */
+    private void showOverflowMenu(View anchor) {
+        if (controls == null || !controls.hasOverflow()) return;
+        List<String> items = controls.overflow;
+        UiKit.showOrbitMenu(getContext(), anchor, items.toArray(new String[0]), -1,
+                (index, label) -> {
+                    String item = items.get(index);
+                    if (OverlayControls.MODEL.equals(item)) {
+                        // The same pause the AI menu already leaves between chained menus.
+                        main.postDelayed(this::showModeMenu, 160);
+                    } else if (OverlayControls.HISTORY.equals(item)) {
+                        showHistoryPicker();
+                    } else if (OverlayControls.NEW_CHAT.equals(item)) {
+                        startNewChat();
+                    } else if (OverlayControls.ATTACH.equals(item)) {
+                        main.postDelayed(() -> showAttachmentMenu(anchor), 160);
+                    } else if (OverlayControls.VOICE.equals(item)) {
+                        toggleListening();
+                    }
+                });
+    }
+
+    /** Where the AI menus open: the chip, or More while the chip is hidden. */
+    private View aiMenuAnchor() {
+        if (modeChip != null && modeChip.getVisibility() == View.VISIBLE) return modeChip;
+        return moreButton != null ? moreButton : modeChip;
     }
 
     /**
@@ -935,7 +1267,7 @@ public class OrbitSession extends VoiceInteractionSession {
         if (providerIndex >= 0) {
             labels.add("Provider · " + (s.isAuto() ? browse.providerName() : s.providerName()));
         }
-        UiKit.showOrbitMenu(c, modeChip, labels.toArray(new String[0]), selected, (index, label) -> {
+        UiKit.showOrbitMenu(c, aiMenuAnchor(), labels.toArray(new String[0]), selected, (index, label) -> {
             if (index == 0) {
                 applyOverlaySelection(AiSelection.AUTO);
             } else if (index < modelsEnd) {
@@ -970,7 +1302,7 @@ public class OrbitSession extends VoiceInteractionSession {
             labels[i] = strengths.get(i).label;
             if (strengths.get(i) == currentSelection.strength) selected = i;
         }
-        UiKit.showOrbitMenu(getContext(), modeChip, labels, selected, (index, label) ->
+        UiKit.showOrbitMenu(getContext(), aiMenuAnchor(), labels, selected, (index, label) ->
                 applyOverlaySelection(AiSelections.withStrength(currentSelection, strengths.get(index))));
     }
 
@@ -983,7 +1315,7 @@ public class OrbitSession extends VoiceInteractionSession {
             labels[i] = providers.get(i).displayName();
             if (providers.get(i).id().equals(currentSelection.provider)) selected = i;
         }
-        UiKit.showOrbitMenu(getContext(), modeChip, labels, selected, (index, label) ->
+        UiKit.showOrbitMenu(getContext(), aiMenuAnchor(), labels, selected, (index, label) ->
                 applyOverlaySelection(AiSelections.withProvider(getContext(), currentSelection,
                         providers.get(index).id())));
     }
@@ -1372,6 +1704,41 @@ public class OrbitSession extends VoiceInteractionSession {
 
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) sheet.getLayoutParams();
         int baseMargin = UiKit.dp(getContext(), style.marginDp);
+        int barsBottom = 0;
+        Context c = getContext();
+        float density = c.getResources().getDisplayMetrics().density;
+        int rootWidth = root.getWidth() > 0 ? root.getWidth() : c.getResources().getDisplayMetrics().widthPixels;
+        int rootHeight = root.getHeight() > 0 ? root.getHeight() : c.getResources().getDisplayMetrics().heightPixels;
+        int widthDp = Math.round(rootWidth / density);
+        int heightDp = Math.round(rootHeight / density);
+        int cardDp = style.cardWidthDp(widthDp, heightDp);
+        conversationCapPx = UiKit.dp(c, style.conversationCapDp(widthDp, heightDp));
+        if (cardDp > 0) {
+            // A bounded card in the bottom-right corner, clear of a side navigation bar, the
+            // gesture bar and any cutout. The keyboard only ever changes its bottom edge below,
+            // so typing never stretches it across the screen or moves it to another corner.
+            int barsRight;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                android.graphics.Insets bars = insets.getInsets(
+                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                barsRight = bars.right;
+                barsBottom = bars.bottom;
+            } else {
+                barsRight = insets.getSystemWindowInsetRight();
+                barsBottom = insets.getSystemWindowInsetBottom();
+            }
+            baseMargin = UiKit.dp(c, Math.max(style.marginDp, OverlayStyle.CORNER_MARGIN_DP));
+            lp.width = UiKit.dp(c, cardDp);
+            lp.gravity = Gravity.BOTTOM | Gravity.RIGHT;
+            lp.leftMargin = baseMargin;
+            lp.rightMargin = baseMargin + barsRight;
+        } else {
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            lp.gravity = Gravity.BOTTOM;
+            lp.leftMargin = baseMargin;
+            lp.rightMargin = baseMargin;
+        }
+        imeShowing = imeVisible;
         if (imeVisible && style.fitsContent()) {
             // Sits on the keyboard at its own size. The weighted conversation is what gives way
             // when the space above the keyboard is shorter than the sheet.
@@ -1379,8 +1746,6 @@ public class OrbitSession extends VoiceInteractionSession {
             lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
             restConversation();
         } else if (imeVisible) {
-            int rootHeight = root.getHeight();
-            if (rootHeight <= 0) rootHeight = getContext().getResources().getDisplayMetrics().heightPixels;
             lp.bottomMargin = imeBottom + baseMargin;
             lp.height = Math.max(UiKit.dp(getContext(), 260), rootHeight - imeBottom - 2 * baseMargin);
             if (messageScroll != null) {
@@ -1390,11 +1755,14 @@ public class OrbitSession extends VoiceInteractionSession {
                 messageScroll.setLayoutParams(scrollParams);
             }
         } else {
-            lp.bottomMargin = baseMargin;
+            lp.bottomMargin = baseMargin + barsBottom;
             lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
             restConversation();
         }
         sheet.setLayoutParams(lp);
+        syncPeekFrame();
+        // The keyboard Orbit asked to leave has gone, so the fold can start from a still sheet.
+        if (pendingPeek && !imeVisible) enterPeek();
         // Layout mutation while the IME is up is one of the few things Orbit does during a turn
         // that could plausibly disturb the input target, so it is recorded rather than assumed
         // innocent.
@@ -3921,6 +4289,16 @@ public class OrbitSession extends VoiceInteractionSession {
     private void updateMic() {
         main.post(() -> {
             if (mic == null) return;
+            // Hidden as a quick control, but present while listening so it can be stopped.
+            boolean showMic = controls == null || controls.voice || listening;
+            if (showMic != (mic.getVisibility() == View.VISIBLE)) {
+                mic.setVisibility(showMic ? View.VISIBLE : View.GONE);
+                if (showMic && UiKit.animationsEnabled()) {
+                    mic.setAlpha(0f);
+                    mic.animate().alpha(1f).setDuration(UiKit.MOTION_FAST).start();
+                }
+            }
+            refreshPeek(null);
             mic.setImageResource(com.orbit.assistant.R.drawable.ic_mic);
             if (!listening) stopListeningHalo();
             if (listening) {
@@ -4388,6 +4766,7 @@ public class OrbitSession extends VoiceInteractionSession {
                 stateText.setClickable(opens);
                 stateText.setFocusable(opens);
             }
+            refreshPeek(s);
         });
     }
 
@@ -4427,6 +4806,8 @@ public class OrbitSession extends VoiceInteractionSession {
         final boolean[] dragging = new boolean[1];
         handleZone.setOnTouchListener((v, event) -> {
             if (sheet == null || dismissAnimating) return false;
+            // Folded: the handle is under the capsule cover and takes nothing until it unfolds.
+            if (peeking) return true;
             float rawY = event.getRawY();
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
@@ -4463,14 +4844,22 @@ public class OrbitSession extends VoiceInteractionSession {
                     return true;
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
-                    float total = rawY - startY[0];
-                    int threshold = UiKit.dp(getContext(), 58);
-                    if (event.getActionMasked() == MotionEvent.ACTION_UP && total <= -threshold) {
+                    OverlayStretch.Release release = OverlayStretch.release(
+                            rawY - startY[0], dragging[0],
+                            event.getEventTime() - event.getDownTime(),
+                            UiKit.dp(getContext(), 58),
+                            android.view.ViewConfiguration.getLongPressTimeout(),
+                            style.canPeek(),
+                            event.getActionMasked() == MotionEvent.ACTION_CANCEL);
+                    if (release == OverlayStretch.Release.OPEN_CHAT) {
                         if (Prefs.haptics(getContext())) vibrate(24);
                         openCurrentChatAnimated();
-                    } else if (event.getActionMasked() == MotionEvent.ACTION_UP && total >= threshold) {
+                    } else if (release == OverlayStretch.Release.DISMISS) {
                         if (Prefs.haptics(getContext())) vibrate(20);
                         dismissAnimated(OverlayLaunchTrace.REASON_SWIPE_DOWN);
+                    } else if (release == OverlayStretch.Release.PEEK) {
+                        // Through the click listener, the same path an accessibility tap takes.
+                        v.performClick();
                     } else {
                         settleHandleGesture();
                     }
@@ -4592,6 +4981,9 @@ public class OrbitSession extends VoiceInteractionSession {
         final int startLeft = lp.leftMargin;
         final int startRight = lp.rightMargin;
         final int startBottom = lp.bottomMargin;
+        // A cornered card widens into the full chat from its corner; a full-width one already is.
+        final int startWidth = lp.width > 0 ? sheet.getWidth() : 0;
+        final int targetWidth = root.getWidth();
         final float startTranslation = sheet.getTranslationY();
 
         // Continue the conversation's growth from exactly where the finger left it, rather than
@@ -4616,6 +5008,7 @@ public class OrbitSession extends VoiceInteractionSession {
             if (sheet == null) return;
             float eased = (float) animation.getAnimatedValue();
             lp.height = Math.round(startHeight + (targetHeight - startHeight) * eased);
+            if (startWidth > 0) lp.width = Math.round(startWidth + (targetWidth - startWidth) * eased);
             lp.leftMargin = Math.round(startLeft * (1f - eased));
             lp.rightMargin = Math.round(startRight * (1f - eased));
             lp.bottomMargin = Math.round(startBottom * (1f - eased));
@@ -4751,6 +5144,7 @@ public class OrbitSession extends VoiceInteractionSession {
             scrim.animate().cancel();
             scrim.setAlpha(0f);
         }
+        resetPeek();
         if (sheet != null) {
             sheet.animate().cancel();
             sheet.setAlpha(1f);
@@ -4863,6 +5257,12 @@ public class OrbitSession extends VoiceInteractionSession {
                     hide();
                 })
                 .start();
+        // Closed while folded: the capsule's label leaves with the surface it sits on.
+        if (peekView != null && peekView.getVisibility() == View.VISIBLE) {
+            peekView.animate().cancel();
+            peekView.animate().translationY(travel).setDuration(225)
+                    .setInterpolator(new PathInterpolator(0.40f, 0.00f, 1.00f, 1.00f)).start();
+        }
         if (scrim != null) {
             scrim.animate()
                     .alpha(0f)

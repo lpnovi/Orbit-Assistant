@@ -190,6 +190,17 @@ public final class Prefs {
      */
     static final String OVERLAY_STYLE_MIGRATED = "overlay_style_beta2";
     /**
+     * The overlay's optional quick controls, all shown unless the user hides one. Hiding moves a
+     * control into the overlay's More menu; it never turns the feature off. See
+     * {@link OverlayControls}.
+     */
+    public static final String OVERLAY_SHOW_MODEL = "overlay_show_model";
+    public static final String OVERLAY_SHOW_HISTORY = "overlay_show_history";
+    public static final String OVERLAY_SHOW_NEW_CHAT = "overlay_show_new_chat";
+    public static final String OVERLAY_SHOW_SCREEN = "overlay_show_screen";
+    public static final String OVERLAY_SHOW_ATTACH = "overlay_show_attach";
+    public static final String OVERLAY_SHOW_VOICE = "overlay_show_voice";
+    /**
      * Whether Orbit draws its own interactive back gesture when returning to the previous screen.
      *
      * <p>Deliberately not a switch for Android's Back gesture, which Orbit neither owns nor may
@@ -302,7 +313,8 @@ public final class Prefs {
             THEME_SURFACE, THEME_BACKGROUND, THEME_ID, THEME_NAME, THEME_MATERIAL,
             THEME_PRO_BACKGROUND_EFFECT_COLOR));
     private static final Set<String> BACKUP_BOOLEAN_KEYS = new HashSet<>(Arrays.asList(
-            OVERLAY_STYLE_MIGRATED, SCREEN_CONTEXT, SCREENSHOT, CONTEXT_CHIPS, ATTACH_SCREEN_BY_DEFAULT,
+            OVERLAY_STYLE_MIGRATED, OVERLAY_SHOW_MODEL, OVERLAY_SHOW_HISTORY, OVERLAY_SHOW_NEW_CHAT,
+            OVERLAY_SHOW_SCREEN, OVERLAY_SHOW_ATTACH, OVERLAY_SHOW_VOICE, SCREEN_CONTEXT, SCREENSHOT, CONTEXT_CHIPS, ATTACH_SCREEN_BY_DEFAULT,
             SPEAK, HAPTICS, AUTO_LISTEN, AUTO_LISTEN_ON_OPEN, SMART_FOLLOW_UPS,
             VOICE_PAUSE_FRIENDLY, NEW_CHAT_ON_OPEN,
             HISTORY_ENABLED, SAVE_SCREEN_THUMBNAILS, KEYBOARD_AWARE_ASSISTANT, SHOW_STOP_BUTTON,
