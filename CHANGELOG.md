@@ -842,6 +842,12 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.4.0-beta.3**: Overlay Styles Beta 3: a small polish pass on the Side-button assistant.
+  - Refined how the overlay is drawn and sized, so compact styles stay tidy near the bottom of the screen.
+  - The Overlay style setting now describes every style consistently.
+  - Every style keeps all of Orbit's capabilities, including voice, screen context, attachments and history.
+  - Added a few small surprises along the way.
+
 - **v0.8.4.0-beta.2**: Overlay Styles Beta 2: three distinct looks for the Side-button assistant, with Modern as the new default.
   - Beta 1's Float is now called Modern, and it is the default overlay; if you chose Float in Beta 1, you keep that same look.
   - The new Float is a truly compact assistant that sits near the bottom of the screen.

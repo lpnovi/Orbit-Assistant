@@ -33,7 +33,8 @@ import org.robolectric.shadows.ShadowLooper;
 @Config(sdk = {29, 35})
 public class OverlayStyleTest {
     private static final String[] STYLES = {
-            Prefs.OVERLAY_STYLE_MODERN, Prefs.OVERLAY_STYLE_FLOAT, Prefs.OVERLAY_STYLE_CLASSIC};
+            Prefs.OVERLAY_STYLE_MODERN, Prefs.OVERLAY_STYLE_FLOAT, Prefs.OVERLAY_STYLE_CLASSIC,
+            Prefs.OVERLAY_STYLE_CUTIE};
     /** Present as their own buttons in every style. */
     private static final String[] EVERY_CONTROL = {
             "Close Orbit", "Attach to message", "Voice input", "Send message",
@@ -137,7 +138,10 @@ public class OverlayStyleTest {
                 assertNotNull(style + " lost " + control, find(root, control));
             }
             assertNotNull(style + " lost the AI selector", modeChip(root));
-            if (Prefs.OVERLAY_STYLE_FLOAT.equals(style)) continue;
+            if (OverlayStyle.of(style).compact) {
+                assertNotNull(style + " lost its More menu", find(root, "More options"));
+                continue;
+            }
             assertNotNull(style + " lost Recent chats", find(root, "Recent chats"));
             assertNotNull(style + " lost New chat", find(root, "New chat"));
             assertNull(style + " grew a More menu", find(root, "More options"));
@@ -247,7 +251,158 @@ public class OverlayStyleTest {
         }
     }
 
+    @Test public void cutieExistsOnlyInLeloMode() {
+        // Off: never offered, and a stored choice reads as the public default without crashing.
+        assertFalse(OverlayStyle.choices(context).contains(OverlayStyle.CUTIE));
+        Prefs.setOverlayStyle(context, Prefs.OVERLAY_STYLE_CUTIE);
+        assertEquals(Prefs.OVERLAY_STYLE_MODERN, Prefs.overlayStyle(context));
+        assertSame(OverlayStyle.MODERN, OverlayStyle.current(context));
+
+        // On: offered last, after the public styles, and the stored choice comes straight back.
+        Prefs.get(context).edit().putBoolean(Prefs.LELO_MODE, true).commit();
+        java.util.List<OverlayStyle> choices = OverlayStyle.choices(context);
+        assertEquals(java.util.Arrays.asList(OverlayStyle.MODERN, OverlayStyle.FLOAT,
+                OverlayStyle.CLASSIC, OverlayStyle.CUTIE), choices);
+        assertSame(OverlayStyle.CUTIE, OverlayStyle.current(context));
+
+        // Off again: safe fallback, stored value untouched, so a later re-enable restores it.
+        Prefs.get(context).edit().putBoolean(Prefs.LELO_MODE, false).commit();
+        assertSame(OverlayStyle.MODERN, OverlayStyle.current(context));
+        assertEquals(Prefs.OVERLAY_STYLE_CUTIE, Prefs.get(context).getString(Prefs.OVERLAY_STYLE, null));
+        Prefs.get(context).edit().putBoolean(Prefs.LELO_MODE, true).commit();
+        assertSame(OverlayStyle.CUTIE, OverlayStyle.current(context));
+    }
+
+    @Test public void cutieIsNeverTheDefaultAndLeloModeLeavesOtherChoicesAlone() {
+        Prefs.get(context).edit().putBoolean(Prefs.LELO_MODE, true).commit();
+        assertSame("Lelo mode alone changes nothing", OverlayStyle.MODERN, OverlayStyle.current(context));
+        assertSame(OverlayStyle.MODERN, OverlayStyle.of(null));
+        assertSame(OverlayStyle.MODERN, OverlayStyle.of("unknown"));
+
+        for (String style : new String[]{Prefs.OVERLAY_STYLE_FLOAT, Prefs.OVERLAY_STYLE_CLASSIC}) {
+            Prefs.setOverlayStyle(context, style);
+            for (boolean lelo : new boolean[]{false, true, false}) {
+                Prefs.get(context).edit().putBoolean(Prefs.LELO_MODE, lelo).commit();
+                assertEquals(style, Prefs.overlayStyle(context));
+            }
+        }
+    }
+
+    @Test public void cutieIsAValidCompactStyleThatKeepsItsTheme() {
+        OverlayStyle s = OverlayStyle.of(Prefs.OVERLAY_STYLE_CUTIE);
+        assertSame(OverlayStyle.CUTIE, s);
+        assertTrue(s.cute);
+        assertTrue(s.compact);
+        assertTrue(s.integratedComposer);
+        assertTrue(s.fitsContent());
+        assertTrue("touch targets", s.iconDp >= 36);
+        // See-through, but only a little: text over a bright app stays readable.
+        assertTrue(s.sheetAlpha < 255 && s.sheetAlpha >= 215);
+        assertTrue(s.conversationDp <= OverlayStyle.FLOAT.conversationDp);
+        assertTrue(s.hint().contains("cutie"));
+        for (OverlayStyle other : new OverlayStyle[]{OverlayStyle.MODERN, OverlayStyle.FLOAT, OverlayStyle.CLASSIC}) {
+            assertFalse(other.cute);
+            assertEquals(255, other.sheetAlpha);
+        }
+        // Hearts are drawn in the user's accent, never a fixed pink.
+        String touches = OrbitGlassChromeTest.readRepositoryFile(
+                "app/src/main/java/com/orbit/assistant/CutieTouches.java");
+        assertFalse(touches.contains("Color.rgb("));
+        assertFalse(touches.contains("parseColor("));
+        assertTrue(touches.contains("UiKit.accent("));
+    }
+
+    @Test public void cutieIsAboutHalfOfClassicAndItsHeartsAreDecorationOnly() {
+        int classic = sheetHeight(Prefs.OVERLAY_STYLE_CLASSIC);
+        int cutie = sheetHeight(Prefs.OVERLAY_STYLE_CUTIE);
+        // Roughly half: Robolectric over-measures text rows, so on a phone it comes out smaller still.
+        assertTrue("cutie " + cutie + " classic " + classic, cutie * 100 <= classic * 55);
+        assertTrue(cutie <= sheetHeight(Prefs.OVERLAY_STYLE_FLOAT) + UiKit.dp(context, 12));
+
+        View root = overlay(Prefs.OVERLAY_STYLE_CUTIE);
+        TextView heart = textView(root, "♥");
+        assertNotNull("the mark wears a heart", heart);
+        assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO, heart.getImportantForAccessibility());
+        assertFalse(heart.isClickable());
+        assertNull(textView(overlay(Prefs.OVERLAY_STYLE_CLASSIC), "♥"));
+    }
+
+    @Test public void cutieGrowsWithItsConversationUpToACap() {
+        View root = overlay(Prefs.OVERLAY_STYLE_CUTIE);
+        int empty = measuredConversation(root);
+        View reply = new View(context);
+        reply.setMinimumHeight(UiKit.dp(context, 80));
+        messages(root).addView(reply);
+        assertTrue(measuredConversation(root) >= empty + UiKit.dp(context, 80));
+        View longReply = new View(context);
+        longReply.setMinimumHeight(UiKit.dp(context, 900));
+        messages(root).addView(longReply);
+        assertEquals(UiKit.dp(context, OverlayStyle.CUTIE.conversationDp), measuredConversation(root));
+    }
+
+    @Test public void cutieReachesHistoryAndNewChatThroughItsMoreMenu() {
+        View root = overlay(Prefs.OVERLAY_STYLE_CUTIE);
+        View more = find(root, "More options");
+        more.performClick();
+        ((View) textView(latestPopup(), "Recent chats").getParent()).performClick();
+        ShadowLooper.idleMainLooper();
+        assertNotNull(textView(root, "No saved chats yet."));
+    }
+
+    @Test public void settingsSearchNeverRevealsTheSecretStyle() {
+        for (String query : new String[]{"cutie", "patootie", "cutie patootie", "lelo"}) {
+            assertTrue(query, SettingsSearchIndex.search(query).isEmpty());
+        }
+        // Lelo mode or not, the ordinary words still reach the Overlay style row.
+        assertFalse(SettingsSearchIndex.search("overlay").isEmpty());
+        assertFalse(SettingsSearchIndex.search("style").isEmpty());
+    }
+
+    @Test public void settingsOffersTheSecretStyleOnlyInLeloMode() {
+        assertNull(settingsStyleMenu().get("Cutie Patootie ♡"));
+        Prefs.get(context).edit().clear().putBoolean(Prefs.LELO_MODE, true).commit();
+        java.util.Map<String, View> menu = settingsStyleMenu();
+        assertNotNull(menu.get("Modern"));
+        assertNotNull(menu.get("Classic"));
+        View cutie = menu.get("Cutie Patootie ♡");
+        assertNotNull(cutie);
+        ((View) cutie.getParent()).performClick();
+        ShadowLooper.idleMainLooper();
+        assertEquals(Prefs.OVERLAY_STYLE_CUTIE, Prefs.overlayStyle(context));
+    }
+
+    /** Opens Settings' Overlay style selector and returns its rows by label. */
+    private java.util.Map<String, View> settingsStyleMenu() {
+        TestWorkManager.ensureInitialized(context);
+        android.content.Intent intent = new android.content.Intent(context, SettingsActivity.class)
+                .putExtra(SettingsActivity.EXTRA_SECTION, SettingsActivity.SECTION_APPEARANCE);
+        SettingsActivity activity = Robolectric.buildActivity(SettingsActivity.class, intent)
+                .setup().get();
+        View page = activity.getWindow().getDecorView();
+        ViewGroup group = (ViewGroup) textView(page, "Overlay style").getParent();
+        View field = null;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            if (group.getChildAt(i).hasOnClickListeners()) field = group.getChildAt(i);
+        }
+        assertNotNull("selector", field);
+        field.performClick();
+        java.util.Map<String, View> rows = new java.util.HashMap<>();
+        collectText(latestPopup(), rows);
+        return rows;
+    }
+
+    private static void collectText(View view, java.util.Map<String, View> out) {
+        if (view instanceof TextView) out.put(((TextView) view).getText().toString(), view);
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) collectText(group.getChildAt(i), out);
+        }
+    }
+
     private View overlay(String style) {
+        // The secret style only resolves in Lelo mode; every other style is tested without it.
+        Prefs.get(context).edit().putBoolean(Prefs.LELO_MODE,
+                Prefs.OVERLAY_STYLE_CUTIE.equals(style)).commit();
         Prefs.setOverlayStyle(context, style);
         OrbitSessionService service =
                 Robolectric.buildService(OrbitSessionService.class).create().get();

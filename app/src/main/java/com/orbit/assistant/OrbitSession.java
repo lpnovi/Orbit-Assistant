@@ -480,6 +480,7 @@ public class OrbitSession extends VoiceInteractionSession {
         // One drawable for the sheet's whole life. The drag and the commit both mutate its corner
         // radius rather than building a new gradient, which is what keeps the gesture smooth.
         sheetBackground = UiKit.gradientSheet(c, style.cornerDp);
+        sheetBackground.setAlpha(style.sheetAlpha);
         sheet.setBackground(sheetBackground);
         sheet.setElevation(UiKit.dp(c, 16));
         sheet.setOnClickListener(v -> {});
@@ -494,7 +495,8 @@ public class OrbitSession extends VoiceInteractionSession {
         handleZone.setContentDescription("Swipe up to open this chat. Swipe down to close Orbit.");
         handleZone.setClickable(true);
         View handle = new View(c);
-        handle.setBackground(UiKit.rounded(Color.rgb(74, 79, 92), 3, c));
+        handle.setBackground(UiKit.rounded(style.cute ? CutieTouches.pastel(c)
+                : Color.rgb(74, 79, 92), 3, c));
         FrameLayout.LayoutParams handleVisualLp = new FrameLayout.LayoutParams(
                 UiKit.dp(c, 42), UiKit.dp(c, 4), Gravity.CENTER);
         handleZone.addView(handle, handleVisualLp);
@@ -510,8 +512,10 @@ public class OrbitSession extends VoiceInteractionSession {
         LinearLayout top = new LinearLayout(c);
         top.setGravity(Gravity.CENTER_VERTICAL);
         View mark = UiKit.orbitMark(c, style.markDp);
+        int markBox = style.markDp + (style.cute ? 10 : 4);
+        if (style.cute) mark = CutieTouches.dressMark(c, mark, UiKit.dp(c, style.markDp + 4));
         LinearLayout.LayoutParams markLp = new LinearLayout.LayoutParams(
-                UiKit.dp(c, style.markDp + 4), UiKit.dp(c, style.markDp + 4));
+                UiKit.dp(c, markBox), UiKit.dp(c, markBox));
         markLp.rightMargin = UiKit.dp(c, 8);
         top.addView(mark, markLp);
 
@@ -744,7 +748,10 @@ public class OrbitSession extends VoiceInteractionSession {
         } else {
             composer.setPadding(UiKit.dp(c, 5), UiKit.dp(c, 5), UiKit.dp(c, 5), UiKit.dp(c, 5));
         }
-        composer.setBackground(UiKit.outlined(UiKit.SURFACE, Color.rgb(48, 53, 67),
+        // The secret style rests its composer in a soft accent outline instead of the grey one.
+        final int restingStroke = style.cute ? UiKit.withAlpha(CutieTouches.pastel(c), 90)
+                : Color.rgb(48, 53, 67);
+        composer.setBackground(UiKit.outlined(UiKit.SURFACE, restingStroke,
                 style.composerRadiusDp, c));
 
         // Somewhere for input focus to rest when Orbit puts the keyboard away. The editor is the
@@ -855,7 +862,7 @@ public class OrbitSession extends VoiceInteractionSession {
         updateComposerAction();
 
         input.setOnFocusChangeListener((v, hasFocus) -> {
-            int stroke = hasFocus ? UiKit.withAlpha(UiKit.accent(c), 170) : Color.rgb(48, 53, 67);
+            int stroke = hasFocus ? UiKit.withAlpha(UiKit.accent(c), 170) : restingStroke;
             composer.setBackground(UiKit.outlined(UiKit.SURFACE, stroke, style.composerRadiusDp, c));
             // Focus has already arrived; this only observes it. Moving focus from here is what
             // made the composer recurse into itself and crash in v0.7.3.5.
@@ -2055,6 +2062,7 @@ public class OrbitSession extends VoiceInteractionSession {
         String q = input.getText().toString().trim();
         if (q.isEmpty() && composerAttachments.isEmpty()) return;
         if (q.isEmpty()) q = defaultAttachmentPrompt(composerAttachments.items());
+        if (style.cute) CutieTouches.puff(root, sendButton, "✦");
         traceComposer("submit.before-clear");
         clearComposerInPlace();
         traceComposer("submit.after-clear");
@@ -3937,7 +3945,10 @@ public class OrbitSession extends VoiceInteractionSession {
         if (mic == null) return;
         if (listeningHalo == null) listeningHalo = new OrbitListeningHalo(getContext());
         listeningHalo.applyAccent(getContext());
-        if (mic.getBackground() != listeningHalo) mic.setBackground(listeningHalo);
+        if (mic.getBackground() != listeningHalo) {
+            mic.setBackground(listeningHalo);
+            if (style.cute) CutieTouches.puff(root, mic, "♡");
+        }
         listeningHalo.start();
     }
 
@@ -4589,6 +4600,8 @@ public class OrbitSession extends VoiceInteractionSession {
                 messageScroll == null ? null : messageScroll.getLayoutParams();
         final int startScroll = scrollLp == null ? 0 : scrollLp.height;
         final int targetScroll = Math.max(startScroll, stretchMaxHeight);
+        // The sheet becomes the chat's background here, so a see-through style turns solid first.
+        if (sheetBackground != null) sheetBackground.setAlpha(255);
         // The sheet's own drawable is reused, so the commit adds no allocation either.
         final float startRadius = sheetBackground == null
                 ? UiKit.dp(c, style.cornerDp)

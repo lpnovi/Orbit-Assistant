@@ -2,6 +2,9 @@ package com.orbit.assistant;
 
 import android.content.Context;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * How the Side-button overlay looks. Visual facts only: every style builds the same controls with
  * the same behaviour, and {@link OrbitSession} arranges them from these numbers. Adding a style is a
@@ -9,26 +12,36 @@ import android.content.Context;
  */
 final class OverlayStyle {
     /** The overlay Orbit has always had. Its numbers are exactly the ones it shipped with. */
-    static final OverlayStyle CLASSIC = new OverlayStyle(Prefs.OVERLAY_STYLE_CLASSIC,
+    static final OverlayStyle CLASSIC = new OverlayStyle(Prefs.OVERLAY_STYLE_CLASSIC, "Classic",
             78, 8, OverlayStretch.SHEET_CORNER_DP, 18, 36, 18, 40, 12, 240, 240, 22,
-            false, false);
+            false, false, 255, false);
     /**
      * Orbit's full floating card, shipped as "Float" in 0.8.4.0-beta.1: lighter dim, a slimmer
      * header, and one composer card that also carries the screen controls. Its conversation fits
      * what it holds, so an empty chat no longer reserves a tall blank middle.
      */
-    static final OverlayStyle MODERN = new OverlayStyle(Prefs.OVERLAY_STYLE_MODERN,
+    static final OverlayStyle MODERN = new OverlayStyle(Prefs.OVERLAY_STYLE_MODERN, "Modern",
             44, 12, 32f, 14, 28, 15, 36, 16, 120, 260, 26,
-            true, false);
+            true, false, 255, false);
     /**
      * The compact one: a small bottom card that is little more than a header and the composer
      * until there is a conversation to show, then grows upward to a modest cap and scrolls.
      */
-    static final OverlayStyle FLOAT = new OverlayStyle(Prefs.OVERLAY_STYLE_FLOAT,
+    static final OverlayStyle FLOAT = new OverlayStyle(Prefs.OVERLAY_STYLE_FLOAT, "Float",
             30, 10, 28f, 12, 24, 15, 36, 16, 0, 200, 24,
-            true, true);
+            true, true, 255, false);
+    /**
+     * Lelo mode's secret one: Float's compact bones, floated further in from the edges, rounder,
+     * barely dimmed and a touch see-through, with a few hearts and sparkles drawn in the user's
+     * own accent. Never offered, searchable or resolved unless {@link Prefs#leloMode} is on.
+     */
+    static final OverlayStyle CUTIE = new OverlayStyle(Prefs.OVERLAY_STYLE_CUTIE, "Cutie Patootie ♡",
+            14, 16, 34f, 12, 24, 14.5f, 36, 18, 0, 190, 26,
+            true, true, 230, true);
 
     final String id;
+    /** What Settings calls it. */
+    final String label;
     /** Alpha of the dim behind the sheet. */
     final int scrimAlpha;
     /** Gap between the sheet and the screen's sides and bottom, in dp. */
@@ -57,12 +70,18 @@ final class OverlayStyle {
      * greeting bubble (the composer's hint carries it), and an empty suggestion row takes no room.
      */
     final boolean compact;
+    /** Alpha of the sheet's own background. The composer card inside it always stays opaque. */
+    final int sheetAlpha;
+    /** Hearts and sparkles: see {@link CutieTouches}. Decoration only, never a control. */
+    final boolean cute;
 
-    private OverlayStyle(String id, int scrimAlpha, int marginDp, float cornerDp,
+    private OverlayStyle(String id, String label, int scrimAlpha, int marginDp, float cornerDp,
                          int sidePaddingDp, int markDp, float titleSp, int iconDp,
                          float controlRadiusDp, int conversationMinDp, int conversationDp,
-                         float composerRadiusDp, boolean integratedComposer, boolean compact) {
+                         float composerRadiusDp, boolean integratedComposer, boolean compact,
+                         int sheetAlpha, boolean cute) {
         this.id = id;
+        this.label = label;
         this.scrimAlpha = scrimAlpha;
         this.marginDp = marginDp;
         this.cornerDp = cornerDp;
@@ -76,6 +95,8 @@ final class OverlayStyle {
         this.composerRadiusDp = composerRadiusDp;
         this.integratedComposer = integratedComposer;
         this.compact = compact;
+        this.sheetAlpha = sheetAlpha;
+        this.cute = cute;
     }
 
     /** True when the conversation grows with its content instead of holding one fixed height. */
@@ -85,16 +106,28 @@ final class OverlayStyle {
 
     /** The composer's resting hint. Float's doubles as the greeting it does not draw. */
     String hint() {
+        if (cute) return "what's up, cutie? (˶ᵔ ᵕ ᵔ˶)";
         return compact ? "What can I help with?" : "Ask anything…";
     }
 
     static OverlayStyle of(String id) {
         if (Prefs.OVERLAY_STYLE_CLASSIC.equals(id)) return CLASSIC;
         if (Prefs.OVERLAY_STYLE_FLOAT.equals(id)) return FLOAT;
+        if (Prefs.OVERLAY_STYLE_CUTIE.equals(id)) return CUTIE;
         return MODERN;
     }
 
     static OverlayStyle current(Context c) {
         return of(Prefs.overlayStyle(c));
+    }
+
+    /** What Settings offers, in order. The secret one exists only while Lelo mode is on. */
+    static List<OverlayStyle> choices(Context c) {
+        List<OverlayStyle> out = new ArrayList<>();
+        out.add(MODERN);
+        out.add(FLOAT);
+        out.add(CLASSIC);
+        if (Prefs.leloMode(c)) out.add(CUTIE);
+        return out;
     }
 }

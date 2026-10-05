@@ -181,6 +181,8 @@ public final class Prefs {
     public static final String OVERLAY_STYLE_MODERN = "modern";
     public static final String OVERLAY_STYLE_FLOAT = "float";
     public static final String OVERLAY_STYLE_CLASSIC = "classic";
+    /** Lelo mode only; read as Modern whenever Lelo mode is off. See {@link #overlayStyle}. */
+    static final String OVERLAY_STYLE_CUTIE = "cutie";
     /**
      * Set once {@link #OVERLAY_STYLE} speaks the 0.8.4.0-beta.2 vocabulary. In beta.1 "float" named
      * the design now called Modern, so a value stored before this flag means Modern. Backed up with
@@ -578,6 +580,9 @@ public final class Prefs {
             e.apply();
         }
         if (OVERLAY_STYLE_FLOAT.equals(value) || OVERLAY_STYLE_CLASSIC.equals(value)) return value;
+        // Gated on read, never rewritten: with Lelo mode off it is simply Modern, and turning
+        // Lelo mode back on brings the stored choice straight back.
+        if (OVERLAY_STYLE_CUTIE.equals(value) && leloMode(c)) return value;
         return OVERLAY_STYLE_MODERN;
     }
 
