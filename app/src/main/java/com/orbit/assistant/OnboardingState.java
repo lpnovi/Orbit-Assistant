@@ -72,12 +72,19 @@ public final class OnboardingState {
                 routineId == null ? "" : routineId.trim()).apply();
     }
 
-    private static boolean looksLikeLegacyInstall(Context c) {
+    /** True when this APK updated an earlier Orbit install rather than being freshly installed. */
+    static boolean packageWasUpdated(Context c) {
         try {
             PackageInfo info = c.getPackageManager().getPackageInfo(c.getPackageName(), 0);
-            // A real package update is authoritative even if the user kept Orbit's defaults.
-            if (info.lastUpdateTime - info.firstInstallTime > 5_000L) return true;
-        } catch (Exception ignored) {}
+            return info.lastUpdateTime - info.firstInstallTime > 5_000L;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private static boolean looksLikeLegacyInstall(Context c) {
+        // A real package update is authoritative even if the user kept Orbit's defaults.
+        if (packageWasUpdated(c)) return true;
 
         if (ChatGptAuth.isSignedIn(c)) return true;
         if (!ConversationStore.list(c).isEmpty() || !RoutineStore.list(c).isEmpty() ||

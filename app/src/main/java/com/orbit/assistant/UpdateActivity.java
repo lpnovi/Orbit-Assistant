@@ -220,6 +220,9 @@ public final class UpdateActivity extends Activity {
         UiKit.pressScale(roadmap);
         page.addView(roadmap);
 
+        page.addView(linksSection(), sectionLp(22));
+        page.addView(linksCard());
+
         TextView privacy = UiKit.text(this, OrbitDistribution.isPlay()
                 ? "This copy of Orbit was installed from Google Play, which delivers and verifies its updates. Orbit itself never downloads or installs app updates."
                 : "Orbit checks only the public lpnovi/Orbit-Assistant releases — stable releases, plus official Beta prereleases when you have joined the Beta channel. It sends no account credentials, never downloads without your approval, verifies the APK checksum, package, version and permanent signing certificate, then uses Android's normal installer. Every build is verified the same way, whichever channel it came from.",
@@ -231,6 +234,90 @@ public final class UpdateActivity extends Activity {
         page.addView(privacy, privacyLp);
         UiKit.applyTypography(page);
         return scroll;
+    }
+
+    /** One external page the About screen links to. */
+    static final class AboutLink {
+        final String title;
+        final String subtitle;
+        final String uri;
+
+        AboutLink(String title, String subtitle, String uri) {
+            this.title = title;
+            this.subtitle = subtitle;
+            this.uri = uri;
+        }
+    }
+
+    /** Everything on the Links card, in order. A new link is one more entry here. */
+    static final AboutLink[] LINKS = {
+            new AboutLink("GitHub", "Source code, releases and issues",
+                    "https://github.com/lpnovi/Orbit-Assistant"),
+    };
+
+    private TextView linksSection() {
+        TextView label = UiKit.text(this, "LINKS", 12, UiKit.MUTED, true);
+        label.setLetterSpacing(0.13f);
+        return label;
+    }
+
+    private LinearLayout.LayoutParams sectionLp(int topDp) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(UiKit.dp(this, 4), UiKit.dp(this, topDp), 0, UiKit.dp(this, 9));
+        return lp;
+    }
+
+    private LinearLayout linksCard() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(UiKit.dp(this, 6), UiKit.dp(this, 6), UiKit.dp(this, 6), UiKit.dp(this, 6));
+        card.setBackground(UiKit.outlined(
+                UiKit.SURFACE, UiKit.withAlpha(UiKit.accent(this), 38), 22, this));
+        card.setElevation(UiKit.dp(this, 2));
+        for (AboutLink link : LINKS) card.addView(linkRow(link));
+        return card;
+    }
+
+    /** A full-width tappable row: title, subtitle and an external-link mark, opened in a browser. */
+    private View linkRow(AboutLink link) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(UiKit.dp(this, 12), UiKit.dp(this, 12), UiKit.dp(this, 12), UiKit.dp(this, 12));
+        row.setMinimumHeight(UiKit.dp(this, 56));
+        row.setBackground(UiKit.ripple(UiKit.SURFACE, UiKit.accent(this), 16, this));
+        row.setClickable(true);
+        row.setFocusable(true);
+        row.setContentDescription(link.title + ", " + link.subtitle + ". Opens in your browser.");
+        LinearLayout copy = new LinearLayout(this);
+        copy.setOrientation(LinearLayout.VERTICAL);
+        copy.addView(UiKit.text(this, link.title, 16, UiKit.TEXT, true));
+        TextView subtitle = UiKit.text(this, link.subtitle, 12, UiKit.MUTED, false);
+        subtitle.setPadding(0, UiKit.dp(this, 3), 0, 0);
+        copy.addView(subtitle);
+        row.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        TextView mark = UiKit.text(this, "↗", 18, UiKit.accent(this), true);
+        mark.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        row.addView(mark);
+        row.setTag(link.uri);
+        row.setOnClickListener(v -> openExternal(this, link.uri));
+        UiKit.pressScale(row);
+        return row;
+    }
+
+    /**
+     * Hands a web address to the user's browser. Never a WebView. A phone with nothing that can
+     * open it gets a short message instead of a crash.
+     */
+    static boolean openExternal(android.content.Context c, String uri) {
+        try {
+            c.startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(uri))
+                    .addCategory(Intent.CATEGORY_BROWSABLE));
+            return true;
+        } catch (android.content.ActivityNotFoundException | SecurityException e) {
+            Toast.makeText(c, "No app on this phone can open that link", Toast.LENGTH_SHORT).show();
+            return false;
+        }
     }
 
     /** The GitHub edition's update channel and update-notification controls. */

@@ -21,5 +21,13 @@ public final class OrbitApplication extends Application {
     @Override public void onCreate() {
         super.onCreate();
         OrbitNotificationChannels.ensureAll(this);
+        // The one exception to keeping this empty: the 0.8.4.0 overlay upgrade rule has to be
+        // decided before anything reads the overlay style, and only process start is guaranteed to
+        // come first. After its first run it is a single preference read.
+        try {
+            Prefs.keepClassicForStableUpgrade(this, OnboardingState.packageWasUpdated(this));
+        } catch (Exception ignored) {
+            // Preferences unavailable this early: the flag stays unset and the next start decides.
+        }
     }
 }

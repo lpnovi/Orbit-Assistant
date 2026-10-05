@@ -131,6 +131,10 @@ public final class RoadmapSyncTest {
                 file.indexOf("### `0.8.3.0` Stable - AI Control") >= 0);
         assertTrue("above the active plan as well",
                 file.indexOf("### `0.8.3.0` Stable - AI Control") < current);
+        assertTrue("the 0.8.4.0 Overlay Styles line is recorded as Stable",
+                file.indexOf("### `0.8.4.0` Stable - Overlay Styles") >= 0);
+        assertTrue("above the active plan as well",
+                file.indexOf("### `0.8.4.0` Stable - Overlay Styles") < current);
         assertTrue("and the active plan still names its milestone",
                 file.indexOf(OrbitRoadmap.CURRENT, current) > current);
 

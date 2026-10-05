@@ -9,6 +9,17 @@ canonical record of what actually shipped.
 
 ## Shipped / Stable
 
+### `0.8.4.0` Stable - Overlay Styles
+
+Released from the tested Beta 4 line. The Side-button overlay's look is now a choice: Modern (the
+default for new installs), the compact Float, or the original Classic, in Look & Feel's Overlay
+section with a live preview. Float grows only with its conversation, becomes a bounded bottom-right
+card on landscape and larger windows, and folds into a Peek capsule that keeps the chat, reply and
+voice going. Quick controls can be hidden from the overlay without losing the feature behind them.
+The two Stable-only changes: anyone updating from 0.8.3 keeps the Classic overlay until they choose
+another, and About & updates links to the GitHub repository. The record of the Betas is under
+Current below.
+
 ### `0.8.3.0` Stable - AI Control
 
 Released from the tested Beta 6 line with no product-behavior changes. Per-chat provider, model and
@@ -651,7 +662,8 @@ Orbit permission to choose, and it is a choice the user makes, never a fallback.
 
 The 0.8.4 line makes the overlay's look a choice instead of a single fixed design. A style changes
 only how the sheet is drawn; every style has the same controls and behaviour, so nothing is ever
-missing because of the look a user picked.
+missing because of the look a user picked. It was released as `0.8.4.0` Stable after four
+Betas.
 
 #### `0.8.4.0-beta.1` - first Overlay Styles Beta
 

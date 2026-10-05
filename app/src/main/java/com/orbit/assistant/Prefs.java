@@ -598,6 +598,31 @@ public final class Prefs {
         return OVERLAY_STYLE_MODERN;
     }
 
+    /**
+     * Set once per install by {@link #keepClassicForStableUpgrade}. Deliberately not backed up: it
+     * records what this install was updated from, not a choice.
+     */
+    static final String OVERLAY_STYLE_STABLE_UPGRADE = "overlay_style_stable_0840";
+
+    /**
+     * 0.8.4.0's one-time upgrade rule. Someone updating from 0.8.3 Stable has only ever had the
+     * Classic overlay, so they keep it, stored as an explicit choice they can change at any time.
+     * That is recognised as: the package was updated rather than freshly installed, no style is
+     * stored, and no overlay-aware version ever resolved one (every Beta from Beta 2 on sets
+     * {@link #OVERLAY_STYLE_MIGRATED} the first time it does). Fresh installs and Beta users keep
+     * the Modern default and their own choices. Runs at most once, and only writes a missing value.
+     */
+    static void keepClassicForStableUpgrade(Context c, boolean packageWasUpdated) {
+        SharedPreferences p = get(c);
+        if (p.getBoolean(OVERLAY_STYLE_STABLE_UPGRADE, false)) return;
+        SharedPreferences.Editor e = p.edit().putBoolean(OVERLAY_STYLE_STABLE_UPGRADE, true);
+        if (packageWasUpdated && !p.contains(OVERLAY_STYLE)
+                && !p.getBoolean(OVERLAY_STYLE_MIGRATED, false)) {
+            e.putString(OVERLAY_STYLE, OVERLAY_STYLE_CLASSIC).putBoolean(OVERLAY_STYLE_MIGRATED, true);
+        }
+        e.apply();
+    }
+
     /** The only writer of {@link #OVERLAY_STYLE}, so a chosen Float is never read as beta.1's. */
     public static void setOverlayStyle(Context c, String style) {
         get(c).edit().putString(OVERLAY_STYLE, style)

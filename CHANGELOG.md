@@ -842,6 +842,14 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.4.0**: Overlay Styles: the Side-button assistant is now yours to shape, and existing users keep the Classic overlay after updating.
+  - Choose Modern, the new default for fresh installs, the compact Float, or the original Classic in Look & Feel > Overlay.
+  - Float starts small, grows only when a conversation needs room, and becomes a bottom-right card on landscape phones and larger screens.
+  - Tap Float's handle to fold it into a Peek capsule that keeps replies, voice and your chat going.
+  - Choose which quick controls stay on the overlay, with a live preview; hidden ones stay one tap away in its More menu.
+  - Every style keeps all of Orbit's features, with sizing, animation and Settings Search polish throughout.
+  - About & updates now links to Orbit's GitHub repository.
+
 - **v0.8.4.0-beta.4**: Overlay Styles Beta 4: a smarter Float and a new Overlay section in Look & Feel.
   - Float now adapts to landscape and larger screens, resting as a neat card in the bottom-right corner.
   - Tap Float's handle to fold it into a compact Peek that keeps your chat, reply and voice going.
