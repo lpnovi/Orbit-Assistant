@@ -48,8 +48,13 @@ final class OverlayStretch {
      * geometry of the full chat it is being pulled into.
      */
     static float cornerRadiusDp(float progress) {
+        return cornerRadiusDp(progress, SHEET_CORNER_DP);
+    }
+
+    /** The same easing from a style's own resting radius. */
+    static float cornerRadiusDp(float progress, float restingDp) {
         float clamped = Math.max(0f, Math.min(1f, progress));
-        return SHEET_CORNER_DP * (1f - CORNER_FLATTEN * clamped);
+        return restingDp * (1f - CORNER_FLATTEN * clamped);
     }
 
     /**

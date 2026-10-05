@@ -647,6 +647,21 @@ Orbit permission to choose, and it is a choice the user makes, never a fallback.
 - A visual branch tree
 - Comparing models side by side
 
+### Overlay Styles - choose how the Side-button assistant looks
+
+The 0.8.4 line makes the overlay's look a choice instead of a single fixed design. A style changes
+only how the sheet is drawn; every style has the same controls and behaviour, so nothing is ever
+missing because of the look a user picked.
+
+#### `0.8.4.0-beta.1` - first Overlay Styles Beta
+
+- **Overlay style setting.** Settings, Look & Feel gains Overlay style, saved with other settings
+  and in backups. The assistant picks it up the next time it opens
+- **Classic stays the default.** The original overlay is unchanged, for new and existing users
+- **Float.** A compact floating card inspired by Gemini's side-button assistant and drawn in Orbit's
+  own style: a lighter dim, a slimmer header, and one message card that carries the screen preview,
+  Use screen and Select area under a full-width editor
+
 ### Orbit Local 2.0 - more of Orbit, privately on the phone
 
 Orbit Local began as private offline chat. The 0.8.2 line makes it a first-class part of Orbit:

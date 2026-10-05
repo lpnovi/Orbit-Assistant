@@ -842,6 +842,14 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.4.0-beta.1**: Overlay Styles: choose how the Side-button assistant looks.
+  - Pick an overlay style in Settings, Look & Feel; the next time you open the assistant it uses it.
+  - Classic is the overlay you already know, and it stays the default.
+  - Float is a new compact floating card inspired by Gemini's side-button assistant, redrawn in Orbit's own style.
+  - Float puts the screen preview, Use screen and Select area inside the message box, so there is no separate screen bar.
+  - Both styles have every feature: voice, screen context, attachments, model choice, actions, retry, Stop and rich answers.
+  - Your choice is saved with your settings and included in backups.
+
 - **v0.8.3.0**: AI Control is now Stable: choose exactly which AI answers you, and how hard it thinks.
   - Pick the provider, model and strength for each chat from a searchable Model Library with ChatGPT, Claude, Grok and OpenRouter.
   - Sign in with ChatGPT or OpenRouter through your browser; API keys still work for Claude, Grok and OpenRouter.

@@ -1148,6 +1148,16 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         chatSizeNote.setPadding(0, UiKit.dp(this, 8), 0, UiKit.dp(this, 14));
         styleCard.addView(chatSizeNote);
 
+        TextView overlayStyleLabel = label("Overlay style");
+        overlayStyleLabel.setPadding(UiKit.dp(this, 2), 0, 0, UiKit.dp(this, 6));
+        styleCard.addView(controlGroup(SettingsSearchIndex.KEY_OVERLAY_STYLE,
+                overlayStyleLabel, overlayStyleSelector(), null));
+        TextView overlayStyleNote = UiKit.text(this,
+                "How the Side-button assistant looks. Classic is the original sheet. Float is a compact floating card with the screen controls built into the message box. Both work the same way, and the change applies the next time you open the assistant.",
+                12, UiKit.MUTED, false);
+        overlayStyleNote.setPadding(0, UiKit.dp(this, 8), 0, UiKit.dp(this, 14));
+        styleCard.addView(overlayStyleNote);
+
         // Haptics stays here on purpose. It is not a color, it is not saved in a theme, and
         // applying a Theme Studio preset must never silently change how the phone feels.
         styleCard.addView(target(SettingsSearchIndex.KEY_HAPTICS,
@@ -2176,6 +2186,18 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         LinearLayout selector = menuSelector(labels, selected, (position, label) -> {
             String key = keys[Math.max(0, Math.min(keys.length - 1, position))];
             Prefs.get(this).edit().putString(Prefs.CHAT_TEXT_SIZE, key).apply();
+        });
+        selector.setLayoutParams(selectorLp());
+        return selector;
+    }
+
+    private View overlayStyleSelector() {
+        String[] keys = new String[]{Prefs.OVERLAY_STYLE_CLASSIC, Prefs.OVERLAY_STYLE_FLOAT};
+        String[] labels = new String[]{"Classic", "Float"};
+        int selected = indexOf(keys, Prefs.overlayStyle(this));
+        LinearLayout selector = menuSelector(labels, selected, (position, label) -> {
+            String key = keys[Math.max(0, Math.min(keys.length - 1, position))];
+            Prefs.get(this).edit().putString(Prefs.OVERLAY_STYLE, key).apply();
         });
         selector.setLayoutParams(selectorLp());
         return selector;

@@ -176,6 +176,10 @@ public final class Prefs {
     public static final String PRO_PREVIEW_FREE = "free";
     public static final String PRO_PREVIEW_PRO = "pro";
     public static final String PAGE_TRANSITION = "page_transition";
+    /** Side-button overlay look; see {@link OverlayStyle}. Classic for anyone who never chose. */
+    public static final String OVERLAY_STYLE = "overlay_style";
+    public static final String OVERLAY_STYLE_CLASSIC = "classic";
+    public static final String OVERLAY_STYLE_FLOAT = "float";
     /**
      * Whether Orbit draws its own interactive back gesture when returning to the previous screen.
      *
@@ -285,7 +289,7 @@ public final class Prefs {
             MODEL, REASONING, INTELLIGENCE_MODE, AI_DEFAULT_MODEL, AI_DEFAULT_STRENGTH,
             AI_MODEL_FAVORITES, AI_MODEL_RECENTS, AI_PROVIDER_DEFAULTS, ACCENT, USER_BUBBLE_COLOR,
             ASSISTANT_BUBBLE_COLOR, CHAT_TEXT_SIZE, WEATHER_LOCATION, WEATHER_UNITS, APP_FONT,
-            QUICK_SETTINGS_ROUTINE_ID, PAGE_TRANSITION,
+            QUICK_SETTINGS_ROUTINE_ID, PAGE_TRANSITION, OVERLAY_STYLE,
             THEME_SURFACE, THEME_BACKGROUND, THEME_ID, THEME_NAME, THEME_MATERIAL,
             THEME_PRO_BACKGROUND_EFFECT_COLOR));
     private static final Set<String> BACKUP_BOOLEAN_KEYS = new HashSet<>(Arrays.asList(
@@ -555,6 +559,11 @@ public final class Prefs {
         String value = get(c).getString(PAGE_TRANSITION, PAGE_TRANSITION_SLIDE);
         if (PAGE_TRANSITION_FADE.equals(value) || PAGE_TRANSITION_NONE.equals(value)) return value;
         return PAGE_TRANSITION_SLIDE;
+    }
+
+    public static String overlayStyle(Context c) {
+        String value = get(c).getString(OVERLAY_STYLE, OVERLAY_STYLE_CLASSIC);
+        return OVERLAY_STYLE_FLOAT.equals(value) ? value : OVERLAY_STYLE_CLASSIC;
     }
 
     public static String weatherUnits(Context c) {

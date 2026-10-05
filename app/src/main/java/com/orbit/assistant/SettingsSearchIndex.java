@@ -122,6 +122,7 @@ public final class SettingsSearchIndex {
     public static final String KEY_THEME_STUDIO = "theme_studio";
     public static final String KEY_FONT = "app_font";
     public static final String KEY_CHAT_TEXT_SIZE = "chat_text_size";
+    public static final String KEY_OVERLAY_STYLE = "overlay_style";
     public static final String KEY_HAPTICS = "haptics";
     public static final String KEY_PAGE_TRANSITIONS = "page_transitions";
     public static final String KEY_SWIPE_BACK = "swipe_back";
@@ -405,6 +406,10 @@ public final class SettingsSearchIndex {
                 "How large answers and messages are drawn.",
                 S_LOOK, "appearance", KEY_CHAT_TEXT_SIZE,
                 "text size", "font size", "bigger text", "larger", "small", "readable"));
+        out.add(new Entry("Overlay style",
+                "Classic or Float look for the Side-button assistant.",
+                S_LOOK, "appearance", KEY_OVERLAY_STYLE,
+                "overlay", "side button", "assistant look", "float", "classic", "compact"));
         out.add(new Entry("Haptic feedback",
                 "Whether Orbit vibrates on interactions.",
                 S_LOOK, "appearance", KEY_HAPTICS,

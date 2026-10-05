@@ -185,17 +185,16 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * The 0.8.3.0 AI Control line reaches Stable after six Betas.
+     * 0.8.4.0-beta.1 is the Overlay Styles Beta.
      *
-     * <p>Beta 6 is the tested behavior and is promoted unchanged, so this build must carry Stable
-     * metadata, and the changelog entry the release workflow builds its notes from must exist for
-     * the Stable version name.
+     * <p>It must carry Beta metadata, and the changelog entry the release workflow builds its notes
+     * from must already exist for this version name.
      */
-    @Test public void thisReleaseIsAiControlStable() {
-        assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
-                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.installedIsBeta());
+    @Test public void thisReleaseIsTheOverlayStylesBeta() {
+        assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
+                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+        assertTrue(OrbitVersion.installedIsBeta());
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
     }
 

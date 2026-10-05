@@ -97,6 +97,8 @@ public class OrbitSession extends VoiceInteractionSession {
     private boolean showingStop;
     private OrbitListeningHalo listeningHalo;
     private GradientDrawable sheetBackground;
+    /** The look the current sheet was built with; set by every {@link #buildSheet}. */
+    private OverlayStyle style = OverlayStyle.CLASSIC;
     /** Resting and fully-open conversation heights, captured when a drag begins. */
     private int stretchBaseHeight;
     private int stretchMaxHeight;
@@ -457,11 +459,14 @@ public class OrbitSession extends VoiceInteractionSession {
         if (scrim != null) scrim.animate().cancel();
         root.removeAllViews();
         root.setBackgroundColor(Color.TRANSPARENT);
+        // Read once per build, which happens on every new invocation, so a Settings change shows
+        // up on the next press without touching a sheet that is already on screen.
+        style = OverlayStyle.current(c);
 
         // Keep the assistant card fully opaque during motion. Only this dedicated
         // scrim fades, which prevents launcher icons from ghosting through the sheet.
         scrim = new View(c);
-        scrim.setBackgroundColor(Color.argb(78, 0, 0, 0));
+        scrim.setBackgroundColor(Color.argb(style.scrimAlpha, 0, 0, 0));
         scrim.setOnClickListener(v -> dismissAnimated(OverlayLaunchTrace.REASON_SCRIM));
         root.addView(scrim, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -470,17 +475,19 @@ public class OrbitSession extends VoiceInteractionSession {
         sheet.setOrientation(LinearLayout.VERTICAL);
         // Keep the top of the sheet compact: enough breathing room for the drag
         // affordance, without reserving an empty strip above the Orbit header.
-        sheet.setPadding(UiKit.dp(c, 18), UiKit.dp(c, 8), UiKit.dp(c, 18), UiKit.dp(c, 18));
+        sheet.setPadding(UiKit.dp(c, style.sidePaddingDp), UiKit.dp(c, 8),
+                UiKit.dp(c, style.sidePaddingDp), UiKit.dp(c, style.sidePaddingDp));
         // One drawable for the sheet's whole life. The drag and the commit both mutate its corner
         // radius rather than building a new gradient, which is what keeps the gesture smooth.
-        sheetBackground = UiKit.gradientSheet(c, OverlayStretch.SHEET_CORNER_DP);
+        sheetBackground = UiKit.gradientSheet(c, style.cornerDp);
         sheet.setBackground(sheetBackground);
         sheet.setElevation(UiKit.dp(c, 16));
         sheet.setOnClickListener(v -> {});
 
         FrameLayout.LayoutParams sheetLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
-        sheetLp.setMargins(UiKit.dp(c, 8), 0, UiKit.dp(c, 8), UiKit.dp(c, 8));
+        int margin = UiKit.dp(c, style.marginDp);
+        sheetLp.setMargins(margin, 0, margin, margin);
         root.addView(sheet, sheetLp);
 
         FrameLayout handleZone = new FrameLayout(c);
@@ -502,8 +509,9 @@ public class OrbitSession extends VoiceInteractionSession {
 
         LinearLayout top = new LinearLayout(c);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        View mark = UiKit.orbitMark(c, 36);
-        LinearLayout.LayoutParams markLp = new LinearLayout.LayoutParams(UiKit.dp(c, 40), UiKit.dp(c, 40));
+        View mark = UiKit.orbitMark(c, style.markDp);
+        LinearLayout.LayoutParams markLp = new LinearLayout.LayoutParams(
+                UiKit.dp(c, style.markDp + 4), UiKit.dp(c, style.markDp + 4));
         markLp.rightMargin = UiKit.dp(c, 8);
         top.addView(mark, markLp);
 
@@ -514,7 +522,7 @@ public class OrbitSession extends VoiceInteractionSession {
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
         // Same shared title source the full app uses, so Lelo mode renames both surfaces
         // together. The personal Lelo note deliberately stays out of the overlay.
-        TextView title = UiKit.text(c, UiKit.appTitle(c), 18, UiKit.TEXT, true);
+        TextView title = UiKit.text(c, UiKit.appTitle(c), style.titleSp, UiKit.TEXT, true);
         titleRow.addView(title, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -542,7 +550,7 @@ public class OrbitSession extends VoiceInteractionSession {
         modeChip.setPadding(UiKit.dp(c, 10), 0, UiKit.dp(c, 10), 0);
         modeChip.setBackground(UiKit.rippleOutlined(
                 UiKit.blend(UiKit.accent(c), UiKit.SURFACE_2, 0.08f),
-                UiKit.withAlpha(UiKit.accent(c), 92), UiKit.accent(c), 12, c));
+                UiKit.withAlpha(UiKit.accent(c), 92), UiKit.accent(c), style.controlRadiusDp, c));
         modeChip.setOnClickListener(v -> showModeMenu());
         UiKit.pressScale(modeChip);
         updateModeChip();
@@ -561,33 +569,47 @@ public class OrbitSession extends VoiceInteractionSession {
         ImageButton recent = tinyIconButton(com.orbit.assistant.R.drawable.ic_history);
         recent.setContentDescription("Recent chats");
         recent.setOnClickListener(v -> showHistoryPicker());
-        LinearLayout.LayoutParams recentLp = new LinearLayout.LayoutParams(UiKit.dp(c, 40), UiKit.dp(c, 40));
+        int icon = UiKit.dp(c, style.iconDp);
+        LinearLayout.LayoutParams recentLp = new LinearLayout.LayoutParams(icon, icon);
         recentLp.setMargins(0, 0, UiKit.dp(c, 6), 0);
         top.addView(recent, recentLp);
 
         ImageButton newChat = tinyIconButton(com.orbit.assistant.R.drawable.ic_add);
         newChat.setContentDescription("New chat");
         newChat.setOnClickListener(v -> startNewChat());
-        LinearLayout.LayoutParams newChatLp = new LinearLayout.LayoutParams(UiKit.dp(c, 40), UiKit.dp(c, 40));
+        LinearLayout.LayoutParams newChatLp = new LinearLayout.LayoutParams(icon, icon);
         newChatLp.setMargins(0, 0, UiKit.dp(c, 6), 0);
         top.addView(newChat, newChatLp);
 
         ImageButton close = tinyIconButton(com.orbit.assistant.R.drawable.ic_close);
         close.setContentDescription("Close Orbit");
         close.setOnClickListener(v -> dismissAnimated(OverlayLaunchTrace.REASON_CLOSE_BUTTON));
-        top.addView(close, new LinearLayout.LayoutParams(UiKit.dp(c, 40), UiKit.dp(c, 40)));
+        top.addView(close, new LinearLayout.LayoutParams(icon, icon));
         sheet.addView(top);
 
+        // Classic gives the screen its own bar under the header. Float folds the same controls into
+        // the composer card further down: this bar becomes the card's status line, and the screen
+        // buttons join the card's bottom row. Same views, same listeners, either way.
         LinearLayout contextBar = new LinearLayout(c);
         contextBar.setGravity(Gravity.CENTER_VERTICAL);
-        contextBar.setMinimumHeight(UiKit.dp(c, 52));
-        contextBar.setPadding(UiKit.dp(c, 10), UiKit.dp(c, 6), UiKit.dp(c, 8), UiKit.dp(c, 6));
-        contextBar.setBackground(UiKit.rounded(UiKit.SURFACE, 14, c));
-        contextText = UiKit.text(c, "Current screen available", 12, UiKit.MUTED, false);
+        if (style.integratedComposer) {
+            contextBar.setPadding(UiKit.dp(c, 10), 0, UiKit.dp(c, 4), 0);
+        } else {
+            contextBar.setMinimumHeight(UiKit.dp(c, 52));
+            contextBar.setPadding(UiKit.dp(c, 10), UiKit.dp(c, 6), UiKit.dp(c, 8), UiKit.dp(c, 6));
+            contextBar.setBackground(UiKit.rounded(UiKit.SURFACE, 14, c));
+        }
+        contextText = UiKit.text(c, "Current screen available",
+                style.integratedComposer ? 11 : 12, UiKit.MUTED, false);
+        if (style.integratedComposer) {
+            contextText.setSingleLine(true);
+            contextText.setEllipsize(TextUtils.TruncateAt.END);
+        }
         contextBar.addView(contextText, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
         LinearLayout screenActions = new LinearLayout(c);
-        screenActions.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        screenActions.setGravity((style.integratedComposer ? Gravity.START : Gravity.END)
+                | Gravity.CENTER_VERTICAL);
 
         screenshotPreview = new ImageView(c);
         screenshotPreview.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -598,10 +620,17 @@ public class OrbitSession extends VoiceInteractionSession {
         // Keep this slot allocated before Android delivers the screenshot. If it
         // were GONE, the bottom-anchored sheet would grow and visibly jump upward.
         screenshotPreview.setVisibility(View.INVISIBLE);
-        LinearLayout.LayoutParams previewLp = new LinearLayout.LayoutParams(
-                UiKit.dp(c, 56), UiKit.dp(c, 40));
-        previewLp.setMargins(0, 0, UiKit.dp(c, 4), 0);
-        screenActions.addView(screenshotPreview, previewLp);
+        if (style.integratedComposer) {
+            LinearLayout.LayoutParams previewLp = new LinearLayout.LayoutParams(
+                    UiKit.dp(c, 36), UiKit.dp(c, 26));
+            previewLp.setMargins(UiKit.dp(c, 6), UiKit.dp(c, 4), 0, 0);
+            contextBar.addView(screenshotPreview, previewLp);
+        } else {
+            LinearLayout.LayoutParams previewLp = new LinearLayout.LayoutParams(
+                    UiKit.dp(c, 56), UiKit.dp(c, 40));
+            previewLp.setMargins(0, 0, UiKit.dp(c, 4), 0);
+            screenActions.addView(screenshotPreview, previewLp);
+        }
 
         screenButton = tinyTextButton(screenAttached ? "Attached" : "Use screen");
         screenButton.setTextColor(screenAttached ? UiKit.SUCCESS : UiKit.accent(c));
@@ -609,7 +638,7 @@ public class OrbitSession extends VoiceInteractionSession {
         screenButton.setBackground(UiKit.rippleOutlined(
                 UiKit.SURFACE_2,
                 screenAttached ? UiKit.withAlpha(UiKit.SUCCESS, 130) : UiKit.withAlpha(UiKit.accent(c), 120),
-                UiKit.accent(c), 12, c));
+                UiKit.accent(c), style.controlRadiusDp, c));
         screenButton.setContentDescription(screenAttached ? "Detach current screen" : "Attach current screen");
         screenButton.setOnClickListener(v -> toggleScreenAttachment());
         LinearLayout.LayoutParams screenButtonLp = new LinearLayout.LayoutParams(
@@ -622,17 +651,19 @@ public class OrbitSession extends VoiceInteractionSession {
         selectScreenButton.setPadding(UiKit.dp(c, 10), 0, UiKit.dp(c, 10), 0);
         selectScreenButton.setBackground(UiKit.rippleOutlined(
                 UiKit.SURFACE_2, UiKit.withAlpha(UiKit.accent(c), 92),
-                UiKit.accent(c), 12, c));
+                UiKit.accent(c), style.controlRadiusDp, c));
         selectScreenButton.setContentDescription("Select or mark part of the current screen");
         selectScreenButton.setOnClickListener(v -> openScreenSelection());
         LinearLayout.LayoutParams selectLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(c, 32));
         screenActions.addView(selectScreenButton, selectLp);
-        contextBar.addView(screenActions, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        LinearLayout.LayoutParams contextLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        contextLp.setMargins(0, UiKit.dp(c, 10), 0, UiKit.dp(c, 7));
-        sheet.addView(contextBar, contextLp);
+        if (!style.integratedComposer) {
+            contextBar.addView(screenActions, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            LinearLayout.LayoutParams contextLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            contextLp.setMargins(0, UiKit.dp(c, 10), 0, UiKit.dp(c, 7));
+            sheet.addView(contextBar, contextLp);
+        }
 
         suggestionScroll = new HorizontalScrollView(c);
         suggestionScroll.setHorizontalScrollBarEnabled(false);
@@ -646,7 +677,7 @@ public class OrbitSession extends VoiceInteractionSession {
         // to change the sheet height mid-entrance and cause a one-frame snap.
         LinearLayout.LayoutParams suggestionsLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(c, 36));
-        suggestionsLp.setMargins(0, 0, 0, UiKit.dp(c, 6));
+        suggestionsLp.setMargins(0, style.integratedComposer ? UiKit.dp(c, 8) : 0, 0, UiKit.dp(c, 6));
         sheet.addView(suggestionScroll, suggestionsLp);
 
         messageScroll = new ScrollView(c);
@@ -660,7 +691,7 @@ public class OrbitSession extends VoiceInteractionSession {
         messageScroll.addView(messages, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(c, 240));
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(c, style.conversationDp));
         sheet.addView(messageScroll, scrollLp);
         renderConversation();
 
@@ -677,8 +708,14 @@ public class OrbitSession extends VoiceInteractionSession {
 
         LinearLayout composer = new LinearLayout(c);
         composer.setGravity(Gravity.CENTER_VERTICAL);
-        composer.setPadding(UiKit.dp(c, 5), UiKit.dp(c, 5), UiKit.dp(c, 5), UiKit.dp(c, 5));
-        composer.setBackground(UiKit.outlined(UiKit.SURFACE, Color.rgb(48, 53, 67), 22, c));
+        if (style.integratedComposer) {
+            composer.setOrientation(LinearLayout.VERTICAL);
+            composer.setPadding(UiKit.dp(c, 6), UiKit.dp(c, 8), UiKit.dp(c, 6), UiKit.dp(c, 6));
+        } else {
+            composer.setPadding(UiKit.dp(c, 5), UiKit.dp(c, 5), UiKit.dp(c, 5), UiKit.dp(c, 5));
+        }
+        composer.setBackground(UiKit.outlined(UiKit.SURFACE, Color.rgb(48, 53, 67),
+                style.composerRadiusDp, c));
 
         // Somewhere for input focus to rest when Orbit puts the keyboard away. The editor is the
         // only view in this sheet that can hold focus in touch mode, so clearFocus() on its own
@@ -695,7 +732,6 @@ public class OrbitSession extends VoiceInteractionSession {
         ImageButton attach = tinyIconButton(com.orbit.assistant.R.drawable.ic_add);
         attach.setContentDescription("Attach to message");
         attach.setOnClickListener(v -> showAttachmentMenu(attach));
-        composer.addView(attach, new LinearLayout.LayoutParams(UiKit.dp(c, 42), UiKit.dp(c, 42)));
 
         // Behaves as an ordinary EditText; it additionally records when Android asks it for an
         // input connection, which is the one thing no previous investigation could observe.
@@ -731,12 +767,10 @@ public class OrbitSession extends VoiceInteractionSession {
                     }
                 });
         input.setOnClickListener(v -> connectOrbitToIme());
-        composer.addView(input, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
         mic = tinyIconButton(com.orbit.assistant.R.drawable.ic_mic);
         mic.setContentDescription("Voice input");
         mic.setOnClickListener(v -> toggleListening());
-        composer.addView(mic, new LinearLayout.LayoutParams(UiKit.dp(c, 44), UiKit.dp(c, 44)));
 
         // A freshly built control starts as Send, so the remembered state starts there too and a
         // rebuilt composer cannot be left showing the wrong one.
@@ -755,15 +789,44 @@ public class OrbitSession extends VoiceInteractionSession {
             showSendWithMenu();
             return true;
         });
-        LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(UiKit.dp(c, 44), UiKit.dp(c, 44));
-        sendLp.setMargins(UiKit.dp(c, 5), 0, 0, 0);
-        composer.addView(sendButton, sendLp);
+        if (style.integratedComposer) {
+            // Float: status line, a full-width editor, then one row of controls, the way a
+            // floating assistant card reads: what you type on top, what you can add underneath.
+            int button = UiKit.dp(c, 40);
+            attach.setBackground(UiKit.ripple(UiKit.SURFACE_2, UiKit.accent(c), 20, c));
+            sendButton.setBackground(UiKit.ripple(UiKit.accent(c), UiKit.onAccent(c), 20, c));
+            input.setPadding(UiKit.dp(c, 10), UiKit.dp(c, 6), UiKit.dp(c, 8), UiKit.dp(c, 6));
+            composer.addView(contextBar, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            composer.addView(input, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            LinearLayout controls = new LinearLayout(c);
+            controls.setGravity(Gravity.CENTER_VERTICAL);
+            controls.addView(attach, new LinearLayout.LayoutParams(button, button));
+            LinearLayout.LayoutParams actionsLp = new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+            actionsLp.setMargins(UiKit.dp(c, 6), 0, UiKit.dp(c, 4), 0);
+            controls.addView(screenActions, actionsLp);
+            controls.addView(mic, new LinearLayout.LayoutParams(button, button));
+            LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(button, button);
+            sendLp.setMargins(UiKit.dp(c, 4), 0, 0, 0);
+            controls.addView(sendButton, sendLp);
+            composer.addView(controls, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        } else {
+            composer.addView(attach, new LinearLayout.LayoutParams(UiKit.dp(c, 42), UiKit.dp(c, 42)));
+            composer.addView(input, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            composer.addView(mic, new LinearLayout.LayoutParams(UiKit.dp(c, 44), UiKit.dp(c, 44)));
+            LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(UiKit.dp(c, 44), UiKit.dp(c, 44));
+            sendLp.setMargins(UiKit.dp(c, 5), 0, 0, 0);
+            composer.addView(sendButton, sendLp);
+        }
         sheet.addView(composer);
         updateComposerAction();
 
         input.setOnFocusChangeListener((v, hasFocus) -> {
             int stroke = hasFocus ? UiKit.withAlpha(UiKit.accent(c), 170) : Color.rgb(48, 53, 67);
-            composer.setBackground(UiKit.outlined(UiKit.SURFACE, stroke, 22, c));
+            composer.setBackground(UiKit.outlined(UiKit.SURFACE, stroke, style.composerRadiusDp, c));
             // Focus has already arrived; this only observes it. Moving focus from here is what
             // made the composer recurse into itself and crash in v0.7.3.5.
             if (composerFocus != null) composerFocus.onFocusChanged(hasFocus);
@@ -1270,12 +1333,12 @@ public class OrbitSession extends VoiceInteractionSession {
         }
 
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) sheet.getLayoutParams();
-        int baseMargin = UiKit.dp(getContext(), 8);
+        int baseMargin = UiKit.dp(getContext(), style.marginDp);
         if (imeVisible) {
             int rootHeight = root.getHeight();
             if (rootHeight <= 0) rootHeight = getContext().getResources().getDisplayMetrics().heightPixels;
             lp.bottomMargin = imeBottom + baseMargin;
-            lp.height = Math.max(UiKit.dp(getContext(), 260), rootHeight - imeBottom - UiKit.dp(getContext(), 16));
+            lp.height = Math.max(UiKit.dp(getContext(), 260), rootHeight - imeBottom - 2 * baseMargin);
             if (messageScroll != null) {
                 LinearLayout.LayoutParams scrollParams = (LinearLayout.LayoutParams) messageScroll.getLayoutParams();
                 scrollParams.height = 0;
@@ -1287,7 +1350,7 @@ public class OrbitSession extends VoiceInteractionSession {
             lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
             if (messageScroll != null) {
                 LinearLayout.LayoutParams scrollParams = (LinearLayout.LayoutParams) messageScroll.getLayoutParams();
-                scrollParams.height = UiKit.dp(getContext(), 240);
+                scrollParams.height = UiKit.dp(getContext(), style.conversationDp);
                 scrollParams.weight = 0f;
                 messageScroll.setLayoutParams(scrollParams);
             }
@@ -1532,7 +1595,7 @@ public class OrbitSession extends VoiceInteractionSession {
                         blocked ? Color.rgb(62,66,78) :
                                 (screenAttached ? UiKit.withAlpha(UiKit.SUCCESS, 130)
                                         : UiKit.withAlpha(UiKit.accent(getContext()), 120)),
-                        UiKit.accent(getContext()), 12, getContext()));
+                        UiKit.accent(getContext()), style.controlRadiusDp, getContext()));
             }
 
             if (selectScreenButton != null) {
@@ -1548,7 +1611,7 @@ public class OrbitSession extends VoiceInteractionSession {
                 selectScreenButton.setBackground(UiKit.rippleOutlined(
                         UiKit.SURFACE_2,
                         UiKit.withAlpha(canSelect ? UiKit.accent(getContext()) : UiKit.MUTED, 92),
-                        canSelect ? UiKit.accent(getContext()) : UiKit.MUTED, 12, getContext()));
+                        canSelect ? UiKit.accent(getContext()) : UiKit.MUTED, style.controlRadiusDp, getContext()));
                 selectScreenButton.setContentDescription(opening
                         ? "Opening screen selection"
                         : canSelect
@@ -4396,7 +4459,7 @@ public class OrbitSession extends VoiceInteractionSession {
             float progress = OverlayStretch.progress(
                     stretchBaseHeight, stretchMaxHeight, conversationHeight);
             sheetBackground.setCornerRadius(
-                    UiKit.dp(getContext(), OverlayStretch.cornerRadiusDp(progress)));
+                    UiKit.dp(getContext(), OverlayStretch.cornerRadiusDp(progress, style.cornerDp)));
         }
     }
 
@@ -4464,7 +4527,7 @@ public class OrbitSession extends VoiceInteractionSession {
         final int targetScroll = Math.max(startScroll, stretchMaxHeight);
         // The sheet's own drawable is reused, so the commit adds no allocation either.
         final float startRadius = sheetBackground == null
-                ? UiKit.dp(c, OverlayStretch.SHEET_CORNER_DP)
+                ? UiKit.dp(c, style.cornerDp)
                 : sheetBackground.getCornerRadius();
 
         ValueAnimator expand = ValueAnimator.ofFloat(0f, 1f);
