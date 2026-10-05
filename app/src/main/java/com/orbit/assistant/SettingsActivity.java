@@ -1153,7 +1153,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         styleCard.addView(controlGroup(SettingsSearchIndex.KEY_OVERLAY_STYLE,
                 overlayStyleLabel, overlayStyleSelector(), null));
         TextView overlayStyleNote = UiKit.text(this,
-                "How the Side-button assistant looks. Classic is the original sheet. Float is a compact floating card with the screen controls built into the message box. Both work the same way, and the change applies the next time you open the assistant.",
+                "How the Side-button assistant looks. Modern is Orbit's full floating assistant. Float is a compact assistant that stays near the bottom of the screen and grows only when a conversation needs the room. Classic is the original Orbit side-button overlay. All three work the same way, and the change applies the next time you open the assistant.",
                 12, UiKit.MUTED, false);
         overlayStyleNote.setPadding(0, UiKit.dp(this, 8), 0, UiKit.dp(this, 14));
         styleCard.addView(overlayStyleNote);
@@ -2192,12 +2192,13 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     }
 
     private View overlayStyleSelector() {
-        String[] keys = new String[]{Prefs.OVERLAY_STYLE_CLASSIC, Prefs.OVERLAY_STYLE_FLOAT};
-        String[] labels = new String[]{"Classic", "Float"};
+        String[] keys = new String[]{Prefs.OVERLAY_STYLE_MODERN, Prefs.OVERLAY_STYLE_FLOAT,
+                Prefs.OVERLAY_STYLE_CLASSIC};
+        String[] labels = new String[]{"Modern", "Float", "Classic"};
         int selected = indexOf(keys, Prefs.overlayStyle(this));
         LinearLayout selector = menuSelector(labels, selected, (position, label) -> {
             String key = keys[Math.max(0, Math.min(keys.length - 1, position))];
-            Prefs.get(this).edit().putString(Prefs.OVERLAY_STYLE, key).apply();
+            Prefs.setOverlayStyle(this, key);
         });
         selector.setLayoutParams(selectorLp());
         return selector;

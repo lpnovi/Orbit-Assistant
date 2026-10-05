@@ -566,20 +566,34 @@ public class OrbitSession extends VoiceInteractionSession {
         top.addView(modeChip, modeLp);
         installModeChipTouchTarget(top, modeChip);
 
-        ImageButton recent = tinyIconButton(com.orbit.assistant.R.drawable.ic_history);
-        recent.setContentDescription("Recent chats");
-        recent.setOnClickListener(v -> showHistoryPicker());
         int icon = UiKit.dp(c, style.iconDp);
-        LinearLayout.LayoutParams recentLp = new LinearLayout.LayoutParams(icon, icon);
-        recentLp.setMargins(0, 0, UiKit.dp(c, 6), 0);
-        top.addView(recent, recentLp);
+        if (style.compact) {
+            // Float keeps one slot for the two secondary destinations; both stay one tap away.
+            ImageButton more = tinyIconButton(com.orbit.assistant.R.drawable.ic_more);
+            more.setContentDescription("More options");
+            more.setOnClickListener(v -> UiKit.showOrbitMenu(c, more,
+                    new String[]{"Recent chats", "New chat"}, -1, (index, label) -> {
+                        if (index == 0) showHistoryPicker();
+                        else startNewChat();
+                    }));
+            LinearLayout.LayoutParams moreLp = new LinearLayout.LayoutParams(icon, icon);
+            moreLp.setMargins(0, 0, UiKit.dp(c, 6), 0);
+            top.addView(more, moreLp);
+        } else {
+            ImageButton recent = tinyIconButton(com.orbit.assistant.R.drawable.ic_history);
+            recent.setContentDescription("Recent chats");
+            recent.setOnClickListener(v -> showHistoryPicker());
+            LinearLayout.LayoutParams recentLp = new LinearLayout.LayoutParams(icon, icon);
+            recentLp.setMargins(0, 0, UiKit.dp(c, 6), 0);
+            top.addView(recent, recentLp);
 
-        ImageButton newChat = tinyIconButton(com.orbit.assistant.R.drawable.ic_add);
-        newChat.setContentDescription("New chat");
-        newChat.setOnClickListener(v -> startNewChat());
-        LinearLayout.LayoutParams newChatLp = new LinearLayout.LayoutParams(icon, icon);
-        newChatLp.setMargins(0, 0, UiKit.dp(c, 6), 0);
-        top.addView(newChat, newChatLp);
+            ImageButton newChat = tinyIconButton(com.orbit.assistant.R.drawable.ic_add);
+            newChat.setContentDescription("New chat");
+            newChat.setOnClickListener(v -> startNewChat());
+            LinearLayout.LayoutParams newChatLp = new LinearLayout.LayoutParams(icon, icon);
+            newChatLp.setMargins(0, 0, UiKit.dp(c, 6), 0);
+            top.addView(newChat, newChatLp);
+        }
 
         ImageButton close = tinyIconButton(com.orbit.assistant.R.drawable.ic_close);
         close.setContentDescription("Close Orbit");
@@ -679,8 +693,24 @@ public class OrbitSession extends VoiceInteractionSession {
                 ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(c, 36));
         suggestionsLp.setMargins(0, style.integratedComposer ? UiKit.dp(c, 8) : 0, 0, UiKit.dp(c, 6));
         sheet.addView(suggestionScroll, suggestionsLp);
+        // Float spends no height on a row that has nothing in it; it grows when chips arrive.
+        if (style.compact) suggestionScroll.setVisibility(View.GONE);
 
-        messageScroll = new ScrollView(c);
+        final OverlayStyle built = style;
+        final int conversationCap = UiKit.dp(c, style.conversationDp);
+        messageScroll = new ScrollView(c) {
+            @Override protected void onMeasure(int widthSpec, int heightSpec) {
+                // A content-fitting conversation stops growing at its style's cap and scrolls.
+                int mode = MeasureSpec.getMode(heightSpec);
+                if (built.fitsContent() && mode != MeasureSpec.EXACTLY) {
+                    int size = mode == MeasureSpec.UNSPECIFIED ? conversationCap
+                            : Math.min(conversationCap, MeasureSpec.getSize(heightSpec));
+                    heightSpec = MeasureSpec.makeMeasureSpec(size, MeasureSpec.AT_MOST);
+                }
+                super.onMeasure(widthSpec, heightSpec);
+            }
+        };
+        if (style.fitsContent()) messageScroll.setMinimumHeight(UiKit.dp(c, style.conversationMinDp));
         messageScroll.setFillViewport(false);
         messages = new LinearLayout(c);
         messages.setOrientation(LinearLayout.VERTICAL);
@@ -690,9 +720,9 @@ public class OrbitSession extends VoiceInteractionSession {
         UiKit.applyConversationEdgeFade(messageScroll, messages);
         messageScroll.addView(messages, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(c, style.conversationDp));
-        sheet.addView(messageScroll, scrollLp);
+        sheet.addView(messageScroll, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(c, style.conversationDp)));
+        restConversation();
         renderConversation();
 
         // The same strip full chat uses, in its tighter sizing. One row whatever it holds, so the
@@ -736,7 +766,7 @@ public class OrbitSession extends VoiceInteractionSession {
         // Behaves as an ordinary EditText; it additionally records when Android asks it for an
         // input connection, which is the one thing no previous investigation could observe.
         input = new TracingEditText(c);
-        input.setHint("Ask anything…");
+        input.setHint(style.hint());
         input.setHintTextColor(Color.rgb(117, 123, 139));
         input.setTextColor(UiKit.TEXT);
         input.setTextSize(15);
@@ -1120,7 +1150,8 @@ public class OrbitSession extends VoiceInteractionSession {
         activeDraftTurnId = "";
         messages.removeAllViews();
         if (history.isEmpty()) {
-            addBubbleNow("What can I help with?", false, false);
+            // Float's composer hint carries the greeting, so its empty chat takes no height.
+            if (!style.compact) addBubbleNow("What can I help with?", false, false);
             return;
         }
         // While a retry is running its answer, and anything after it, step aside so the new version
@@ -1334,7 +1365,13 @@ public class OrbitSession extends VoiceInteractionSession {
 
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) sheet.getLayoutParams();
         int baseMargin = UiKit.dp(getContext(), style.marginDp);
-        if (imeVisible) {
+        if (imeVisible && style.fitsContent()) {
+            // Sits on the keyboard at its own size. The weighted conversation is what gives way
+            // when the space above the keyboard is shorter than the sheet.
+            lp.bottomMargin = imeBottom + baseMargin;
+            lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+            restConversation();
+        } else if (imeVisible) {
             int rootHeight = root.getHeight();
             if (rootHeight <= 0) rootHeight = getContext().getResources().getDisplayMetrics().heightPixels;
             lp.bottomMargin = imeBottom + baseMargin;
@@ -1348,12 +1385,7 @@ public class OrbitSession extends VoiceInteractionSession {
         } else {
             lp.bottomMargin = baseMargin;
             lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-            if (messageScroll != null) {
-                LinearLayout.LayoutParams scrollParams = (LinearLayout.LayoutParams) messageScroll.getLayoutParams();
-                scrollParams.height = UiKit.dp(getContext(), style.conversationDp);
-                scrollParams.weight = 0f;
-                messageScroll.setLayoutParams(scrollParams);
-            }
+            restConversation();
         }
         sheet.setLayoutParams(lp);
         // Layout mutation while the IME is up is one of the few things Orbit does during a turn
@@ -1361,6 +1393,20 @@ public class OrbitSession extends VoiceInteractionSession {
         // innocent.
         ComposerTrace.event("insets.applied imeVisible=" + imeVisible + " imeBottom=" + imeBottom);
         if (imeVisible) scrollBottom();
+    }
+
+    /**
+     * The conversation's resting size: Classic's fixed height, or, for a style that fits its
+     * content, no height and all the weight. Inside the wrap-content sheet that measures to what
+     * the conversation holds, between the style's minimum and the cap in its onMeasure.
+     */
+    private void restConversation() {
+        if (messageScroll == null) return;
+        LinearLayout.LayoutParams scrollParams = (LinearLayout.LayoutParams) messageScroll.getLayoutParams();
+        boolean fits = style.fitsContent();
+        scrollParams.height = fits ? 0 : UiKit.dp(getContext(), style.conversationDp);
+        scrollParams.weight = fits ? 1f : 0f;
+        messageScroll.setLayoutParams(scrollParams);
     }
 
     @Override
@@ -1788,7 +1834,7 @@ public class OrbitSession extends VoiceInteractionSession {
         if (suggestionRow == null || suggestionScroll == null) return;
         suggestionRow.removeAllViews();
         if (!screenAttached || selectionAttached) {
-            suggestionScroll.setVisibility(View.INVISIBLE);
+            suggestionScroll.setVisibility(style.compact ? View.GONE : View.INVISIBLE);
             return;
         }
         if (!Prefs.contextChips(getContext())) {
@@ -1799,7 +1845,7 @@ public class OrbitSession extends VoiceInteractionSession {
         if (items.isEmpty()) {
             // Preserve the 36dp slot while context is arriving so the sheet never
             // changes height after its opening animation has begun.
-            suggestionScroll.setVisibility(View.INVISIBLE);
+            suggestionScroll.setVisibility(style.compact ? View.GONE : View.INVISIBLE);
             return;
         }
         suggestionScroll.setVisibility(View.VISIBLE);
@@ -4311,13 +4357,13 @@ public class OrbitSession extends VoiceInteractionSession {
 
     private void restoreComposerHintSafe() {
         main.post(() -> {
-            if (input != null) input.setHint("Ask anything…");
+            if (input != null) input.setHint(style.hint());
         });
     }
 
     private void restoreComposerHintIfVoiceIdleSafe() {
         main.post(() -> {
-            if (!listening && !speaking && input != null) input.setHint("Ask anything…");
+            if (!listening && !speaking && input != null) input.setHint(style.hint());
         });
     }
 
@@ -4377,6 +4423,9 @@ public class OrbitSession extends VoiceInteractionSession {
                     dragging[0] = false;
                     sheet.animate().cancel();
                     if (scrim != null) scrim.animate().cancel();
+                    // A new touch owns the height; a settle still running from the last release
+                    // would otherwise keep writing it underneath the finger.
+                    if (stretchSettle != null) stretchSettle.cancel();
                     captureStretchBounds();
                     return true;
                 case MotionEvent.ACTION_MOVE:
@@ -4483,19 +4532,34 @@ public class OrbitSession extends VoiceInteractionSession {
 
     /** Eases the conversation back to its resting height from the exact height it was released at. */
     private void settleStretch() {
-        if (messageScroll == null || stretchBaseHeight <= 0) return;
+        if (messageScroll == null) return;
         ViewGroup.LayoutParams lp = messageScroll.getLayoutParams();
-        if (lp == null || lp.height == stretchBaseHeight) return;
+        if (lp == null) return;
+        if (style.fitsContent()) {
+            // Height 0 is a content-fitting conversation already at rest (no drag happened).
+            if (lp.height == 0) return;
+            if (stretchBaseHeight <= 0 || lp.height == stretchBaseHeight) {
+                restConversation();
+                return;
+            }
+        }
+        if (stretchBaseHeight <= 0 || lp.height == stretchBaseHeight) return;
         final int from = lp.height;
         if (!UiKit.animationsEnabled()) {
             applyStretch(stretchBaseHeight);
+            if (style.fitsContent()) restConversation();
             return;
         }
         if (stretchSettle != null) stretchSettle.cancel();
         stretchSettle = ValueAnimator.ofInt(from, stretchBaseHeight);
         stretchSettle.setDuration(190);
         stretchSettle.setInterpolator(new PathInterpolator(0.20f, 0.00f, 0.00f, 1.00f));
-        stretchSettle.addUpdateListener(a -> applyStretch((int) a.getAnimatedValue()));
+        stretchSettle.addUpdateListener(a -> {
+            applyStretch((int) a.getAnimatedValue());
+            // Landed at rest: hand the height back to the content, so the next reply still grows
+            // a content-fitting conversation instead of finding it pinned at a drag's base height.
+            if (style.fitsContent() && a.getAnimatedFraction() >= 1f) restConversation();
+        });
         stretchSettle.start();
     }
 

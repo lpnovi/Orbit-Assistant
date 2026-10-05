@@ -662,6 +662,17 @@ missing because of the look a user picked.
   own style: a lighter dim, a slimmer header, and one message card that carries the screen preview,
   Use screen and Select area under a full-width editor
 
+#### `0.8.4.0-beta.2` - three distinct styles
+
+- **Modern is the default.** Beta 1's Float design is renamed Modern and becomes the overlay for
+  anyone who has not chosen one. Someone who picked Float in Beta 1 keeps that same look as Modern
+- **A new, genuinely compact Float.** A small card near the bottom of the screen: a compact header
+  (History and New chat share one menu), the composer, and nothing else until there is a
+  conversation. It then grows upward to a modest height and scrolls
+- **Modern fits its conversation.** An empty chat no longer reserves a tall blank middle; the
+  conversation grows with its content
+- **Classic is unchanged** and stays selectable
+
 ### Orbit Local 2.0 - more of Orbit, privately on the phone
 
 Orbit Local began as private offline chat. The 0.8.2 line makes it a first-class part of Orbit:

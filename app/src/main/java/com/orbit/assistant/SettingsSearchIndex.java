@@ -407,9 +407,9 @@ public final class SettingsSearchIndex {
                 S_LOOK, "appearance", KEY_CHAT_TEXT_SIZE,
                 "text size", "font size", "bigger text", "larger", "small", "readable"));
         out.add(new Entry("Overlay style",
-                "Classic or Float look for the Side-button assistant.",
+                "Modern, Float or Classic look for the Side-button assistant.",
                 S_LOOK, "appearance", KEY_OVERLAY_STYLE,
-                "overlay", "side button", "assistant look", "float", "classic", "compact"));
+                "overlay", "side button", "assistant look", "modern", "float", "compact", "classic"));
         out.add(new Entry("Haptic feedback",
                 "Whether Orbit vibrates on interactions.",
                 S_LOOK, "appearance", KEY_HAPTICS,

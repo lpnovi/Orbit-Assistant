@@ -842,6 +842,13 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.4.0-beta.2**: Overlay Styles Beta 2: three distinct looks for the Side-button assistant, with Modern as the new default.
+  - Beta 1's Float is now called Modern, and it is the default overlay; if you chose Float in Beta 1, you keep that same look.
+  - The new Float is a truly compact assistant that sits near the bottom of the screen.
+  - Float grows only when a conversation needs the room, then scrolls instead of taking over the screen.
+  - Modern also wastes less space when the conversation is empty.
+  - Classic remains available, unchanged, and every style keeps all of Orbit's capabilities.
+
 - **v0.8.4.0-beta.1**: Overlay Styles: choose how the Side-button assistant looks.
   - Pick an overlay style in Settings, Look & Feel; the next time you open the assistant it uses it.
   - Classic is the overlay you already know, and it stays the default.

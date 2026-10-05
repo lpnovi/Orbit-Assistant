@@ -176,10 +176,17 @@ public final class Prefs {
     public static final String PRO_PREVIEW_FREE = "free";
     public static final String PRO_PREVIEW_PRO = "pro";
     public static final String PAGE_TRANSITION = "page_transition";
-    /** Side-button overlay look; see {@link OverlayStyle}. Classic for anyone who never chose. */
+    /** Side-button overlay look; see {@link OverlayStyle}. Modern for anyone who never chose. */
     public static final String OVERLAY_STYLE = "overlay_style";
-    public static final String OVERLAY_STYLE_CLASSIC = "classic";
+    public static final String OVERLAY_STYLE_MODERN = "modern";
     public static final String OVERLAY_STYLE_FLOAT = "float";
+    public static final String OVERLAY_STYLE_CLASSIC = "classic";
+    /**
+     * Set once {@link #OVERLAY_STYLE} speaks the 0.8.4.0-beta.2 vocabulary. In beta.1 "float" named
+     * the design now called Modern, so a value stored before this flag means Modern. Backed up with
+     * the style, so restoring a beta.1 backup migrates it the same way.
+     */
+    static final String OVERLAY_STYLE_MIGRATED = "overlay_style_beta2";
     /**
      * Whether Orbit draws its own interactive back gesture when returning to the previous screen.
      *
@@ -293,7 +300,7 @@ public final class Prefs {
             THEME_SURFACE, THEME_BACKGROUND, THEME_ID, THEME_NAME, THEME_MATERIAL,
             THEME_PRO_BACKGROUND_EFFECT_COLOR));
     private static final Set<String> BACKUP_BOOLEAN_KEYS = new HashSet<>(Arrays.asList(
-            SCREEN_CONTEXT, SCREENSHOT, CONTEXT_CHIPS, ATTACH_SCREEN_BY_DEFAULT,
+            OVERLAY_STYLE_MIGRATED, SCREEN_CONTEXT, SCREENSHOT, CONTEXT_CHIPS, ATTACH_SCREEN_BY_DEFAULT,
             SPEAK, HAPTICS, AUTO_LISTEN, AUTO_LISTEN_ON_OPEN, SMART_FOLLOW_UPS,
             VOICE_PAUSE_FRIENDLY, NEW_CHAT_ON_OPEN,
             HISTORY_ENABLED, SAVE_SCREEN_THUMBNAILS, KEYBOARD_AWARE_ASSISTANT, SHOW_STOP_BUTTON,
@@ -562,8 +569,22 @@ public final class Prefs {
     }
 
     public static String overlayStyle(Context c) {
-        String value = get(c).getString(OVERLAY_STYLE, OVERLAY_STYLE_CLASSIC);
-        return OVERLAY_STYLE_FLOAT.equals(value) ? value : OVERLAY_STYLE_CLASSIC;
+        SharedPreferences p = get(c);
+        String value = p.getString(OVERLAY_STYLE, null);
+        if (!p.getBoolean(OVERLAY_STYLE_MIGRATED, false)) {
+            if (OVERLAY_STYLE_FLOAT.equals(value)) value = OVERLAY_STYLE_MODERN;
+            SharedPreferences.Editor e = p.edit().putBoolean(OVERLAY_STYLE_MIGRATED, true);
+            if (value != null) e.putString(OVERLAY_STYLE, value);
+            e.apply();
+        }
+        if (OVERLAY_STYLE_FLOAT.equals(value) || OVERLAY_STYLE_CLASSIC.equals(value)) return value;
+        return OVERLAY_STYLE_MODERN;
+    }
+
+    /** The only writer of {@link #OVERLAY_STYLE}, so a chosen Float is never read as beta.1's. */
+    public static void setOverlayStyle(Context c, String style) {
+        get(c).edit().putString(OVERLAY_STYLE, style)
+                .putBoolean(OVERLAY_STYLE_MIGRATED, true).apply();
     }
 
     public static String weatherUnits(Context c) {
