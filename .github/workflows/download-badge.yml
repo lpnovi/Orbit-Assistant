@@ -1,9 +1,10 @@
 name: Download badge
 
-# Publishes the README "downloads" badge value: lifetime GitHub download_count summed over
-# every .apk asset of every release, stable and prerelease. This is APK downloads from GitHub,
-# not unique users or installs. orbit-update.json (fetched by in-app update checks), checksums
-# and any other non-APK assets are excluded. Nothing here touches the app.
+# Publishes the README "downloads" badge value: lifetime GitHub download_count summed over the
+# Orbit Assistant APK (Orbit-Assistant-v<version>.apk) of every release, stable and prerelease.
+# This is APK downloads from GitHub, not unique users or installs. Orbit Local APKs,
+# orbit-update.json (fetched by in-app update checks), checksums and any other assets are
+# excluded. Nothing here touches the app.
 #
 # The result is a Shields.io endpoint JSON on the orphan `badges` branch, force-pushed as a single
 # commit so main's history never grows. Releases published by release.yml use GITHUB_TOKEN and so
@@ -34,14 +35,14 @@ jobs:
         run: |
           set -euo pipefail
           total=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
-            --jq '.[] | select(.draft | not) | .assets[] | select(.name | ascii_downcase | endswith(".apk")) | .download_count' \
+            --jq '.[] | select(.draft | not) | .assets[] | select(.name | test("^Orbit-Assistant-v[0-9]+([.][0-9]+)+(-beta[.][0-9]+)?[.]apk$")) | .download_count' \
             | awk '{ s += $1 } END { print s + 0 }')
-          echo "Lifetime APK downloads: $total"
+          echo "Lifetime Orbit Assistant APK downloads: $total"
 
           mkdir badges && cd badges
           git init -q -b badges
           printf '{"schemaVersion":1,"label":"downloads","message":"%s","color":"3FB950"}\n' "$total" > downloads.json
           git add downloads.json
           git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
-            commit -q -m "Download badge: $total APK downloads"
+            commit -q -m "Download badge: $total Orbit Assistant APK downloads"
           git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" badges
