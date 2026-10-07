@@ -9,7 +9,11 @@ Orbit brings system assistant access, screen context, safe device actions, autom
 [![Download Stable](https://img.shields.io/badge/Download-Stable-7457E8?style=for-the-badge&logo=android&logoColor=white)](https://github.com/lpnovi/Orbit-Assistant/releases/latest)
 [![Try Beta](https://img.shields.io/badge/Try-Beta-29233B?style=for-the-badge&logo=github&logoColor=white)](https://github.com/lpnovi/Orbit-Assistant/releases?q=prerelease%3Atrue)
 
-[![Stable release downloads](https://img.shields.io/github/downloads/lpnovi/Orbit-Assistant/latest/total?style=flat-square&label=downloads&color=brightgreen)](https://github.com/lpnovi/Orbit-Assistant/releases/latest)
+[![Latest stable release](https://img.shields.io/github/v/release/lpnovi/Orbit-Assistant?display_name=tag&style=flat-square&label=stable&color=7457E8)](https://github.com/lpnovi/Orbit-Assistant/releases/latest)
+[![Latest beta release](https://img.shields.io/github/v/release/lpnovi/Orbit-Assistant?display_name=tag&include_prereleases&filter=*-beta.*&style=flat-square&label=beta&color=8E7CC3)](https://github.com/lpnovi/Orbit-Assistant/releases?q=prerelease%3Atrue)
+[![Lifetime APK downloads from GitHub Releases (not unique users)](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Flpnovi%2FOrbit-Assistant%2Fbadges%2Fdownloads.json&style=flat-square)](https://github.com/lpnovi/Orbit-Assistant/releases)
+![Android 10+](https://img.shields.io/badge/Android-10%2B-3DDC84?style=flat-square)
+[![License](https://img.shields.io/github/license/lpnovi/Orbit-Assistant?style=flat-square&color=D9822B)](LICENSE)
 
 **Android 10+** · Free and open source (MPL-2.0) · Install from GitHub · Independent project
 
