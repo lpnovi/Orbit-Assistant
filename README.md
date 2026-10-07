@@ -9,7 +9,7 @@ Orbit brings system assistant access, screen context, safe device actions, autom
 [![Download Stable](https://img.shields.io/badge/Download-Stable-7457E8?style=for-the-badge&logo=android&logoColor=white)](https://github.com/lpnovi/Orbit-Assistant/releases/latest)
 [![Try Beta](https://img.shields.io/badge/Try-Beta-29233B?style=for-the-badge&logo=github&logoColor=white)](https://github.com/lpnovi/Orbit-Assistant/releases?q=prerelease%3Atrue)
 
-[![Total downloads](https://img.shields.io/github/downloads/lpnovi/Orbit-Assistant/total?style=flat-square&label=downloads&color=brightgreen)](https://github.com/lpnovi/Orbit-Assistant/releases)
+[![Stable release downloads](https://img.shields.io/github/downloads/lpnovi/Orbit-Assistant/latest/total?style=flat-square&label=downloads&color=brightgreen)](https://github.com/lpnovi/Orbit-Assistant/releases/latest)
 
 **Android 10+** · Free and open source (MPL-2.0) · Install from GitHub · Independent project
 
