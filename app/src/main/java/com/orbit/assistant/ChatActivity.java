@@ -3268,6 +3268,18 @@ public class ChatActivity extends Activity {
         UiKit.pressScale(retry);
         retry.setOnClickListener(v -> retryFailed(failed));
         row.addView(retry, new LinearLayout.LayoutParams(UiKit.dp(this, 82), UiKit.dp(this, 38)));
+        String failure = history.isEmpty() ? null : history.get(history.size() - 1).content;
+        if (ChatGptAuth.needsSignIn(this, failure)) {
+            Button signIn = new Button(this);
+            signIn.setText("Sign in again"); signIn.setAllCaps(false); signIn.setTextSize(12); signIn.setTextColor(UiKit.accent(this));
+            signIn.setMinHeight(0); signIn.setMinimumHeight(0); signIn.setStateListAnimator(null);
+            signIn.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2, UiKit.accent(this), UiKit.accent(this), 14, this));
+            UiKit.pressScale(signIn);
+            signIn.setOnClickListener(v -> startActivity(SettingsActivity.chatGptAccountIntent(this)));
+            LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, UiKit.dp(this, 38));
+            slp.setMargins(UiKit.dp(this, 8), 0, 0, 0);
+            row.addView(signIn, slp);
+        }
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.setMargins(0, UiKit.dp(this, 3), 0, UiKit.dp(this, 8));
         messages.addView(row, lp);

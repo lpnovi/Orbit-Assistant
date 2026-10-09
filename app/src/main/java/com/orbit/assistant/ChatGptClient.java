@@ -190,7 +190,7 @@ public final class ChatGptClient {
      */
     public static void complete(Context context, String instructions, String planningPrompt,
                                 AiSelection selection, AssistantClient.PlanCallback cb) {
-        ChatGptAuth.getValidTokens(context, false, new ChatGptAuth.TokenCallback() {
+        ChatGptAuth.getValidTokens(context, null, new ChatGptAuth.TokenCallback() {
             @Override public void onSuccess(SecureStore.ChatGptTokens tokens) {
                 EXEC.execute(() -> doPlan(context, instructions, planningPrompt, selection, tokens, false, cb));
             }
@@ -243,9 +243,14 @@ public final class ChatGptClient {
             try (OutputStream out = conn.getOutputStream()) { out.write(bytes); }
 
             int code = conn.getResponseCode();
-            if (code == 401 && !alreadyRefreshed) {
+            if (code == 401) {
                 conn.disconnect();
-                ChatGptAuth.getValidTokens(context, true, new ChatGptAuth.TokenCallback() {
+                if (alreadyRefreshed) {
+                    // Refused again straight after a renewal: the session itself is no good.
+                    cb.onError(ChatGptAuth.sessionRejected(context, tokens));
+                    return;
+                }
+                ChatGptAuth.getValidTokens(context, tokens.accessToken, new ChatGptAuth.TokenCallback() {
                     @Override public void onSuccess(SecureStore.ChatGptTokens fresh) {
                         EXEC.execute(() -> doPlan(context, instructions, planningPrompt,
                                 selection, fresh, true, cb));
@@ -255,6 +260,7 @@ public final class ChatGptClient {
                 return;
             }
             if (code < 200 || code >= 300) {
+                if (code >= 500) ChatGptAuth.markRefreshDue();
                 cb.onError(friendlyHttpError(code, ChatGptAuth.readAll(conn.getErrorStream()), model));
                 return;
             }
@@ -271,6 +277,9 @@ public final class ChatGptClient {
             }
             cb.onText(stream.output, "ChatGPT · " + model);
         } catch (Exception e) {
+            // Includes a stream ChatGPT ended with a processing error. One renewal before the next
+            // request costs nothing if the session was fine, and clears it if it had gone stale.
+            ChatGptAuth.markRefreshDue();
             cb.onError("ChatGPT request failed: "
                     + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
         } finally {
@@ -362,7 +371,7 @@ public final class ChatGptClient {
                             String memoryContext, String trustedTaskContext,
                             KeptContext.Prepared kept,
                             boolean thinkingUpdates, AssistantClient.Callback cb) {
-        ChatGptAuth.getValidTokens(context, false, new ChatGptAuth.TokenCallback() {
+        ChatGptAuth.getValidTokens(context, null, new ChatGptAuth.TokenCallback() {
             @Override public void onSuccess(SecureStore.ChatGptTokens tokens) {
                 EXEC.execute(() -> doSend(context, prompt, screenText, images, history,
                         selection, explicitAttachment, notificationContext, memoryContext,
@@ -417,9 +426,14 @@ public final class ChatGptClient {
             try (OutputStream out = conn.getOutputStream()) { out.write(bytes); }
 
             int code = conn.getResponseCode();
-            if (code == 401 && !alreadyRefreshed) {
+            if (code == 401) {
                 conn.disconnect();
-                ChatGptAuth.getValidTokens(context, true, new ChatGptAuth.TokenCallback() {
+                if (alreadyRefreshed) {
+                    // Refused again straight after a renewal: the session itself is no good.
+                    cb.onError(ChatGptAuth.sessionRejected(context, tokens));
+                    return;
+                }
+                ChatGptAuth.getValidTokens(context, tokens.accessToken, new ChatGptAuth.TokenCallback() {
                     @Override public void onSuccess(SecureStore.ChatGptTokens fresh) {
                         EXEC.execute(() -> doSend(context, prompt, screenText, images, history,
                                 selection, explicitAttachment, notificationContext, memoryContext,
@@ -462,6 +476,7 @@ public final class ChatGptClient {
                             trustedTaskContext, kept, thinkingUpdates, tokens, alreadyRefreshed, cb);
                     return;
                 }
+                if (code >= 500) ChatGptAuth.markRefreshDue();
                 String friendly = friendlyHttpError(code, err, model);
                 // A model whose availability depends on the account gets a truthful answer
                 // instead of a backend error code. Orbit does not quietly retry on a different
@@ -503,6 +518,9 @@ public final class ChatGptClient {
             cb.onSuccess(reply.withSourceUrls(stream.sourceUrls)
                     .withDetails(ResponseDetails.sentWith(sent)));
         } catch (Exception e) {
+            // Includes a stream ChatGPT ended with a processing error. One renewal before the next
+            // request costs nothing if the session was fine, and clears it if it had gone stale.
+            ChatGptAuth.markRefreshDue();
             cb.onError("ChatGPT request failed: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
         } finally {
             if (conn != null) conn.disconnect();

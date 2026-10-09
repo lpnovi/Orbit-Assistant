@@ -1522,7 +1522,7 @@ public class OrbitSession extends VoiceInteractionSession {
                 boolean newest = i == history.size() - 1;
                 boolean draftReply = newest && i > 0
                         && ReplyDraftContext.isDraftRequest(history.get(i - 1).content);
-                if (visible.startsWith("Orbit could not finish")) addFailureRetryAction(PendingRequestStore.latestFailedForConversation(getContext(), conversationId));
+                if (visible.startsWith("Orbit could not finish")) addFailureRetryAction(PendingRequestStore.latestFailedForConversation(getContext(), conversationId), visible);
                 else if (draftReply) {
                     // Whether that turn was a clarification is remembered in the conversation's own
                     // reply-draft state, which survives the rebuild; the marker in the text does not.
@@ -2697,7 +2697,7 @@ public class OrbitSession extends VoiceInteractionSession {
                     DiagnosticStore.recordError(getContext(), friendly);
                     if (sessionVisible) {
                         addErrorBubble(friendly);
-                        addFailureRetryAction(PendingRequestStore.load(getContext(), requestId));
+                        addFailureRetryAction(PendingRequestStore.load(getContext(), requestId), friendly);
                     }
                 });
             }
@@ -3417,7 +3417,7 @@ public class OrbitSession extends VoiceInteractionSession {
         updateComposerAction();
     }
 
-    private void addFailureRetryAction(PendingRequestStore.Item failed) {
+    private void addFailureRetryAction(PendingRequestStore.Item failed, String failure) {
         if (failed == null || messages == null) return;
         Context c = getContext();
         LinearLayout row = new LinearLayout(c);
@@ -3431,6 +3431,17 @@ public class OrbitSession extends VoiceInteractionSession {
         rlp.setMargins(UiKit.dp(c, 10), 0, 0, 0);
         row.addView(retry, rlp);
         retry.setOnClickListener(v -> retryFailedRequest(failed));
+        if (ChatGptAuth.needsSignIn(c, failure)) {
+            Button signIn = tinyTextButton("Sign in again");
+            signIn.setTextColor(UiKit.accent(c));
+            signIn.setBackground(UiKit.rippleOutlined(UiKit.SURFACE_2, UiKit.accent(c), UiKit.accent(c), 14, c));
+            row.addView(signIn, new LinearLayout.LayoutParams(rlp));
+            signIn.setOnClickListener(v -> {
+                try { startAssistantActivity(SettingsActivity.chatGptAccountIntent(c)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
+                catch (Exception ignored) {}
+            });
+        }
         messages.addView(row, fullWidthLp());
     }
 
@@ -3512,7 +3523,7 @@ public class OrbitSession extends VoiceInteractionSession {
                     if (!ownsCurrentUi()) return;
                     busy = false; uiRequestConversationId = null; stopThinkingIndicator(); stateTextSafe("Needs attention");
                     history.add(new AssistantClient.History("assistant", friendly));
-                    if (sessionVisible) { addErrorBubble(friendly); addFailureRetryAction(PendingRequestStore.load(getContext(), requestId)); }
+                    if (sessionVisible) { addErrorBubble(friendly); addFailureRetryAction(PendingRequestStore.load(getContext(), requestId), friendly); }
                     updateComposerAction();
                     traceComposer("response.error-rendered");
                 });

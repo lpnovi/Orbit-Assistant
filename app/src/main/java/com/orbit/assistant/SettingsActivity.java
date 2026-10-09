@@ -64,6 +64,12 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
     private static final String SECTION_UPDATES = "updates";
     static final String SECTION_ADVANCED = "advanced";
 
+    /** The ChatGPT account card, where "Sign in with ChatGPT" lives. */
+    static Intent chatGptAccountIntent(Context context) {
+        return new Intent(context, SettingsActivity.class).putExtra(EXTRA_SECTION, SECTION_AI)
+                .putExtra(EXTRA_FOCUS, SettingsSearchIndex.KEY_CHATGPT_ACCOUNT);
+    }
+
     public static Intent assistantSetupIntent(Context context) {
         return new Intent(context, SettingsActivity.class).putExtra(EXTRA_SECTION, SECTION_ASSISTANT);
     }
@@ -1137,7 +1143,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         styleCard.addView(controlGroup(SettingsSearchIndex.KEY_FONT,
                 label("App font"), fontSelector(), null));
         TextView fontNote = UiKit.text(this,
-                "Orbit Default is the current app font. Times New Roman uses Android's built-in serif family for a similar classic look without adding a font file to Orbit.",
+                "Orbit Default is the current app font. Times New Roman uses your phone's Times New Roman font when it has one, and otherwise Android's built-in serif font for a similar classic look. Orbit doesn't include a font file.",
                 12, UiKit.MUTED, false);
         fontNote.setPadding(0, UiKit.dp(this, 8), 0, UiKit.dp(this, 8));
         styleCard.addView(fontNote);

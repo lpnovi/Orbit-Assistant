@@ -377,52 +377,217 @@ public final class ChatGptAuth {
         return BrowserExchange.success(accountInfo(id, access, accountId));
     }
 
-    /** Returns a valid access token, refreshing through OpenAI when it is near expiry. */
-    public static void getValidTokens(Context context, boolean forceRefresh, TokenCallback cb) {
+    /**
+     * Sessions older than this are renewed before use even while the access token has not
+     * expired, which is how OpenAI's own Codex client keeps one. A session that stays "valid" by
+     * its expiry for weeks can still go stale on the service side: requests then fail with a
+     * generic processing error until the user signs out and in, which a renewal fixes.
+     */
+    static final long MAX_SESSION_AGE_MS = 8L * 24L * 60L * 60L * 1000L;
+
+    /** Shown when the credentials themselves were refused, so only signing in again can help. */
+    static final String SESSION_ENDED = "Your ChatGPT session has ended. Sign in with ChatGPT again"
+            + " in Orbit settings. Your chats are kept.";
+
+    /** One renewal at a time: refresh tokens rotate, so a second concurrent use would be refused. */
+    private static final Object REFRESH_LOCK = new Object();
+    private static List<RefreshWaiter> refreshWaiters;
+    /** Set when ChatGPT failed a request without explaining why; the next request renews first. */
+    private static volatile boolean refreshDue;
+
+    private static final class RefreshWaiter {
+        final TokenCallback cb;
+        /** A still-valid session this caller may keep using if the renewal only failed for now. */
+        final SecureStore.ChatGptTokens fallback;
+        RefreshWaiter(TokenCallback cb, SecureStore.ChatGptTokens fallback) {
+            this.cb = cb;
+            this.fallback = fallback;
+        }
+    }
+
+    /** The token endpoint's answer. */
+    static final class TokenResponse {
+        final int code;
+        final String body;
+        TokenResponse(int code, String body) {
+            this.code = code;
+            this.body = body == null ? "" : body;
+        }
+    }
+
+    /** Posts a refresh form to OpenAI's token endpoint. Replaced in tests. */
+    interface Refresher {
+        TokenResponse post(String form) throws Exception;
+    }
+
+    private static volatile Refresher refresher = ChatGptAuth::postRefresh;
+
+    static Refresher installRefresherForTest(Refresher replacement) {
+        Refresher previous = refresher;
+        refresher = replacement;
+        return previous;
+    }
+
+    /**
+     * Returns a usable session, renewing it through OpenAI first when it is near expiry, older
+     * than {@link #MAX_SESSION_AGE_MS}, or ChatGPT just failed a request.
+     *
+     * @param rejectedAccessToken the access token ChatGPT just answered 401 to, or null. If the
+     *     stored session has already moved past it (another request renewed it), that newer
+     *     session is returned without a second renewal.
+     */
+    public static void getValidTokens(Context context, String rejectedAccessToken, TokenCallback cb) {
         SecureStore.ChatGptTokens t = SecureStore.loadChatGptTokens(context);
         if (t == null) {
             cb.onError("Sign in with ChatGPT in Orbit settings first.");
             return;
         }
-        long exp = jwtLong(t.accessToken, "exp");
-        long now = System.currentTimeMillis() / 1000L;
-        if (!forceRefresh && (exp == 0L || exp > now + 120L)) {
+        boolean rejected = rejectedAccessToken != null && rejectedAccessToken.equals(t.accessToken);
+        if (rejectedAccessToken != null && !rejected) {
             cb.onSuccess(t);
             return;
         }
-        EXEC.execute(() -> refresh(context, t, cb));
+        long exp = jwtLong(t.accessToken, "exp");
+        long nowMs = System.currentTimeMillis();
+        boolean expiring = exp != 0L && exp <= nowMs / 1000L + 120L;
+        if (!rejected && !expiring && !refreshDue && !sessionAged(t, nowMs)) {
+            cb.onSuccess(t);
+            return;
+        }
+        // Only a session that still works may stand in for a renewal that could not finish now.
+        refreshShared(context, t, rejected || expiring ? null : t, cb);
     }
 
-    private static void refresh(Context context, SecureStore.ChatGptTokens old, TokenCallback cb) {
-        HttpURLConnection conn = null;
+    /** Whether a failed answer is one only signing in to ChatGPT again can fix. */
+    static boolean needsSignIn(Context context, String failure) {
+        return failure != null && failure.contains("Sign in with ChatGPT") && !isSignedIn(context);
+    }
+
+    static boolean sessionAged(SecureStore.ChatGptTokens t, long nowMs) {
+        return t.savedAtMs <= 0L || nowMs - t.savedAtMs >= MAX_SESSION_AGE_MS;
+    }
+
+    /** ChatGPT failed a request without saying why: renew the session before the next one. */
+    static void markRefreshDue() {
+        refreshDue = true;
+    }
+
+    /**
+     * Ends the session when ChatGPT refused credentials that were just renewed, then returns what
+     * to tell the user. Only that exact session is cleared: one signed in meanwhile is kept.
+     */
+    static String sessionRejected(Context context, SecureStore.ChatGptTokens rejected) {
+        endSession(context, rejected.refreshToken);
+        return SESSION_ENDED;
+    }
+
+    private static void refreshShared(Context context, SecureStore.ChatGptTokens old,
+                                      SecureStore.ChatGptTokens fallback, TokenCallback cb) {
+        synchronized (REFRESH_LOCK) {
+            boolean running = refreshWaiters != null;
+            if (!running) refreshWaiters = new ArrayList<>();
+            refreshWaiters.add(new RefreshWaiter(cb, fallback));
+            if (running) return;
+            refreshDue = false;
+        }
+        EXEC.execute(() -> refresh(context, old));
+    }
+
+    private static void refresh(Context context, SecureStore.ChatGptTokens old) {
+        TokenResponse response;
         try {
-            String form = formPair("grant_type", "refresh_token") +
-                    "&" + formPair("refresh_token", old.refreshToken) +
-                    "&" + formPair("client_id", CLIENT_ID);
-            conn = formConnection(OAUTH_TOKEN_URL, 15000, 30000);
+            response = refresher.post(formPair("grant_type", "refresh_token")
+                    + "&" + formPair("refresh_token", old.refreshToken)
+                    + "&" + formPair("client_id", CLIENT_ID));
+        } catch (Exception e) {
+            finishRefresh(null, "ChatGPT couldn't renew your session right now: " + cleanMessage(e), true);
+            return;
+        }
+        if (response.code < 200 || response.code >= 300) {
+            if (refreshRefused(response.code, response.body)) {
+                endSession(context, old.refreshToken);
+                finishRefresh(null, SESSION_ENDED, false);
+            } else {
+                finishRefresh(null, oauthError("ChatGPT couldn't renew your session right now."
+                        + " Try again in a moment", response.code, response.body), true);
+            }
+            return;
+        }
+        String[] next;
+        try {
+            next = refreshed(old, new JSONObject(response.body));
+        } catch (Exception e) {
+            next = null;
+        }
+        if (next == null) {
+            finishRefresh(null, "OpenAI returned an incomplete session renewal. Try again.", true);
+            return;
+        }
+        SecureStore.ChatGptTokens updated;
+        String error = null;
+        synchronized (LOGIN_LOCK) {
+            SecureStore.ChatGptTokens current = SecureStore.loadChatGptTokens(context);
+            if (current == null || !current.refreshToken.equals(old.refreshToken)) {
+                // Signed out, or signed in again, while this ran: never bring the old session back.
+                updated = current;
+                if (current == null) error = "Sign in with ChatGPT in Orbit settings first.";
+            } else if (!SecureStore.saveChatGptTokens(context, next[0], next[1], next[2], next[3])) {
+                updated = null;
+                error = "Orbit could not securely save the renewed ChatGPT session.";
+            } else {
+                updated = SecureStore.loadChatGptTokens(context);
+                if (updated == null) error = "Orbit could not reload the renewed ChatGPT session.";
+            }
+        }
+        finishRefresh(updated, error, false);
+    }
+
+    private static void finishRefresh(SecureStore.ChatGptTokens fresh, String error, boolean temporary) {
+        List<RefreshWaiter> waiters;
+        synchronized (REFRESH_LOCK) {
+            waiters = refreshWaiters;
+            refreshWaiters = null;
+        }
+        if (waiters == null) return;
+        for (RefreshWaiter w : waiters) {
+            if (fresh != null) w.cb.onSuccess(fresh);
+            else if (temporary && w.fallback != null) w.cb.onSuccess(w.fallback);
+            else w.cb.onError(error);
+        }
+    }
+
+    /**
+     * Whether the token endpoint refused the refresh token itself (expired, revoked, already
+     * used), as opposed to failing for now. Only a refusal ends the session; a server error, rate
+     * limit or network problem never signs anyone out.
+     */
+    static boolean refreshRefused(int code, String body) {
+        if (code == 401) return true;
+        if (code != 400 || body == null) return false;
+        String lower = body.toLowerCase(java.util.Locale.US);
+        return lower.contains("invalid_grant") || lower.contains("refresh_token_expired")
+                || lower.contains("refresh_token_reused") || lower.contains("refresh_token_invalidated");
+    }
+
+    /** Clears the stored session if it is still the one holding this refresh token. */
+    private static void endSession(Context context, String refreshToken) {
+        synchronized (LOGIN_LOCK) {
+            SecureStore.ChatGptTokens current = SecureStore.loadChatGptTokens(context);
+            if (current != null && current.refreshToken.equals(refreshToken)) {
+                SecureStore.clearChatGpt(context);
+            }
+        }
+    }
+
+    private static TokenResponse postRefresh(String form) throws Exception {
+        HttpURLConnection conn = formConnection(OAUTH_TOKEN_URL, 15000, 30000);
+        try {
             write(conn, form, "application/x-www-form-urlencoded");
             int code = conn.getResponseCode();
-            String body = readAll(code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream());
-            if (code < 200 || code >= 300) {
-                cb.onError(oauthError("ChatGPT session refresh failed. Sign out and sign in again if this persists", code, body));
-                return;
-            }
-            String[] next = refreshed(old, new JSONObject(body));
-            if (next == null) {
-                cb.onError("OpenAI returned an incomplete token refresh response.");
-                return;
-            }
-            if (!SecureStore.saveChatGptTokens(context, next[0], next[1], next[2], next[3])) {
-                cb.onError("Orbit could not securely save the refreshed ChatGPT session.");
-                return;
-            }
-            SecureStore.ChatGptTokens updated = SecureStore.loadChatGptTokens(context);
-            if (updated == null) cb.onError("Orbit could not reload the refreshed ChatGPT session.");
-            else cb.onSuccess(updated);
-        } catch (Exception e) {
-            cb.onError("ChatGPT session refresh failed: " + cleanMessage(e));
+            return new TokenResponse(code,
+                    readAll(code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream()));
         } finally {
-            if (conn != null) conn.disconnect();
+            conn.disconnect();
         }
     }
 

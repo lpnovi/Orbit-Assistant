@@ -185,17 +185,14 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * The 0.8.4.0 Overlay Styles line reaches Stable after four Betas.
-     *
-     * <p>Beta 4 is the tested behavior, so this build must carry Stable metadata, and the
-     * changelog entry the release workflow builds its notes from must exist for the Stable version
-     * name.
+     * 0.8.4.1 Beta 1 is a fix Beta after 0.8.4.0 Stable, so this build carries Beta metadata and
+     * the changelog entry the release workflow builds its notes from must exist.
      */
-    @Test public void thisReleaseIsOverlayStylesStable() {
-        assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
-                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.installedIsBeta());
+    @Test public void thisReleaseIsAFixBeta() {
+        assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
+                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+        assertTrue(OrbitVersion.installedIsBeta());
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
     }
 

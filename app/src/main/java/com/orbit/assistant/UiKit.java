@@ -46,6 +46,7 @@ import android.widget.PopupWindow;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import java.io.File;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -303,6 +304,7 @@ public final class UiKit {
 
     private static volatile Typeface SYSTEM_LIGHT_BASE;
     private static volatile Typeface SYSTEM_MONO_BASE;
+    private static volatile Typeface SYSTEM_SERIF_BASE;
 
     /**
      * Build a Typeface from an actual font file registered by Android instead of
@@ -393,11 +395,82 @@ public final class UiKit {
         }
     }
 
+    private static Typeface serifBase() {
+        Typeface cached = SYSTEM_SERIF_BASE;
+        if (cached != null) return cached;
+        synchronized (UiKit.class) {
+            if (SYSTEM_SERIF_BASE == null) {
+                Typeface resolved = systemSerifFromRegisteredFont();
+                SYSTEM_SERIF_BASE = resolved != null ? resolved : Typeface.SERIF;
+            }
+            return SYSTEM_SERIF_BASE;
+        }
+    }
+
+    /**
+     * Times New Roman's face, built from registered font files rather than the generic "serif"
+     * alias. After the One UI 9 update Times New Roman drew exactly like Orbit Default on the phone,
+     * consistent with Samsung remapping that alias - the same OEM remapping Light and Monospace
+     * already work around.
+     * A real Times New Roman file wins when the phone ships one; otherwise Android's own serif face
+     * (what the alias meant before). Orbit bundles no font file. Every upright/italic weight of the
+     * chosen family is added so bold text uses the real bold face instead of a synthesized one.
+     */
+    private static Typeface systemSerifFromRegisteredFont() {
+        try {
+            Set<Font> fonts = SystemFonts.getAvailableFonts();
+            if (fonts == null || fonts.isEmpty()) return null;
+            int bestRank = Integer.MAX_VALUE;
+            for (Font font : fonts) {
+                int rank = serifFileRank(font.getFile() == null ? null : font.getFile().getName());
+                if (rank >= 0 && rank < bestRank) bestRank = rank;
+            }
+            if (bestRank == Integer.MAX_VALUE) return null;
+            List<Font> faces = new ArrayList<>();
+            for (Font font : fonts) {
+                if (font.getFile() != null && serifFileRank(font.getFile().getName()) == bestRank) faces.add(font);
+            }
+            // Upright regular first, so it is the family's default face.
+            faces.sort((a, b) -> Integer.compare(
+                    Math.abs(a.getStyle().getWeight() - 400) + a.getStyle().getSlant() * 1000,
+                    Math.abs(b.getStyle().getWeight() - 400) + b.getStyle().getSlant() * 1000));
+            FontFamily.Builder family = null;
+            Set<Integer> styles = new HashSet<>();
+            for (Font font : faces) {
+                if (!styles.add(font.getStyle().getWeight() * 2 + font.getStyle().getSlant())) continue;
+                if (family == null) family = new FontFamily.Builder(font);
+                else family.addFont(font);
+            }
+            return new Typeface.CustomFallbackBuilder(family.build()).setSystemFallback("serif").build();
+        } catch (Throwable ignored) {
+            // Typeface.SERIF below keeps the earlier behaviour on unusual builds.
+        }
+        return null;
+    }
+
+    /**
+     * Which serif family a registered font file belongs to: 0 Times New Roman, 1 Noto Serif,
+     * 2 Droid Serif, -1 anything else. Script-specific relatives (NotoSerifArmenian, NotoSerifCJK,
+     * NotoSerifDisplay) are refused, because only the plain family carries the Latin face.
+     */
+    static int serifFileRank(String fileName) {
+        if (fileName == null) return -1;
+        String name = fileName.toLowerCase(Locale.US)
+                .replaceAll("\\.(ttf|otf|ttc)$", "")
+                .replaceAll("\\[[^\\]]*\\]", "")
+                .replaceAll("[-_ ]", "");
+        String face = "(regular|bold|italic|bolditalic|vf)?";
+        if (name.matches("(timesnewroman|times)(ps|mt|psmt)?" + face) || name.matches("times(bd|i|bi)")) return 0;
+        if (name.matches("notoserif" + face)) return 1;
+        if (name.matches("droidserif" + face)) return 2;
+        return -1;
+    }
+
     /** Resolve a specific Orbit interface font choice without bundling font assets. */
     public static Typeface typefaceForFontChoice(String choice, int style) {
         String resolved = choice == null ? "orbit_default" : choice;
         if ("times_new_roman".equals(resolved)) {
-            return Typeface.create(Typeface.SERIF, style);
+            return Typeface.create(serifBase(), style);
         }
         if ("light".equals(resolved)) {
             return Typeface.create(lightBase(), style);

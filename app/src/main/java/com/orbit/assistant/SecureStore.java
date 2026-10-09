@@ -193,6 +193,8 @@ public final class SecureStore {
             o.put("access_token", accessToken == null ? "" : accessToken);
             o.put("refresh_token", refreshToken == null ? "" : refreshToken);
             o.put("account_id", accountId == null ? "" : accountId);
+            // When this session was last issued, so ChatGptAuth can renew an old one before it goes stale.
+            o.put("saved_at", System.currentTimeMillis());
             return encrypt(c, CHATGPT_ALIAS, CHATGPT_ENC, CHATGPT_IV, o.toString());
         } catch (Exception e) {
             clearChatGpt(c);
@@ -209,7 +211,8 @@ public final class SecureStore {
             String refresh = o.optString("refresh_token", "");
             if (access.isEmpty() || refresh.isEmpty()) return null;
             return new ChatGptTokens(
-                    o.optString("id_token", ""), access, refresh, o.optString("account_id", ""));
+                    o.optString("id_token", ""), access, refresh, o.optString("account_id", ""),
+                    o.optLong("saved_at", 0L));
         } catch (Exception e) {
             return null;
         }
@@ -308,8 +311,11 @@ public final class SecureStore {
         public final String accessToken;
         public final String refreshToken;
         public final String accountId;
-        ChatGptTokens(String id, String access, String refresh, String account) {
+        /** When these were issued; 0 for a session saved before 0.8.4.1. */
+        public final long savedAtMs;
+        ChatGptTokens(String id, String access, String refresh, String account, long savedAt) {
             idToken = id; accessToken = access; refreshToken = refresh; accountId = account;
+            savedAtMs = savedAt;
         }
     }
 

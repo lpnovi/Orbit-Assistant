@@ -417,7 +417,7 @@ public final class ChatGptBrowserAuthTest {
         assertEquals("refresh-old", t.refreshToken);
         assertEquals("acct-9", ChatGptAuth.getAccountInfo(context).accountId);
         AtomicReference<SecureStore.ChatGptTokens> valid = new AtomicReference<>();
-        ChatGptAuth.getValidTokens(context, false, new ChatGptAuth.TokenCallback() {
+        ChatGptAuth.getValidTokens(context, null, new ChatGptAuth.TokenCallback() {
             @Override public void onSuccess(SecureStore.ChatGptTokens tokens) { valid.set(tokens); }
             @Override public void onError(String message) { fail(message); }
         });

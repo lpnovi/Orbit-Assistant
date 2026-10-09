@@ -147,44 +147,34 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * The 0.8.4.0 Overlay Styles line is finished, and must be published as Stable.
-     *
-     * <p>Four Betas built Overlay Styles. Beta 4 is promoted with release metadata, the 0.8.3
-     * upgrade rule and the About link. A Stable build must carry Stable metadata, produce a Stable
-     * tag, never be published as a prerelease, outrank every Beta it follows, and as a release
-     * build never offer the developer Pro Preview override.
+     * 0.8.4.1 Beta 1 is a fix Beta on top of the 0.8.4.0 Stable line (ChatGPT session recovery
+     * and Times New Roman on One UI 9). It must carry Beta metadata, produce a prerelease tag, and
+     * outrank the Stable it follows without being mistaken for the next Stable.
      */
-    @Test public void thisBuildIsTheOverlayStylesStableRelease() {
+    @Test public void thisBuildIsTheFirstFixBetaAfterOverlayStylesStable() {
         String version = BuildConfig.VERSION_NAME;
-        assertFalse(OrbitVersion.installedIsBeta());
-        assertTrue(OrbitVersion.isStable(version));
-        assertFalse(OrbitVersion.isBeta(version));
-        assertEquals("0.8.4.0", version);
-        assertEquals("0.8.4.0", OrbitVersion.baseVersion(version));
-        assertEquals("a Stable release has no beta counter", 0, OrbitVersion.betaNumber(version));
+        assertTrue(OrbitVersion.installedIsBeta());
+        assertTrue(OrbitVersion.isBeta(version));
+        assertFalse(OrbitVersion.isStable(version));
+        assertEquals("0.8.4.1-beta.1", version);
+        assertEquals("0.8.4.1", OrbitVersion.baseVersion(version));
+        assertEquals(1, OrbitVersion.betaNumber(version));
 
-        assertEquals("Orbit Assistant v0.8.4.0", OrbitVersion.releaseTitle(version));
-        assertEquals("v0.8.4.0", OrbitVersion.tagFor(version));
-        assertTrue("the release workflow must publish it as a normal release",
-                OrbitVersion.isStableTag(OrbitVersion.tagFor(version)));
-        assertFalse("and never as a prerelease",
+        assertEquals("Orbit Assistant v0.8.4.1 Beta 1", OrbitVersion.releaseTitle(version));
+        assertEquals("v0.8.4.1-beta.1", OrbitVersion.tagFor(version));
+        assertTrue("the release workflow must publish it as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
+        assertFalse(OrbitVersion.isStableTag(OrbitVersion.tagFor(version)));
 
-        assertTrue("it must outrank the previous Stable release",
-                OrbitVersion.compareVersions(version, "0.8.3.0") > 0);
-        assertTrue("and every Beta of its own line",
-                OrbitVersion.compareVersions(version, "0.8.4.0-beta.1") > 0);
-        assertTrue("including the tested Beta it was promoted from",
-                OrbitVersion.compareVersions(version, "0.8.4.0-beta.4") > 0);
-        assertFalse("a Stable release build never offers the Pro Preview override",
-                OrbitProEntitlement.previewAvailable(false, version));
+        assertTrue("it must outrank the Stable it follows",
+                OrbitVersion.compareVersions(version, "0.8.4.0") > 0);
+        assertTrue("and stay below the Stable it leads to",
+                OrbitVersion.compareVersions(version, "0.8.4.1") < 0);
     }
 
-    /** Stable must supersede Beta 4, published as versionCode 815. */
+    /** Beta 1 must supersede 0.8.4.0 Stable, published as versionCode 816. */
     @Test public void thisBuildOutranksThePublishedReleaseItFollows() {
-        assertEquals("Stable must use the next synchronized version code",
-                816, BuildConfig.VERSION_CODE);
-        assertTrue(OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.8.4.0-beta.4") > 0);
-        assertTrue(OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.8.3.0") > 0);
+        assertEquals("the next synchronized version code", 817, BuildConfig.VERSION_CODE);
+        assertTrue(OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.8.4.0") > 0);
     }
 }
