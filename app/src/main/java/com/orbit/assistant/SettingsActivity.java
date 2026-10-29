@@ -2224,10 +2224,13 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
         card.addView(controlGroup(SettingsSearchIndex.KEY_OVERLAY_STYLE,
                 styleLabel, overlayStyleSelector(), null));
         TextView styleNote = UiKit.text(this,
-                "Modern is Orbit's full floating assistant. Float is compact and grows only when a conversation needs the room; on wider screens it rests in the bottom-right corner, and tapping its handle folds it into a small Peek that keeps your chat going. Classic is the original overlay. Every style works the same way, and changes apply the next time you open the assistant.",
+                "Modern is Orbit's full floating assistant. Float is compact and grows only when a conversation needs the room; on wider screens it rests in the bottom-right corner, and tapping its handle folds it into a small Peek that keeps your chat going. Classic is the original overlay. Dock (Beta) is a slim floating bar that leaves the app you are using in view and touchable: answers preview just above it, and swiping up opens the conversation. Every style works the same way, and changes apply the next time you open the assistant.",
                 12, UiKit.MUTED, false);
         styleNote.setPadding(0, UiKit.dp(this, 2), 0, UiKit.dp(this, 6));
         card.addView(styleNote);
+        card.addView(target(SettingsSearchIndex.KEY_DOCK_PULSE, overlayToggle("Completion pulse",
+                "Dock glows softly once when an answer finishes. Never flashes, loops, plays a sound or vibrates, and stays still when Android animations are off.",
+                Prefs.DOCK_COMPLETION_PULSE)));
 
         LinearLayout quick = new LinearLayout(this);
         quick.setOrientation(LinearLayout.VERTICAL);

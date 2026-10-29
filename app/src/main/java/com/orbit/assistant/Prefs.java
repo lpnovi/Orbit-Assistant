@@ -183,6 +183,8 @@ public final class Prefs {
     public static final String OVERLAY_STYLE_MODERN = "modern";
     public static final String OVERLAY_STYLE_FLOAT = "float";
     public static final String OVERLAY_STYLE_CLASSIC = "classic";
+    /** Orbit Dock, a floating composer bar over the app. Opt-in only; never a default. */
+    public static final String OVERLAY_STYLE_DOCK = "dock";
     /** Lelo mode only; read as Modern whenever Lelo mode is off. See {@link #overlayStyle}. */
     static final String OVERLAY_STYLE_CUTIE = "cutie";
     /**
@@ -202,6 +204,8 @@ public final class Prefs {
     public static final String OVERLAY_SHOW_SCREEN = "overlay_show_screen";
     public static final String OVERLAY_SHOW_ATTACH = "overlay_show_attach";
     public static final String OVERLAY_SHOW_VOICE = "overlay_show_voice";
+    /** Dock's soft accent pulse when an answer finishes. On unless turned off. */
+    public static final String DOCK_COMPLETION_PULSE = "dock_completion_pulse";
     /**
      * Whether Orbit draws its own interactive back gesture when returning to the previous screen.
      *
@@ -316,7 +320,7 @@ public final class Prefs {
             THEME_PRO_BACKGROUND_EFFECT_COLOR));
     private static final Set<String> BACKUP_BOOLEAN_KEYS = new HashSet<>(Arrays.asList(
             OVERLAY_STYLE_MIGRATED, OVERLAY_SHOW_MODEL, OVERLAY_SHOW_HISTORY, OVERLAY_SHOW_NEW_CHAT,
-            OVERLAY_SHOW_SCREEN, OVERLAY_SHOW_ATTACH, OVERLAY_SHOW_VOICE, SCREEN_CONTEXT, SCREENSHOT, CONTEXT_CHIPS, ATTACH_SCREEN_BY_DEFAULT,
+            OVERLAY_SHOW_SCREEN, OVERLAY_SHOW_ATTACH, OVERLAY_SHOW_VOICE, DOCK_COMPLETION_PULSE, SCREEN_CONTEXT, SCREENSHOT, CONTEXT_CHIPS, ATTACH_SCREEN_BY_DEFAULT,
             SPEAK, HAPTICS, AUTO_LISTEN, AUTO_LISTEN_ON_OPEN, SMART_FOLLOW_UPS,
             VOICE_PAUSE_FRIENDLY, NEW_CHAT_ON_OPEN,
             HISTORY_ENABLED, SAVE_SCREEN_THUMBNAILS, KEYBOARD_AWARE_ASSISTANT, SHOW_STOP_BUTTON,
@@ -593,7 +597,8 @@ public final class Prefs {
             if (value != null) e.putString(OVERLAY_STYLE, value);
             e.apply();
         }
-        if (OVERLAY_STYLE_FLOAT.equals(value) || OVERLAY_STYLE_CLASSIC.equals(value)) return value;
+        if (OVERLAY_STYLE_FLOAT.equals(value) || OVERLAY_STYLE_CLASSIC.equals(value)
+                || OVERLAY_STYLE_DOCK.equals(value)) return value;
         // Gated on read, never rewritten: with Lelo mode off it is simply Modern, and turning
         // Lelo mode back on brings the stored choice straight back.
         if (OVERLAY_STYLE_CUTIE.equals(value) && leloMode(c)) return value;
@@ -629,6 +634,10 @@ public final class Prefs {
     public static void setOverlayStyle(Context c, String style) {
         get(c).edit().putString(OVERLAY_STYLE, style)
                 .putBoolean(OVERLAY_STYLE_MIGRATED, true).apply();
+    }
+
+    public static boolean dockCompletionPulse(Context c) {
+        return get(c).getBoolean(DOCK_COMPLETION_PULSE, true);
     }
 
     public static String weatherUnits(Context c) {

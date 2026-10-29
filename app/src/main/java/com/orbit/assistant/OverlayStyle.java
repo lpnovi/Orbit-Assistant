@@ -31,6 +31,15 @@ final class OverlayStyle {
             30, 10, 28f, 12, 24, 15, 36, 16, 0, 200, 24,
             true, true, 255, false);
     /**
+     * Orbit Dock: no sheet and no dim, just a floating composer bar over the app, a small live
+     * preview of the answer above it, and a conversation panel that slides up on request.
+     * {@link OrbitSession} arranges the same controls into those pieces; these numbers size the
+     * panel's header and its surfaces, and the preview in Settings.
+     */
+    static final OverlayStyle DOCK = new OverlayStyle(Prefs.OVERLAY_STYLE_DOCK, "Dock",
+            0, 12, 28f, 14, 26, 15, 36, 16, 0, 260, 28,
+            true, false, 240, false);
+    /**
      * Lelo mode's secret one: Float's compact bones, floated further in from the edges, rounder,
      * barely dimmed and a touch see-through, with a few hearts and sparkles drawn in the user's
      * own accent. Never offered, searchable or resolved unless {@link Prefs#leloMode} is on.
@@ -110,6 +119,11 @@ final class OverlayStyle {
         return compact ? "What can I help with?" : "Ask anything…";
     }
 
+    /** Dock arranges the overlay its own way; see {@link OrbitSession}'s Dock section. */
+    boolean dock() {
+        return this == DOCK;
+    }
+
     /** Float's minimised capsule: only the compact styles can fold into one. */
     boolean canPeek() {
         return compact;
@@ -148,6 +162,7 @@ final class OverlayStyle {
         if (Prefs.OVERLAY_STYLE_CLASSIC.equals(id)) return CLASSIC;
         if (Prefs.OVERLAY_STYLE_FLOAT.equals(id)) return FLOAT;
         if (Prefs.OVERLAY_STYLE_CUTIE.equals(id)) return CUTIE;
+        if (Prefs.OVERLAY_STYLE_DOCK.equals(id)) return DOCK;
         return MODERN;
     }
 
@@ -161,6 +176,7 @@ final class OverlayStyle {
         out.add(MODERN);
         out.add(FLOAT);
         out.add(CLASSIC);
+        out.add(DOCK);
         if (Prefs.leloMode(c)) out.add(CUTIE);
         return out;
     }

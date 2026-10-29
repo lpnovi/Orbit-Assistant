@@ -37,6 +37,7 @@ import android.view.MotionEvent;
 import android.view.TouchDelegate;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewConfiguration;
 import android.view.ViewOutlineProvider;
 import android.view.ViewTreeObserver;
 import android.view.Window;
@@ -110,6 +111,31 @@ public class OrbitSession extends VoiceInteractionSession {
     /** How tall the conversation may grow before it scrolls, from the window it sits in. */
     private int conversationCapPx;
     private boolean imeShowing;
+    /**
+     * Orbit Dock (see {@link #installDock}). All null for every other style, which is what keeps
+     * each Dock branch in this class inert for Modern, Float and Classic.
+     */
+    private DockPanel dockPanel;
+    private LinearLayout dockBar;
+    private View dockHandle;
+    private LinearLayout dockScreenRow;
+    private LinearLayout dockPreview;
+    private TextView dockPreviewText;
+    /** The panel height the user dragged to in this invocation, or 0 for the default share. */
+    private int dockUserCapPx;
+    /** The user swiped the preview away; it stays away until the next answer starts. */
+    private boolean dockPreviewDismissed;
+    /** The tallest the panel can be in the current window, keyboard included. */
+    private int dockMaxCapPx;
+    /** True while Android animates the keyboard; Dock then places itself frame by frame. */
+    private boolean dockImeMoving;
+    /** The request whose answer last pulsed, so one answer can never pulse twice. */
+    private String lastPulsedRequestId = "";
+    /** The panel's resting share of the window, before the user drags it taller. */
+    private static final float DOCK_PANEL_SHARE = 0.32f;
+    private static final int DOCK_MAX_WIDTH_DP = 560;
+    private static final int DOCK_PANEL_MIN_DP = 220;
+    private static final int DOCK_PREVIEW_RADIUS_DP = 22;
     /**
      * Peek: a compact style folded into a capsule at the sheet's bottom-right corner. The sheet is
      * never rebuilt or hidden for it. Its outline clips down to the capsule while a copy of its own
@@ -293,9 +319,33 @@ public class OrbitSession extends VoiceInteractionSession {
             root = new FrameLayout(c);
             root.setFitsSystemWindows(false);
             root.setOnApplyWindowInsetsListener((v, insets) -> {
-                applyImeInsets(insets);
+                // While the keyboard is moving, Android delivers its final position up front;
+                // Dock follows the frames in between instead (below), then settles on the end.
+                if (dockPanel == null || !dockImeMoving) applyImeInsets(insets);
                 return insets;
             });
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                // Dock rides the keyboard as it moves instead of jumping once it has arrived.
+                // Every other style keeps placing itself from the settled insets alone.
+                root.setWindowInsetsAnimationCallback(new android.view.WindowInsetsAnimation.Callback(
+                        android.view.WindowInsetsAnimation.Callback.DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
+                    @Override public void onPrepare(android.view.WindowInsetsAnimation animation) {
+                        if (dockPanel != null
+                                && (animation.getTypeMask() & WindowInsets.Type.ime()) != 0) dockImeMoving = true;
+                    }
+                    @Override public WindowInsets onProgress(WindowInsets insets,
+                            List<android.view.WindowInsetsAnimation> running) {
+                        if (dockPanel != null && dockImeMoving) applyImeInsets(insets);
+                        return insets;
+                    }
+                    @Override public void onEnd(android.view.WindowInsetsAnimation animation) {
+                        if (!dockImeMoving || (animation.getTypeMask() & WindowInsets.Type.ime()) == 0) return;
+                        dockImeMoving = false;
+                        root.requestApplyInsets();
+                        if (dockPanel != null && dockPanel.isExpanded()) scrollBottom();
+                    }
+                });
+            }
             // Attachment is the moment Android genuinely owns this view tree, and it is one of the
             // few startup facts the session cannot infer for itself.
             root.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
@@ -506,6 +556,16 @@ public class OrbitSession extends VoiceInteractionSession {
         pendingPeek = false;
         peekProgress = 0f;
         peekSawWork = false;
+        CompletionPulse.settle();
+        if (dockPanel != null) dockPanel.cancelMotion();
+        dockPanel = null;
+        dockBar = null;
+        dockHandle = null;
+        dockScreenRow = null;
+        dockPreview = null;
+        dockPreviewText = null;
+        dockUserCapPx = 0;
+        dockPreviewDismissed = false;
         root.removeAllViews();
         root.setBackgroundColor(Color.TRANSPARENT);
         // Read once per build, which happens on every new invocation, so a Settings change shows
@@ -761,10 +821,37 @@ public class OrbitSession extends VoiceInteractionSession {
         suggestionsLp.setMargins(0, style.integratedComposer ? UiKit.dp(c, 8) : 0, 0, UiKit.dp(c, 6));
         sheet.addView(suggestionScroll, suggestionsLp);
         // Float spends no height on a row that has nothing in it; it grows when chips arrive.
-        if (style.compact) suggestionScroll.setVisibility(View.GONE);
+        if (style.compact || style.dock()) suggestionScroll.setVisibility(View.GONE);
 
         final OverlayStyle built = style;
         messageScroll = new ScrollView(c) {
+            /** Dock: pulling down from the top of the conversation folds the panel away. */
+            private float pullX, pullY;
+            private boolean pulled;
+            private boolean dockPulledDown(MotionEvent e) {
+                if (e.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                    pullX = e.getRawX();
+                    pullY = e.getRawY();
+                    pulled = false;
+                }
+                float dy = e.getRawY() - pullY;
+                return built.dock() && e.getActionMasked() == MotionEvent.ACTION_MOVE
+                        && getScrollY() == 0 && dy > UiKit.dp(c, 40)
+                        && dy > Math.abs(e.getRawX() - pullX);
+            }
+            @Override public boolean onInterceptTouchEvent(MotionEvent e) {
+                return dockPulledDown(e) || super.onInterceptTouchEvent(e);
+            }
+            @Override public boolean onTouchEvent(MotionEvent e) {
+                if (dockPulledDown(e)) {
+                    if (!pulled) {
+                        pulled = true;
+                        setDockExpanded(false);
+                    }
+                    return true;
+                }
+                return pulled || super.onTouchEvent(e);
+            }
             @Override protected void onMeasure(int widthSpec, int heightSpec) {
                 // A content-fitting conversation stops growing at its cap and scrolls. The cap
                 // follows the window (see placeSheet), so it is read here rather than captured.
@@ -944,10 +1031,362 @@ public class OrbitSession extends VoiceInteractionSession {
             return false;
         });
 
+        if (style.dock()) installDock(c, top, composer, attach, screenActions);
         buildPeek(c);
         updateContextUi();
         UiKit.applyTypography(root);
         root.post(root::requestApplyInsets);
+    }
+
+    // ----- Orbit Dock -------------------------------------------------------------------------
+    //
+    // Dock is an arrangement, not a second overlay: installDock moves the views buildSheet has
+    // just made (header, conversation, chips, attachments, editor, mic, Send, screen button) into
+    // Dock's pieces, with every listener they already had. From top to bottom:
+    //   panel    the header and conversation on the Theme Studio sheet surface, slid shut at rest
+    //   preview  two or three lines of the answer while the panel is shut
+    //   chip     Use screen, only while there is a screen to use
+    //   bar      handle, then attach / editor / mic / Send
+    // There is no dim and no full-window surface: onComputeInsets hands every touch outside these
+    // pieces to the app underneath.
+
+    private void installDock(Context c, LinearLayout header, LinearLayout composer,
+                             ImageButton attach, LinearLayout screenActions) {
+        sheet.removeAllViews();
+        sheet.setPadding(0, 0, 0, 0);
+        sheet.setBackground(null);
+        sheet.setElevation(0f);
+        // The pulse swells and glows a little past its bubble's bounds.
+        sheet.setClipChildren(false);
+        sheet.setClipToPadding(false);
+        sheet.setTouchDelegate(null);
+        scrim.setOnClickListener(null);
+        scrim.setClickable(false);
+        int hairline = UiKit.withAlpha(UiKit.MUTED, 44);
+
+        LinearLayout body = new LinearLayout(c);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setPadding(UiKit.dp(c, style.sidePaddingDp), UiKit.dp(c, 10),
+                UiKit.dp(c, style.sidePaddingDp), UiKit.dp(c, 10));
+        GradientDrawable panelSurface = UiKit.gradientSheet(c, style.cornerDp);
+        panelSurface.setStroke(UiKit.dp(c, 1), hairline);
+        panelSurface.setAlpha(style.sheetAlpha);
+        body.setBackground(panelSurface);
+        body.setClipToOutline(true);
+        body.addView(header);
+        body.addView(suggestionScroll);
+        body.addView(messageScroll);
+        dockPanel = new DockPanel(c);
+        dockPanel.addView(body, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        sheet.addView(dockPanel, dockPieceLp(c, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        dockPreview = new LinearLayout(c);
+        dockPreview.setGravity(Gravity.CENTER_VERTICAL);
+        dockPreview.setPadding(UiKit.dp(c, 12), UiKit.dp(c, 10), UiKit.dp(c, 14), UiKit.dp(c, 10));
+        dockPreview.setMinimumHeight(UiKit.dp(c, 48));
+        GradientDrawable previewSurface = UiKit.gradientSheet(c, DOCK_PREVIEW_RADIUS_DP);
+        previewSurface.setStroke(UiKit.dp(c, 1), hairline);
+        previewSurface.setAlpha(style.sheetAlpha);
+        dockPreview.setBackground(previewSurface);
+        dockPreview.setElevation(UiKit.dp(c, 4));
+        LinearLayout.LayoutParams markLp = new LinearLayout.LayoutParams(
+                UiKit.dp(c, 22), UiKit.dp(c, 22));
+        markLp.rightMargin = UiKit.dp(c, 10);
+        dockPreview.addView(UiKit.orbitMark(c, 18), markLp);
+        dockPreviewText = UiKit.text(c, "", 14, UiKit.TEXT, false);
+        dockPreviewText.setMaxLines(3);
+        dockPreviewText.setEllipsize(TextUtils.TruncateAt.END);
+        dockPreview.addView(dockPreviewText, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        dockPreview.setClickable(true);
+        dockPreview.setOnClickListener(v -> setDockExpanded(true));
+        installDockGestures(dockPreview, true);
+        dockPreview.setVisibility(View.GONE);
+        sheet.addView(dockPreview, dockPieceLp(c, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        // Use screen and Select area, the same two buttons with the same consent, floated as
+        // chips at the end of the column. Nothing is attached until one is tapped.
+        if (screenActions.getParent() instanceof ViewGroup) {
+            ((ViewGroup) screenActions.getParent()).removeView(screenActions);
+        }
+        screenButton.setElevation(UiKit.dp(c, 3));
+        selectScreenButton.setElevation(UiKit.dp(c, 3));
+        LinearLayout.LayoutParams chipLp = dockPieceLp(c, ViewGroup.LayoutParams.WRAP_CONTENT);
+        chipLp.gravity = Gravity.END;
+        sheet.addView(screenActions, chipLp);
+        dockScreenRow = screenActions;
+        sheet.addView(attachmentStrip);
+        sheet.addView(composerFocusHolder);
+
+        // The bar: a slim handle, then one row. Solid, so what is typed always reads clearly.
+        composer.removeAllViews();
+        composer.setOrientation(LinearLayout.VERTICAL);
+        composer.setPadding(UiKit.dp(c, 6), 0, UiKit.dp(c, 6), UiKit.dp(c, 6));
+        composer.setElevation(UiKit.dp(c, 8));
+        FrameLayout handle = new FrameLayout(c);
+        View grip = new View(c);
+        grip.setBackground(UiKit.rounded(UiKit.withAlpha(UiKit.MUTED, 130), 2, c));
+        handle.addView(grip, new FrameLayout.LayoutParams(
+                UiKit.dp(c, 32), UiKit.dp(c, 4), Gravity.CENTER));
+        handle.setClickable(true);
+        handle.setOnClickListener(v -> setDockExpanded(!dockPanel.isExpanded()));
+        installDockGestures(handle, false);
+        composer.addView(handle, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(c, 18)));
+        dockHandle = handle;
+
+        LinearLayout row = new LinearLayout(c);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        int button = UiKit.dp(c, 48);
+        attach.setBackground(UiKit.ripple(UiKit.SURFACE_2, UiKit.accent(c), 24, c));
+        sendButton.setBackground(UiKit.ripple(UiKit.accent(c), UiKit.onAccent(c), 24, c));
+        for (View control : new View[]{attach, input, mic, sendButton}) {
+            if (control.getParent() instanceof ViewGroup) {
+                ((ViewGroup) control.getParent()).removeView(control);
+            }
+        }
+        row.addView(attach, new LinearLayout.LayoutParams(button, button));
+        row.addView(input, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        row.addView(mic, new LinearLayout.LayoutParams(button, button));
+        LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(button, button);
+        sendLp.leftMargin = UiKit.dp(c, 4);
+        row.addView(sendButton, sendLp);
+        composer.addView(row, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        sheet.addView(composer, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        dockBar = composer;
+
+        // Every invocation opens as the bar alone, whatever the conversation holds.
+        dockPanel.setExpanded(false, false);
+        describeDockHandle();
+        // The panel's room depends on the rest of the column (preview, chip, attachments, a
+        // multi-line draft), so placement reruns whenever that changes height.
+        final int[] others = {-1};
+        sheet.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (dockPanel == null) return;
+            int now = (b - t) - dockPanel.getHeight();
+            if (now == others[0]) return;
+            others[0] = now;
+            v.post(root::requestApplyInsets);
+        });
+    }
+
+    private static LinearLayout.LayoutParams dockPieceLp(Context c, int width) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                width, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = UiKit.dp(c, 8);
+        return lp;
+    }
+
+    private void describeDockHandle() {
+        if (dockHandle == null || dockPanel == null) return;
+        dockHandle.setContentDescription(dockPanel.isExpanded()
+                ? "Hide conversation. Drag up to make it taller."
+                : "Show conversation. Swipe down to close Orbit.");
+    }
+
+    /**
+     * Where Dock takes touches, in window coordinates: each visible piece of its column, so the
+     * gaps between them and everything around them belong to the app underneath.
+     */
+    List<android.graphics.Rect> dockTouchRects() {
+        List<android.graphics.Rect> out = new ArrayList<>();
+        if (dockPanel == null || sheet == null) return out;
+        int[] at = new int[2];
+        for (int i = 0; i < sheet.getChildCount(); i++) {
+            View piece = sheet.getChildAt(i);
+            if (piece.getVisibility() != View.VISIBLE || piece.getWidth() <= 0
+                    || piece.getHeight() <= 0) continue;
+            piece.getLocationInWindow(at);
+            out.add(new android.graphics.Rect(at[0], at[1],
+                    at[0] + piece.getWidth(), at[1] + piece.getHeight()));
+        }
+        return out;
+    }
+
+    /** True while Dock's conversation panel is open. For tests. */
+    boolean isDockExpandedForTest() { return dockPanel != null && dockPanel.isExpanded(); }
+
+    /** Opens or folds the panel. Nothing else changes: a running answer and the draft carry on. */
+    private void setDockExpanded(boolean expanded) {
+        if (dockPanel == null || dockPanel.isExpanded() == expanded) return;
+        MessageActions.dismiss();
+        dockPanel.setExpanded(expanded, true);
+        if (expanded) {
+            hideDockPreview();
+            scrollBottom();
+        } else if (busy && dockPreviewText != null && dockPreviewText.length() > 0) {
+            // Folding mid-answer brings the live preview back; a finished one has been read.
+            showDockPreview(dockPreviewText.getText().toString(), dockPreviewText.getCurrentTextColor());
+        }
+        describeDockHandle();
+        // The space the panel may take depends on what else is showing, so placement reruns.
+        root.requestApplyInsets();
+    }
+
+    /** Shows the preview with this text while the panel is shut. Remembers the text either way. */
+    private void showDockPreview(String text, int color) {
+        if (dockPreview == null || text == null || text.isEmpty()) return;
+        dockPreviewText.setText(text);
+        dockPreviewText.setTextColor(color);
+        if (dockPanel.isExpanded() || dockPreviewDismissed
+                || dockPreview.getVisibility() == View.VISIBLE) return;
+        dockPreview.setVisibility(View.VISIBLE);
+        UiKit.enterContent(dockPreview);
+        root.requestApplyInsets();
+    }
+
+    private void hideDockPreview() {
+        if (dockPreview == null || dockPreview.getVisibility() == View.GONE) return;
+        dockPreview.setVisibility(View.GONE);
+        root.requestApplyInsets();
+    }
+
+    /**
+     * A successful answer has just been drawn in front of the user. Reached only from the live
+     * success callbacks, inside their sessionVisible branch: errors, stops, answers that finished
+     * while Orbit was closed, and reopened chats never come through here.
+     */
+    private void dockAnswerFinished(String requestId, String storedText, View bubble) {
+        if (dockPanel == null) return;
+        Context c = getContext();
+        boolean expanded = dockPanel.isExpanded();
+        if (!expanded) showDockPreview(DockText.opening(storedText), UiKit.TEXT);
+        if (isUnfinishedAnswer(storedText) || !CompletionPulse.shouldPlay(
+                Prefs.dockCompletionPulse(c), requestId, lastPulsedRequestId)) return;
+        lastPulsedRequestId = requestId;
+        int accent = UiKit.accent(c);
+        if (expanded) {
+            // The conversation is in view, so the answer itself glows, without swelling.
+            // Its glow follows the bubble's own corners, whatever Theme Studio made them.
+            if (bubble != null) {
+                float radius = bubble.getBackground() instanceof GradientDrawable
+                        ? ((GradientDrawable) bubble.getBackground()).getCornerRadius() : 0f;
+                CompletionPulse.play(bubble, accent, radius, 0f);
+            }
+        } else if (dockPreview.getVisibility() == View.VISIBLE) {
+            CompletionPulse.play(dockPreview, accent, UiKit.dp(c, DOCK_PREVIEW_RADIUS_DP),
+                    CompletionPulse.SWELL);
+        } else {
+            // The preview was swiped away: the bar carries the pulse, a touch more gently.
+            CompletionPulse.play(dockBar, accent, UiKit.dp(c, style.composerRadiusDp),
+                    CompletionPulse.SWELL / 2f);
+        }
+    }
+
+    /** The panel's height follows the drag, between a usable minimum and the window's room. */
+    private void resizeDock(float heightPx) {
+        if (dockPanel == null || dockMaxCapPx <= 0) return;
+        int min = Math.min(UiKit.dp(getContext(), 160), dockMaxCapPx);
+        dockUserCapPx = Math.max(min, Math.min(dockMaxCapPx, Math.round(heightPx)));
+        conversationCapPx = dockUserCapPx;
+        dockPanel.setHeightLimit(dockUserCapPx, true);
+    }
+
+    /**
+     * Taps go to the view's own click. Vertical swipes: up opens the panel (and, on the handle
+     * with the panel open, drags it taller); down folds the panel, dismisses the preview, or, from
+     * the bar with nothing open, closes Orbit, as swiping the other styles down does.
+     */
+    private void installDockGestures(View target, boolean preview) {
+        final float[] down = new float[3];
+        final boolean[] moved = new boolean[1];
+        final int slop = ViewConfiguration.get(target.getContext()).getScaledTouchSlop();
+        final int swipe = UiKit.dp(target.getContext(), 36);
+        target.setOnTouchListener((v, e) -> {
+            if (dockPanel == null) return false;
+            float dx = e.getRawX() - down[0];
+            float dy = e.getRawY() - down[1];
+            switch (e.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    down[0] = e.getRawX();
+                    down[1] = e.getRawY();
+                    down[2] = dockPanel.getHeight();
+                    moved[0] = false;
+                    v.setPressed(true);
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    if (Math.abs(dy) > slop || Math.abs(dx) > slop) {
+                        moved[0] = true;
+                        v.setPressed(false);
+                    }
+                    if (moved[0] && !preview && dockPanel.isExpanded() && dy < 0) {
+                        resizeDock(down[2] - dy);
+                    }
+                    return true;
+                case MotionEvent.ACTION_UP:
+                    v.setPressed(false);
+                    if (!moved[0]) {
+                        v.performClick();
+                    } else if (Math.abs(dy) > swipe && Math.abs(dy) > Math.abs(dx)) {
+                        if (dy < 0) setDockExpanded(true);
+                        else if (preview) {
+                            dockPreviewDismissed = true;
+                            hideDockPreview();
+                        }
+                        else if (dockPanel.isExpanded()) setDockExpanded(false);
+                        else dismissAnimated(OverlayLaunchTrace.REASON_SWIPE_DOWN);
+                    }
+                    return true;
+                case MotionEvent.ACTION_CANCEL:
+                    v.setPressed(false);
+                    return true;
+                default:
+                    return true;
+            }
+        });
+    }
+
+    /**
+     * Places the Dock: a centred column at most {@link #DOCK_MAX_WIDTH_DP} wide, clear of the
+     * system bars, any cutout and the keyboard, with the panel capped to the room left above it.
+     */
+    private void applyDockInsets(WindowInsets insets, int imeBottom, boolean imeVisible) {
+        Context c = getContext();
+        int left, right, top, lift;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            android.graphics.Insets bars = insets.getInsets(
+                    WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+            left = bars.left;
+            right = bars.right;
+            top = bars.top;
+            // The keyboard's inset is followed frame by frame while it moves (see
+            // onCreateContentView), so it is used as it is rather than only once visible.
+            lift = Math.max(bars.bottom, imeBottom);
+        } else {
+            left = insets.getSystemWindowInsetLeft();
+            right = insets.getSystemWindowInsetRight();
+            top = insets.getSystemWindowInsetTop();
+            lift = imeVisible ? imeBottom : insets.getStableInsetBottom();
+        }
+        imeShowing = imeVisible;
+        int margin = UiKit.dp(c, style.marginDp);
+        int rootWidth = root.getWidth() > 0 ? root.getWidth() : c.getResources().getDisplayMetrics().widthPixels;
+        int rootHeight = root.getHeight() > 0 ? root.getHeight() : c.getResources().getDisplayMetrics().heightPixels;
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) sheet.getLayoutParams();
+        lp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        lp.leftMargin = margin + left;
+        lp.rightMargin = margin + right;
+        lp.width = Math.max(0, Math.min(rootWidth - lp.leftMargin - lp.rightMargin,
+                UiKit.dp(c, DOCK_MAX_WIDTH_DP)));
+        lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+        lp.bottomMargin = margin + lift;
+        sheet.setLayoutParams(lp);
+
+        // Everything in the column except the panel keeps its size; the panel gets what is left,
+        // up to the user's dragged height or a third of the window, and never the whole screen.
+        int others = sheet.getHeight() > 0 ? sheet.getHeight() - dockPanel.getHeight() : UiKit.dp(c, 96);
+        dockMaxCapPx = Math.max(0, Math.min(Math.round(rootHeight * 0.8f),
+                rootHeight - top - lp.bottomMargin - margin - others));
+        // A floor keeps a short (landscape) window from leaving room for only a line or two.
+        int wanted = dockUserCapPx > 0 ? dockUserCapPx : Math.max(
+                Math.round(rootHeight * DOCK_PANEL_SHARE), UiKit.dp(c, DOCK_PANEL_MIN_DP));
+        conversationCapPx = Math.min(wanted, dockMaxCapPx);
+        dockPanel.setHeightLimit(conversationCapPx, false);
+        // Mid-animation frames leave scrolling to the animation's end (see onCreateContentView).
+        if (imeVisible && !dockImeMoving && dockPanel.isExpanded()) scrollBottom();
     }
 
     /**
@@ -1174,6 +1613,17 @@ public class OrbitSession extends VoiceInteractionSession {
     @Override
     public void onComputeInsets(Insets outInsets) {
         super.onComputeInsets(outInsets);
+        // Dock takes touches only on its own pieces; the rest of the screen stays the app's. An
+        // open chooser needs the whole window for its tap-outside-to-close.
+        if (dockPanel != null && sheet != null && sheet.getWidth() > 0
+                && !OrbitAttachmentMenu.isShowing(root)) {
+            outInsets.touchableRegion.setEmpty();
+            for (android.graphics.Rect piece : dockTouchRects()) {
+                outInsets.touchableRegion.op(piece, android.graphics.Region.Op.UNION);
+            }
+            outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION;
+            return;
+        }
         if (!peeking || peekView == null || peekView.getWidth() <= 0) return;
         int[] at = new int[2];
         peekView.getLocationInWindow(at);
@@ -1656,6 +2106,9 @@ public class OrbitSession extends VoiceInteractionSession {
         stopSpeaking();
         if (input != null) input.setText("");
         renderConversation();
+        // A new chat in Dock starts where every invocation does: the bar alone.
+        hideDockPreview();
+        setDockExpanded(false);
         stateTextSafe("New chat");
         if (Prefs.haptics(getContext())) vibrate(16);
         main.postDelayed(() -> stateTextSafe(readyState()), 700);
@@ -1700,6 +2153,10 @@ public class OrbitSession extends VoiceInteractionSession {
         } else {
             imeBottom = insets.getSystemWindowInsetBottom();
             imeVisible = imeBottom > UiKit.dp(getContext(), 120);
+        }
+        if (dockPanel != null) {
+            applyDockInsets(insets, imeBottom, imeVisible);
+            return;
         }
 
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) sheet.getLayoutParams();
@@ -2017,6 +2474,12 @@ public class OrbitSession extends VoiceInteractionSession {
                                 (screenAttached ? UiKit.withAlpha(UiKit.SUCCESS, 130)
                                         : UiKit.withAlpha(UiKit.accent(getContext()), 120)),
                         UiKit.accent(getContext()), style.controlRadiusDp, getContext()));
+                // Dock floats the screen chips only while there is a screen to use, and never for
+                // an app whose profile blocks the screen.
+                if (dockScreenRow != null) {
+                    dockScreenRow.setVisibility(controls.screen && !blocked
+                            && (available || screenAttached) ? View.VISIBLE : View.GONE);
+                }
             }
 
             if (selectScreenButton != null) {
@@ -2209,7 +2672,7 @@ public class OrbitSession extends VoiceInteractionSession {
         if (suggestionRow == null || suggestionScroll == null) return;
         suggestionRow.removeAllViews();
         if (!screenAttached || selectionAttached) {
-            suggestionScroll.setVisibility(style.compact ? View.GONE : View.INVISIBLE);
+            suggestionScroll.setVisibility(style.compact || style.dock() ? View.GONE : View.INVISIBLE);
             return;
         }
         if (!Prefs.contextChips(getContext())) {
@@ -2220,7 +2683,7 @@ public class OrbitSession extends VoiceInteractionSession {
         if (items.isEmpty()) {
             // Preserve the 36dp slot while context is arriving so the sheet never
             // changes height after its opening animation has begun.
-            suggestionScroll.setVisibility(style.compact ? View.GONE : View.INVISIBLE);
+            suggestionScroll.setVisibility(style.compact || style.dock() ? View.GONE : View.INVISIBLE);
             return;
         }
         suggestionScroll.setVisibility(View.VISIBLE);
@@ -2659,7 +3122,7 @@ public class OrbitSession extends VoiceInteractionSession {
                             reply.suggestedMemoryCategory);
                     history.add(assistantItem);
                     if (sessionVisible) {
-                        finishStreamingBubble(storedText);
+                        dockAnswerFinished(requestId, storedText, finishStreamingBubble(storedText));
                         addMemoryUsageIndicator(assistantItem);
                         addMemorySuggestion(assistantItem);
                         if (draftedReply) {
@@ -2697,6 +3160,7 @@ public class OrbitSession extends VoiceInteractionSession {
                     DiagnosticStore.recordError(getContext(), friendly);
                     if (sessionVisible) {
                         addErrorBubble(friendly);
+                        showDockPreview(friendly, UiKit.MUTED);
                         addFailureRetryAction(PendingRequestStore.load(getContext(), requestId), friendly);
                     }
                 });
@@ -2753,6 +3217,9 @@ public class OrbitSession extends VoiceInteractionSession {
     }
 
     private void showThinkingIndicator() {
+        // A new answer is on its way: the preview may show again even if the last was swiped off.
+        dockPreviewDismissed = false;
+        showDockPreview("Thinking…", UiKit.MUTED);
         // Remove any previous indicator outright rather than fading it, so one request can never
         // leave two orbital indicators on screen at once.
         if (thinkingIndicator != null) {
@@ -2873,6 +3340,8 @@ public class OrbitSession extends VoiceInteractionSession {
         streamingBubble.onDelta(text);
         applyStreamingWidth();
         scrollBottom();
+        // Only while the panel is shut; an open panel shows the answer itself.
+        if (dockPreview != null && !dockPanel.isExpanded()) showDockPreview(DockText.tail(text), UiKit.TEXT);
     }
 
     /**
@@ -2881,20 +3350,22 @@ public class OrbitSession extends VoiceInteractionSession {
      * <p>The bubble the user has been reading becomes the finished answer rather than being torn
      * down and rebuilt, so there is no flash, no width jump and no scroll lurch at completion.
      * Message actions attach to the settled bubble exactly as they did to the replacement one.
+     *
+     * @return the bubble now showing the answer, or null when there is no conversation to show it
      */
-    private void finishStreamingBubble(String rawText) {
-        if (messages == null) { discardStreamingBubble(); return; }
+    private View finishStreamingBubble(String rawText) {
+        if (messages == null) { discardStreamingBubble(); return null; }
         String displayText = SourceLinkUtil.displayText(rawText);
         if (streamingBubble == null) {
             addRichAssistantBubble(displayText, rawText, true);
-            return;
+            return messages.getChildCount() == 0 ? null : messages.getChildAt(messages.getChildCount() - 1);
         }
         ProgressiveResponseView bubble = streamingBubble;
         streamingBubble = null;
         bubble.settle(displayText);
         applyBubbleWidth(bubble, bubble.prefersWide());
         if (displayText != null && !displayText.trim().isEmpty()
-                && !displayText.startsWith("Orbit could not finish")) {
+                && !isUnfinishedAnswer(displayText)) {
             MessageActions.bindAssistant(bubble, rawText, true, this::regenerateLastResponse,
                     () -> {
                         stateTextSafe("Copied");
@@ -2902,6 +3373,12 @@ public class OrbitSession extends VoiceInteractionSession {
                     });
         }
         scrollBottom();
+        return bubble;
+    }
+
+    /** Orbit's own "could not finish" text stored as an answer: no message actions, no pulse. */
+    private static boolean isUnfinishedAnswer(String text) {
+        return text != null && text.startsWith("Orbit could not finish");
     }
 
     /** Gives the streaming bubble the width its content has earned, one way only. */
@@ -3499,7 +3976,7 @@ public class OrbitSession extends VoiceInteractionSession {
                             reply.suggestedMemoryCategory);
                     history.add(assistantItem);
                     if (sessionVisible) {
-                        finishStreamingBubble(storedText);
+                        dockAnswerFinished(requestId, storedText, finishStreamingBubble(storedText));
                         addMemoryUsageIndicator(assistantItem);
                         addMemorySuggestion(assistantItem);
                         if (draftedReply) {
@@ -3523,7 +4000,7 @@ public class OrbitSession extends VoiceInteractionSession {
                     if (!ownsCurrentUi()) return;
                     busy = false; uiRequestConversationId = null; stopThinkingIndicator(); stateTextSafe("Needs attention");
                     history.add(new AssistantClient.History("assistant", friendly));
-                    if (sessionVisible) { addErrorBubble(friendly); addFailureRetryAction(PendingRequestStore.load(getContext(), requestId), friendly); }
+                    if (sessionVisible) { addErrorBubble(friendly); showDockPreview(friendly, UiKit.MUTED); addFailureRetryAction(PendingRequestStore.load(getContext(), requestId), friendly); }
                     updateComposerAction();
                     traceComposer("response.error-rendered");
                 });
@@ -3552,6 +4029,9 @@ public class OrbitSession extends VoiceInteractionSession {
         stopThinkingIndicator();
         stateTextSafe(readyState());
         String partial = partialText == null ? "" : partialText.trim();
+        // A stop is never a success: the Dock preview keeps what was written, quietly, or goes.
+        if (partial.isEmpty() || !sessionVisible) hideDockPreview();
+        else if (dockPreview != null) showDockPreview(DockText.opening(partial), UiKit.MUTED);
         if (partial.isEmpty()) {
             discardStreamingBubble();
         } else {
@@ -4577,7 +5057,7 @@ public class OrbitSession extends VoiceInteractionSession {
         lp.gravity = Gravity.START;
         lp.setMargins(0, UiKit.dp(c, 4), UiKit.dp(c, 4), UiKit.dp(c, 6));
         if (displayText != null && !displayText.trim().isEmpty()
-                && !displayText.startsWith("Orbit could not finish")) {
+                && !isUnfinishedAnswer(displayText)) {
             MessageActions.bindAssistant(bubble, rawText, canRegenerate, this::regenerateLastResponse,
                     () -> {
                         stateTextSafe("Copied");
@@ -5311,6 +5791,17 @@ public class OrbitSession extends VoiceInteractionSession {
     public void onBackPressed() {
         // Back closes the attachment chooser first, leaving the sheet and keyboard untouched.
         if (OrbitAttachmentMenu.dismiss(root)) return;
+        // Dock folds back one layer at a time: keyboard, then the conversation, then Orbit.
+        if (dockPanel != null) {
+            if (imeShowing) {
+                hideKeyboard();
+                return;
+            }
+            if (dockPanel.isExpanded()) {
+                setDockExpanded(false);
+                return;
+            }
+        }
         dismissAnimated(OverlayLaunchTrace.REASON_BACK);
     }
 
@@ -5347,6 +5838,7 @@ public class OrbitSession extends VoiceInteractionSession {
 
     @Override
     public void onHide() {
+        CompletionPulse.settle();
         OverlayLaunchTrace.event(OverlayLaunchTrace.STAGE_HIDE,
                 OverlayLaunchTrace.State.of()
                         .flag("firstFrame", firstFrameRecorded)

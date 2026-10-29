@@ -842,6 +842,14 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.5.0-beta.2**: Orbit Dock, a new optional overlay style that keeps the app you are using in view.
+  - Choose Dock in Settings, Look & Feel, Overlay style; your current style stays until you switch.
+  - Dock opens as a slim floating bar with no dimming, and taps beside it still reach the app underneath.
+  - While Orbit answers, a short live preview appears above the bar; tap it or swipe up for the full conversation.
+  - A soft accent glow marks each finished answer once, and Completion pulse in Settings turns it off.
+  - Use screen is still a tap you choose, so nothing on your screen is shared without asking.
+  - Thanks to community developer Tx13758627780, whose Orbit fork inspired Dock.
+
 - **v0.8.5.0-beta.1**: Choose your reminder app: reminders can now go to Samsung Reminder or stay in Orbit.
   - Settings > Reminders has a new Default reminder app choice: Orbit Reminders or Samsung Reminder.
   - Samsung Reminder opens with your reminder filled in and you tap Save there; Orbit never claims it was saved for you.

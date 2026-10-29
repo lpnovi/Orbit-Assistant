@@ -714,6 +714,27 @@ The 0.8.5 line lets people choose where their reminders live.
 - **Repeating Orbit reminders.** Daily and weekly
 - Existing users keep Orbit Reminders; nothing is migrated, copied or deleted
 
+### Orbit Dock - an assistant that lives alongside your apps
+
+A fourth, opt-in overlay style for the 0.8.5 line. Dock arranges the same overlay controls as a
+slim floating bar so the app underneath stays visible and usable. It was inspired by a community
+fork of Orbit by Tx13758627780, adapted under the MPL-2.0 both projects share.
+
+#### `0.8.5.0-beta.2` - first Orbit Dock Beta
+
+- **Dock overlay style.** Settings, Look & Feel offers Dock beside Modern, Float and Classic. No
+  one is moved to it; existing choices and the Modern default are unchanged
+- **The bar first.** Every invocation opens as a composer bar with attach, mic and Send, no dim and
+  no full-screen surface. Taps outside Dock go to the app underneath
+- **Live answer preview.** While Orbit answers, two or three lines stream above the bar. Tap or
+  swipe up to open the conversation panel; swipe the preview down to put it away
+- **Conversation panel.** Opens to about a third of the screen, grows with its content and can be
+  dragged taller; swiping down, the handle or Back folds it without stopping the answer
+- **Completion pulse.** A finished answer glows once in the accent colour with a gentle swell, never
+  for errors or stops, never twice, and never with animations off. Settings can turn it off
+- **Not yet:** moving Dock around the screen, and staying open across app switches, which Android's
+  assistant overlay does not allow
+
 ### Orbit Local 2.0 - more of Orbit, privately on the phone
 
 Orbit Local began as private offline chat. The 0.8.2 line makes it a first-class part of Orbit:

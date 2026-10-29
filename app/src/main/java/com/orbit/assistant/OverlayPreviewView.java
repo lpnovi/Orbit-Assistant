@@ -127,6 +127,7 @@ final class OverlayPreviewView extends FrameLayout {
     }
 
     private View buildSheet(Context c, OverlayStyle s) {
+        if (s.dock()) return buildDock(c, s);
         int accent = UiKit.accent(c);
         int soft = s.cute ? CutieTouches.pastel(c) : Color.rgb(74, 79, 92);
         LinearLayout sheet = new LinearLayout(c);
@@ -259,6 +260,85 @@ final class OverlayPreviewView extends FrameLayout {
         sheet.addView(composer);
         UiKit.applyTypography(sheet);
         return sheet;
+    }
+
+    /**
+     * Dock at rest: no sheet, so the frame behind it stands in for the app. An answer preview, the
+     * screen chip, then the bar. The header lives in the panel Dock opens on request, so the
+     * picture shows the controls that are on screen at rest.
+     */
+    private View buildDock(Context c, OverlayStyle s) {
+        int accent = UiKit.accent(c);
+        LinearLayout dock = new LinearLayout(c);
+        dock.setOrientation(LinearLayout.VERTICAL);
+
+        LinearLayout preview = row(c);
+        preview.setPadding(px(12), px(10), px(14), px(10));
+        GradientDrawable previewBg = UiKit.gradientSheet(c, 22 * S);
+        previewBg.setAlpha(s.sheetAlpha);
+        preview.setBackground(previewBg);
+        preview.setElevation(px(4));
+        LinearLayout.LayoutParams markLp = new LinearLayout.LayoutParams(px(22), px(22));
+        markLp.rightMargin = px(10);
+        preview.addView(UiKit.orbitMark(c, 18 * S), markLp);
+        LinearLayout lines = new LinearLayout(c);
+        lines.setOrientation(LinearLayout.VERTICAL);
+        for (float width : new float[]{0.92f, 0.64f}) {
+            View line = new View(c);
+            line.setBackground(UiKit.rounded(UiKit.withAlpha(UiKit.TEXT, 46), 4, c));
+            LinearLayout.LayoutParams lineLp = new LinearLayout.LayoutParams(0, px(7));
+            lineLp.weight = width;
+            lineLp.topMargin = px(3);
+            lineLp.bottomMargin = px(3);
+            LinearLayout lineRow = new LinearLayout(c);
+            lineRow.setWeightSum(1f);
+            lineRow.addView(line, lineLp);
+            lines.addView(lineRow);
+        }
+        preview.addView(lines, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        LinearLayout.LayoutParams pieceLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        pieceLp.bottomMargin = px(8);
+        dock.addView(preview, pieceLp);
+
+        LinearLayout screen = row(c);
+        screen.setTag(TAG_SCREEN);
+        screen.addView(button(c, "Use screen", accent, s),
+                new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(32)));
+        LinearLayout.LayoutParams screenLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        screenLp.gravity = Gravity.END;
+        screenLp.bottomMargin = px(8);
+        dock.addView(screen, screenLp);
+
+        LinearLayout bar = new LinearLayout(c);
+        bar.setOrientation(LinearLayout.VERTICAL);
+        bar.setPadding(px(6), 0, px(6), px(6));
+        bar.setBackground(UiKit.outlined(UiKit.SURFACE, Color.rgb(48, 53, 67), s.composerRadiusDp * S, c));
+        bar.setElevation(px(8));
+        View grip = new View(c);
+        grip.setBackground(UiKit.rounded(UiKit.withAlpha(UiKit.MUTED, 130), 2, c));
+        LinearLayout.LayoutParams gripLp = new LinearLayout.LayoutParams(px(32), px(4));
+        gripLp.gravity = Gravity.CENTER_HORIZONTAL;
+        gripLp.setMargins(0, px(7), 0, px(7));
+        bar.addView(grip, gripLp);
+        LinearLayout controls = row(c);
+        int button = px(48);
+        controls.addView(round(c, R.drawable.ic_add, UiKit.SURFACE_2, accent, button, TAG_ATTACH),
+                new LinearLayout.LayoutParams(button, button));
+        TextView hint = UiKit.text(c, s.hint(), 15 * S, Color.rgb(117, 123, 139), false);
+        hint.setSingleLine(true);
+        hint.setPadding(px(10), 0, px(8), 0);
+        controls.addView(hint, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        controls.addView(round(c, R.drawable.ic_mic, Color.TRANSPARENT, accent, button, TAG_VOICE),
+                new LinearLayout.LayoutParams(button, button));
+        LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(button, button);
+        sendLp.leftMargin = px(4);
+        controls.addView(round(c, R.drawable.ic_send, accent, UiKit.onAccent(c), button, null), sendLp);
+        bar.addView(controls);
+        dock.addView(bar);
+        UiKit.applyTypography(dock);
+        return dock;
     }
 
     private LinearLayout row(Context c) {

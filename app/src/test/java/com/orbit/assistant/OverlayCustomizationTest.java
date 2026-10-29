@@ -38,7 +38,7 @@ public class OverlayCustomizationTest {
             Prefs.OVERLAY_SHOW_NEW_CHAT, Prefs.OVERLAY_SHOW_SCREEN, Prefs.OVERLAY_SHOW_ATTACH,
             Prefs.OVERLAY_SHOW_VOICE};
     private static final OverlayStyle[] ALL = {OverlayStyle.MODERN, OverlayStyle.FLOAT,
-            OverlayStyle.CLASSIC, OverlayStyle.CUTIE};
+            OverlayStyle.CLASSIC, OverlayStyle.DOCK, OverlayStyle.CUTIE};
 
     private Context context;
 

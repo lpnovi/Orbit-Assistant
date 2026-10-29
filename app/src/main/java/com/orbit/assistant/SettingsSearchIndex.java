@@ -127,6 +127,7 @@ public final class SettingsSearchIndex {
     public static final String KEY_OVERLAY_PREVIEW = "overlay_preview";
     public static final String KEY_OVERLAY_STYLE = "overlay_style";
     public static final String KEY_OVERLAY_QUICK_CONTROLS = "overlay_quick_controls";
+    public static final String KEY_DOCK_PULSE = "dock_pulse";
     public static final String KEY_HAPTICS = "haptics";
     public static final String KEY_PAGE_TRANSITIONS = "page_transitions";
     public static final String KEY_SWIPE_BACK = "swipe_back";
@@ -423,10 +424,15 @@ public final class SettingsSearchIndex {
                 S_LOOK, "appearance", KEY_OVERLAY_PREVIEW,
                 "preview", "overlay preview", "how it looks"));
         out.add(new Entry("Overlay style",
-                "Modern, Float or Classic look for the Side-button assistant.",
+                "Modern, Float, Classic or Dock look for the Side-button assistant.",
                 S_LOOK, "appearance", KEY_OVERLAY_STYLE,
                 "overlay", "side button", "assistant look", "modern", "float", "compact", "classic",
-                "landscape", "tablet", "peek", "minimise", "minimize"));
+                "landscape", "tablet", "peek", "minimise", "minimize", "dock", "orbit dock", "composer bar",
+                "see through", "floating bar"));
+        out.add(new Entry("Completion pulse",
+                "Dock glows softly once when an answer finishes.",
+                S_LOOK, "appearance", KEY_DOCK_PULSE,
+                "pulse", "completion pulse", "glow", "answer finished", "dock animation"));
         out.add(new Entry("Quick controls",
                 "Choose which buttons stay on the overlay. Hidden ones move to its More menu.",
                 S_LOOK, "appearance", KEY_OVERLAY_QUICK_CONTROLS,

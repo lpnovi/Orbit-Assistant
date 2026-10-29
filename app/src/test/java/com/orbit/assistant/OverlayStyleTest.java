@@ -34,7 +34,7 @@ import org.robolectric.shadows.ShadowLooper;
 public class OverlayStyleTest {
     private static final String[] STYLES = {
             Prefs.OVERLAY_STYLE_MODERN, Prefs.OVERLAY_STYLE_FLOAT, Prefs.OVERLAY_STYLE_CLASSIC,
-            Prefs.OVERLAY_STYLE_CUTIE};
+            Prefs.OVERLAY_STYLE_DOCK, Prefs.OVERLAY_STYLE_CUTIE};
     /** Present as their own buttons in every style. */
     private static final String[] EVERY_CONTROL = {
             "Close Orbit", "Attach to message", "Voice input", "Send message",
@@ -262,7 +262,7 @@ public class OverlayStyleTest {
         Prefs.get(context).edit().putBoolean(Prefs.LELO_MODE, true).commit();
         java.util.List<OverlayStyle> choices = OverlayStyle.choices(context);
         assertEquals(java.util.Arrays.asList(OverlayStyle.MODERN, OverlayStyle.FLOAT,
-                OverlayStyle.CLASSIC, OverlayStyle.CUTIE), choices);
+                OverlayStyle.CLASSIC, OverlayStyle.DOCK, OverlayStyle.CUTIE), choices);
         assertSame(OverlayStyle.CUTIE, OverlayStyle.current(context));
 
         // Off again: safe fallback, stored value untouched, so a later re-enable restores it.

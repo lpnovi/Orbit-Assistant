@@ -185,7 +185,7 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * 0.8.5.0 Beta 1 opens the reminder-destinations line, so this build carries Beta metadata
+     * 0.8.5.0 Beta 2 adds Orbit Dock to the 0.8.5 line, so this build carries Beta metadata
      * and the changelog entry the release workflow builds its notes from must exist.
      */
     @Test public void thisReleaseIsABeta() {
