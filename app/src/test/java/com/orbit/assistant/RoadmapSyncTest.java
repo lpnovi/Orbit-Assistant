@@ -135,6 +135,9 @@ public final class RoadmapSyncTest {
                 file.indexOf("### `0.8.4.0` Stable - Overlay Styles") >= 0);
         assertTrue("above the active plan as well",
                 file.indexOf("### `0.8.4.0` Stable - Overlay Styles") < current);
+        String stable085 = "### `0.8.5.0` Stable - Reminder destinations, Orbit Dock and Read Aloud";
+        assertTrue("the 0.8.5.0 line is recorded as Stable", file.indexOf(stable085) >= 0);
+        assertTrue("above the active plan as well", file.indexOf(stable085) < current);
         assertTrue("and the active plan still names its milestone",
                 file.indexOf(OrbitRoadmap.CURRENT, current) > current);
 

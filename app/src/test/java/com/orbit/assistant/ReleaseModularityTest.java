@@ -185,14 +185,14 @@ public final class ReleaseModularityTest {
     }
 
     /**
-     * 0.8.5.0 Beta 3 refines Orbit Dock and adds Read Aloud on the 0.8.5 line, so this build carries Beta metadata
+     * The 0.8.5.0 line reaches Stable from the tested Beta 3, so this build carries Stable metadata
      * and the changelog entry the release workflow builds its notes from must exist.
      */
-    @Test public void thisReleaseIsABeta() {
-        assertTrue(BuildConfig.VERSION_NAME + " must be a Beta version",
-                OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
-        assertFalse(OrbitVersion.isStable(BuildConfig.VERSION_NAME));
-        assertTrue(OrbitVersion.installedIsBeta());
+    @Test public void thisReleaseIsStable() {
+        assertTrue(BuildConfig.VERSION_NAME + " must be a Stable version",
+                OrbitVersion.isStable(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.isBeta(BuildConfig.VERSION_NAME));
+        assertFalse(OrbitVersion.installedIsBeta());
         assertTrue(read("CHANGELOG.md").contains("- **v" + BuildConfig.VERSION_NAME + "**:"));
     }
 

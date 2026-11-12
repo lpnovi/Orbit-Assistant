@@ -842,6 +842,14 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.5.0**: Choose your reminder app, try the new Orbit Dock overlay, and listen to any answer with Read Aloud.
+  - Reminders can go to Samsung Reminder or stay in Orbit, set in Settings > Reminders or by naming one in your request.
+  - Orbit Reminders can repeat daily or weekly, like "every Friday at 8 PM".
+  - Orbit Dock (Beta) is an optional overlay style: a slim floating bar with no dimming that leaves the app underneath visible and touchable.
+  - Dock shows a compact answer card above the bar; tap it or swipe up for the full conversation.
+  - Hold any answer and choose Read aloud, then pause, resume or stop from a small pill; it uses the voices already on your phone.
+  - Your overlay style, reminders and other settings stay as they were, and nothing is read aloud automatically unless you turn that on.
+
 - **v0.8.5.0-beta.3**: A more refined Orbit Dock, and Read Aloud so you can listen to any answer.
   - Dock's bar is slimmer and calmer: one floating surface with a soft edge instead of an accent outline, and matching round controls.
   - The answer preview is now a compact card that shows Thinking, Writing or the finished answer, with a clear cue that tapping opens the conversation.

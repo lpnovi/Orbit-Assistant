@@ -9,6 +9,16 @@ canonical record of what actually shipped.
 
 ## Shipped / Stable
 
+### `0.8.5.0` Stable - Reminder destinations, Orbit Dock and Read Aloud
+
+Released from the tested Beta 3 line with no product-behavior changes. Reminders can go to Orbit
+Reminders or Samsung Reminder, chosen in Settings or per request, and Orbit Reminders can repeat
+daily or weekly. Orbit Dock is a fourth, opt-in overlay style: a slim floating bar with no dim that
+leaves the app underneath visible and touchable, a compact answer card above it, and a
+conversation panel on request; it keeps its Beta label and nobody is moved to it. Read Aloud reads
+any answer through the phone's own text-to-speech voices, with pause, resume and stop, and never
+starts by itself unless turned on. The record of the Betas is under Current below.
+
 ### `0.8.4.0` Stable - Overlay Styles
 
 Released from the tested Beta 4 line. The Side-button overlay's look is now a choice: Modern (the
@@ -753,7 +763,7 @@ Same behaviour, a more finished look. Nothing about what Dock does, dims or inte
 
 ### Read Aloud - listen to an answer
 
-Shipped in `0.8.5.0-beta.3`. Orbit reads an assistant answer through Android's own text-to-speech
+Shipped in `0.8.5.0-beta.3`. Stable in `0.8.5.0`. Orbit reads an assistant answer through Android's own text-to-speech
 engine and the voices installed on the phone. No service, account, API key or network of Orbit's
 own, and nothing to do with the microphone.
 

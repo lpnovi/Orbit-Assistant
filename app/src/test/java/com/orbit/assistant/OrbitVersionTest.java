@@ -147,35 +147,36 @@ public final class OrbitVersionTest {
     }
 
     /**
-     * 0.8.5.0 Beta 3 refines Orbit Dock and adds Read Aloud, after Beta 2 introduced Dock. It must
-     * carry Beta metadata, produce a prerelease tag, and outrank Beta 2 without being mistaken for
-     * the 0.8.5.0 Stable it leads to.
+     * The 0.8.5.0 line (reminder destinations, Orbit Dock, Read Aloud) is finished and is promoted
+     * from the tested Beta 3. It must carry Stable metadata, produce a Stable tag, never be
+     * published as a prerelease, and outrank every Beta it follows.
      */
-    @Test public void thisBuildIsTheDockAndReadAloudBeta() {
+    @Test public void thisBuildIsTheDockAndReadAloudStableRelease() {
         String version = BuildConfig.VERSION_NAME;
-        assertTrue(OrbitVersion.installedIsBeta());
-        assertTrue(OrbitVersion.isBeta(version));
-        assertFalse(OrbitVersion.isStable(version));
-        assertEquals("0.8.5.0-beta.3", version);
+        assertFalse(OrbitVersion.installedIsBeta());
+        assertTrue(OrbitVersion.isStable(version));
+        assertFalse(OrbitVersion.isBeta(version));
+        assertEquals("0.8.5.0", version);
         assertEquals("0.8.5.0", OrbitVersion.baseVersion(version));
-        assertEquals(3, OrbitVersion.betaNumber(version));
+        assertEquals("a Stable release has no beta counter", 0, OrbitVersion.betaNumber(version));
 
-        assertEquals("Orbit Assistant v0.8.5.0 Beta 3", OrbitVersion.releaseTitle(version));
-        assertEquals("v0.8.5.0-beta.3", OrbitVersion.tagFor(version));
-        assertTrue("the release workflow must publish it as a prerelease",
+        assertEquals("Orbit Assistant v0.8.5.0", OrbitVersion.releaseTitle(version));
+        assertEquals("v0.8.5.0", OrbitVersion.tagFor(version));
+        assertTrue("the release workflow must publish it as a normal release",
+                OrbitVersion.isStableTag(OrbitVersion.tagFor(version)));
+        assertFalse("and never as a prerelease",
                 OrbitVersion.isBetaTag(OrbitVersion.tagFor(version)));
-        assertFalse(OrbitVersion.isStableTag(OrbitVersion.tagFor(version)));
 
-        assertTrue("it must outrank the Beta it follows",
-                OrbitVersion.compareVersions(version, "0.8.5.0-beta.2") > 0);
-        assertTrue("and stay below the Stable it leads to",
-                OrbitVersion.compareVersions(version, "0.8.5.0") < 0);
+        assertTrue("it must outrank every Beta of its own line",
+                OrbitVersion.compareVersions(version, "0.8.5.0-beta.1") > 0);
+        assertTrue("including the tested Beta it was promoted from",
+                OrbitVersion.compareVersions(version, "0.8.5.0-beta.3") > 0);
     }
 
-    /** Beta 3 must supersede Beta 2, published as versionCode 820. */
+    /** Stable must supersede Beta 3, published as versionCode 821. */
     @Test public void thisBuildOutranksThePublishedReleaseItFollows() {
-        assertEquals("the next synchronized version code", 821, BuildConfig.VERSION_CODE);
-        assertTrue(OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.8.5.0-beta.2") > 0);
+        assertEquals("the next synchronized version code", 822, BuildConfig.VERSION_CODE);
+        assertTrue(OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.8.5.0-beta.3") > 0);
         assertTrue(OrbitVersion.compareVersions(BuildConfig.VERSION_NAME, "0.8.4.1") > 0);
     }
 }
