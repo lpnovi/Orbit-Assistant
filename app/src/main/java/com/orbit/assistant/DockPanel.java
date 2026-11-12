@@ -93,7 +93,14 @@ final class DockPanel extends FrameLayout {
         // children when the parent's measured height is zero.
         clip.set(0, 0, width, height);
         setClipBounds(clip);
-        if (getChildCount() > 0) getChildAt(0).setVisibility(height == 0 ? INVISIBLE : VISIBLE);
+        if (getChildCount() > 0) {
+            View child = getChildAt(0);
+            child.setVisibility(height == 0 ? INVISIBLE : VISIBLE);
+            // The conversation fades in over the first part of the slide and out over the last,
+            // so it never appears as a hard-edged strip. At rest it is fully opaque.
+            int full = Math.min(available, natural);
+            child.setAlpha(height >= full || full <= 0 ? 1f : Math.min(1f, height / (full * 0.6f)));
+        }
         setMeasuredDimension(width, height);
     }
 

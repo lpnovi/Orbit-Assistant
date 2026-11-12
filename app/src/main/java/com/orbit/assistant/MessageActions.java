@@ -36,6 +36,8 @@ final class MessageActions {
     static final String REPLY_MENU_LABEL = "Reply to this";
     static final String DETAILS_MENU_LABEL = "Response details";
     static final String EDIT_MENU_LABEL = "Edit";
+    static final String READ_ALOUD_MENU_LABEL = "Read aloud";
+    static final String STOP_READING_MENU_LABEL = "Stop reading";
 
     /** Both surfaces draw message bubbles at this radius, so the selection matches their shape. */
     private static final float BUBBLE_RADIUS_DP = 18f;
@@ -100,6 +102,20 @@ final class MessageActions {
         /** Web pages this reply cited, kept as provenance when it is saved. */
         List<String> sourceUrls = new ArrayList<>();
         AfterCopy afterCopy;
+        /**
+         * Reads this reply aloud, or stops if it is the one being read. Filled in for every bound
+         * reply by {@link #readAloud}, so each surface offers it without wiring anything.
+         */
+        Runnable readAloud;
+        /** The reply {@link #readAloud} reads, which is how its menu entry knows to say Stop. */
+        String readAloudText;
+    }
+
+    /** Gives a reply's actions Read aloud. The context that shows the reply owns the reading. */
+    private static void readAloud(AssistantActions a, Context c, String rawText) {
+        if (a.readAloud != null || c == null) return;
+        a.readAloudText = rawText;
+        a.readAloud = () -> ReadAloud.toggle(c, rawText, c);
     }
 
     /**
@@ -162,6 +178,10 @@ final class MessageActions {
      */
     static List<Entry> moreMenu(AssistantActions a) {
         List<Entry> out = new ArrayList<>();
+        if (a.readAloud != null) {
+            out.add(new Entry(ReadAloud.isReading(a.readAloudText) ? STOP_READING_MENU_LABEL
+                    : READ_ALOUD_MENU_LABEL, R.drawable.ic_read_aloud, a.readAloud));
+        }
         if (a.retryWith != null) out.add(new Entry(RETRY_WITH_MENU_LABEL, R.drawable.ic_tune, a.retryWith));
         if (a.reply != null) out.add(new Entry(REPLY_MENU_LABEL, R.drawable.ic_reply, a.reply));
         if (a.details != null) out.add(new Entry(DETAILS_MENU_LABEL, R.drawable.ic_settings, a.details));
@@ -285,6 +305,7 @@ final class MessageActions {
         String copyText = assistantCopyText(rawText);
         if (copyText.trim().isEmpty()) return;
         AssistantActions a = actions == null ? new AssistantActions() : actions;
+        readAloud(a, bubble.getContext(), rawText);
         bindTree(bubble, v -> {
             showAssistantMenu(bubble, rawText, copyText, a);
             return true;
@@ -332,11 +353,13 @@ final class MessageActions {
             strip.addView(stripButton(c, R.drawable.ic_vault, "Save response to Vault",
                     v -> saveToVault(c, rawText, a.sourceUrls)));
         }
-        List<Entry> more = moreMenu(a);
-        if (!more.isEmpty()) {
+        readAloud(a, c, rawText);
+        if (!moreMenu(a).isEmpty()) {
             ImageButton moreButton = stripButton(c, R.drawable.ic_more, "More response actions", null);
             moreButton.setOnClickListener(v -> {
                 dismiss();
+                // Built when opened, so Read aloud says Stop reading while this reply is read.
+                List<Entry> more = moreMenu(a);
                 UiKit.showOrbitActionMenu(c, moreButton, labelsOf(more), iconsOf(more),
                         (index, label) -> more.get(index).run.run());
             });

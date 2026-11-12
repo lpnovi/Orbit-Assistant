@@ -19,7 +19,7 @@ import android.view.animation.LinearInterpolator;
 final class CompletionPulse {
     static final long DURATION_MS = 1000L;
     /** The first beat's swell on the collapsed Dock. The expanded highlight passes 0: glow only. */
-    static final float SWELL = 0.04f;
+    static final float SWELL = 0.03f;
     /** The second beat, relative to the first. */
     static final float SECOND_BEAT = 0.45f;
     /** Where the first beat ends and the second begins, as a fraction of the duration. */
@@ -60,12 +60,12 @@ final class CompletionPulse {
         final float elevation = target.getElevation();
         final int spot = target.getOutlineSpotShadowColor();
         final int ambient = target.getOutlineAmbientShadowColor();
-        final float lift = UiKit.dp(target.getContext(), 10);
+        final float lift = UiKit.dp(target.getContext(), 6);
 
         GradientDrawable glow = new GradientDrawable();
         glow.setCornerRadius(radiusPx);
-        glow.setColor(UiKit.withAlpha(accent, 30));
-        glow.setStroke(Math.max(1, UiKit.dp(target.getContext(), 1.5f)), UiKit.withAlpha(accent, 210));
+        glow.setColor(UiKit.withAlpha(accent, 22));
+        glow.setStroke(Math.max(1, UiKit.dp(target.getContext(), 1.5f)), UiKit.withAlpha(accent, 150));
         glow.setAlpha(0);
         target.setForeground(glow);
         target.setOutlineSpotShadowColor(accent);

@@ -735,6 +735,46 @@ fork of Orbit by Tx13758627780, adapted under the MPL-2.0 both projects share.
 - **Not yet:** moving Dock around the screen, and staying open across app switches, which Android's
   assistant overlay does not allow
 
+#### `0.8.5.0-beta.3` - Dock 2.0
+
+Same behaviour, a more finished look. Nothing about what Dock does, dims or intercepts changed.
+
+- **One floating bar.** Slimmer, a solid surface with a hairline edge instead of an accent outline,
+  and focus shown by that edge warming rather than a ring. Attach and the microphone are matching
+  tonal circles and the accent is kept for Send. Every control keeps a 44dp touch target
+- **Answer card.** The preview is a compact card on the bar's own surface: Orbit's mark, a status
+  (Thinking, Writing, Orbit, Stopped, Needs attention), three quiet dots while Orbit works, and a
+  chevron that says it opens. Still two or three lines; two in a short landscape window
+- **Motion.** Dock rises and fades in and out instead of sliding its full height, the conversation
+  fades as its panel slides, the preview fades away rather than vanishing, and the completion pulse
+  is softer. All of it follows Android's animation setting
+- **Cleaner preview text.** Table and rule scaffolding never reaches the preview
+- **Still not:** moving Dock around the screen or surviving an app switch
+
+### Read Aloud - listen to an answer
+
+Shipped in `0.8.5.0-beta.3`. Orbit reads an assistant answer through Android's own text-to-speech
+engine and the voices installed on the phone. No service, account, API key or network of Orbit's
+own, and nothing to do with the microphone.
+
+- **Where.** Read aloud is in the hold menu of every answer in full chat and all overlay styles
+  (in Dock, inside the conversation panel), and under More on full chat's action strip
+- **Controls.** A small pill appears above the composer only while something is being read, with
+  Pause/Resume and Stop. Choosing Read aloud on another answer switches to it; on the one being
+  read it becomes Stop reading. One reader for the whole app, so two answers never overlap
+- **What is said.** Markdown is removed, headings and lists read as sentences, code blocks are
+  named rather than spelled out, and a bare web address is read as the site it points to. Long
+  answers are queued in short pieces, which is also what Resume returns to
+- **Good manners.** It pauses for a call or another app's short sound and resumes after, stops
+  when another app takes over audio, stops when the microphone opens or a spoken voice reply
+  starts, and stops when the chat or overlay that started it closes
+- **Settings.** Voice/context/permissions has a Read Aloud group: system voice, speed, and
+  Automatically read answers, which is off unless turned on. Volume, pitch and installing voices
+  stay in Android's settings
+- **Limits.** Android has no true pause for speech, so Resume restarts the current sentence or
+  paragraph. Voices marked "needs internet" depend on Android's speech engine reaching the network.
+  Reading stops when Orbit leaves the screen; there is no background playback or lock-screen control
+
 ### Orbit Local 2.0 - more of Orbit, privately on the phone
 
 Orbit Local began as private offline chat. The 0.8.2 line makes it a first-class part of Orbit:

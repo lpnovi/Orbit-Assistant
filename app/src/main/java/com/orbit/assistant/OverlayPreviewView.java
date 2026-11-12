@@ -228,7 +228,7 @@ final class OverlayPreviewView extends FrameLayout {
         hint.setPadding(px(10), px(6), px(8), px(6));
         int button = px(s.integratedComposer ? 40 : 44);
         View attach = round(c, R.drawable.ic_add, UiKit.SURFACE_2, UiKit.accent(c), button, TAG_ATTACH);
-        View mic = round(c, R.drawable.ic_mic, Color.TRANSPARENT, accent, button, TAG_VOICE);
+        View mic = round(c, R.drawable.ic_mic, UiKit.SURFACE_2, accent, button, TAG_VOICE);
         View send = round(c, R.drawable.ic_send, accent, UiKit.onAccent(c), button, null);
         if (s.integratedComposer) {
             LinearLayout status = row(c);
@@ -274,10 +274,11 @@ final class OverlayPreviewView extends FrameLayout {
 
         LinearLayout preview = row(c);
         preview.setPadding(px(12), px(10), px(14), px(10));
-        GradientDrawable previewBg = UiKit.gradientSheet(c, 22 * S);
+        GradientDrawable previewBg = UiKit.outlined(UiKit.SURFACE,
+                UiKit.withAlpha(UiKit.MUTED, 44), DockPreviewCard.RADIUS_DP * S, c);
         previewBg.setAlpha(s.sheetAlpha);
         preview.setBackground(previewBg);
-        preview.setElevation(px(4));
+        preview.setElevation(px(6));
         LinearLayout.LayoutParams markLp = new LinearLayout.LayoutParams(px(22), px(22));
         markLp.rightMargin = px(10);
         preview.addView(UiKit.orbitMark(c, 18 * S), markLp);
@@ -313,17 +314,17 @@ final class OverlayPreviewView extends FrameLayout {
 
         LinearLayout bar = new LinearLayout(c);
         bar.setOrientation(LinearLayout.VERTICAL);
-        bar.setPadding(px(6), 0, px(6), px(6));
-        bar.setBackground(UiKit.outlined(UiKit.SURFACE, Color.rgb(48, 53, 67), s.composerRadiusDp * S, c));
-        bar.setElevation(px(8));
+        bar.setPadding(px(7), 0, px(7), px(7));
+        bar.setBackground(UiKit.outlined(UiKit.SURFACE, UiKit.withAlpha(UiKit.MUTED, 44), s.composerRadiusDp * S, c));
+        bar.setElevation(px(10));
         View grip = new View(c);
-        grip.setBackground(UiKit.rounded(UiKit.withAlpha(UiKit.MUTED, 130), 2, c));
-        LinearLayout.LayoutParams gripLp = new LinearLayout.LayoutParams(px(32), px(4));
+        grip.setBackground(UiKit.rounded(UiKit.withAlpha(UiKit.MUTED, 110), 2, c));
+        LinearLayout.LayoutParams gripLp = new LinearLayout.LayoutParams(px(28), px(3));
         gripLp.gravity = Gravity.CENTER_HORIZONTAL;
-        gripLp.setMargins(0, px(7), 0, px(7));
+        gripLp.setMargins(0, px(6), 0, px(6));
         bar.addView(grip, gripLp);
         LinearLayout controls = row(c);
-        int button = px(48);
+        int button = px(38);
         controls.addView(round(c, R.drawable.ic_add, UiKit.SURFACE_2, accent, button, TAG_ATTACH),
                 new LinearLayout.LayoutParams(button, button));
         TextView hint = UiKit.text(c, s.hint(), 15 * S, Color.rgb(117, 123, 139), false);
@@ -333,7 +334,7 @@ final class OverlayPreviewView extends FrameLayout {
         controls.addView(round(c, R.drawable.ic_mic, Color.TRANSPARENT, accent, button, TAG_VOICE),
                 new LinearLayout.LayoutParams(button, button));
         LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(button, button);
-        sendLp.leftMargin = px(4);
+        sendLp.leftMargin = px(6);
         controls.addView(round(c, R.drawable.ic_send, accent, UiKit.onAccent(c), button, null), sendLp);
         bar.addView(controls);
         dock.addView(bar);

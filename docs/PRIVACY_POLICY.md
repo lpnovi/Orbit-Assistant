@@ -1,6 +1,6 @@
 # Orbit Assistant Privacy Policy
 
-**Last updated: October 2, 2026**
+**Last updated: November 11, 2026**
 
 This policy explains what Orbit Assistant ("Orbit") does with your information. It applies to both ways Orbit is distributed: the **Google Play edition** and the **GitHub edition**. Where they differ, this policy says so.
 
@@ -97,7 +97,7 @@ When your Vault is full, Orbit pauses new saves instead of deleting anything. **
 
 ## Voice
 
-Voice input uses the speech recognition service installed on your phone, provided by Android or your phone's manufacturer, and spoken replies use your phone's text-to-speech engine. Those services are not operated by Orbit, and their own privacy practices apply. Orbit uses the microphone only while you are using voice input.
+Voice input uses the speech recognition service installed on your phone, provided by Android or your phone's manufacturer, and spoken replies and Read Aloud use your phone's text-to-speech engine: the words of the answer being read are handed to that engine, and a voice that needs the internet is fetched by the engine, not by Orbit. Those services are not operated by Orbit, and their own privacy practices apply. Orbit uses the microphone only while you are using voice input.
 
 ## Contacts, calendar, notifications, and device actions
 
@@ -186,7 +186,7 @@ Orbit works with these third parties only when you use the related feature. Orbi
 | Google Play services (ML Kit) | On-device text recognition for Smart Vault, if you turn it on. [Google Privacy Policy](https://policies.google.com/privacy) |
 | Hugging Face | The one-time Smart Vault search model download, if you turn on search by meaning. [Privacy Policy](https://huggingface.co/privacy) |
 | Websites you saved as links | Reading a saved page's text, if you turn on Read saved links |
-| Your phone's speech and text-to-speech services | Voice input and spoken replies |
+| Your phone's speech and text-to-speech services | Voice input, spoken replies and Read Aloud |
 | Your private relay or installed Extensions | Only if you configure them |
 
 Orbit Pro is not available for purchase. If paid Orbit features are offered in a future release of the Google Play edition, purchases would be handled by Google Play Billing, and Orbit would not receive your payment card details. This policy will be updated before that happens.

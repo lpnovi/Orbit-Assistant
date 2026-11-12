@@ -122,7 +122,7 @@ public final class OpenRouterConnectTest {
                 model("openai/text-embedding-3-large", "OpenAI: Text Embedding 3 Large", 8_192, TEXT,
                         new String[]{"embeddings"}, null, null, null),
                 model("google/gemini-2.5-pro", "Google: Gemini 2.5 Pro", 1_048_576, TEXT_IMAGE, TEXT,
-                        new String[]{"high"}, null, "2026-10-20"),
+                        new String[]{"high"}, null, "2099-10-20"),
                 model("google/gemini-1.5-pro", "Google: Gemini 1.5 Pro", 1_000_000, TEXT_IMAGE, TEXT,
                         null, null, "2025-01-01"));
     }

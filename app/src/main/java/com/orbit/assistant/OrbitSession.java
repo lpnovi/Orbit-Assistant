@@ -119,8 +119,17 @@ public class OrbitSession extends VoiceInteractionSession {
     private LinearLayout dockBar;
     private View dockHandle;
     private LinearLayout dockScreenRow;
-    private LinearLayout dockPreview;
-    private TextView dockPreviewText;
+    private DockPreviewCard dockPreview;
+    /** Whether the preview is meant to be on screen; it may still be fading out when false. */
+    private boolean dockPreviewShown;
+    /** Read Aloud's pill, above the composer in every style. Gone unless something is being read. */
+    private ReadAloudBar readAloudBar;
+    /** Read Aloud starting takes the floor: a spoken reply stops and the microphone closes. */
+    private final ReadAloud.Listener readAloudListener = () -> {
+        if (!ReadAloud.isActive()) return;
+        if (this.speaking) stopSpeaking();
+        if (this.listening) stopListening();
+    };
     /** The panel height the user dragged to in this invocation, or 0 for the default share. */
     private int dockUserCapPx;
     /** The user swiped the preview away; it stays away until the next answer starts. */
@@ -135,7 +144,8 @@ public class OrbitSession extends VoiceInteractionSession {
     private static final float DOCK_PANEL_SHARE = 0.32f;
     private static final int DOCK_MAX_WIDTH_DP = 560;
     private static final int DOCK_PANEL_MIN_DP = 220;
-    private static final int DOCK_PREVIEW_RADIUS_DP = 22;
+    /** Dock's round controls: a full 44dp target around a smaller drawn circle. */
+    private static final int DOCK_CONTROL_DP = 44;
     /**
      * Peek: a compact style folded into a capsule at the sheet's bottom-right corner. The sheet is
      * never rebuilt or hidden for it. Its outline clips down to the capsule while a copy of its own
@@ -563,7 +573,7 @@ public class OrbitSession extends VoiceInteractionSession {
         dockHandle = null;
         dockScreenRow = null;
         dockPreview = null;
-        dockPreviewText = null;
+        dockPreviewShown = false;
         dockUserCapPx = 0;
         dockPreviewDismissed = false;
         root.removeAllViews();
@@ -887,6 +897,12 @@ public class OrbitSession extends VoiceInteractionSession {
         LinearLayout.LayoutParams trayLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         trayLp.setMargins(0, 0, 0, UiKit.dp(c, 7));
+        readAloudBar = new ReadAloudBar(c);
+        LinearLayout.LayoutParams readAloudLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        readAloudLp.gravity = Gravity.CENTER_HORIZONTAL;
+        readAloudLp.setMargins(0, 0, 0, UiKit.dp(c, 7));
+        sheet.addView(readAloudBar, readAloudLp);
         sheet.addView(attachmentStrip, trayLp);
         refreshGenericAttachmentTray();
 
@@ -1017,7 +1033,8 @@ public class OrbitSession extends VoiceInteractionSession {
 
         input.setOnFocusChangeListener((v, hasFocus) -> {
             int stroke = hasFocus ? UiKit.withAlpha(UiKit.accent(c), 170) : restingStroke;
-            composer.setBackground(UiKit.outlined(UiKit.SURFACE, stroke, style.composerRadiusDp, c));
+            composer.setBackground(style.dock() ? dockBarSurface(c, hasFocus)
+                    : UiKit.outlined(UiKit.SURFACE, stroke, style.composerRadiusDp, c));
             // Focus has already arrived; this only observes it. Moving focus from here is what
             // made the composer recurse into itself and crash in v0.7.3.5.
             if (composerFocus != null) composerFocus.onFocusChanged(hasFocus);
@@ -1081,24 +1098,7 @@ public class OrbitSession extends VoiceInteractionSession {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         sheet.addView(dockPanel, dockPieceLp(c, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        dockPreview = new LinearLayout(c);
-        dockPreview.setGravity(Gravity.CENTER_VERTICAL);
-        dockPreview.setPadding(UiKit.dp(c, 12), UiKit.dp(c, 10), UiKit.dp(c, 14), UiKit.dp(c, 10));
-        dockPreview.setMinimumHeight(UiKit.dp(c, 48));
-        GradientDrawable previewSurface = UiKit.gradientSheet(c, DOCK_PREVIEW_RADIUS_DP);
-        previewSurface.setStroke(UiKit.dp(c, 1), hairline);
-        previewSurface.setAlpha(style.sheetAlpha);
-        dockPreview.setBackground(previewSurface);
-        dockPreview.setElevation(UiKit.dp(c, 4));
-        LinearLayout.LayoutParams markLp = new LinearLayout.LayoutParams(
-                UiKit.dp(c, 22), UiKit.dp(c, 22));
-        markLp.rightMargin = UiKit.dp(c, 10);
-        dockPreview.addView(UiKit.orbitMark(c, 18), markLp);
-        dockPreviewText = UiKit.text(c, "", 14, UiKit.TEXT, false);
-        dockPreviewText.setMaxLines(3);
-        dockPreviewText.setEllipsize(TextUtils.TruncateAt.END);
-        dockPreview.addView(dockPreviewText, new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        dockPreview = new DockPreviewCard(c, style.sheetAlpha);
         dockPreview.setClickable(true);
         dockPreview.setOnClickListener(v -> setDockExpanded(true));
         installDockGestures(dockPreview, true);
@@ -1116,31 +1116,44 @@ public class OrbitSession extends VoiceInteractionSession {
         chipLp.gravity = Gravity.END;
         sheet.addView(screenActions, chipLp);
         dockScreenRow = screenActions;
+        LinearLayout.LayoutParams readAloudLp = dockPieceLp(c, ViewGroup.LayoutParams.WRAP_CONTENT);
+        readAloudLp.gravity = Gravity.START;
+        sheet.addView(readAloudBar, readAloudLp);
         sheet.addView(attachmentStrip);
         sheet.addView(composerFocusHolder);
 
-        // The bar: a slim handle, then one row. Solid, so what is typed always reads clearly.
+        // The bar: one solid floating surface, so what is typed always reads clearly. A slim
+        // handle, then a single row whose three controls share one shape: quiet tonal circles for
+        // Attach and the microphone, and the accent kept for Send, the one thing to press.
         composer.removeAllViews();
         composer.setOrientation(LinearLayout.VERTICAL);
-        composer.setPadding(UiKit.dp(c, 6), 0, UiKit.dp(c, 6), UiKit.dp(c, 6));
-        composer.setElevation(UiKit.dp(c, 8));
+        composer.setPadding(UiKit.dp(c, 5), 0, UiKit.dp(c, 5), UiKit.dp(c, 5));
+        composer.setBackground(dockBarSurface(c, input.hasFocus()));
+        composer.setElevation(UiKit.dp(c, 10));
         FrameLayout handle = new FrameLayout(c);
         View grip = new View(c);
-        grip.setBackground(UiKit.rounded(UiKit.withAlpha(UiKit.MUTED, 130), 2, c));
+        grip.setBackground(UiKit.rounded(UiKit.withAlpha(UiKit.MUTED, 110), 2, c));
         handle.addView(grip, new FrameLayout.LayoutParams(
-                UiKit.dp(c, 32), UiKit.dp(c, 4), Gravity.CENTER));
+                UiKit.dp(c, 28), UiKit.dp(c, 3), Gravity.CENTER));
         handle.setClickable(true);
         handle.setOnClickListener(v -> setDockExpanded(!dockPanel.isExpanded()));
         installDockGestures(handle, false);
         composer.addView(handle, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(c, 18)));
+                ViewGroup.LayoutParams.MATCH_PARENT, UiKit.dp(c, 15)));
         dockHandle = handle;
 
         LinearLayout row = new LinearLayout(c);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        int button = UiKit.dp(c, 48);
-        attach.setBackground(UiKit.ripple(UiKit.SURFACE_2, UiKit.accent(c), 24, c));
-        sendButton.setBackground(UiKit.ripple(UiKit.accent(c), UiKit.onAccent(c), 24, c));
+        int button = UiKit.dp(c, DOCK_CONTROL_DP);
+        attach.setBackground(dockControlSurface(c));
+        mic.setBackground(dockControlSurface(c));
+        // Send is drawn a touch larger than its neighbours, inside the same 44dp target.
+        sendButton.setBackground(new android.graphics.drawable.InsetDrawable(
+                UiKit.ripple(UiKit.accent(c), UiKit.onAccent(c), 20, c), UiKit.dp(c, 2)));
+        input.setPadding(UiKit.dp(c, 10), UiKit.dp(c, 9), UiKit.dp(c, 6), UiKit.dp(c, 9));
+        // A device theme's own minimum editor height must not make the bar taller than its row.
+        input.setMinHeight(0);
+        input.setMinimumHeight(0);
         for (View control : new View[]{attach, input, mic, sendButton}) {
             if (control.getParent() instanceof ViewGroup) {
                 ((ViewGroup) control.getParent()).removeView(control);
@@ -1150,7 +1163,7 @@ public class OrbitSession extends VoiceInteractionSession {
         row.addView(input, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         row.addView(mic, new LinearLayout.LayoutParams(button, button));
         LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(button, button);
-        sendLp.leftMargin = UiKit.dp(c, 4);
+        sendLp.leftMargin = UiKit.dp(c, 2);
         row.addView(sendButton, sendLp);
         composer.addView(row, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -1171,6 +1184,21 @@ public class OrbitSession extends VoiceInteractionSession {
             others[0] = now;
             v.post(root::requestApplyInsets);
         });
+    }
+
+    /**
+     * The bar's surface: solid, with a hairline edge instead of an accent outline. Focus is shown
+     * by that hairline warming toward the accent, not by ringing the whole bar in it.
+     */
+    private GradientDrawable dockBarSurface(Context c, boolean focused) {
+        return UiKit.outlined(UiKit.SURFACE, focused ? UiKit.withAlpha(UiKit.accent(c), 96)
+                : UiKit.withAlpha(UiKit.MUTED, 44), style.composerRadiusDp, c);
+    }
+
+    /** Attach and the microphone at rest: a 36dp tonal circle inside the 44dp target. */
+    private static android.graphics.drawable.Drawable dockControlSurface(Context c) {
+        return new android.graphics.drawable.InsetDrawable(
+                UiKit.ripple(UiKit.SURFACE_2, UiKit.accent(c), 18, c), UiKit.dp(c, 4));
     }
 
     private static LinearLayout.LayoutParams dockPieceLp(Context c, int width) {
@@ -1217,31 +1245,51 @@ public class OrbitSession extends VoiceInteractionSession {
         if (expanded) {
             hideDockPreview();
             scrollBottom();
-        } else if (busy && dockPreviewText != null && dockPreviewText.length() > 0) {
+        } else if (busy && dockPreview != null && dockPreview.state() >= 0) {
             // Folding mid-answer brings the live preview back; a finished one has been read.
-            showDockPreview(dockPreviewText.getText().toString(), dockPreviewText.getCurrentTextColor());
+            showDockPreview(dockPreview.state(), dockPreview.text());
         }
         describeDockHandle();
         // The space the panel may take depends on what else is showing, so placement reruns.
         root.requestApplyInsets();
     }
 
-    /** Shows the preview with this text while the panel is shut. Remembers the text either way. */
-    private void showDockPreview(String text, int color) {
-        if (dockPreview == null || text == null || text.isEmpty()) return;
-        dockPreviewText.setText(text);
-        dockPreviewText.setTextColor(color);
-        if (dockPanel.isExpanded() || dockPreviewDismissed
-                || dockPreview.getVisibility() == View.VISIBLE) return;
+    /**
+     * Puts the preview in this state ({@link DockPreviewCard#THINKING} and so on) with these
+     * words, and shows it while the panel is shut. The card remembers both either way. Only
+     * Thinking may have no words.
+     */
+    private void showDockPreview(int state, String text) {
+        if (dockPreview == null) return;
+        if (state != DockPreviewCard.THINKING && (text == null || text.isEmpty())) return;
+        dockPreview.set(state, text);
+        if (dockPanel.isExpanded() || dockPreviewDismissed || dockPreviewShown) return;
+        dockPreviewShown = true;
+        dockPreview.animate().cancel();
         dockPreview.setVisibility(View.VISIBLE);
         UiKit.enterContent(dockPreview);
         root.requestApplyInsets();
     }
 
+    /** Fades the preview away, then takes it out of the column so its touches go back to the app. */
     private void hideDockPreview() {
-        if (dockPreview == null || dockPreview.getVisibility() == View.GONE) return;
-        dockPreview.setVisibility(View.GONE);
-        root.requestApplyInsets();
+        if (dockPreview == null || !dockPreviewShown) return;
+        dockPreviewShown = false;
+        final DockPreviewCard card = dockPreview;
+        Runnable gone = () -> {
+            if (dockPreviewShown && card == dockPreview) return;
+            card.setVisibility(View.GONE);
+            card.setAlpha(1f);
+            card.setTranslationY(0f);
+            if (root != null) root.requestApplyInsets();
+        };
+        card.animate().cancel();
+        if (!UiKit.animationsEnabled() || !card.isShown()) {
+            gone.run();
+            return;
+        }
+        card.animate().alpha(0f).translationY(UiKit.dp(card.getContext(), 6))
+                .setDuration(UiKit.MOTION_FAST).withEndAction(gone).start();
     }
 
     /**
@@ -1253,7 +1301,8 @@ public class OrbitSession extends VoiceInteractionSession {
         if (dockPanel == null) return;
         Context c = getContext();
         boolean expanded = dockPanel.isExpanded();
-        if (!expanded) showDockPreview(DockText.opening(storedText), UiKit.TEXT);
+        if (!expanded) showDockPreview(isUnfinishedAnswer(storedText) ? DockPreviewCard.FAILED
+                : DockPreviewCard.DONE, DockText.opening(storedText));
         if (isUnfinishedAnswer(storedText) || !CompletionPulse.shouldPlay(
                 Prefs.dockCompletionPulse(c), requestId, lastPulsedRequestId)) return;
         lastPulsedRequestId = requestId;
@@ -1266,8 +1315,8 @@ public class OrbitSession extends VoiceInteractionSession {
                         ? ((GradientDrawable) bubble.getBackground()).getCornerRadius() : 0f;
                 CompletionPulse.play(bubble, accent, radius, 0f);
             }
-        } else if (dockPreview.getVisibility() == View.VISIBLE) {
-            CompletionPulse.play(dockPreview, accent, UiKit.dp(c, DOCK_PREVIEW_RADIUS_DP),
+        } else if (dockPreviewShown) {
+            CompletionPulse.play(dockPreview, accent, UiKit.dp(c, DockPreviewCard.RADIUS_DP),
                     CompletionPulse.SWELL);
         } else {
             // The preview was swiped away: the bar carries the pulse, a touch more gently.
@@ -1385,6 +1434,8 @@ public class OrbitSession extends VoiceInteractionSession {
                 Math.round(rootHeight * DOCK_PANEL_SHARE), UiKit.dp(c, DOCK_PANEL_MIN_DP));
         conversationCapPx = Math.min(wanted, dockMaxCapPx);
         dockPanel.setHeightLimit(conversationCapPx, false);
+        // A short window (a phone on its side) keeps the preview to two lines.
+        dockPreview.setMaxLines(rootHeight < UiKit.dp(c, 480) ? 2 : 3);
         // Mid-animation frames leave scrolling to the animation's end (see onCreateContentView).
         if (imeVisible && !dockImeMoving && dockPanel.isExpanded()) scrollBottom();
     }
@@ -2243,6 +2294,7 @@ public class OrbitSession extends VoiceInteractionSession {
 
     @Override
     public void onShow(Bundle args, int showFlags) {
+        ReadAloud.addListener(readAloudListener);
         try {
             showInternal(args, showFlags);
         } catch (Throwable t) {
@@ -3135,6 +3187,7 @@ public class OrbitSession extends VoiceInteractionSession {
                         executeActions(reply.actions, 0);
                         if (voiceRequest && Prefs.speak(getContext())) speak(OrbitMarkdown.toSpeechText(
                                 SourceLinkUtil.displayText(storedText)));
+                        else autoReadAloud(storedText);
                     }
                     updateComposerAction();
                     traceComposer("response.rendered actions="
@@ -3160,7 +3213,7 @@ public class OrbitSession extends VoiceInteractionSession {
                     DiagnosticStore.recordError(getContext(), friendly);
                     if (sessionVisible) {
                         addErrorBubble(friendly);
-                        showDockPreview(friendly, UiKit.MUTED);
+                        showDockPreview(DockPreviewCard.FAILED, friendly);
                         addFailureRetryAction(PendingRequestStore.load(getContext(), requestId), friendly);
                     }
                 });
@@ -3219,7 +3272,7 @@ public class OrbitSession extends VoiceInteractionSession {
     private void showThinkingIndicator() {
         // A new answer is on its way: the preview may show again even if the last was swiped off.
         dockPreviewDismissed = false;
-        showDockPreview("Thinking…", UiKit.MUTED);
+        showDockPreview(DockPreviewCard.THINKING, "");
         // Remove any previous indicator outright rather than fading it, so one request can never
         // leave two orbital indicators on screen at once.
         if (thinkingIndicator != null) {
@@ -3341,7 +3394,9 @@ public class OrbitSession extends VoiceInteractionSession {
         applyStreamingWidth();
         scrollBottom();
         // Only while the panel is shut; an open panel shows the answer itself.
-        if (dockPreview != null && !dockPanel.isExpanded()) showDockPreview(DockText.tail(text), UiKit.TEXT);
+        if (dockPreview != null && !dockPanel.isExpanded()) {
+            showDockPreview(DockPreviewCard.WRITING, DockText.tail(text));
+        }
     }
 
     /**
@@ -3989,6 +4044,7 @@ public class OrbitSession extends VoiceInteractionSession {
                         executeActions(reply.actions, 0);
                         if (voiceRequest && Prefs.speak(getContext())) speak(OrbitMarkdown.toSpeechText(
                                 SourceLinkUtil.displayText(storedText)));
+                        else autoReadAloud(storedText);
                     }
                     updateComposerAction();
                 });
@@ -4000,7 +4056,7 @@ public class OrbitSession extends VoiceInteractionSession {
                     if (!ownsCurrentUi()) return;
                     busy = false; uiRequestConversationId = null; stopThinkingIndicator(); stateTextSafe("Needs attention");
                     history.add(new AssistantClient.History("assistant", friendly));
-                    if (sessionVisible) { addErrorBubble(friendly); showDockPreview(friendly, UiKit.MUTED); addFailureRetryAction(PendingRequestStore.load(getContext(), requestId), friendly); }
+                    if (sessionVisible) { addErrorBubble(friendly); showDockPreview(DockPreviewCard.FAILED, friendly); addFailureRetryAction(PendingRequestStore.load(getContext(), requestId), friendly); }
                     updateComposerAction();
                     traceComposer("response.error-rendered");
                 });
@@ -4031,7 +4087,7 @@ public class OrbitSession extends VoiceInteractionSession {
         String partial = partialText == null ? "" : partialText.trim();
         // A stop is never a success: the Dock preview keeps what was written, quietly, or goes.
         if (partial.isEmpty() || !sessionVisible) hideDockPreview();
-        else if (dockPreview != null) showDockPreview(DockText.opening(partial), UiKit.MUTED);
+        else if (dockPreview != null) showDockPreview(DockPreviewCard.STOPPED, DockText.opening(partial));
         if (partial.isEmpty()) {
             discardStreamingBubble();
         } else {
@@ -4619,6 +4675,8 @@ public class OrbitSession extends VoiceInteractionSession {
     }
 
     private void startListening() {
+        // The microphone must not hear Orbit reading.
+        ReadAloud.stop();
         voiceAccumulated = "";
         voicePartial = "";
         voiceManualFinishRequested = false;
@@ -4854,7 +4912,8 @@ public class OrbitSession extends VoiceInteractionSession {
         if (mic == null) return;
         if (listeningHalo != null && mic.getBackground() == listeningHalo) {
             Context c = getContext();
-            mic.setBackground(UiKit.ripple(UiKit.SURFACE, UiKit.accent(c), 18, c));
+            mic.setBackground(dockPanel != null ? dockControlSurface(c)
+                    : UiKit.ripple(UiKit.SURFACE, UiKit.accent(c), 18, c));
         }
     }
 
@@ -4904,9 +4963,18 @@ public class OrbitSession extends VoiceInteractionSession {
         } catch (Exception ignored) {}
     }
 
+    /** "Automatically read answers", for an answer that just finished on screen. Off by default. */
+    private void autoReadAloud(String storedText) {
+        Context c = getContext();
+        if (!Prefs.readAloudAuto(c) || isUnfinishedAnswer(storedText)) return;
+        ReadAloud.start(c, storedText, c);
+    }
+
     private void speak(String text) {
         if (!ttsReady || tts == null || text == null || text.isEmpty()) return;
         try {
+            // One voice at a time: a spoken reply takes over from Read Aloud.
+            ReadAloud.stop();
             lastSpokenReply = text;
             liveUtteranceId = "orbit_reply_" + (++utteranceGeneration);
             tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, liveUtteranceId);
@@ -5690,9 +5758,20 @@ public class OrbitSession extends VoiceInteractionSession {
             scrim.setAlpha(0f);
         }
 
-        float travel = sheet.getHeight() + UiKit.dp(getContext(), 20);
+        // Dock is small and has nothing behind it, so it rises a short way and fades in rather
+        // than travelling its whole height like a sheet.
+        final boolean dock = dockPanel != null;
+        float travel = dock ? UiKit.dp(getContext(), 28) : sheet.getHeight() + UiKit.dp(getContext(), 20);
         sheet.setTranslationY(travel);
-        sheet.setAlpha(1f);
+        sheet.setAlpha(dock && UiKit.animationsEnabled() ? 0f : 1f);
+        if (dock) {
+            // Whatever interrupts the fade, Dock is never left half see-through.
+            sheet.animate().setListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationCancel(android.animation.Animator animation) {
+                    if (sheet != null && !dismissAnimating) sheet.setAlpha(1f);
+                }
+            });
+        }
         sheet.setVisibility(View.VISIBLE);
 
         sheet.postOnAnimation(() -> {
@@ -5706,7 +5785,8 @@ public class OrbitSession extends VoiceInteractionSession {
             }
             sheet.animate()
                     .translationY(0f)
-                    .setDuration(285)
+                    .alpha(1f)
+                    .setDuration(dock ? UiKit.MOTION_ENTER : 285)
                     .setInterpolator(new PathInterpolator(0.18f, 0.00f, 0.00f, 1.00f))
                     // Observational only: the entrance is unchanged, but its end is the point at
                     // which the overlay is settled and genuinely usable.
@@ -5750,10 +5830,14 @@ public class OrbitSession extends VoiceInteractionSession {
         // reuses for every invocation. Capture who armed it so it can prove it still speaks for
         // what is on screen when it finally fires.
         final int armedToken = dismissOwnershipToken;
-        float travel = Math.max(sheet.getHeight(), UiKit.dp(getContext(), 320)) + UiKit.dp(getContext(), 20);
+        // Dock leaves the way it arrived: a short drop and a fade, not a long slide off screen.
+        final boolean dock = dockPanel != null;
+        float travel = dock ? UiKit.dp(getContext(), 28)
+                : Math.max(sheet.getHeight(), UiKit.dp(getContext(), 320)) + UiKit.dp(getContext(), 20);
         sheet.animate()
                 .translationY(travel)
-                .setDuration(225)
+                .alpha(dock ? 0f : 1f)
+                .setDuration(dock ? UiKit.MOTION_STANDARD : 225)
                 .setInterpolator(new PathInterpolator(0.40f, 0.00f, 1.00f, 1.00f))
                 .withEndAction(() -> {
                     if (!OverlayDismissOwnership.dismissalStillOwnsSession(
@@ -5862,6 +5946,9 @@ public class OrbitSession extends VoiceInteractionSession {
         saveCurrentConversation();
         stopListening();
         stopSpeaking();
+        // Reading belongs to the overlay that started it: closing Orbit ends it, always.
+        ReadAloud.removeListener(readAloudListener);
+        ReadAloud.stopOwnedBy(getContext());
         // stopListening already retires the halo through updateMic, but that hop goes through the
         // main handler. Ending it here too means a dismissal can never leave frames scheduled.
         if (listeningHalo != null) listeningHalo.stop();

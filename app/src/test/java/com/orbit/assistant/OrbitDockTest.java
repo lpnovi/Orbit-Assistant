@@ -118,6 +118,63 @@ public class OrbitDockTest {
         assertTrue("Send is touchable", sendTouchable);
     }
 
+    @Test public void theSlimmerBarKeepsFullSizeTouchTargets() {
+        OrbitSession session = dock();
+        ViewGroup root = (ViewGroup) session.onCreateContentView();
+        attach(root);
+        int target = UiKit.dp(context, 44);
+        for (String control : new String[]{"Attach to message", "Voice input", "Send message"}) {
+            View v = find(root, control);
+            assertEquals(control, target, v.getWidth());
+            assertEquals(control, target, v.getHeight());
+        }
+        View handle = find(root, "Show conversation. Swipe down to close Orbit.");
+        View bar = (View) handle.getParent();
+        // Robolectric's font metrics are not a phone's, so the bar is checked by its parts: the
+        // handle is slimmer than Beta 2's 18dp and nothing but the row and 5dp sits under it.
+        assertTrue(handle.getHeight() < UiKit.dp(context, 18));
+        View row = ((ViewGroup) bar).getChildAt(1);
+        assertEquals(handle.getHeight() + row.getHeight() + UiKit.dp(context, 5), bar.getHeight());
+        assertTrue("never a full-screen surface", bar.getHeight() < root.getHeight() / 4);
+    }
+
+    @Test public void readAloudsPillLivesInEveryStyleAndStaysOutOfTheWay() {
+        for (String style : new String[]{Prefs.OVERLAY_STYLE_DOCK, Prefs.OVERLAY_STYLE_MODERN,
+                Prefs.OVERLAY_STYLE_FLOAT, Prefs.OVERLAY_STYLE_CLASSIC}) {
+            Prefs.setOverlayStyle(context, style);
+            ViewGroup root = (ViewGroup) newSession().onCreateContentView();
+            View stop = find(root, ReadAloudBar.STOP_DESCRIPTION);
+            assertNotNull(style, stop);
+            assertEquals(style, View.GONE, ((View) stop.getParent()).getVisibility());
+        }
+    }
+
+    // ---- The preview card ----
+
+    @Test public void thePreviewCardSaysWhatIsHappeningAndThatItOpens() {
+        DockPreviewCard card = new DockPreviewCard(context, OverlayStyle.DOCK.sheetAlpha);
+        assertEquals(-1, card.state());
+        card.set(DockPreviewCard.THINKING, "");
+        assertEquals("Thinking. " + DockPreviewCard.OPEN_HINT, card.getContentDescription().toString());
+        assertEquals("nothing but the status line while thinking", "", card.text());
+
+        card.set(DockPreviewCard.WRITING, "The first words");
+        card.set(DockPreviewCard.WRITING, "The first words of it");
+        assertEquals(DockPreviewCard.WRITING, card.state());
+        assertEquals("The first words of it", card.text());
+
+        card.set(DockPreviewCard.DONE, "How it opens");
+        assertTrue(card.getContentDescription().toString().startsWith("Orbit. How it opens"));
+        assertTrue(card.getContentDescription().toString().endsWith(DockPreviewCard.OPEN_HINT));
+        card.set(DockPreviewCard.FAILED, "Orbit could not finish this response.");
+        assertTrue(card.getContentDescription().toString().startsWith("Needs attention."));
+    }
+
+    @Test public void thePreviewNeverShowsTableOrRuleScaffolding() {
+        assertEquals("Day, High Mon, 80 Done",
+                DockText.opening("| Day | High |\n|:--|--:|\n| Mon | 80 |\n\n---\n\nDone"));
+    }
+
     @Test public void otherStylesStillTakeTheWholeWindow() {
         for (String style : new String[]{Prefs.OVERLAY_STYLE_MODERN, Prefs.OVERLAY_STYLE_FLOAT,
                 Prefs.OVERLAY_STYLE_CLASSIC}) {

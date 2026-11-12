@@ -206,6 +206,17 @@ public final class Prefs {
     public static final String OVERLAY_SHOW_VOICE = "overlay_show_voice";
     /** Dock's soft accent pulse when an answer finishes. On unless turned off. */
     public static final String DOCK_COMPLETION_PULSE = "dock_completion_pulse";
+    /** Read Aloud: read every finished answer without being asked. Off unless turned on. */
+    public static final String READ_ALOUD_AUTO = "read_aloud_auto";
+    /** Read Aloud's speed, one of {@link #READ_ALOUD_SPEEDS}. */
+    public static final String READ_ALOUD_SPEED = "read_aloud_speed";
+    /** The system voice Read Aloud prefers, by its engine name. Empty for the system's own. Per device, so never backed up. */
+    public static final String READ_ALOUD_VOICE = "read_aloud_voice";
+    /** What Settings shows for {@link #READ_ALOUD_VOICE}, so it can be drawn before the engine is asked. */
+    public static final String READ_ALOUD_VOICE_LABEL = "read_aloud_voice_label";
+    static final String[] READ_ALOUD_SPEEDS = {"slow", "normal", "fast", "faster"};
+    static final String[] READ_ALOUD_SPEED_LABELS = {"Slower", "Normal", "Faster", "Fastest"};
+    private static final float[] READ_ALOUD_RATES = {0.8f, 1f, 1.25f, 1.5f};
     /**
      * Whether Orbit draws its own interactive back gesture when returning to the previous screen.
      *
@@ -315,12 +326,12 @@ public final class Prefs {
             MODEL, REASONING, INTELLIGENCE_MODE, AI_DEFAULT_MODEL, AI_DEFAULT_STRENGTH,
             AI_MODEL_FAVORITES, AI_MODEL_RECENTS, AI_PROVIDER_DEFAULTS, ACCENT, USER_BUBBLE_COLOR,
             ASSISTANT_BUBBLE_COLOR, CHAT_TEXT_SIZE, WEATHER_LOCATION, WEATHER_UNITS, APP_FONT,
-            QUICK_SETTINGS_ROUTINE_ID, PAGE_TRANSITION, OVERLAY_STYLE, REMINDER_APP,
+            QUICK_SETTINGS_ROUTINE_ID, PAGE_TRANSITION, OVERLAY_STYLE, REMINDER_APP, READ_ALOUD_SPEED,
             THEME_SURFACE, THEME_BACKGROUND, THEME_ID, THEME_NAME, THEME_MATERIAL,
             THEME_PRO_BACKGROUND_EFFECT_COLOR));
     private static final Set<String> BACKUP_BOOLEAN_KEYS = new HashSet<>(Arrays.asList(
             OVERLAY_STYLE_MIGRATED, OVERLAY_SHOW_MODEL, OVERLAY_SHOW_HISTORY, OVERLAY_SHOW_NEW_CHAT,
-            OVERLAY_SHOW_SCREEN, OVERLAY_SHOW_ATTACH, OVERLAY_SHOW_VOICE, DOCK_COMPLETION_PULSE, SCREEN_CONTEXT, SCREENSHOT, CONTEXT_CHIPS, ATTACH_SCREEN_BY_DEFAULT,
+            OVERLAY_SHOW_SCREEN, OVERLAY_SHOW_ATTACH, OVERLAY_SHOW_VOICE, DOCK_COMPLETION_PULSE, READ_ALOUD_AUTO, SCREEN_CONTEXT, SCREENSHOT, CONTEXT_CHIPS, ATTACH_SCREEN_BY_DEFAULT,
             SPEAK, HAPTICS, AUTO_LISTEN, AUTO_LISTEN_ON_OPEN, SMART_FOLLOW_UPS,
             VOICE_PAUSE_FRIENDLY, NEW_CHAT_ON_OPEN,
             HISTORY_ENABLED, SAVE_SCREEN_THUMBNAILS, KEYBOARD_AWARE_ASSISTANT, SHOW_STOP_BUTTON,
@@ -639,6 +650,19 @@ public final class Prefs {
     public static boolean dockCompletionPulse(Context c) {
         return get(c).getBoolean(DOCK_COMPLETION_PULSE, true);
     }
+
+    public static boolean readAloudAuto(Context c) { return get(c).getBoolean(READ_ALOUD_AUTO, false); }
+
+    public static String readAloudVoice(Context c) { return get(c).getString(READ_ALOUD_VOICE, ""); }
+
+    /** Index into {@link #READ_ALOUD_SPEEDS}; Normal for anything unrecognised. */
+    public static int readAloudSpeedIndex(Context c) {
+        int at = Arrays.asList(READ_ALOUD_SPEEDS).indexOf(get(c).getString(READ_ALOUD_SPEED, "normal"));
+        return at < 0 ? 1 : at;
+    }
+
+    /** The speech rate handed to Android, where 1 is the voice's own pace. */
+    public static float readAloudRate(Context c) { return READ_ALOUD_RATES[readAloudSpeedIndex(c)]; }
 
     public static String weatherUnits(Context c) {
         String value = get(c).getString(WEATHER_UNITS, WEATHER_UNITS_SYSTEM);

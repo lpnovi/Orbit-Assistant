@@ -182,6 +182,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
 
     @Override
     protected void onStop() {
+        ReadAloud.stopOwnedBy(this);
         UiKit.unregisterAppearanceListener(this);
         super.onStop();
     }
@@ -931,6 +932,7 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
                 toggle("Show contextual screen-action chips when attached", Prefs.CONTEXT_CHIPS, true)));
         voiceCard.addView(target(SettingsSearchIndex.KEY_SPEAK,
                 toggle("Speak replies to voice requests", Prefs.SPEAK, true)));
+        voiceCard.addView(target(SettingsSearchIndex.KEY_READ_ALOUD, readAloudSettings()));
         voiceCard.addView(target(SettingsSearchIndex.KEY_VOICE_PAUSE,
                 toggle("Allow longer pauses while speaking",
                 "Voice Beta gives you more time to pause and think before Orbit decides you are finished. Tap the mic again if you want to finish sooner.",
@@ -2603,6 +2605,62 @@ public class SettingsActivity extends Activity implements UiKit.AppearanceListen
             if (values[i].equals(target)) return i;
         }
         return 0;
+    }
+
+    /**
+     * Read Aloud: the voice, the speed, and whether answers are read without being asked. Volume,
+     * pitch and installing voices stay where Android already has them.
+     */
+    private View readAloudSettings() {
+        LinearLayout group = new LinearLayout(this);
+        group.setOrientation(LinearLayout.VERTICAL);
+        TextView title = label("Read Aloud");
+        title.setPadding(UiKit.dp(this, 2), UiKit.dp(this, 12), 0, UiKit.dp(this, 2));
+        group.addView(title);
+        TextView note = UiKit.text(this,
+                "Hold any answer and choose Read aloud to hear it. Orbit uses the text-to-speech voices installed on this phone; a voice marked \"needs internet\" is fetched by Android's speech engine and does not work offline.",
+                12, UiKit.MUTED, false);
+        note.setPadding(UiKit.dp(this, 2), 0, 0, UiKit.dp(this, 8));
+        group.addView(note);
+
+        String savedLabel = Prefs.get(this).getString(Prefs.READ_ALOUD_VOICE_LABEL, "");
+        LinearLayout voice = menuSelector(new String[]{Prefs.readAloudVoice(this).isEmpty()
+                || savedLabel.isEmpty() ? ReadAloud.SYSTEM_VOICE_LABEL : savedLabel}, 0, null);
+        voice.setContentDescription("Read Aloud voice");
+        TextView voiceValue = (TextView) voice.getChildAt(0);
+        voice.setOnClickListener(v -> ReadAloud.voices(this, voices -> {
+            if (isFinishing() || isDestroyed()) return;
+            if (voices == null) {
+                Toast.makeText(this, ReadAloud.NO_ENGINE_MESSAGE, Toast.LENGTH_LONG).show();
+                return;
+            }
+            String[] labels = new String[voices.size() + 1];
+            labels[0] = ReadAloud.SYSTEM_VOICE_LABEL;
+            int selected = 0;
+            for (int i = 0; i < voices.size(); i++) {
+                labels[i + 1] = ReadAloud.voiceLabel(voices.get(i), i + 1);
+                if (voices.get(i).getName().equals(Prefs.readAloudVoice(this))) selected = i + 1;
+            }
+            UiKit.showOrbitMenu(this, voice, labels, selected, (index, label) -> {
+                Prefs.get(this).edit()
+                        .putString(Prefs.READ_ALOUD_VOICE, index == 0 ? "" : voices.get(index - 1).getName())
+                        .putString(Prefs.READ_ALOUD_VOICE_LABEL, index == 0 ? "" : label).apply();
+                voiceValue.setText(label);
+                // The only way to choose between voices is to hear one.
+                ReadAloud.start(this, ReadAloud.SAMPLE, this);
+            });
+        }));
+        group.addView(voice, selectorLp());
+
+        LinearLayout speed = menuSelector(Prefs.READ_ALOUD_SPEED_LABELS, Prefs.readAloudSpeedIndex(this),
+                (position, label) -> Prefs.get(this).edit().putString(Prefs.READ_ALOUD_SPEED,
+                        Prefs.READ_ALOUD_SPEEDS[position]).apply());
+        speed.setContentDescription("Read Aloud speed");
+        group.addView(speed, selectorLp());
+        group.addView(toggle("Automatically read answers",
+                "Read each new answer aloud as soon as it finishes. Off unless you turn it on.",
+                Prefs.READ_ALOUD_AUTO, false));
+        return group;
     }
 
     private LinearLayout.LayoutParams selectorLp() {

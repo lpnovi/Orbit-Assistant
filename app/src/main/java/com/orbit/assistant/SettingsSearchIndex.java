@@ -98,6 +98,7 @@ public final class SettingsSearchIndex {
     public static final String KEY_ATTACH_SCREEN = "attach_screen";
     public static final String KEY_CONTEXT_CHIPS = "context_chips";
     public static final String KEY_SPEAK = "speak_replies";
+    public static final String KEY_READ_ALOUD = "read_aloud";
     public static final String KEY_VOICE_PAUSE = "voice_pause";
     public static final String KEY_AUTO_LISTEN = "auto_listen";
     public static final String KEY_FOLLOW_UPS = "follow_ups";
@@ -309,6 +310,10 @@ public final class SettingsSearchIndex {
                 "Read answers aloud when you asked by voice.",
                 S_VOICE, "voice", KEY_SPEAK,
                 "speak", "voice", "tts", "read aloud", "sound", "talk"));
+        out.add(new Entry("Read Aloud",
+                "Listen to any answer: voice, speed, and reading answers automatically.",
+                S_VOICE, "voice", KEY_READ_ALOUD,
+                "read aloud", "listen", "speech", "tts", "voice", "speed", "narrate", "audio"));
         out.add(new Entry("Allow longer pauses while speaking",
                 "Keep listening through a pause in a sentence.",
                 S_VOICE, "voice", KEY_VOICE_PAUSE,

@@ -259,6 +259,12 @@ public final class OrbitMarkdown {
     public static String toSpeechText(String source) {
         if (source == null) return "";
         return source.replaceAll("(?m)^```[^\\n]*$", "")
+                // Rules and table scaffolding are layout, not words: the rule lines go, and a
+                // table row reads as its cells.
+                .replaceAll("(?m)^[ \\t]*(?:-{3,}|\\*{3,}|_{3,})[ \\t]*$", "")
+                .replaceAll("(?m)^[ \\t]*\\|?[ \\t:|-]*-[ \\t:|-]*\\|[ \\t:|-]*$", "")
+                .replaceAll("(?m)^[ \\t]*\\|[ \\t]*(.*?)[ \\t]*\\|[ \\t]*$", "$1")
+                .replaceAll("(?m)(?<=\\S)[ \\t]+\\|[ \\t]+(?=\\S)", ", ")
                 .replaceAll("!\\[([^]]*)]\\(https?://[^\\s)]+\\)", "$1")
                 .replaceAll("\\[([^]]+)]\\(https?://[^\\s)]+\\)", "$1")
                 .replaceAll("(?m)^#{1,6}\\s+", "")

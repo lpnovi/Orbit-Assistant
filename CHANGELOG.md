@@ -842,6 +842,14 @@ Historical entries through v0.5.11.3 were reconstructed from the original Orbit 
 
 ## 0.8 series
 
+- **v0.8.5.0-beta.3**: A more refined Orbit Dock, and Read Aloud so you can listen to any answer.
+  - Dock's bar is slimmer and calmer: one floating surface with a soft edge instead of an accent outline, and matching round controls.
+  - The answer preview is now a compact card that shows Thinking, Writing or the finished answer, with a clear cue that tapping opens the conversation.
+  - Dock fades in and out, the conversation panel glides open, and the completion pulse is gentler.
+  - Hold any answer and choose Read aloud, in full chat and every overlay style; a small pill lets you pause, resume or stop.
+  - Read Aloud uses the voices already on your phone, with voice and speed in Settings, and never starts by itself unless you turn that on.
+  - Your overlay style and every other setting stay exactly as they were.
+
 - **v0.8.5.0-beta.2**: Orbit Dock, a new optional overlay style that keeps the app you are using in view.
   - Choose Dock in Settings, Look & Feel, Overlay style; your current style stays until you switch.
   - Dock opens as a slim floating bar with no dimming, and taps beside it still reach the app underneath.

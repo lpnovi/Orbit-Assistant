@@ -688,6 +688,13 @@ public class ChatActivity extends Activity {
         root.addView(voiceStatus, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        // Read Aloud: nothing here until an answer is being read, then one small pill.
+        LinearLayout.LayoutParams readAloudLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        readAloudLp.gravity = Gravity.CENTER_HORIZONTAL;
+        readAloudLp.setMargins(0, 0, 0, UiKit.dp(this, 8));
+        root.addView(new ReadAloudBar(this), readAloudLp);
+
         LinearLayout.LayoutParams editingLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         editingLp.gravity = Gravity.START;
@@ -1816,6 +1823,8 @@ public class ChatActivity extends Activity {
                             voiceController != null && reply != null) {
                         voiceController.speak(OrbitMarkdown.toSpeechText(
                                 SourceLinkUtil.displayText(reply.text)));
+                    } else if (reply != null && Prefs.readAloudAuto(ChatActivity.this)) {
+                        ReadAloud.start(ChatActivity.this, reply.text, ChatActivity.this);
                     }
                 });
             }
@@ -4186,6 +4195,12 @@ public class ChatActivity extends Activity {
     private void scrollBottomIfFollowing() {
         if (followBottom) scrollBottom();
     }
+    @Override protected void onStop() {
+        super.onStop();
+        // Read Aloud belongs to the chat on screen: leaving it ends the reading it started.
+        ReadAloud.stopOwnedBy(this);
+    }
+
     @Override protected void onDestroy() {
         if (backHandler != null) backHandler.detach();
         if (predictiveBack != null) predictiveBack.detach();

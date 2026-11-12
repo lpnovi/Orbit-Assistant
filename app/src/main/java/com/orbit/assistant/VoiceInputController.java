@@ -64,11 +64,17 @@ public final class VoiceInputController {
     private String partial = "";
     private Runnable finalizeRunnable;
 
+    /** Read Aloud starting ends a spoken reply, so two voices never overlap. */
+    private final ReadAloud.Listener readAloudListener = () -> {
+        if (ReadAloud.isActive() && speaking) stopSpeaking();
+    };
+
     public VoiceInputController(Context context, Callback callback) {
         this.context = context;
         this.callback = callback;
         initRecognition();
         initTts();
+        ReadAloud.addListener(readAloudListener);
     }
 
     public boolean isListening() { return listening; }
@@ -101,6 +107,8 @@ public final class VoiceInputController {
             callback.onPermissionNeeded();
             return;
         }
+        // The microphone must not hear Orbit reading.
+        ReadAloud.stop();
         originalText = safe(callback.currentComposerText()).trim();
         accumulated = "";
         partial = "";
@@ -170,6 +178,8 @@ public final class VoiceInputController {
     public void speak(String text) {
         if (!ttsReady || tts == null || text == null || text.trim().isEmpty()) return;
         try {
+            // One voice at a time: a spoken reply takes over from Read Aloud.
+            ReadAloud.stop();
             lastSpokenReply = text;
             composerClaimedForTyping = false;
             liveUtteranceId = "orbit_chat_reply_" + (++utteranceGeneration);
@@ -224,6 +234,7 @@ public final class VoiceInputController {
     }
 
     public void destroy() {
+        ReadAloud.removeListener(readAloudListener);
         stop(true);
         stopSpeaking();
         if (recognizer != null) try { recognizer.destroy(); } catch (Exception ignored) {}
